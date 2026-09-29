@@ -13,11 +13,9 @@ import { usePerfilCliente } from '@/hooks/use-sesion';
 import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
 import { formatearPesos, hoyISO } from '@/lib/formato';
+import { DIAS_VIGENCIA_PRESUPUESTO, PORCENTAJE_SENA, desglosarIva } from '@/lib/importes';
 import { FOTOS, fotoDeSalon } from '@/lib/fotos';
 import { cn } from '@/lib/utils';
-
-// Porcentaje de la seña sobre el total (RN-01): solo se informa, no se cobra desde acá.
-const PORCENTAJE_SENA = 20;
 
 export interface ResultadoCotizacion {
   presupuesto: PresupuestoDetallado;
@@ -57,7 +55,7 @@ function precioSalon(salon: SalonConDistribuciones, jornada: TipoJornada) {
   return Number(jornada === 'completa' ? salon.precioJornadaCompleta : salon.precioMediaJornada);
 }
 
-// Cotizador del cliente registrado: la vista "con precios sin IVA" de la landing. Calcula el total
+// Cotizador del cliente registrado: la vista con precios de la landing. Calcula el total
 // estimado en vivo para que el cliente vea cómo cambia, pero el presupuesto que vale es el que
 // devuelve POST /presupuestos (HU-09), que es donde viven las reglas de cálculo.
 export function CotizarEvento({
@@ -130,7 +128,9 @@ export function CotizarEvento({
         };
       }),
   ];
-  const total = lineas.filter((l) => l.entraEnTotal).reduce((suma, l) => suma + l.subtotal, 0);
+  const { subtotal, iva, total } = desglosarIva(
+    lineas.filter((l) => l.entraEnTotal).reduce((suma, l) => suma + l.subtotal, 0),
+  );
 
   function alternarServicio(servicioId: number) {
     setElegidos((anteriores) => {
@@ -261,7 +261,7 @@ export function CotizarEvento({
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
               {(
                 [
-                  { valor: 'media', titulo: 'Media jornada', detalle: 'Hasta 4 horas' },
+                  { valor: 'media', titulo: 'Media jornada', detalle: 'Hasta 4 horas inclusive' },
                   { valor: 'completa', titulo: 'Jornada completa', detalle: 'Más de 4 horas' },
                 ] as const
               ).map((opcion) => (
@@ -500,26 +500,32 @@ export function CotizarEvento({
                 </ul>
               )}
 
-              <div className="mt-6 border-t border-dashed border-border pt-4">
-                <div className="flex items-baseline justify-between">
-                  <span className="text-sm font-medium">Total estimado</span>
-                  <span className="font-serif text-3xl font-semibold text-bordo">
-                    {formatearPesos(total)}
-                  </span>
+              {/* RN-05: subtotal sin IVA, IVA 21% y total, recalculados con cada selección. */}
+              <dl className="mt-6 space-y-1.5 border-t border-dashed border-border pt-4 text-sm">
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">Subtotal sin IVA</dt>
+                  <dd className="font-medium tabular-nums">{formatearPesos(subtotal)}</dd>
                 </div>
-                <p className="mt-1 text-right text-xs text-muted-foreground">
-                  Importes sin IVA · precios de {mesVigente}
+                <div className="flex justify-between">
+                  <dt className="text-muted-foreground">IVA 21%</dt>
+                  <dd className="font-medium tabular-nums">{formatearPesos(iva)}</dd>
+                </div>
+                <div className="flex items-baseline justify-between border-t border-border pt-2">
+                  <dt className="font-medium">Total estimado</dt>
+                  <dd className="font-serif text-3xl font-semibold text-bordo tabular-nums">
+                    {formatearPesos(total)}
+                  </dd>
+                </div>
+              </dl>
+              <p className="mt-1 text-right text-xs text-muted-foreground">
+                Precios de {mesVigente}
+              </p>
+              {total > 0 && (
+                <p className="mt-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+                  Validez de {DIAS_VIGENCIA_PRESUPUESTO} días. Para reservar el salón se abona una
+                  seña del {PORCENTAJE_SENA}% del total dentro de ese plazo.
                 </p>
-                {total > 0 && (
-                  <p className="mt-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-                    Seña para reservar: {PORCENTAJE_SENA}% ={' '}
-                    <strong className="text-foreground">
-                      {formatearPesos((total * PORCENTAJE_SENA) / 100)}
-                    </strong>
-                    , dentro de los 10 días de confirmado.
-                  </p>
-                )}
-              </div>
+              )}
 
               {solicitar.isError && (
                 <p className="mt-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">

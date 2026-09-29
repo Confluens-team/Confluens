@@ -3,12 +3,9 @@ import { CheckCircle2, Home, Printer, RotateCcw } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { fechaLocal, formatearFecha, formatearPesos } from '@/lib/formato';
+import { DIAS_VIGENCIA_PRESUPUESTO, PORCENTAJE_SENA, desglosarIva } from '@/lib/importes';
 import { UBICACION } from '@/paginas/solicitudes/datos-institucionales';
 import type { ResultadoCotizacion } from './CotizarEvento';
-
-// Validez del presupuesto (RN-08) y seña (RN-01), tal como las publica la landing.
-const DIAS_VALIDEZ = 30;
-const PORCENTAJE_SENA = 20;
 
 // Presupuesto Estimado recién generado, presentado como el documento que hoy el cliente recibe en
 // PDF por WhatsApp. "Imprimir" usa el diálogo del navegador, que permite guardarlo como PDF.
@@ -24,8 +21,9 @@ export function PresupuestoEstimado({
   const { presupuesto, salon, tipoJornada, cliente } = resultado;
   const emision = new Date(presupuesto.fechaEmision);
   const vence = new Date(emision);
-  vence.setDate(vence.getDate() + DIAS_VALIDEZ);
-  const total = Number(presupuesto.total);
+  vence.setDate(vence.getDate() + DIAS_VIGENCIA_PRESUPUESTO);
+  // presupuesto.total se guarda sin IVA (RN-05): es el subtotal del desglose.
+  const { subtotal, iva, total } = desglosarIva(presupuesto.total);
   const numero = String(presupuesto.id).padStart(6, '0');
 
   return (
@@ -123,19 +121,26 @@ export function PresupuestoEstimado({
             </tbody>
           </table>
 
-          <div className="relative mt-6 flex flex-col items-end gap-1 border-t-2 border-bordo pt-4">
-            <div className="flex items-baseline gap-6">
-              <span className="text-sm font-medium">Total estimado</span>
-              <span className="font-serif text-3xl font-semibold text-bordo">
-                {formatearPesos(total)}
-              </span>
+          {/* RN-05: subtotal sin IVA, IVA 21% sobre ese subtotal y total. */}
+          <dl className="relative mt-6 ml-auto flex w-full max-w-xs flex-col gap-2 border-t-2 border-bordo pt-4 text-sm">
+            <div className="flex justify-between gap-6">
+              <dt className="text-muted-foreground">Subtotal sin IVA</dt>
+              <dd className="font-medium tabular-nums">{formatearPesos(subtotal)}</dd>
             </div>
-            <p className="text-xs text-muted-foreground">Todos los importes se expresan sin IVA.</p>
-            <p className="mt-2 text-sm">
-              Seña para reservar ({PORCENTAJE_SENA}%):{' '}
-              <strong>{formatearPesos((total * PORCENTAJE_SENA) / 100)}</strong>
-            </p>
-          </div>
+            <div className="flex justify-between gap-6">
+              <dt className="text-muted-foreground">IVA 21%</dt>
+              <dd className="font-medium tabular-nums">{formatearPesos(iva)}</dd>
+            </div>
+            <div className="flex items-baseline justify-between gap-6 border-t border-border pt-2">
+              <dt className="font-semibold">Total</dt>
+              <dd className="font-serif text-3xl font-semibold text-bordo tabular-nums">
+                {formatearPesos(total)}
+              </dd>
+            </div>
+          </dl>
+          <p className="relative mt-4 text-right text-sm font-medium text-bordo">
+            Este presupuesto tiene una validez de {DIAS_VIGENCIA_PRESUPUESTO} días.
+          </p>
 
           <footer className="relative mt-10 rounded-lg bg-muted/70 p-5 text-xs leading-relaxed text-muted-foreground">
             <p className="font-semibold text-foreground">Condiciones</p>
@@ -144,9 +149,17 @@ export function PresupuestoEstimado({
                 Presupuesto estimado sujeto a disponibilidad del salón en la fecha elegida: no
                 reserva la fecha hasta que se confirme.
               </li>
-              <li>La seña del 20% se abona dentro de los 10 días de confirmado el evento.</li>
-              <li>Cancelación hasta 48 horas hábiles antes del evento. La seña no se reintegra.</li>
-              <li>Validez del presupuesto: {DIAS_VALIDEZ} días.</li>
+              <li>
+                La seña del {PORCENTAJE_SENA}% del total se abona dentro de la vigencia del
+                presupuesto y congela sus precios.
+              </li>
+              <li>
+                Vencidos los {DIAS_VIGENCIA_PRESUPUESTO} días sin seña, el presupuesto se recalcula
+                con los precios vigentes.
+              </li>
+              <li>
+                Cancelación hasta 48 horas corridas antes del evento. La seña no se reintegra.
+              </li>
             </ul>
           </footer>
         </article>
