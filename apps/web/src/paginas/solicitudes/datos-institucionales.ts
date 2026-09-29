@@ -43,20 +43,31 @@ export const INCLUIDO_SIN_CARGO = [
   'Estacionamiento gratuito para hasta 100 autos',
 ] as const;
 
-// tarifario-2026.md:113-125. Se publican las condiciones, no las reglas RN-xx que originan: al
-// cliente le importa el plazo, no el identificador interno.
+// tarifario-2026.md, "Condiciones de contratación" (actualizadas en la entrevista del 24/09/2026).
+// Se publican las condiciones, no las reglas RN-xx que originan: al cliente le importa el plazo,
+// no el identificador interno.
 export const CONDICIONES_DE_CONTRATACION = [
-  { condicion: 'Seña', detalle: '20% del total, dentro de los 10 días de confirmado el evento' },
+  {
+    condicion: 'Precios',
+    detalle: 'Expresados sin IVA; el presupuesto detalla subtotal, IVA 21% y total',
+  },
+  {
+    condicion: 'Seña',
+    detalle: '20% del total, dentro de la vigencia del presupuesto. Congela los precios',
+  },
+  { condicion: 'Validez del presupuesto', detalle: '10 días desde su emisión' },
   {
     condicion: 'Falta de anticipo',
-    detalle: 'El hotel se libera de responsabilidad por la reserva',
+    detalle: 'Vencido el presupuesto sin seña, se recalcula con los precios vigentes',
   },
-  { condicion: 'Cancelación', detalle: 'Hasta 48 horas hábiles antes del evento' },
-  { condicion: 'Reintegro', detalle: 'La seña no se reintegra ni se aplica a otros servicios' },
-  { condicion: 'Validez del presupuesto', detalle: '30 días' },
   {
-    condicion: 'Confirmación de asistentes',
-    detalle: '7 días antes; se admiten hasta 5 personas más hasta 48 hs antes',
+    condicion: 'Cancelación',
+    detalle: 'Hasta 48 horas corridas antes del evento, fines de semana y feriados incluidos',
+  },
+  { condicion: 'Reintegro', detalle: 'La seña no se reintegra ni se aplica a otros servicios' },
+  {
+    condicion: 'Modificaciones',
+    detalle: 'Hasta 7 días antes del evento; después, solo a través del equipo de eventos',
   },
   { condicion: 'Ausencias', detalle: 'Se cobra la cantidad contratada' },
   { condicion: 'Gastos extra', detalle: 'Se abonan al concluir el evento' },

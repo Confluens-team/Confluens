@@ -12,7 +12,6 @@ import {
   INSTAGRAM,
   UBICACION,
 } from './datos-institucionales';
-import { FormularioConsulta } from './FormularioConsulta';
 
 const NUMERALES = ['I', 'II', 'III', 'IV', 'V'];
 
@@ -61,7 +60,8 @@ function TituloSeccion({
 //
 // Sin precios en toda la pantalla: los ve el cliente registrado en el cotizador. "Cotizá tu
 // evento" (y "Cotizar en este salón", criterio 3 de HU-07) piden iniciar sesión o crear la cuenta
-// y abren el cotizador; el formulario de consulta rápida sin cuenta (HU-14) sigue disponible al pie.
+// y abren el cotizador. Desde la entrevista del 24/09/2026 no hay consulta sin cuenta: toda
+// consulta del canal público pasa por el registro (dominio.md, "Canal público").
 export function Landing({
   onCotizar,
   onAccesoPersonal,
@@ -269,7 +269,7 @@ export function Landing({
         </div>
       </section>
 
-      {/* Llamado final: cotizador (con cuenta) o consulta rápida (sin cuenta, HU-14) */}
+      {/* Llamado final: la consulta siempre pasa por la cuenta del cliente */}
       <section id="contacto" className="relative isolate scroll-mt-20 overflow-hidden py-24">
         <img
           src={FOTOS.mesaVinos}
@@ -277,47 +277,37 @@ export function Landing({
           className="absolute inset-0 -z-10 size-full object-cover"
         />
         <div className="absolute inset-0 -z-10 bg-bordo-oscuro/85" />
-        <div className="mx-auto grid max-w-6xl gap-8 px-4 sm:px-6 lg:grid-cols-2">
-          <div className="flex flex-col justify-center text-crema">
-            <p className="text-xs font-semibold tracking-[0.3em] text-dorado uppercase">
-              Hagamos tu evento
-            </p>
-            <h2 className="mt-3 text-3xl font-semibold sm:text-5xl">Tu presupuesto, en minutos</h2>
-            <p className="mt-6 font-display text-xl text-crema/80 italic">
-              Creá tu cuenta con tu email, teléfono y una contraseña, y armá tu presupuesto estimado
-              con los precios vigentes.
-            </p>
-            <ul className="mt-6 space-y-2 text-sm text-crema/85">
-              {[
-                'Elegís fecha, cantidad de personas y salón',
-                'Sumás la gastronomía que quieras',
-                'Ves el total estimado al instante, sin IVA',
-              ].map((paso) => (
-                <li key={paso} className="flex items-center gap-2">
-                  <Check className="size-4 text-dorado" /> {paso}
-                </li>
-              ))}
-            </ul>
-            <div>
-              <Button
-                size="lg"
-                className="mt-8 h-12 bg-dorado px-7 text-sm text-bordo-oscuro hover:bg-dorado/90"
-                onClick={() => onCotizar()}
-              >
-                Consultá para hacer tu evento <ArrowRight />
-              </Button>
-            </div>
-          </div>
-
-          <div className="rounded-2xl bg-papel p-6 shadow-2xl sm:p-8">
-            <h3 className="text-xl font-semibold text-bordo">¿Preferís que te llamemos?</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Dejanos tus datos y la fecha que tenés en mente, sin crear una cuenta.
-            </p>
-            <div className="mt-5">
-              <FormularioConsulta />
-            </div>
-          </div>
+        <div className="mx-auto flex max-w-3xl flex-col items-center px-4 text-center text-crema sm:px-6">
+          <p className="text-xs font-semibold tracking-[0.3em] text-dorado uppercase">
+            Hagamos tu evento
+          </p>
+          <h2 className="mt-3 text-3xl font-semibold sm:text-5xl">Tu presupuesto, en minutos</h2>
+          <p className="mt-6 font-display text-xl text-crema/80 italic">
+            Iniciá sesión o creá tu cuenta con tu nombre, email, teléfono y una contraseña, y armá
+            tu presupuesto estimado con los precios vigentes.
+          </p>
+          <ul className="mt-8 grid gap-3 text-left text-sm text-crema/85 sm:grid-cols-2">
+            {[
+              'Elegís fecha, cantidad de personas y salón',
+              'Sumás la gastronomía que quieras',
+              'Ves al instante el subtotal, el IVA y el total',
+              'Tu presupuesto tiene una validez de 10 días',
+            ].map((paso) => (
+              <li key={paso} className="flex items-center gap-2">
+                <Check className="size-4 shrink-0 text-dorado" /> {paso}
+              </li>
+            ))}
+          </ul>
+          <Button
+            size="lg"
+            className="mt-10 h-12 bg-dorado px-7 text-sm text-bordo-oscuro hover:bg-dorado/90"
+            onClick={() => onCotizar()}
+          >
+            Iniciá sesión para cotizar tu evento <ArrowRight />
+          </Button>
+          <p className="mt-3 text-xs text-crema/60">
+            Los precios solo se muestran a clientes registrados.
+          </p>
         </div>
       </section>
 
