@@ -8,9 +8,9 @@ import { TomarConsulta } from '@/paginas/eventos/TomarConsulta';
 import { AccesoCliente } from '@/paginas/auth/AccesoCliente';
 import { IniciarSesion } from '@/paginas/auth/IniciarSesion';
 import { Panel } from '@/paginas/panel/Panel';
+import { PanelAdministrador } from '@/paginas/panel/PanelAdministrador';
 import { CotizarEvento, type ResultadoCotizacion } from '@/paginas/presupuestos/CotizarEvento';
 import { PresupuestoEstimado } from '@/paginas/presupuestos/PresupuestoEstimado';
-import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
 import { RegistrarServicio } from '@/paginas/servicios/RegistrarServicio';
 import { Landing } from '@/paginas/solicitudes/Landing';
 import { ListadoSolicitudes } from '@/paginas/solicitudes/ListadoSolicitudes';
@@ -21,7 +21,6 @@ type Vista =
   | { tipo: 'presupuesto-generado'; resultado: ResultadoCotizacion }
   | { tipo: 'interna' }
   | { tipo: 'servicios' }
-  | { tipo: 'landing-admin' }
   | { tipo: 'tomar-consulta'; solicitud?: Solicitud }
   | { tipo: 'detalle-evento'; eventoId: number };
 
@@ -130,6 +129,11 @@ export default function App() {
     );
   }
 
+  // El Administrador del Sistema tiene su propio panel con pestañas: todo lo hecho hasta ahora.
+  if (sesion.rol === 'ADMINISTRADOR_SISTEMA') {
+    return <PanelAdministrador sesion={sesion} onVistaPublica={() => irA({ tipo: 'publica' })} />;
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Panel sesion={sesion} />
@@ -147,20 +151,6 @@ export default function App() {
         >
           Servicios
         </button>
-        {/* La pantalla de landing solo se ofrece al rol que puede usarla: el PATCH responde 403 a
-            cualquier otro (criterio 5 de HU-08), así que mostrarle el botón sería ofrecerle una
-            pantalla que no puede guardar nada. */}
-        {sesion.rol === 'ADMINISTRADOR_SISTEMA' && (
-          <>
-            <span className="text-muted-foreground">·</span>
-            <button
-              className="underline underline-offset-2"
-              onClick={() => setVista({ tipo: 'landing-admin' })}
-            >
-              Landing page
-            </button>
-          </>
-        )}
         <span className="text-muted-foreground">·</span>
         <button
           className="underline underline-offset-2"
@@ -175,7 +165,6 @@ export default function App() {
         />
       )}
       {vista.tipo === 'servicios' && <RegistrarServicio />}
-      {vista.tipo === 'landing-admin' && <AdministrarLanding />}
       {vista.tipo === 'tomar-consulta' && (
         <TomarConsulta
           solicitud={vista.solicitud}
