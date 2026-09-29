@@ -59,6 +59,7 @@ export async function registrarCliente(
     email: datos.email,
     hashContrasena: await hashearContrasena(datos.contrasena),
     nombre: datos.nombre,
+    apellido: datos.apellido,
     telefono: datos.telefono,
   });
 
@@ -73,5 +74,10 @@ export async function obtenerPerfilCliente(usuarioId: number): Promise<PerfilCli
   if (!cliente) {
     throw ErrorApi.noEncontrado('La sesión no corresponde a un cliente');
   }
-  return { nombre: cliente.nombre, telefono: cliente.telefono, correo: cliente.correo };
+  return {
+    nombre: cliente.nombre,
+    apellido: cliente.apellido,
+    telefono: cliente.telefono,
+    correo: cliente.correo,
+  };
 }

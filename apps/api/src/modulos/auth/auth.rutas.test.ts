@@ -131,7 +131,8 @@ describe('GET /api/auth/yo', () => {
 
 describe('POST /api/auth/registro', () => {
   const datosValidos = {
-    nombre: 'Ana Pérez',
+    nombre: 'Ana',
+    apellido: 'Pérez',
     email: 'ana@empresa.com',
     telefono: '351 555 1234',
     contrasena: 'secreta123',
@@ -163,6 +164,8 @@ describe('POST /api/auth/registro', () => {
     const [datosGuardados] = crearUsuarioClienteMock.mock.calls[0]!;
     expect(datosGuardados.hashContrasena).not.toBe(datosValidos.contrasena);
     expect(datosGuardados.telefono).toBe('351 555 1234');
+    // Nombre y apellido llegan separados a la ficha del Cliente (HU-48).
+    expect(datosGuardados).toMatchObject({ nombre: 'Ana', apellido: 'Pérez' });
   });
 
   it('con un email ya registrado responde 409 y no crea nada', async () => {
@@ -182,6 +185,16 @@ describe('POST /api/auth/registro', () => {
     expect(crearUsuarioClienteMock).not.toHaveBeenCalled();
   });
 
+  it('sin apellido responde 400 VALIDATION_ERROR y no crea nada', async () => {
+    const respuesta = await request(app)
+      .post('/api/auth/registro')
+      .send({ ...datosValidos, apellido: '  ' });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(crearUsuarioClienteMock).not.toHaveBeenCalled();
+  });
+
   it('sin teléfono responde 400 VALIDATION_ERROR', async () => {
     const respuesta = await request(app)
       .post('/api/auth/registro')
@@ -196,7 +209,8 @@ describe('GET /api/auth/perfil', () => {
   it('con sesión de CLIENTE devuelve sus datos comerciales', async () => {
     buscarClientePorUsuarioIdMock.mockResolvedValue({
       id: 3,
-      nombre: 'Ana Pérez',
+      nombre: 'Ana',
+      apellido: 'Pérez',
       telefono: '351 555 1234',
       correo: 'ana@empresa.com',
       activo: true,
@@ -212,7 +226,12 @@ describe('GET /api/auth/perfil', () => {
 
     expect(respuesta.status).toBe(200);
     expect(respuesta.body).toEqual({
-      data: { nombre: 'Ana Pérez', telefono: '351 555 1234', correo: 'ana@empresa.com' },
+      data: {
+        nombre: 'Ana',
+        apellido: 'Pérez',
+        telefono: '351 555 1234',
+        correo: 'ana@empresa.com',
+      },
     });
   });
 

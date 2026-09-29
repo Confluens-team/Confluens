@@ -4,7 +4,8 @@ import { esquemaFechaHora, esquemaId } from './comunes.esquema.js';
 
 export const esquemaCliente = z.object({
   id: esquemaId,
-  nombre: z.string().min(1), // razón social o nombre
+  nombre: z.string().min(1), // nombre de la persona, o razón social
+  apellido: z.string().nullable(), // null para razones sociales y fichas previas al registro
   telefono: z.string().min(1),
   correo: z.email(),
   activo: z.boolean(),

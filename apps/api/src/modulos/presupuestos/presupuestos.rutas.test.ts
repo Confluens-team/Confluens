@@ -77,6 +77,7 @@ const servicioFixtureBase = {
 const clienteFixture = {
   id: 10,
   nombre: 'Marina Gómez',
+  apellido: null,
   telefono: '+54 9 351 555-1234',
   correo: 'marina@example.com',
   activo: true,

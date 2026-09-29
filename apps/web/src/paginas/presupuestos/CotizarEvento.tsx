@@ -12,7 +12,7 @@ import { useServicios } from '@/hooks/use-servicios';
 import { usePerfilCliente } from '@/hooks/use-sesion';
 import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
-import { formatearPesos, hoyISO } from '@/lib/formato';
+import { formatearPesos, hoyISO, nombreCompleto } from '@/lib/formato';
 import { DIAS_VIGENCIA_PRESUPUESTO, PORCENTAJE_SENA, desglosarIva } from '@/lib/importes';
 import { FOTOS, fotoDeSalon } from '@/lib/fotos';
 import { cn } from '@/lib/utils';
@@ -172,7 +172,8 @@ export function CotizarEvento({
       return;
     }
 
-    const cliente = perfil.data;
+    // La solicitud y el presupuesto guardan el nombre completo, como lo cargaba el formulario.
+    const cliente = { ...perfil.data, nombre: nombreCompleto(perfil.data) };
     solicitar.mutate(
       {
         nombre: cliente.nombre,
@@ -205,7 +206,7 @@ export function CotizarEvento({
             Cotizador online
           </p>
           <h1 className="mt-3 text-3xl font-semibold sm:text-5xl">
-            {perfil.data ? `Hola, ${perfil.data.nombre.split(' ')[0]}` : 'Armá tu presupuesto'}
+            {perfil.data ? `Hola, ${perfil.data.nombre}` : 'Armá tu presupuesto'}
           </h1>
           <p className="mt-4 max-w-xl font-display text-xl text-crema/80 italic">
             Contanos cómo es tu evento y armamos el presupuesto estimado con los precios vigentes.

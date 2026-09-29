@@ -16,6 +16,7 @@ export async function crearUsuarioCliente(datos: {
   email: string;
   hashContrasena: string;
   nombre: string;
+  apellido: string;
   telefono: string;
 }) {
   return prisma.$transaction(async (tx) => {
@@ -35,6 +36,7 @@ export async function crearUsuarioCliente(datos: {
       await tx.cliente.create({
         data: {
           nombre: datos.nombre,
+          apellido: datos.apellido,
           telefono: datos.telefono,
           correo: datos.email,
           usuarioId: usuario.id,

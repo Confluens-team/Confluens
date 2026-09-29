@@ -39,7 +39,8 @@ export type Sesion = z.infer<typeof esquemaSesion>;
 // formulario de cara al público. El mínimo de 6 caracteres es un piso básico para la demo con el
 // cliente; la política de contraseñas definitiva sigue siendo de HU-28.
 export const esquemaRegistroCliente = z.object({
-  nombre: z.string().trim().min(1, { error: 'Ingresá tu nombre y apellido' }),
+  nombre: z.string().trim().min(1, { error: 'Ingresá tu nombre' }),
+  apellido: z.string().trim().min(1, { error: 'Ingresá tu apellido' }),
   email: z.email({ error: 'Ingresá un email válido (por ejemplo: nombre@empresa.com)' }),
   telefono: z.string().trim().min(6, { error: 'Ingresá un teléfono de contacto' }),
   contrasena: z.string().min(6, { error: 'La contraseña debe tener al menos 6 caracteres' }),
@@ -50,6 +51,7 @@ export type RegistroCliente = z.infer<typeof esquemaRegistroCliente>;
 // cotizador los usa para armar el presupuesto sin volver a pedirlos.
 export const esquemaPerfilCliente = z.object({
   nombre: z.string().min(1),
+  apellido: z.string().nullable(),
   telefono: z.string().min(1),
   correo: z.email(),
 });

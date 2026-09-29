@@ -32,6 +32,7 @@ export const esquemaEventoAgenda = esquemaEvento.extend({
   cliente: z.object({
     id: esquemaId,
     nombre: z.string(),
+    apellido: z.string().nullable(),
     telefono: z.string(),
     correo: z.string(),
   }),

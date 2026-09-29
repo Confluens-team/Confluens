@@ -66,9 +66,24 @@ function FormularioRegistro({
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
-      <Campo id="reg-nombre" etiqueta="Nombre y apellido" error={errors.nombre?.message}>
-        <Input id="reg-nombre" autoComplete="name" className="h-10" {...register('nombre')} />
-      </Campo>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Campo id="reg-nombre" etiqueta="Nombre" error={errors.nombre?.message}>
+          <Input
+            id="reg-nombre"
+            autoComplete="given-name"
+            className="h-10"
+            {...register('nombre')}
+          />
+        </Campo>
+        <Campo id="reg-apellido" etiqueta="Apellido" error={errors.apellido?.message}>
+          <Input
+            id="reg-apellido"
+            autoComplete="family-name"
+            className="h-10"
+            {...register('apellido')}
+          />
+        </Campo>
+      </div>
       <Campo id="reg-email" etiqueta="Email" error={errors.email?.message}>
         <Input
           id="reg-email"

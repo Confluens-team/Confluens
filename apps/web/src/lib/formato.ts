@@ -27,6 +27,12 @@ export function formatearFecha(fecha: Date, conDiaSemana = false): string {
   });
 }
 
+// Nombre para mostrar de un cliente: el apellido es null en razones sociales y en fichas cargadas
+// antes de que el registro lo pidiera aparte.
+export function nombreCompleto(persona: { nombre: string; apellido?: string | null }): string {
+  return persona.apellido ? `${persona.nombre} ${persona.apellido}` : persona.nombre;
+}
+
 export function hoyISO(): string {
   const hoy = new Date();
   const mes = String(hoy.getMonth() + 1).padStart(2, '0');

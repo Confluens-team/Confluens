@@ -3,7 +3,7 @@ import { useState } from 'react';
 
 import { Input } from '@/components/ui/input';
 import { useClientes } from '@/hooks/use-clientes';
-import { formatearFecha } from '@/lib/formato';
+import { formatearFecha, nombreCompleto } from '@/lib/formato';
 
 // Clientes del panel del administrador: la ficha comercial, si tiene cuenta en el canal público y
 // cuántos eventos y solicitudes lleva. Solo lectura: el alta y la edición son historias futuras.
@@ -15,7 +15,7 @@ export function ListadoClientes() {
   const filtrados = (clientes.data ?? []).filter(
     (c) =>
       !texto ||
-      c.nombre.toLowerCase().includes(texto) ||
+      nombreCompleto(c).toLowerCase().includes(texto) ||
       c.correo.toLowerCase().includes(texto) ||
       c.telefono.includes(texto),
   );
@@ -59,7 +59,7 @@ export function ListadoClientes() {
                 {filtrados.map((cliente) => (
                   <tr key={cliente.id} className="align-top">
                     <td className="px-4 py-3">
-                      <p className="font-medium">{cliente.nombre}</p>
+                      <p className="font-medium">{nombreCompleto(cliente)}</p>
                       <p className="text-xs text-muted-foreground">
                         Desde el {formatearFecha(new Date(cliente.creadoEn))}
                       </p>

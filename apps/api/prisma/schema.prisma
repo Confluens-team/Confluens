@@ -53,7 +53,8 @@ model Usuario {
 // cliente se registra en el canal público (Sprint 2).
 model Cliente {
   id            Int         @id @default(autoincrement())
-  nombre        String // razón social o nombre
+  nombre        String // nombre de la persona, o razón social si es una organización
+  apellido      String? // null para razones sociales y clientes cargados antes del registro separado
   telefono      String
   correo        String
   activo        Boolean     @default(true)
