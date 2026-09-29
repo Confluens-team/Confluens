@@ -13,3 +13,11 @@ export const esquemaCliente = z.object({
   actualizadoEn: esquemaFechaHora,
 });
 export type Cliente = z.infer<typeof esquemaCliente>;
+
+// Listado de clientes del panel del Administrador del Sistema: la ficha más cuántos eventos y
+// solicitudes tiene, para ver su historial de un vistazo sin pedirlos uno por uno.
+export const esquemaClienteConResumen = esquemaCliente.extend({
+  cantidadEventos: z.number().int().nonnegative(),
+  cantidadSolicitudes: z.number().int().nonnegative(),
+});
+export type ClienteConResumen = z.infer<typeof esquemaClienteConResumen>;

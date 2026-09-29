@@ -19,6 +19,27 @@ export async function buscarDetallado(id: number, tx: Prisma.TransactionClient =
   });
 }
 
+// Agenda del panel del administrador: los eventos que ocupan el salón (Reservado y Cobrado; los
+// EnConsulta no bloquean y los Cancelado ya lo liberaron). Del presupuesto se trae solo el total
+// del Confirmado más reciente, que es el que quedó tomado al reservar.
+export async function listarAgenda(tx: Prisma.TransactionClient = prisma) {
+  return tx.evento.findMany({
+    where: { estado: { in: ['Reservado', 'Cobrado'] } },
+    orderBy: [{ fecha: 'asc' }, { inicio: 'asc' }],
+    include: {
+      cliente: { select: { id: true, nombre: true, telefono: true, correo: true } },
+      salon: { select: { id: true, nombre: true } },
+      distribucion: { select: { id: true, nombre: true } },
+      presupuestos: {
+        where: { estado: 'Confirmado' },
+        orderBy: { creadoEn: 'desc' },
+        take: 1,
+        select: { total: true },
+      },
+    },
+  });
+}
+
 export async function buscarDistribucion(id: number, tx: Prisma.TransactionClient = prisma) {
   return tx.distribucion.findUnique({ where: { id } });
 }
@@ -104,6 +125,7 @@ export async function crearEnTransaccion<T>(
 
 export type EventosRepositorio = {
   buscarDetallado: typeof buscarDetallado;
+  listarAgenda: typeof listarAgenda;
   buscarDistribucion: typeof buscarDistribucion;
   buscarPresupuestoEstimado: typeof buscarPresupuestoEstimado;
   buscarSolapamiento: typeof buscarSolapamiento;

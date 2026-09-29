@@ -1,12 +1,24 @@
-import type { EventoDetallado, ReservarEvento, RespuestaExito } from '@confluens/shared';
+import type {
+  EventoAgenda,
+  EventoDetallado,
+  ReservarEvento,
+  RespuestaExito,
+} from '@confluens/shared';
 import type { Request, Response } from 'express';
 
 import {
   cancelarEvento,
+  listarAgenda,
   obtenerDetalle,
   registrarSena,
   reservarEvento,
 } from './eventos.servicio.js';
+
+export async function listar(_req: Request, res: Response): Promise<void> {
+  const eventos = await listarAgenda();
+  const cuerpo: RespuestaExito<EventoAgenda[]> = { data: eventos as unknown as EventoAgenda[] };
+  res.status(200).json(cuerpo);
+}
 
 // req.params ya validado por validar({ params: esquemaIdParam }) en eventos.rutas.ts.
 export async function obtener(req: Request, res: Response): Promise<void> {
