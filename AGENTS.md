@@ -27,15 +27,15 @@ workspaces en `docs/tecnico/arquitectura.md`.
 | Runtime               | Node 20 LTS (≥ 20.19, `.nvmrc`), npm workspaces, typescript 5.9.3                                                                                                         |
 | Backend               | express 4.22.2, zod 4.6.4, @asteasolutions/zod-to-openapi 9.1.0, swagger-ui-express 5.0.1, tsx 4.23.13, bcrypt 6.0.0, jsonwebtoken 9.0.3, cookie-parser 1.4.7, cors 2.8.6 |
 | Base de datos         | PostgreSQL 16 (`postgres:16.15-alpine` local, Neon en la nube) + `btree_gist`; prisma, @prisma/client y @prisma/adapter-pg 7.10.0                                         |
-| Frontend              | react y react-dom 18.3.1, vite 7.3.6, @vitejs/plugin-react 5.2.0, tailwindcss y @tailwindcss/vite 4.3.3, shadcn 4.21.0, radix-ui 1.6.7                                    |
+| Frontend              | react y react-dom 18.3.1, react-router 7.18.4, vite 7.3.6, @vitejs/plugin-react 5.2.0, tailwindcss y @tailwindcss/vite 4.3.3, shadcn 4.21.0, radix-ui 1.6.7               |
 | Datos en la web       | @tanstack/react-query 5.102.8, react-hook-form 7.88.0, @hookform/resolvers 5.9.1                                                                                          |
 | Calendario y gráficos | @fullcalendar/* 6.1.21, recharts 3.10.1                                                                                                                                   |
 | Tests                 | vitest 4.1.11, supertest 7.2.2                                                                                                                                            |
 | Calidad               | eslint 9.39.5, typescript-eslint 8.70.0, prettier 3.9.6, husky 9.1.7, lint-staged 16.4.0, @commitlint/cli y config-conventional 20.5.3                                    |
 
-Figuran en `arquitectura.md` pero todavía no están instalados: React Testing Library y node-cron.
-Los agrega la primera historia que los necesite, avisando (§7). HU-27 (Sprint 1) ya agregó bcrypt,
-jsonwebtoken, cookie-parser y cors (ver tabla arriba).
+Figura en `arquitectura.md` pero todavía no está instalado: React Testing Library. Lo agrega la
+primera historia que lo necesite, avisando (§7). En el Sprint 1 ya se agregaron bcrypt, jsonwebtoken,
+cookie-parser y cors (HU-27), node-cron (vencimiento de señas) y react-router (ADR 0005).
 
 ```
 apps/api/          API REST. Único workspace con acceso a la base.

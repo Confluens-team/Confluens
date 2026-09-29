@@ -1,6 +1,6 @@
 # ADR 0002 — Sin router en el frontend (Sprint 1)
 
-**Fecha:** 2026-09  ·  **Estado:** aceptada
+**Fecha:** 2026-09  ·  **Estado:** reemplazada por ADR-0005
 
 ## Contexto
 
