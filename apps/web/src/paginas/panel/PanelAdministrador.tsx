@@ -23,7 +23,6 @@ import { Agenda } from '@/paginas/eventos/Agenda';
 import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
 import { ConsultarSalones } from '@/paginas/salones/ConsultarSalones';
 import { RegistrarServicio } from '@/paginas/servicios/RegistrarServicio';
-import { ConsultasAdministrador } from './ConsultasAdministrador';
 
 type Pestania = 'consultas' | 'agenda' | 'clientes' | 'catalogo' | 'cuenta';
 
@@ -32,7 +31,7 @@ const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: 
     valor: 'consultas',
     texto: 'Consultas',
     icono: Inbox,
-    bajada: 'Solicitudes recibidas: tomar la consulta, presupuestarla y reservar el evento.',
+    bajada: 'Consultas recibidas desde el canal público.',
   },
   {
     valor: 'agenda',
@@ -67,6 +66,20 @@ const NOMBRES_DE_ROL: Record<Rol, string> = {
   ADMINISTRADOR_SISTEMA: 'Administrador del Sistema',
   CLIENTE: 'Cliente',
 };
+
+// Pestaña reservada: la pantalla de consultas y su back los desarrolla otro integrante del equipo.
+function Consultas() {
+  return (
+    <div className="rounded-xl border border-dashed bg-card px-6 py-14 text-center">
+      <Inbox className="mx-auto size-8 text-dorado" />
+      <p className="mt-3 font-medium">Recepción de consultas</p>
+      <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
+        Acá van a llegar las consultas de los clientes y sus presupuestos. Esta sección se habilita
+        en el próximo sprint.
+      </p>
+    </div>
+  );
+}
 
 // Todo lo que se consulta o se carga del catálogo: salones (HU-03), servicios (HU-02) y el contenido
 // de la landing (HU-08).
@@ -210,7 +223,7 @@ export function PanelAdministrador({ sesion }: { sesion: Sesion }) {
           <h1 className="text-2xl font-semibold text-bordo">{activa.texto}</h1>
           <p className="text-sm text-muted-foreground">{activa.bajada}</p>
         </div>
-        {pestania === 'consultas' && <ConsultasAdministrador />}
+        {pestania === 'consultas' && <Consultas />}
         {pestania === 'agenda' && <Agenda />}
         {pestania === 'clientes' && <ListadoClientes />}
         {pestania === 'catalogo' && <CatalogoYLanding />}
