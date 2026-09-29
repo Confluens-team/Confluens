@@ -12,6 +12,7 @@ import {
   UtensilsCrossed,
 } from 'lucide-react';
 import { useState } from 'react';
+import { Navigate, useNavigate, useParams } from 'react-router';
 
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
@@ -24,7 +25,7 @@ import { ConsultarSalones } from '@/paginas/salones/ConsultarSalones';
 import { RegistrarServicio } from '@/paginas/servicios/RegistrarServicio';
 import { ConsultasAdministrador } from './ConsultasAdministrador';
 
-type Pestania = 'consultas' | 'agenda' | 'clientes' | 'servicios' | 'cuenta';
+type Pestania = 'consultas' | 'agenda' | 'clientes' | 'catalogo' | 'cuenta';
 
 const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: string }[] = [
   {
@@ -46,7 +47,7 @@ const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: 
     bajada: 'Clientes registrados y cargados por el equipo.',
   },
   {
-    valor: 'servicios',
+    valor: 'catalogo',
     texto: 'Catálogo y landing',
     icono: UtensilsCrossed,
     bajada: 'Salones, servicios y contenido publicado en la landing.',
@@ -151,17 +152,22 @@ function MiCuenta({ sesion, onCerrarSesion }: { sesion: Sesion; onCerrarSesion: 
 
 // Panel del Administrador del Sistema: todo lo implementado hasta el Sprint 1 en cinco pestañas,
 // usando solo lo que ya expone la API. El administrador puede hacer todo lo que hace el Responsable
-// de Eventos, además de administrar la landing.
-export function PanelAdministrador({
-  sesion,
-  onVistaPublica,
-}: {
-  sesion: Sesion;
-  onVistaPublica: () => void;
-}) {
+// de Eventos, además de administrar la landing. Cada pestaña es una ruta: /admin/<pestaña>.
+export function PanelAdministrador({ sesion }: { sesion: Sesion }) {
+  const navigate = useNavigate();
   const cerrarSesion = useCerrarSesion();
-  const [pestania, setPestania] = useState<Pestania>('agenda');
+  const pestania = useParams()['pestania'] as Pestania | undefined;
   const activa = PESTANIAS.find((p) => p.valor === pestania);
+
+  // Primero se sale a la landing y después se cierra la sesión: si fuera al revés, la ruta /admin
+  // se quedaría sin sesión y redirigiría al login del personal.
+  function salir() {
+    navigate('/');
+    cerrarSesion.mutate();
+  }
+
+  // /admin sin pestaña, o con una que no existe, abre la agenda.
+  if (!activa) return <Navigate to="/admin/agenda" replace />;
 
   return (
     <div className="fondo-papel min-h-screen text-foreground">
@@ -170,15 +176,10 @@ export function PanelAdministrador({
           <Logo compacto />
           <div className="flex items-center gap-2 text-sm">
             <span className="hidden text-muted-foreground sm:inline">{sesion.email}</span>
-            <Button variant="ghost" size="sm" onClick={onVistaPublica}>
+            <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
               <Globe /> Ver la landing
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => cerrarSesion.mutate()}
-              disabled={cerrarSesion.isPending}
-            >
+            <Button variant="outline" size="sm" onClick={salir} disabled={cerrarSesion.isPending}>
               <LogOut /> Salir
             </Button>
           </div>
@@ -190,7 +191,7 @@ export function PanelAdministrador({
               type="button"
               role="tab"
               aria-selected={pestania === valor}
-              onClick={() => setPestania(valor)}
+              onClick={() => navigate(`/admin/${valor}`)}
               className={cn(
                 '-mb-px inline-flex shrink-0 items-center gap-2 border-b-2 px-3 py-3 text-sm font-medium transition-colors',
                 pestania === valor
@@ -205,19 +206,15 @@ export function PanelAdministrador({
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
-        {activa && (
-          <div className="mb-6">
-            <h1 className="text-2xl font-semibold text-bordo">{activa.texto}</h1>
-            <p className="text-sm text-muted-foreground">{activa.bajada}</p>
-          </div>
-        )}
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-bordo">{activa.texto}</h1>
+          <p className="text-sm text-muted-foreground">{activa.bajada}</p>
+        </div>
         {pestania === 'consultas' && <ConsultasAdministrador />}
         {pestania === 'agenda' && <Agenda />}
         {pestania === 'clientes' && <ListadoClientes />}
-        {pestania === 'servicios' && <CatalogoYLanding />}
-        {pestania === 'cuenta' && (
-          <MiCuenta sesion={sesion} onCerrarSesion={() => cerrarSesion.mutate()} />
-        )}
+        {pestania === 'catalogo' && <CatalogoYLanding />}
+        {pestania === 'cuenta' && <MiCuenta sesion={sesion} onCerrarSesion={salir} />}
       </main>
     </div>
   );
