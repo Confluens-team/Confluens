@@ -32,7 +32,7 @@ const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: 
     valor: 'consultas',
     texto: 'Consultas',
     icono: Inbox,
-    bajada: 'Solicitudes recibidas, presupuestos y reservas de los eventos en consulta.',
+    bajada: 'Solicitudes recibidas: tomar la consulta, presupuestarla y reservar el evento.',
   },
   {
     valor: 'agenda',

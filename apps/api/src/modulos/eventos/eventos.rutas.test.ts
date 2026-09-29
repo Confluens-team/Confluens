@@ -442,29 +442,6 @@ describe('GET /api/eventos', () => {
     });
     expect(respuesta.body.data[0]).not.toHaveProperty('presupuestos');
     expect(respuesta.body.data[1].totalPresupuesto).toBeNull();
-    // Sin filtro es la agenda: solo los estados que ocupan el salón.
-    expect(listarAgendaMock).toHaveBeenCalledWith(['Reservado', 'Cobrado']);
-  });
-
-  it('con ?estado=EnConsulta lista solo los eventos en consulta', async () => {
-    listarAgendaMock.mockResolvedValue([]);
-
-    const respuesta = await request(app)
-      .get('/api/eventos?estado=EnConsulta')
-      .set('Cookie', [cookieDe('ADMINISTRADOR_SISTEMA')]);
-
-    expect(respuesta.status).toBe(200);
-    expect(listarAgendaMock).toHaveBeenCalledWith(['EnConsulta']);
-  });
-
-  it('con un estado que no existe responde 400 VALIDATION_ERROR', async () => {
-    const respuesta = await request(app)
-      .get('/api/eventos?estado=Confirmado')
-      .set('Cookie', [cookieDe('ADMINISTRADOR_SISTEMA')]);
-
-    expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
-    expect(listarAgendaMock).not.toHaveBeenCalled();
   });
 
   it('sin cookie de sesión responde 401 UNAUTHENTICATED', async () => {

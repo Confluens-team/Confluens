@@ -1,5 +1,4 @@
 import type {
-  EstadoEvento,
   EventoAgenda,
   EventoDetallado,
   ReservarEvento,
@@ -15,9 +14,8 @@ import {
   reservarEvento,
 } from './eventos.servicio.js';
 
-// req.query ya validado por validar({ query: esquemaFiltroEventos }) en eventos.rutas.ts.
-export async function listar(req: Request, res: Response): Promise<void> {
-  const eventos = await listarAgenda(req.query['estado'] as EstadoEvento | undefined);
+export async function listar(_req: Request, res: Response): Promise<void> {
+  const eventos = await listarAgenda();
   const cuerpo: RespuestaExito<EventoAgenda[]> = { data: eventos as unknown as EventoAgenda[] };
   res.status(200).json(cuerpo);
 }

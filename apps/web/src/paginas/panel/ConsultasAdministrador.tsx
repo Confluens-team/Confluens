@@ -1,24 +1,22 @@
 import type { Solicitud } from '@confluens/shared';
-import { ArrowLeft, ClipboardList, Inbox, PenLine } from 'lucide-react';
+import { ArrowLeft, PenLine } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { Agenda } from '@/paginas/eventos/Agenda';
 import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
 import { TomarConsulta } from '@/paginas/eventos/TomarConsulta';
 import { ListadoSolicitudes } from '@/paginas/solicitudes/ListadoSolicitudes';
 
 type Vista =
   | { tipo: 'solicitudes' }
-  | { tipo: 'en-consulta' }
   | { tipo: 'tomar'; solicitud?: Solicitud }
   | { tipo: 'evento'; eventoId: number };
 
 // Pestaña Consultas del administrador: el mismo circuito que usa el Responsable de Eventos, con las
 // pantallas que ya existen. Solicitudes recibidas → tomar la consulta (genera cliente, evento
 // EnConsulta y presupuesto, HU-05) → detalle del evento para reservar, registrar la seña o
-// cancelar (HU-06). También se puede cargar una consulta a mano o retomar un evento en consulta.
+// cancelar (HU-06). También se puede cargar una consulta a mano. El listado de presupuestos y
+// eventos en consulta es HU-10 (Sprint 2) y lo desarrolla otro integrante: no va acá todavía.
 export function ConsultasAdministrador() {
   const [vista, setVista] = useState<Vista>({ tipo: 'solicitudes' });
 
@@ -44,39 +42,14 @@ export function ConsultasAdministrador() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-lg bg-muted p-1">
-          {(
-            [
-              { valor: 'solicitudes', texto: 'Solicitudes recibidas', icono: Inbox },
-              { valor: 'en-consulta', texto: 'Eventos en consulta', icono: ClipboardList },
-            ] as const
-          ).map(({ valor, texto, icono: Icono }) => (
-            <button
-              key={valor}
-              type="button"
-              onClick={() => setVista({ tipo: valor })}
-              className={cn(
-                'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                vista.tipo === valor ? 'bg-card shadow-sm' : 'text-muted-foreground',
-              )}
-            >
-              <Icono className="size-4" /> {texto}
-            </button>
-          ))}
-        </div>
+      <div className="flex justify-end">
         <Button variant="outline" size="sm" onClick={() => setVista({ tipo: 'tomar' })}>
           <PenLine /> Cargar una consulta a mano
         </Button>
       </div>
-
-      {vista.tipo === 'solicitudes' ? (
-        <div className="rounded-xl bg-card ring-1 ring-border">
-          <ListadoSolicitudes onTomar={(solicitud) => setVista({ tipo: 'tomar', solicitud })} />
-        </div>
-      ) : (
-        <Agenda enConsulta />
-      )}
+      <div className="rounded-xl bg-card ring-1 ring-border">
+        <ListadoSolicitudes onTomar={(solicitud) => setVista({ tipo: 'tomar', solicitud })} />
+      </div>
     </div>
   );
 }

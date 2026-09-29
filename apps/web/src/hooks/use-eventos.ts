@@ -8,15 +8,12 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api';
 
-// Eventos del panel del administrador, ordenados por fecha. Sin estado es la agenda (Reservado y
-// Cobrado); con 'EnConsulta', los que todavía se están cotizando.
-export function useAgenda(estado?: 'EnConsulta') {
+// Agenda del panel del administrador: eventos Reservado y Cobrado, ordenados por fecha.
+export function useAgenda() {
   return useQuery({
-    queryKey: ['eventos', 'listado', estado ?? 'agenda'],
+    queryKey: ['eventos', 'agenda'],
     queryFn: async () => {
-      const respuesta = await apiFetch<RespuestaExito<EventoAgenda[]>>(
-        estado ? `/eventos?estado=${estado}` : '/eventos',
-      );
+      const respuesta = await apiFetch<RespuestaExito<EventoAgenda[]>>('/eventos');
       return respuesta.data;
     },
   });

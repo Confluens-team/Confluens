@@ -1,4 +1,4 @@
-import type { EstadoEvento, ReservarEvento } from '@confluens/shared';
+import type { ReservarEvento } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
 import { ErrorApi } from '../../lib/errores.js';
@@ -8,14 +8,10 @@ import type { EventosRepositorio } from './eventos.repositorio.js';
 const DIEZ_DIAS_EN_MS = 10 * 24 * 60 * 60 * 1000;
 const CUARENTA_Y_OCHO_HORAS_EN_MS = 48 * 60 * 60 * 1000;
 
-// Sin estado, la agenda: los eventos que ocupan un salón (los EnConsulta no lo bloquean y los
-// Cancelado ya lo liberaron). Aplana el presupuesto Confirmado en totalPresupuesto
-// (esquemaEventoAgenda): el listado no necesita la lista de presupuestos, solo el total tomado.
-export async function listarAgenda(
-  estado?: EstadoEvento,
-  repo: EventosRepositorio = eventosRepositorioReal,
-) {
-  const eventos = await repo.listarAgenda(estado ? [estado] : ['Reservado', 'Cobrado']);
+// Aplana el presupuesto Confirmado en totalPresupuesto (esquemaEventoAgenda): la agenda no necesita
+// la lista de presupuestos, solo el total tomado.
+export async function listarAgenda(repo: EventosRepositorio = eventosRepositorioReal) {
+  const eventos = await repo.listarAgenda();
   return eventos.map(({ presupuestos, ...evento }) => ({
     ...evento,
     totalPresupuesto: presupuestos[0]?.total ?? null,

@@ -9,18 +9,15 @@ import { cn } from '@/lib/utils';
 import { DetalleEvento } from './DetalleEvento';
 
 type Filtro = 'todos' | 'sena-pendiente' | 'sena-pagada' | 'cobrado';
-type Situacion = Exclude<Filtro, 'todos'> | 'en-consulta';
 
 // Hoy reservar y registrar la seña son pasos separados (HU-15): un evento Reservado puede tener la
 // seña pendiente o ya cobrada, y la agenda los distingue.
-function situacion(evento: EventoAgenda): Situacion {
-  if (evento.estado === 'EnConsulta') return 'en-consulta';
+function situacion(evento: EventoAgenda): Exclude<Filtro, 'todos'> {
   if (evento.estado === 'Cobrado') return 'cobrado';
   return evento.senaRegistradaEn ? 'sena-pagada' : 'sena-pendiente';
 }
 
-const ETIQUETAS: Record<Situacion, { texto: string; clase: string }> = {
-  'en-consulta': { texto: 'En consulta', clase: 'bg-sky-100 text-sky-900' },
+const ETIQUETAS: Record<Exclude<Filtro, 'todos'>, { texto: string; clase: string }> = {
   'sena-pendiente': { texto: 'Seña pendiente', clase: 'bg-amber-100 text-amber-900' },
   'sena-pagada': { texto: 'Seña pagada', clase: 'bg-emerald-100 text-emerald-900' },
   cobrado: { texto: 'Cobrado', clase: 'bg-bordo/10 text-bordo' },
@@ -44,9 +41,9 @@ const hora = (instante: string | null) =>
 
 // Agenda del panel del administrador: los eventos que ocupan un salón (Reservado y Cobrado),
 // agrupados por mes. Al abrir uno se muestra su detalle (HU-15), desde donde se registra la seña o
-// se cancela. Con enConsulta lista los eventos que todavía se cotizan, para reservarlos.
-export function Agenda({ enConsulta = false }: { enConsulta?: boolean }) {
-  const agenda = useAgenda(enConsulta ? 'EnConsulta' : undefined);
+// se cancela.
+export function Agenda() {
+  const agenda = useAgenda();
   const [filtro, setFiltro] = useState<Filtro>('todos');
   const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
 
@@ -55,7 +52,7 @@ export function Agenda({ enConsulta = false }: { enConsulta?: boolean }) {
       <div>
         <div className="mx-auto max-w-2xl px-6 pt-6">
           <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
-            <ArrowLeft /> {enConsulta ? 'Volver a los eventos en consulta' : 'Volver a la agenda'}
+            <ArrowLeft /> Volver a la agenda
           </Button>
         </div>
         <DetalleEvento eventoId={eventoAbierto} />
@@ -75,7 +72,7 @@ export function Agenda({ enConsulta = false }: { enConsulta?: boolean }) {
 
   return (
     <div className="space-y-6">
-      <div className={cn('flex flex-wrap gap-2', enConsulta && 'hidden')}>
+      <div className="flex flex-wrap gap-2">
         {FILTROS.map(({ valor, texto }) => {
           const cantidad =
             valor === 'todos'
@@ -108,9 +105,7 @@ export function Agenda({ enConsulta = false }: { enConsulta?: boolean }) {
           <CalendarDays className="mx-auto size-8 text-dorado" />
           <p className="mt-3 font-medium">No hay eventos para mostrar</p>
           <p className="text-sm text-muted-foreground">
-            {enConsulta
-              ? 'Aparecen acá cuando se toma una consulta y se le genera un presupuesto.'
-              : 'Los eventos aparecen acá cuando se reservan desde una consulta.'}
+            Los eventos aparecen acá cuando se reservan desde una consulta.
           </p>
         </div>
       )}
