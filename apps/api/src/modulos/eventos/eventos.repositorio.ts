@@ -1,5 +1,5 @@
 import { prisma } from '../../lib/prisma.js';
-import type { Prisma } from '../../generated/prisma/client.js';
+import type { EstadoEvento, Prisma } from '../../generated/prisma/client.js';
 
 // Capa de acceso a datos del módulo. Cada función acepta un `tx` opcional (default: el cliente
 // global) para poder correr dentro de la transacción de reservar(), y para que los tests puedan
@@ -19,15 +19,17 @@ export async function buscarDetallado(id: number, tx: Prisma.TransactionClient =
   });
 }
 
-// Agenda del panel del administrador: los eventos que ocupan el salón (Reservado y Cobrado; los
-// EnConsulta no bloquean y los Cancelado ya lo liberaron). Del presupuesto se trae solo el total
-// del Confirmado más reciente, que es el que quedó tomado al reservar.
-export async function listarAgenda(tx: Prisma.TransactionClient = prisma) {
+// Listado del panel del administrador, filtrado por estado: la agenda pide Reservado y Cobrado (los
+// que ocupan el salón) y la pestaña de consultas pide EnConsulta. Del presupuesto se trae solo el
+// total del Confirmado más reciente, que es el que quedó tomado al reservar.
+export async function listarAgenda(estados: EstadoEvento[], tx: Prisma.TransactionClient = prisma) {
   return tx.evento.findMany({
-    where: { estado: { in: ['Reservado', 'Cobrado'] } },
+    where: { estado: { in: estados } },
     orderBy: [{ fecha: 'asc' }, { inicio: 'asc' }],
     include: {
-      cliente: { select: { id: true, nombre: true, telefono: true, correo: true } },
+      cliente: {
+        select: { id: true, nombre: true, apellido: true, telefono: true, correo: true },
+      },
       salon: { select: { id: true, nombre: true } },
       distribucion: { select: { id: true, nombre: true } },
       presupuestos: {

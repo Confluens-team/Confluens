@@ -1,5 +1,6 @@
 import type { Rol, Sesion } from '@confluens/shared';
 import {
+  Building2,
   CalendarDays,
   Globe,
   Images,
@@ -19,7 +20,9 @@ import { cn } from '@/lib/utils';
 import { ListadoClientes } from '@/paginas/clientes/ListadoClientes';
 import { Agenda } from '@/paginas/eventos/Agenda';
 import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
+import { ConsultarSalones } from '@/paginas/salones/ConsultarSalones';
 import { RegistrarServicio } from '@/paginas/servicios/RegistrarServicio';
+import { ConsultasAdministrador } from './ConsultasAdministrador';
 
 type Pestania = 'consultas' | 'agenda' | 'clientes' | 'servicios' | 'cuenta';
 
@@ -28,7 +31,7 @@ const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: 
     valor: 'consultas',
     texto: 'Consultas',
     icono: Inbox,
-    bajada: 'Consultas recibidas desde el canal público.',
+    bajada: 'Solicitudes recibidas, presupuestos y reservas de los eventos en consulta.',
   },
   {
     valor: 'agenda',
@@ -44,9 +47,9 @@ const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: 
   },
   {
     valor: 'servicios',
-    texto: 'Servicios y landing',
+    texto: 'Catálogo y landing',
     icono: UtensilsCrossed,
-    bajada: 'Catálogo de servicios y contenido publicado en la landing.',
+    bajada: 'Salones, servicios y contenido publicado en la landing.',
   },
   {
     valor: 'cuenta',
@@ -64,29 +67,17 @@ const NOMBRES_DE_ROL: Record<Rol, string> = {
   CLIENTE: 'Cliente',
 };
 
-// Pestaña reservada: la recepción de consultas del canal público (HU-49) todavía no se implementa.
-function Consultas() {
-  return (
-    <div className="rounded-xl border border-dashed bg-card px-6 py-14 text-center">
-      <Inbox className="mx-auto size-8 text-dorado" />
-      <p className="mt-3 font-medium">Recepción de consultas</p>
-      <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-        Acá van a llegar las consultas que los clientes confirman desde el canal público, con su
-        presupuesto estimado. Esta sección se habilita en el próximo sprint.
-      </p>
-    </div>
-  );
-}
-
-// Catálogo y contenido de la landing en una misma pestaña: son las dos cosas que se cargan hoy.
-function ServiciosYLanding() {
-  const [seccion, setSeccion] = useState<'catalogo' | 'landing'>('catalogo');
+// Todo lo que se consulta o se carga del catálogo: salones (HU-03), servicios (HU-02) y el contenido
+// de la landing (HU-08).
+function CatalogoYLanding() {
+  const [seccion, setSeccion] = useState<'salones' | 'servicios' | 'landing'>('servicios');
   return (
     <div className="space-y-4">
-      <div className="inline-flex rounded-lg bg-muted p-1">
+      <div className="inline-flex flex-wrap rounded-lg bg-muted p-1">
         {(
           [
-            { valor: 'catalogo', texto: 'Catálogo de servicios', icono: UtensilsCrossed },
+            { valor: 'salones', texto: 'Salones', icono: Building2 },
+            { valor: 'servicios', texto: 'Servicios', icono: UtensilsCrossed },
             { valor: 'landing', texto: 'Fotos y visibilidad en la landing', icono: Images },
           ] as const
         ).map(({ valor, texto, icono: Icono }) => (
@@ -104,7 +95,9 @@ function ServiciosYLanding() {
         ))}
       </div>
       <div className="rounded-xl bg-card ring-1 ring-border">
-        {seccion === 'catalogo' ? <RegistrarServicio /> : <AdministrarLanding />}
+        {seccion === 'salones' && <ConsultarSalones />}
+        {seccion === 'servicios' && <RegistrarServicio />}
+        {seccion === 'landing' && <AdministrarLanding />}
       </div>
     </div>
   );
@@ -157,7 +150,8 @@ function MiCuenta({ sesion, onCerrarSesion }: { sesion: Sesion; onCerrarSesion: 
 }
 
 // Panel del Administrador del Sistema: todo lo implementado hasta el Sprint 1 en cinco pestañas,
-// usando solo lo que ya expone la API.
+// usando solo lo que ya expone la API. El administrador puede hacer todo lo que hace el Responsable
+// de Eventos, además de administrar la landing.
 export function PanelAdministrador({
   sesion,
   onVistaPublica,
@@ -217,10 +211,10 @@ export function PanelAdministrador({
             <p className="text-sm text-muted-foreground">{activa.bajada}</p>
           </div>
         )}
-        {pestania === 'consultas' && <Consultas />}
+        {pestania === 'consultas' && <ConsultasAdministrador />}
         {pestania === 'agenda' && <Agenda />}
         {pestania === 'clientes' && <ListadoClientes />}
-        {pestania === 'servicios' && <ServiciosYLanding />}
+        {pestania === 'servicios' && <CatalogoYLanding />}
         {pestania === 'cuenta' && (
           <MiCuenta sesion={sesion} onCerrarSesion={() => cerrarSesion.mutate()} />
         )}

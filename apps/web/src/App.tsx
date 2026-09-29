@@ -32,7 +32,8 @@ type Vista =
 export default function App() {
   const { data: sesion, isLoading } = useSesion();
   const cerrarSesion = useCerrarSesion();
-  const [vista, setVista] = useState<Vista>({ tipo: 'publica' });
+  // null hasta que se navega: la vista inicial depende de la sesión (ver más abajo).
+  const [vistaElegida, setVista] = useState<Vista | null>(null);
   // Modal de acceso del cliente, con el salón desde el que se abrió (criterio 3 de HU-07).
   const [acceso, setAcceso] = useState<{ abierto: boolean; salonId?: number }>({
     abierto: false,
@@ -64,6 +65,11 @@ export default function App() {
       </main>
     );
   }
+
+  // Al entrar o recargar, el personal vuelve a su panel y el resto ve la landing.
+  const vista: Vista =
+    vistaElegida ??
+    (sesion && sesion.rol !== 'CLIENTE' ? { tipo: 'interna' } : { tipo: 'publica' });
 
   if (
     vista.tipo === 'publica' ||
