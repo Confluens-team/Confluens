@@ -8,6 +8,16 @@ import type { EventosRepositorio } from './eventos.repositorio.js';
 const DIEZ_DIAS_EN_MS = 10 * 24 * 60 * 60 * 1000;
 const CUARENTA_Y_OCHO_HORAS_EN_MS = 48 * 60 * 60 * 1000;
 
+// Aplana el presupuesto Confirmado en totalPresupuesto (esquemaEventoAgenda): la agenda no necesita
+// la lista de presupuestos, solo el total tomado.
+export async function listarAgenda(repo: EventosRepositorio = eventosRepositorioReal) {
+  const eventos = await repo.listarAgenda();
+  return eventos.map(({ presupuestos, ...evento }) => ({
+    ...evento,
+    totalPresupuesto: presupuestos[0]?.total ?? null,
+  }));
+}
+
 export async function obtenerDetalle(
   id: number,
   repo: EventosRepositorio = eventosRepositorioReal,

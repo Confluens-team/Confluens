@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { crearApp } from '../../app.js';
 import { Prisma } from '../../generated/prisma/client.js';
+import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 
 vi.mock('./eventos.repositorio.js', () => ({
   buscarDetallado: vi.fn(),
+  listarAgenda: vi.fn(),
   buscarDistribucion: vi.fn(),
   buscarPresupuestoEstimado: vi.fn(),
   buscarSolapamiento: vi.fn(),
@@ -19,6 +21,7 @@ vi.mock('./eventos.repositorio.js', () => ({
 
 const {
   buscarDetallado,
+  listarAgenda,
   buscarDistribucion,
   buscarPresupuestoEstimado,
   buscarSolapamiento,
@@ -29,6 +32,7 @@ const {
 } = await import('./eventos.repositorio.js');
 
 const buscarDetalladoMock = vi.mocked(buscarDetallado);
+const listarAgendaMock = vi.mocked(listarAgenda);
 const buscarDistribucionMock = vi.mocked(buscarDistribucion);
 const buscarPresupuestoEstimadoMock = vi.mocked(buscarPresupuestoEstimado);
 const buscarSolapamientoMock = vi.mocked(buscarSolapamiento);
@@ -55,6 +59,7 @@ const salonFixture = {
 const clienteFixture = {
   id: 10,
   nombre: 'Marina Gómez',
+  apellido: null,
   telefono: '+54 9 351 555-1234',
   correo: 'marina@example.com',
   activo: true,
@@ -383,5 +388,77 @@ describe('POST /api/eventos/:id/cancelar', () => {
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
     expect(cancelarMock).not.toHaveBeenCalled();
+  });
+});
+
+// Agenda del panel del Administrador del Sistema. Lo que tiene lógica es el permiso por rol y el
+// aplanado del presupuesto Confirmado en totalPresupuesto; el filtro por estado es parte de la
+// consulta del repositorio (mockeado, ADR 0003).
+describe('GET /api/eventos', () => {
+  const cookieDe = (rol: 'ADMINISTRADOR_SISTEMA' | 'RESPONSABLE_EVENTOS') =>
+    `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 9, email: 'admin@confluens.test', rol })}`;
+
+  const eventoAgenda = {
+    id: 3,
+    clienteId: 1,
+    salonId: 5,
+    distribucionId: 2,
+    fecha: new Date('2026-11-20T00:00:00.000Z'),
+    inicio: new Date('2026-11-20T13:00:00.000Z'),
+    fin: new Date('2026-11-20T18:00:00.000Z'),
+    cantidadPersonas: 50,
+    estado: 'Reservado',
+    senaVenceEn: new Date('2026-10-09T00:00:00.000Z'),
+    senaRegistradaEn: null,
+    modalidadSalonRestaurante: false,
+    creadoEn: new Date('2026-09-29T00:00:00.000Z'),
+    actualizadoEn: new Date('2026-09-29T00:00:00.000Z'),
+    cliente: { id: 1, nombre: 'Ana Pérez', telefono: '3515551234', correo: 'ana@empresa.com' },
+    salon: { id: 5, nombre: 'Paraná' },
+    distribucion: { id: 2, nombre: 'Banquete' },
+  };
+
+  beforeEach(() => {
+    listarAgendaMock.mockReset();
+  });
+
+  it('con sesión de Administrador del Sistema responde 200 con el total del presupuesto Confirmado', async () => {
+    listarAgendaMock.mockResolvedValue([
+      { ...eventoAgenda, presupuestos: [{ total: new Prisma.Decimal('1263936.00') }] },
+      { ...eventoAgenda, id: 4, estado: 'Cobrado', presupuestos: [] },
+    ] as never);
+
+    const respuesta = await request(app)
+      .get('/api/eventos')
+      .set('Cookie', [cookieDe('ADMINISTRADOR_SISTEMA')]);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data).toHaveLength(2);
+    expect(respuesta.body.data[0]).toMatchObject({
+      id: 3,
+      cliente: { nombre: 'Ana Pérez' },
+      salon: { nombre: 'Paraná' },
+      totalPresupuesto: '1263936',
+    });
+    expect(respuesta.body.data[0]).not.toHaveProperty('presupuestos');
+    expect(respuesta.body.data[1].totalPresupuesto).toBeNull();
+  });
+
+  it('sin cookie de sesión responde 401 UNAUTHENTICATED', async () => {
+    const respuesta = await request(app).get('/api/eventos');
+
+    expect(respuesta.status).toBe(401);
+    expect(respuesta.body.error.code).toBe('UNAUTHENTICATED');
+    expect(listarAgendaMock).not.toHaveBeenCalled();
+  });
+
+  it('con otro rol responde 403 FORBIDDEN', async () => {
+    const respuesta = await request(app)
+      .get('/api/eventos')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(403);
+    expect(respuesta.body.error.code).toBe('FORBIDDEN');
+    expect(listarAgendaMock).not.toHaveBeenCalled();
   });
 });

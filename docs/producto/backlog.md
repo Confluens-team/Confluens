@@ -1,10 +1,17 @@
 # Backlog — Confluens
 
-Las 45 historias del Product Backlog, alineadas con el Seguimiento del Proyecto.
+Las 46 historias del Product Backlog, alineadas con el Seguimiento del Proyecto.
 Una línea por historia: para los criterios de aceptación completos ver el archivo del sprint
 en curso. **Jira es la fuente de verdad del estado**; este archivo solo dice qué existe y dónde cae.
 
-Total: 45 historias · 229 + 6 story points\* · 12 Epics
+Total: 46 historias · 226 + 6 story points\* · 2 historias sin estimar (HU-48, HU-49) · 12 Epics
+
+> **Cambios por la entrevista con el Responsable de Eventos (24/09/2026)**:
+> - Se **elimina HU-08** (baja de cliente por inactividad): el cliente no quiere baja por inactividad.
+> - Se **agregan HU-48** (registro del cliente) y **HU-49** (presupuesto dinámico y confirmación de la consulta en el canal público). Sin puntos: se estiman en el Sprint Planning.
+> - **HU-34** cambia de actor (Responsable de Eventos, no Gerente General) y de alcance: porcentaje mensual editable más aumentos globales o por servicio en cualquier momento.
+> - **HU-24** ya no envía el presupuesto por WhatsApp: el botón `wa.me` solo avisa la recepción de la consulta y el resumen se descarga en PDF para enviarlo a mano.
+> - Las reglas que cambian criterios de historias existentes (vigencia de 10 días, sin cancelación automática, IVA, recargos, tercerizados con precio) están en `dominio.md`. Al escribir los criterios de cada historia en su sprint, **manda `dominio.md`** sobre cualquier documento anterior.
 
 > **Notas de esta corrección** (ahora usando `Seguimiento del Proyecto`, sección 2.1.6/2.1.7, como fuente de verdad para la numeración de Epics — no `Definición del Producto`):
 > - Se renumeraron los 12 Epics para que coincidan con Seguimiento del Proyecto: Gestión de Servicios pasa de EPIC-09 a **EPIC-04**; Gestión de Reservas de Eventos de EPIC-04 a **EPIC-05**; Gestión de Pagos de Clientes de EPIC-11 a **EPIC-06**; Notificaciones y Alertas de EPIC-06 a **EPIC-07**; Auditoría de Cambios de EPIC-07 a **EPIC-08**; Gestión de Medios de Pago de EPIC-10 a **EPIC-09**; Gestión de la Landing Page de EPIC-12 a **EPIC-10**; Reportes e Indicadores de EPIC-05 a **EPIC-11**; Administración de Accesos de EPIC-08 a **EPIC-12**. Salones, Clientes y Presupuestos no cambian de número.
@@ -26,7 +33,7 @@ RG-01. Gestionar los salones de eventos y su disponibilidad.  ·  3 historias  �
 
 ## EPIC-02 — Gestión de Clientes
 
-RG-02. Gestionar los clientes de la organización.  ·  5 historias  ·  16 pts  ·  Must have
+RG-02. Gestionar los clientes de la organización.  ·  4 historias  ·  13 pts  ·  Must have
 
 | HU | Título | RD | Pts | Sprint | Actor |
 |---|---|---|---|---|---|
@@ -34,11 +41,12 @@ RG-02. Gestionar los clientes de la organización.  ·  5 historias  ·  16 pts 
 | HU-05 | Consultar clientes | RD-02.4 | 3 | 3 | Responsable de Eventos |
 | HU-06 | Modificar los datos de un cliente | RD-02.2 | 2 | 3 | Responsable de Eventos |
 | HU-07 | Consultar el historial de eventos de un cliente | RD-02.3 | 5 | 3 | Responsable de Eventos |
-| HU-08 | Registrar la baja de un cliente por inactividad | RD-02.5 | 3 | 6 | Responsable de Eventos |
+
+~~HU-08 Registrar la baja de un cliente por inactividad~~: eliminada, no hay baja por inactividad (entrevista 24/09/2026). El código HU-08 no se reasigna.
 
 ## EPIC-03 — Gestión de Presupuestos de Eventos
 
-RG-03. Gestionar los presupuestos.  ·  7 historias  ·  37 pts  ·  Alta
+RG-03. Gestionar los presupuestos.  ·  8 historias  ·  37 pts + HU-49 sin estimar  ·  Alta
 
 | HU | Título | RD | Pts | Sprint | Actor |
 |---|---|---|---|---|---|
@@ -49,6 +57,9 @@ RG-03. Gestionar los presupuestos.  ·  7 historias  ·  37 pts  ·  Alta
 | HU-13 | Registrar un presupuesto confirmado | RD-03.5 | 5 | 2 | Responsable de Eventos |
 | HU-45 | Registrar un presupuesto cancelado | RD-03.6 | 2 | 3 | Responsable de Eventos |
 | HU-43 | Emitir el presupuesto confirmado | RD-05.3 | 3 | 5 | Responsable de Eventos |
+| HU-49 | Armar un presupuesto estimado y confirmar la consulta en el canal público | — | a estimar | a definir | Cliente |
+
+**HU-49.** El cliente registrado carga sus datos y la fecha; ve precios proyectados a esa fecha (RN-13); elige salón, distribución, jornada, personas, servicios con modalidad (RN-11) y audiovisual; ve en vivo subtotal sin IVA, IVA 21% y total (RN-05); confirma y recibe un correo de consulta recibida. Se guarda como Solicitud con sus líneas. No bloquea el salón. Depende de HU-48 y de S-11 (proveedor de correo).
 
 ## EPIC-04 — Gestión de Servicios
 
@@ -58,7 +69,7 @@ RG-09. Gestionar servicios.  ·  4 historias  ·  23 pts  ·  Media
 |---|---|---|---|---|---|
 | HU-32 | Registrar un servicio | RD-09.1 | 5 | 1 | Responsable de Eventos |
 | HU-33 | Modificar un servicio | RD-09.2 | 3 | 4 | Responsable de Eventos |
-| HU-34 | Configurar el incremento mensual automático de precios | RD-09.3 | 13 | 5 | Gerente General |
+| HU-34 | Configurar el incremento de precios (mensual automático, global o por servicio) | RD-09.3 | 13 | 5 | Responsable de Eventos |
 | HU-35 | Dar de baja un servicio | RD-09.4 | 2 | 6 | Responsable de Eventos |
 
 ## EPIC-05 — Gestión de Reservas de Eventos
@@ -94,7 +105,9 @@ RG-06. Gestionar las notificaciones y alertas del sistema.  ·  2 historias  · 
 | HU | Título | RD | Pts | Sprint | Actor |
 |---|---|---|---|---|---|
 | HU-23 | Notificar el próximo vencimiento de un pago | RD-06.1 | 8 | 6 | Responsable de Finanzas |
-| HU-24 | Enviar el presupuesto o resumen del evento por WhatsApp | RD-06.2 | 5 | 5 | Responsable de Eventos |
+| HU-24 | Avisar por WhatsApp la recepción de la consulta y descargar su resumen en PDF | RD-06.2 | 5 | 5 | Responsable de Eventos |
+
+**HU-24.** Desde el detalle de la consulta, un botón abre `wa.me` con el teléfono del cliente y un mensaje prearmado (consulta recibida, próximo contacto). No envía el presupuesto. Otro botón descarga el resumen en PDF (pdfmake) para que el Responsable de Eventos lo envíe a mano.
 
 ## EPIC-08 — Auditoría de Cambios
 
@@ -137,7 +150,7 @@ RG-05. Gestionar reportes e indicadores del negocio.  ·  2 historias  ·  13 pt
 
 ## EPIC-12 — Administración de Accesos al Sistema
 
-RG-08. Administrar los accesos al sistema.  ·  5 historias  ·  18 pts  ·  Media
+RG-08. Administrar los accesos al sistema.  ·  6 historias  ·  18 pts + HU-48 sin estimar  ·  Media
 
 | HU | Título | RD | Pts | Sprint | Actor |
 |---|---|---|---|---|---|
@@ -146,6 +159,9 @@ RG-08. Administrar los accesos al sistema.  ·  5 historias  ·  18 pts  ·  Med
 | HU-29 | Consultar usuarios | RD-08.3 | 2 | 4 | Gerente General |
 | HU-30 | Modificar un usuario | RD-08.5 | 3 | 5 | Gerente General |
 | HU-31 | Dar de baja un usuario | RD-08.4 | 2 | 5 | Gerente General |
+| HU-48 | Registrarse como cliente en el canal público | — | a estimar | a definir | Cliente |
+
+**HU-48.** Desde la landing, el cliente se registra con nombre, apellido, correo, contraseña y teléfono (autorregistro abierto, sin aprobación) y después inicia sesión. Se crean `Usuario` con rol `CLIENTE` y su `Cliente`. Correo duplicado se rechaza. Con sesión ve precios; sin sesión, la landing nunca los muestra. `dominio.md` lo planifica para el Sprint 2.
 
 **Pendiente de HU propia** (mencionadas en el Story Map de Seguimiento del Proyecto, sin HU/RD/puntos en la Definición del Producto): *Cerrar sesión*, *Cambiar contraseña*. La Definición del Producto sugiere que podrían estar ya cubiertas por el criterio 5 de HU-27 (cierre de sesión) y el criterio 3 de HU-30 (restablecer contraseña) — a confirmar con el equipo.
 
@@ -158,7 +174,8 @@ RG-08. Administrar los accesos al sistema.  ·  5 historias  ·  18 pts  ·  Med
 | 3 | HU-05 · HU-06 · HU-07 · HU-45 · HU-19 · HU-44 · HU-36 · HU-37 · HU-41 | 36 |
 | 4 | HU-02 · HU-03 · HU-16 · HU-18 · HU-20 · HU-22 · HU-28 · HU-29 · HU-33 · HU-38 | 41 |
 | 5 | HU-43 · HU-24 · HU-25 · HU-30 · HU-31 · HU-34 | 34 |
-| 6 | HU-08 · HU-21 · HU-23 · HU-35 · HU-39 | 23 |
+| 6 | HU-21 · HU-23 · HU-35 · HU-39 | 20 |
+| a definir | HU-48 · HU-49 | sin estimar |
 
 Los puntos son los del backlog general (con HU-46 y HU-47 marcadas \*, ver nota de EPIC-10). Cada Sprint Planning re-estima según el alcance real: el Sprint 1 se cerró en 8 historias y 31 puntos tras re-estimar HU-27, HU-32, HU-01 y HU-09 a la baja (ver el documento de Sprint 1, que usa numeración local HU-01 a HU-08 para este subconjunto).
 

@@ -1,4 +1,4 @@
-import type { RespuestaExito, Sesion } from '@confluens/shared';
+import type { PerfilCliente, RespuestaExito, Sesion } from '@confluens/shared';
 import type { Request, Response } from 'express';
 
 import {
@@ -6,7 +6,7 @@ import {
   opcionesCookieSesion,
   opcionesLimpiarCookieSesion,
 } from '../../lib/jwt.js';
-import { iniciarSesion } from './auth.servicio.js';
+import { iniciarSesion, obtenerPerfilCliente, registrarCliente } from './auth.servicio.js';
 
 // El controlador arma la respuesta HTTP; la lógica de negocio vive en el servicio
 // (convención de arquitectura.md). req.body ya llegó validado por
@@ -29,5 +29,20 @@ export function logout(_req: Request, res: Response): void {
 // llega acá, req.usuario ya está garantizado.
 export function yo(req: Request, res: Response): void {
   const cuerpo: RespuestaExito<Sesion> = { data: req.usuario! };
+  res.json(cuerpo);
+}
+
+// Mismo manejo de cookie que login: el cliente queda con la sesión iniciada al registrarse.
+export async function registro(req: Request, res: Response): Promise<void> {
+  const { sesion, token } = await registrarCliente(req.body);
+  res.cookie(NOMBRE_COOKIE_SESION, token, opcionesCookieSesion());
+  const cuerpo: RespuestaExito<Sesion> = { data: sesion };
+  res.status(201).json(cuerpo);
+}
+
+export async function perfil(req: Request, res: Response): Promise<void> {
+  const cuerpo: RespuestaExito<PerfilCliente> = {
+    data: await obtenerPerfilCliente(req.usuario!.id),
+  };
   res.json(cuerpo);
 }

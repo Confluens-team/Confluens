@@ -3,10 +3,11 @@
 Datos reales del cliente, tomados de la cotización vigente (Julio 2026) que hoy se envía por
 WhatsApp en PDF. **Es la base de los seeds** de salones, distribuciones y servicios.
 
-Todos los precios son **más IVA** y están expresados en pesos argentinos.
+Todos los precios son **sin IVA** (hay que sumarles el 21%) y están expresados en pesos
+argentinos. Así se cargan en el sistema (RN-05).
 
-- **Media jornada**: hasta 4 horas.
-- **Jornada completa**: 4 horas en adelante.
+- **Media jornada**: hasta 4 horas **inclusive** (exactamente 4 horas es media jornada).
+- **Jornada completa**: más de 4 horas.
 
 ---
 
@@ -26,6 +27,9 @@ documentados por el cliente son: auditorio, escuela, imperial, montaje en U y ba
 ## Equipamiento audiovisual
 
 No está incluido en la tarifa del salón; lo provee un tercero (Mediterráneo Eventos).
+En el sistema es un **servicio tercerizado**: se muestra con precio, el cliente lo selecciona y
+**suma al total del presupuesto**. No le aplica el incremento mensual: el Responsable de Eventos
+actualiza estos precios a mano, en general cada 6 meses.
 
 **Cañón + pantalla + micrófonos + parlantes potenciados + soporte técnico**
 
@@ -39,7 +43,12 @@ No está incluido en la tarifa del salón; lo provee un tercero (Mediterráneo E
 |---|---|---|
 | Bariloche y Pucará | 200.000 | 140.000 |
 | Iguazú y Paraná | 160.000 | 120.000 |
-| Auditorio | a consultar (pantallas LED) | — |
+| Auditorio | a cotizar (pantallas LED) | — |
+
+Las **pantallas LED del Auditorio** no tienen precio fijo: se cargan como servicio tercerizado
+"a cotizar" (seleccionable, sin importe, no suma al total; el Responsable de Eventos completa el
+precio después de averiguarlo). El Responsable de Eventos va a gestionar con el proveedor precios
+fijos por 6 meses (ver `../producto/pendientes.md`, S-12).
 
 ## Incluido sin cargo
 
@@ -65,6 +74,8 @@ Precio por persona.
 
 - **Coffee continuo en salón**: 20% más por persona.
 - **Servicio en mesas con mozo personalizado**: 30% más por persona.
+- Los recargos son **opcionales y por servicio**: se aplican sobre el precio base por persona,
+  sin IVA, solo en los coffees en que el cliente elija esa modalidad (RN-11).
 - **Dispenser con vasos descartables**: 65.250 (precio fijo, no por persona).
 - Adicionales por reposición: jarra de jugo, café, leche, gaseosa y agua.
 
@@ -112,12 +123,12 @@ Son las que dan origen a las reglas de negocio del sistema.
 
 | Condición | Detalle | Regla |
 |---|---|---|
-| Seña | 20% del total, dentro de los 10 días de confirmado el evento | RN-01, RN-06 |
-| Falta de anticipo | El hotel se libera de responsabilidad por la reserva | RN-06 |
-| Cancelación | Hasta 48 horas hábiles antes del evento | RN-07 |
+| Seña | 20% del total, dentro de la vigencia del presupuesto (10 días). Congela los precios | RN-01, RN-06 |
+| Falta de anticipo | El presupuesto vence y hay que recalcularlo. No se cancela nada automáticamente | RN-06, RN-08 |
+| Cancelación | Hasta 48 horas **corridas** antes del evento (feriados incluidos) | RN-07 |
 | Reintegro | La seña no se reintegra ni se aplica a otros servicios | RN-06 |
-| Validez del presupuesto | 30 días | RN-08 |
-| Confirmación de asistentes | 7 días antes; se admiten hasta 5 personas más hasta 48 hs antes | — |
+| Validez del presupuesto | **10 días** (el PDF dice 30; vale lo acordado en la entrevista del 24/09) | RN-08 |
+| Modificaciones y asistentes | El cliente no puede modificar nada a menos de 7 días del evento; el Responsable de Eventos sí, siempre | RN-09 |
 | Ausencias | Se cobra la cantidad contratada | — |
 | Gastos extra | Se abonan al concluir el evento | — |
 | Medios de pago | Efectivo, cheque, transferencia o tarjeta | — |
@@ -131,7 +142,7 @@ SADAIC y AADICAPIF cuando el evento incluye show musical.
 
 ## Nota sobre el IVA
 
-El PDF del cliente se contradice: el pie de cada página dice que todos los precios son más IVA,
-pero una de las condiciones de contratación afirma que los valores incluyen IVA. El sistema
-adopta el criterio de **registrar todo sin IVA** (RN-05), que es el consistente con el resto del
-documento y con lo relevado en la Entrevista 2.
+El PDF del cliente se contradice: el pie de cada página dice "más IVA" y una condición de
+contratación dice que los valores lo incluyen. **Resuelto en la entrevista del 24/09/2026: los
+precios del tarifario son sin IVA.** El sistema los guarda sin IVA y el presupuesto muestra
+subtotal sin IVA, IVA 21% y total (RN-05).

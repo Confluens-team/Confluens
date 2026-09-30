@@ -1,10 +1,10 @@
-import type { Credenciales, Sesion } from '@confluens/shared';
+import type { Credenciales, PerfilCliente, RegistroCliente, Sesion } from '@confluens/shared';
 
-import { compararContrasena } from '../../lib/contrasena.js';
+import { compararContrasena, hashearContrasena } from '../../lib/contrasena.js';
 import { ErrorApi } from '../../lib/errores.js';
 import { firmarToken } from '../../lib/jwt.js';
 import * as authRepositorioReal from './auth.repositorio.js';
-import type { AuthRepositorio } from './auth.repositorio.js';
+import type { AuthRepositorio, RegistroRepositorio } from './auth.repositorio.js';
 
 // Hash bcrypt fijo de un valor arbitrario, sin usuario asociado. Se compara contra
 // él cuando el email no existe, para que iniciarSesion() tarde lo mismo (una
@@ -37,4 +37,47 @@ export async function iniciarSesion(
   const sesion: Sesion = { id: usuario.id, email: usuario.email, rol: usuario.rol };
   const token = firmarToken(sesion);
   return { sesion, token };
+}
+
+/**
+ * Crea la cuenta de un Cliente desde la landing y lo deja con la sesión iniciada, para que pase
+ * directo al cotizador. El rol es siempre CLIENTE: el canal público nunca da de alta personal.
+ *
+ * Un email ya registrado se rechaza con 409. A diferencia del login, acá sí se informa: quien se
+ * está registrando necesita saber que tiene que iniciar sesión en vez de crear otra cuenta.
+ */
+export async function registrarCliente(
+  datos: RegistroCliente,
+  repositorio: RegistroRepositorio = authRepositorioReal,
+): Promise<{ sesion: Sesion; token: string }> {
+  const existente = await repositorio.buscarUsuarioPorEmail(datos.email);
+  if (existente) {
+    throw ErrorApi.conflicto('Ya existe una cuenta con ese email. Iniciá sesión.');
+  }
+
+  const usuario = await repositorio.crearUsuarioCliente({
+    email: datos.email,
+    hashContrasena: await hashearContrasena(datos.contrasena),
+    nombre: datos.nombre,
+    apellido: datos.apellido,
+    telefono: datos.telefono,
+  });
+
+  const sesion: Sesion = { id: usuario.id, email: usuario.email, rol: usuario.rol };
+  return { sesion, token: firmarToken(sesion) };
+}
+
+// Datos comerciales del Cliente de la sesión. 404 si el usuario no tiene ficha de Cliente (por
+// ejemplo, un usuario del personal que llegó acá por error).
+export async function obtenerPerfilCliente(usuarioId: number): Promise<PerfilCliente> {
+  const cliente = await authRepositorioReal.buscarClientePorUsuarioId(usuarioId);
+  if (!cliente) {
+    throw ErrorApi.noEncontrado('La sesión no corresponde a un cliente');
+  }
+  return {
+    nombre: cliente.nombre,
+    apellido: cliente.apellido,
+    telefono: cliente.telefono,
+    correo: cliente.correo,
+  };
 }

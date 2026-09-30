@@ -4,7 +4,9 @@ import { Button } from '@/components/ui/button';
 import { useSalones } from '@/hooks/use-salones';
 import { useSolicitudes } from '@/hooks/use-solicitudes';
 
-const formateadorFecha = new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium' });
+// fechaDeseada es una fecha de calendario (YYYY-MM-DD) que new Date() toma como medianoche UTC:
+// formateada en hora de Argentina se veía un día antes. Se formatea en UTC para mostrar el día real.
+const formateadorFecha = new Intl.DateTimeFormat('es-AR', { dateStyle: 'medium', timeZone: 'UTC' });
 
 interface ListadoSolicitudesProps {
   onTomar: (solicitud: Solicitud) => void;

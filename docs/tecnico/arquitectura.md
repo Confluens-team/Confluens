@@ -61,6 +61,19 @@ aunque se active en el Sprint 2.
 
 ## Tareas programadas
 
-`node-cron` en el proceso del backend, para el vencimiento de la seña (RN-06), la expiración de
-presupuestos (RN-08) y el incremento mensual de precios. Requiere que el proceso se mantenga
+`node-cron` en el proceso del backend, para dos tareas:
+
+- **Expiración de presupuestos** (RN-08): pasa a `Expirado` los `Estimado` con `venceEn` vencido.
+  No cancela eventos ni borra nada.
+- **Incremento mensual de precios** (RN-10): aplica `porcentajeMensual` a los servicios propios y
+  a los salones, y registra un `AjustePrecio`. No toca tercerizados ni presupuestos emitidos.
+
+**No existe** una tarea de cancelación automática por falta de seña (se eliminó en la entrevista
+del 24/09/2026). Requiere que el proceso se mantenga
 activo: verificar el plan de Render antes de depender de esto en producción.
+
+## Correo saliente
+
+El canal público envía un correo al cliente cuando confirma una consulta. El proveedor todavía no
+está elegido (`../producto/pendientes.md`, S-11): se decide en una ADR antes de implementarlo, y
+la clave va en variables de entorno validadas como el resto.

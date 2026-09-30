@@ -1,7 +1,23 @@
-import type { EventoDetallado, ReservarEvento, RespuestaExito } from '@confluens/shared';
+import type {
+  EventoAgenda,
+  EventoDetallado,
+  ReservarEvento,
+  RespuestaExito,
+} from '@confluens/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api';
+
+// Agenda del panel del administrador: eventos Reservado y Cobrado, ordenados por fecha.
+export function useAgenda() {
+  return useQuery({
+    queryKey: ['eventos', 'agenda'],
+    queryFn: async () => {
+      const respuesta = await apiFetch<RespuestaExito<EventoAgenda[]>>('/eventos');
+      return respuesta.data;
+    },
+  });
+}
 
 // Usado por DetalleEvento.tsx (HU-15): el detalle completo del evento, con cliente, salón,
 // distribución, la solicitud original (si vino de una) y el/los presupuesto(s) con sus líneas.
@@ -28,7 +44,8 @@ export function useReservarEvento(id: number) {
       return respuesta.data;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['eventos', id] });
+      // ['eventos'] alcanza al detalle y a la agenda del administrador, que cambia con el estado.
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
     },
   });
 }
@@ -45,7 +62,8 @@ export function useRegistrarSena(id: number) {
       return respuesta.data;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['eventos', id] });
+      // ['eventos'] alcanza al detalle y a la agenda del administrador, que cambia con el estado.
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
     },
   });
 }
@@ -61,7 +79,8 @@ export function useCancelarEvento(id: number) {
       return respuesta.data;
     },
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['eventos', id] });
+      // ['eventos'] alcanza al detalle y a la agenda del administrador, que cambia con el estado.
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
     },
   });
 }

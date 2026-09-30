@@ -11,10 +11,15 @@ import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 // para el job de test) sin perder cobertura sobre la lógica de auth.
 vi.mock('./auth.repositorio.js', () => ({
   buscarUsuarioPorEmail: vi.fn(),
+  crearUsuarioCliente: vi.fn(),
+  buscarClientePorUsuarioId: vi.fn(),
 }));
 
-const { buscarUsuarioPorEmail } = await import('./auth.repositorio.js');
+const { buscarUsuarioPorEmail, crearUsuarioCliente, buscarClientePorUsuarioId } =
+  await import('./auth.repositorio.js');
 const buscarUsuarioPorEmailMock = vi.mocked(buscarUsuarioPorEmail);
+const crearUsuarioClienteMock = vi.mocked(crearUsuarioCliente);
+const buscarClientePorUsuarioIdMock = vi.mocked(buscarClientePorUsuarioId);
 
 const app = crearApp();
 
@@ -121,5 +126,122 @@ describe('GET /api/auth/yo', () => {
     expect(respuesta.body).toEqual({
       data: { id: 1, email: 'ge@confluens.test', rol: 'GERENTE_GENERAL' },
     });
+  });
+});
+
+describe('POST /api/auth/registro', () => {
+  const datosValidos = {
+    nombre: 'Ana',
+    apellido: 'Pérez',
+    email: 'ana@empresa.com',
+    telefono: '351 555 1234',
+    contrasena: 'secreta123',
+  };
+
+  beforeEach(() => {
+    buscarUsuarioPorEmailMock.mockReset();
+    crearUsuarioClienteMock.mockReset();
+  });
+
+  it('crea la cuenta con rol CLIENTE, responde 201 e inicia la sesión con la cookie httpOnly', async () => {
+    buscarUsuarioPorEmailMock.mockResolvedValue(null);
+    crearUsuarioClienteMock.mockImplementation(async (datos) => ({
+      id: 7,
+      email: datos.email,
+      hashContrasena: datos.hashContrasena,
+      rol: 'CLIENTE',
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+    }));
+
+    const respuesta = await request(app).post('/api/auth/registro').send(datosValidos);
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body).toEqual({ data: { id: 7, email: 'ana@empresa.com', rol: 'CLIENTE' } });
+    const cookies = respuesta.headers['set-cookie'] as unknown as string[];
+    expect(cookies.some((c) => c.startsWith(`${NOMBRE_COOKIE_SESION}=`))).toBe(true);
+    // La contraseña nunca llega en texto plano al repositorio.
+    const [datosGuardados] = crearUsuarioClienteMock.mock.calls[0]!;
+    expect(datosGuardados.hashContrasena).not.toBe(datosValidos.contrasena);
+    expect(datosGuardados.telefono).toBe('351 555 1234');
+    // Nombre y apellido llegan separados a la ficha del Cliente (HU-48).
+    expect(datosGuardados).toMatchObject({ nombre: 'Ana', apellido: 'Pérez' });
+  });
+
+  it('con un email ya registrado responde 409 y no crea nada', async () => {
+    buscarUsuarioPorEmailMock.mockResolvedValue({
+      id: 1,
+      email: 'ana@empresa.com',
+      hashContrasena: 'x',
+      rol: 'CLIENTE',
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+    });
+
+    const respuesta = await request(app).post('/api/auth/registro').send(datosValidos);
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(crearUsuarioClienteMock).not.toHaveBeenCalled();
+  });
+
+  it('sin apellido responde 400 VALIDATION_ERROR y no crea nada', async () => {
+    const respuesta = await request(app)
+      .post('/api/auth/registro')
+      .send({ ...datosValidos, apellido: '  ' });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(crearUsuarioClienteMock).not.toHaveBeenCalled();
+  });
+
+  it('sin teléfono responde 400 VALIDATION_ERROR', async () => {
+    const respuesta = await request(app)
+      .post('/api/auth/registro')
+      .send({ ...datosValidos, telefono: '' });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('GET /api/auth/perfil', () => {
+  it('con sesión de CLIENTE devuelve sus datos comerciales', async () => {
+    buscarClientePorUsuarioIdMock.mockResolvedValue({
+      id: 3,
+      nombre: 'Ana',
+      apellido: 'Pérez',
+      telefono: '351 555 1234',
+      correo: 'ana@empresa.com',
+      activo: true,
+      usuarioId: 7,
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+    });
+    const token = firmarToken({ id: 7, email: 'ana@empresa.com', rol: 'CLIENTE' });
+
+    const respuesta = await request(app)
+      .get('/api/auth/perfil')
+      .set('Cookie', [`${NOMBRE_COOKIE_SESION}=${token}`]);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body).toEqual({
+      data: {
+        nombre: 'Ana',
+        apellido: 'Pérez',
+        telefono: '351 555 1234',
+        correo: 'ana@empresa.com',
+      },
+    });
+  });
+
+  it('con sesión del personal responde 403', async () => {
+    const token = firmarToken({ id: 1, email: 're@confluens.test', rol: 'RESPONSABLE_EVENTOS' });
+
+    const respuesta = await request(app)
+      .get('/api/auth/perfil')
+      .set('Cookie', [`${NOMBRE_COOKIE_SESION}=${token}`]);
+
+    expect(respuesta.status).toBe(403);
   });
 });

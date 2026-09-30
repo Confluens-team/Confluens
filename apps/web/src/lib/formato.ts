@@ -1,0 +1,41 @@
+// Formatos de presentación compartidos por la landing y el cotizador del cliente.
+
+const FORMATO_PESOS = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  maximumFractionDigits: 0,
+});
+
+// Los importes viajan como string (Decimal de Prisma, ver esquemaImporte); acá solo se muestran.
+export function formatearPesos(importe: number | string): string {
+  return FORMATO_PESOS.format(Number(importe));
+}
+
+// Una fecha de calendario (YYYY-MM-DD) se arma en hora local: new Date('2026-10-10') la tomaría
+// como medianoche UTC y en Argentina se vería como el día anterior.
+export function fechaLocal(fecha: string): Date {
+  const [anio, mes, dia] = fecha.slice(0, 10).split('-').map(Number);
+  return new Date(anio ?? 1970, (mes ?? 1) - 1, dia ?? 1);
+}
+
+export function formatearFecha(fecha: Date, conDiaSemana = false): string {
+  return fecha.toLocaleDateString('es-AR', {
+    weekday: conDiaSemana ? 'long' : undefined,
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+// Nombre para mostrar de un cliente: el apellido es null en razones sociales y en fichas cargadas
+// antes de que el registro lo pidiera aparte.
+export function nombreCompleto(persona: { nombre: string; apellido?: string | null }): string {
+  return persona.apellido ? `${persona.nombre} ${persona.apellido}` : persona.nombre;
+}
+
+export function hoyISO(): string {
+  const hoy = new Date();
+  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
+  const dia = String(hoy.getDate()).padStart(2, '0');
+  return `${hoy.getFullYear()}-${mes}-${dia}`;
+}

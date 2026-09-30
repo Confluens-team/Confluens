@@ -1,40 +1,24 @@
 import type { ServicioPublico } from '@confluens/shared';
-import { Coffee } from 'lucide-react';
+import { useState } from 'react';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useServiciosPublicos } from '@/hooks/use-servicios';
-
-const SIN_CATEGORIA = 'Otros servicios';
-
-// Agrupa por categoría preservando el orden en que vienen: el endpoint ya ordena por categoría y
-// después por nombre, con los servicios sin categoría al final (ver servicios.repositorio.ts).
-function agruparPorCategoria(servicios: ServicioPublico[]) {
-  const grupos = new Map<string, ServicioPublico[]>();
-  for (const servicio of servicios) {
-    const categoria = servicio.categoria ?? SIN_CATEGORIA;
-    const grupo = grupos.get(categoria);
-    if (grupo) {
-      grupo.push(servicio);
-    } else {
-      grupos.set(categoria, [servicio]);
-    }
-  }
-  return [...grupos];
-}
+import { agruparPorCategoria } from '@/lib/catalogo';
+import { cn } from '@/lib/utils';
 
 // Oferta gastronómica del canal público (HU-07). Son los servicios reales del catálogo, no un
 // resumen escrito a mano: si se da de alta un servicio nuevo, aparece acá sin tocar código.
-// Sin precios — el endpoint no los devuelve.
+// Sin precios — el endpoint no los devuelve. Pensado para ir sobre el fondo bordó de la landing.
 export function ServiciosPublicos() {
   const { data: servicios, isLoading, isError } = useServiciosPublicos();
+  const [categoriaElegida, setCategoriaElegida] = useState<string | null>(null);
 
   if (isLoading) {
-    return <p className="mt-6 text-sm text-muted-foreground">Cargando servicios…</p>;
+    return <p className="mt-8 text-sm text-crema/70">Cargando la carta…</p>;
   }
 
   if (isError) {
     return (
-      <p className="mt-6 text-sm text-destructive">
+      <p className="mt-8 text-sm text-crema/80">
         No se pudo cargar la oferta gastronómica. Probá recargar la página.
       </p>
     );
@@ -42,42 +26,47 @@ export function ServiciosPublicos() {
 
   if (!servicios || servicios.length === 0) {
     return (
-      <p className="mt-6 text-sm text-muted-foreground">
+      <p className="mt-8 text-sm text-crema/70">
         Estamos actualizando la carta. Consultanos y te la enviamos.
       </p>
     );
   }
 
+  const grupos = agruparPorCategoria(servicios);
+  const activa = categoriaElegida ?? grupos[0]?.[0];
+  const delGrupo: ServicioPublico[] = grupos.find(([categoria]) => categoria === activa)?.[1] ?? [];
+
   return (
-    <div className="mt-6 space-y-10">
-      {agruparPorCategoria(servicios).map(([categoria, delGrupo]) => (
-        <div key={categoria}>
-          <h3 className="text-lg font-medium">{categoria}</h3>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {delGrupo.map((servicio) => (
-              <Card key={servicio.id}>
-                <CardHeader>
-                  {servicio.fotoUrl ? (
-                    <img
-                      src={servicio.fotoUrl}
-                      alt={servicio.nombre}
-                      className="h-32 w-full rounded-md object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-32 w-full items-center justify-center rounded-md bg-muted">
-                      <Coffee className="size-7 text-muted-foreground" />
-                    </div>
-                  )}
-                  <CardTitle className="text-base">{servicio.nombre}</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {servicio.descripcion}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      ))}
+    <div className="mt-10">
+      <div className="flex flex-wrap gap-2" role="tablist">
+        {grupos.map(([categoria, items]) => (
+          <button
+            key={categoria}
+            type="button"
+            role="tab"
+            aria-selected={categoria === activa}
+            onClick={() => setCategoriaElegida(categoria)}
+            className={cn(
+              'rounded-full border px-4 py-1.5 text-xs font-medium tracking-[0.12em] uppercase transition-colors',
+              categoria === activa
+                ? 'border-dorado bg-dorado text-bordo-oscuro'
+                : 'border-crema/25 text-crema/80 hover:border-dorado hover:text-crema',
+            )}
+          >
+            {categoria}
+            <span className="ml-1.5 opacity-60">{items.length}</span>
+          </button>
+        ))}
+      </div>
+
+      <ul className="mt-8 grid gap-x-10 gap-y-6 md:grid-cols-2">
+        {delGrupo.map((servicio) => (
+          <li key={servicio.id} className="border-b border-crema/10 pb-5">
+            <h4 className="font-display text-xl font-medium text-crema">{servicio.nombre}</h4>
+            <p className="mt-1 text-sm leading-relaxed text-crema/65">{servicio.descripcion}</p>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

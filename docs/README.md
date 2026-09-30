@@ -3,6 +3,9 @@
 Esta carpeta es la fuente de verdad para cualquier agente de IA que trabaje en este repo.
 Se deriva de la documentación aprobada por la cátedra (carpeta de Drive "Documentación para subir")
 y de la máquina de estados corregida.
+Última actualización de reglas: entrevista con el Responsable de Eventos del **24/09/2026**
+(canal público, IVA, vigencia de 10 días, incremento de precios, recargos). Si otro documento
+contradice a `producto/dominio.md`, vale `dominio.md`.
 
 ## Protocolo de carga
 
@@ -28,14 +31,14 @@ docs/
 ├── README.md                    ← este archivo
 ├── producto/
 │   ├── dominio.md               Glosario, estados y reglas de negocio. El más importante.
-│   ├── backlog.md               Las 43 historias en una línea cada una, con Epic, RD y sprint.
-│   ├── sprint-01.md             Las 6 historias del sprint en curso, con criterios completos.
+│   ├── backlog.md               Las 46 historias en una línea cada una, con Epic, RD y sprint.
+│   ├── sprint-01.md             Las 8 historias del Sprint 1, con criterios completos.
 │   └── pendientes.md            Lo que todavía no definió el cliente. Qué NO asumir.
 ├── tecnico/
 │   ├── arquitectura.md          Monorepo, capas y límites entre workspaces.
 │   ├── modelo-datos.md          Entidades, enums y la restricción de no solapamiento.
 │   ├── convenciones.md          Nombres, archivos, schemas compartidos y comandos.
-│   └── adr/                     Decisiones técnicas: 0001 (stack) + template.md.
+│   └── adr/                     Decisiones técnicas (0001 a 0005) + template.md.
 └── negocio/
     └── tarifario-2026.md        Salones, capacidades y precios reales. Base de los seeds.
 ```

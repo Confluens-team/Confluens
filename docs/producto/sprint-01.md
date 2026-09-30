@@ -9,6 +9,12 @@ Del 11/09/2026 al 25/09/2026 · Scrum Master: Tomás Santillán · 8 historias �
 > - El "grupo sugerido" de HU-07 y HU-08 es un supuesto propio (no está definido en la fuente); se marca con *.
 > - Se movieron a HU-05 dos criterios de HU-02 (la multiplicación del precio por persona y el cálculo sobre una cantidad parcial de asistentes, RN-04): son comportamiento del armado del presupuesto, no del alta del servicio. El documento de Sprint 1 en Drive repite parte de este criterio en ambas historias (HU-02 "Contratación parcial" y HU-05 "Servicio parcial"); si el equipo está de acuerdo con este ajuste, conviene reflejarlo también en el documento fuente.
 
+> **Criterios superados por la entrevista del 24/09/2026.** Este archivo queda como registro del
+> Sprint 1. En sprints futuros, estos criterios **no** se toman de acá sino de `dominio.md`:
+> - HU-05: "los servicios tercerizados no se incluyen en el total" → ahora **sí suman** (salvo los "a cotizar"). "Todos los importes se expresan sin IVA" → se guardan sin IVA pero se muestran subtotal, IVA 21% y total (RN-05).
+> - HU-06: "si no se registra la seña en 10 días el evento pasa a Cancelado" → **no hay cancelación automática**; vence el presupuesto y se recalcula (RN-06, RN-08). "48 horas" → 48 horas corridas, feriados incluidos (RN-07).
+> - HU-04: el formulario sin login fue solo del Sprint 1; desde el Sprint 2 lo arma el cliente registrado con presupuesto dinámico (HU-48, HU-49).
+
 Objetivo: walking skeleton. Que un evento pueda recorrer el circuito completo de punta a punta aunque cada paso sea mínimo, antes de profundizar en ninguna funcionalidad.
 
 Los puntos por historia surgen del acta del Sprint Planning. HU-01, HU-02, HU-03, HU-05 y HU-06 fueron re-estimadas a la baja respecto del backlog general por abordarse con alcance acotado; HU-04, HU-07 y HU-08 conservan su estimación original.

@@ -1,11 +1,17 @@
-import { esquemaEventoDetallado, esquemaReservarEvento } from '@confluens/shared';
+import {
+  esquemaEventoAgenda,
+  esquemaEventoDetallado,
+  esquemaReservarEvento,
+} from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
 
 import { registroOpenApi } from '../../docs/openapi.js';
 import { asincrono } from '../../lib/asincrono.js';
+import { autenticar } from '../../middlewares/autenticar.js';
+import { autorizar } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { cancelar, marcarSena, obtener, reservar } from './eventos.controlador.js';
+import { cancelar, listar, marcarSena, obtener, reservar } from './eventos.controlador.js';
 
 // Detalle de la capa HTTP, no se comparte con el frontend (a diferencia de los esquemas de body).
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
@@ -13,6 +19,21 @@ const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
 const respuestaEvento = {
   'application/json': { schema: z.object({ data: esquemaEventoDetallado }) },
 };
+
+registroOpenApi.registerPath({
+  method: 'get',
+  path: '/eventos',
+  tags: ['Eventos'],
+  summary: 'Agenda: eventos Reservado y Cobrado, por fecha (panel del Administrador del Sistema)',
+  responses: {
+    200: {
+      description: 'Eventos que ocupan un salón',
+      content: { 'application/json': { schema: z.object({ data: z.array(esquemaEventoAgenda) }) } },
+    },
+    401: { description: 'Sin sesión' },
+    403: { description: 'El rol no es Administrador del Sistema' },
+  },
+});
 
 registroOpenApi.registerPath({
   method: 'get',
@@ -79,6 +100,7 @@ registroOpenApi.registerPath({
 
 export const rutasEventos = Router();
 
+rutasEventos.get('/', autenticar, autorizar('ADMINISTRADOR_SISTEMA'), asincrono(listar));
 rutasEventos.get('/:id', validar({ params: esquemaIdParam }), asincrono(obtener));
 rutasEventos.post(
   '/:id/reservar',

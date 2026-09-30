@@ -9,6 +9,55 @@ export async function buscarUsuarioPorEmail(email: string) {
   return prisma.usuario.findUnique({ where: { email } });
 }
 
+// Alta de la cuenta del Cliente en el canal público. Usuario y Cliente se crean juntos: si el
+// Responsable de Eventos ya había cargado un Cliente con ese correo (al tomar una consulta) y
+// todavía no tiene cuenta, se le vincula el usuario nuevo en vez de duplicar la ficha comercial.
+export async function crearUsuarioCliente(datos: {
+  email: string;
+  hashContrasena: string;
+  nombre: string;
+  apellido: string;
+  telefono: string;
+}) {
+  return prisma.$transaction(async (tx) => {
+    const usuario = await tx.usuario.create({
+      data: { email: datos.email, hashContrasena: datos.hashContrasena, rol: 'CLIENTE' },
+    });
+
+    const clienteExistente = await tx.cliente.findFirst({
+      where: { correo: datos.email, usuarioId: null },
+    });
+    if (clienteExistente) {
+      await tx.cliente.update({
+        where: { id: clienteExistente.id },
+        data: { usuarioId: usuario.id },
+      });
+    } else {
+      await tx.cliente.create({
+        data: {
+          nombre: datos.nombre,
+          apellido: datos.apellido,
+          telefono: datos.telefono,
+          correo: datos.email,
+          usuarioId: usuario.id,
+        },
+      });
+    }
+
+    return usuario;
+  });
+}
+
+export async function buscarClientePorUsuarioId(usuarioId: number) {
+  return prisma.cliente.findUnique({ where: { usuarioId } });
+}
+
 export type AuthRepositorio = {
   buscarUsuarioPorEmail: typeof buscarUsuarioPorEmail;
+};
+
+// Tipo aparte (y no más campos en AuthRepositorio) para que los fakes de iniciarSesion en
+// auth.servicio.test.ts no tengan que implementar funciones que ese flujo no usa.
+export type RegistroRepositorio = AuthRepositorio & {
+  crearUsuarioCliente: typeof crearUsuarioCliente;
 };
