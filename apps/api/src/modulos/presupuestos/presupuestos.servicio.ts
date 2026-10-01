@@ -133,3 +133,9 @@ export async function generarPresupuesto(
     );
   });
 }
+
+export async function listarPresupuestos(
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+) {
+  return repo.obtenerPresupuestos();
+}

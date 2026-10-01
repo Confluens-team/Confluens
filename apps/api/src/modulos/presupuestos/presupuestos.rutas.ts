@@ -1,11 +1,17 @@
-import { esquemaCrearPresupuesto, esquemaPresupuestoDetallado } from '@confluens/shared';
+import {
+  esquemaCrearPresupuesto,
+  esquemaPresupuesto,
+  esquemaPresupuestoDetallado,
+} from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
 
 import { registroOpenApi } from '../../docs/openapi.js';
 import { asincrono } from '../../lib/asincrono.js';
+import { autenticar } from '../../middlewares/autenticar.js';
+import { autorizar } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { crear } from './presupuestos.controlador.js';
+import { crear, listar } from './presupuestos.controlador.js';
 
 registroOpenApi.registerPath({
   method: 'post',
@@ -24,6 +30,25 @@ registroOpenApi.registerPath({
   },
 });
 
+registroOpenApi.registerPath({
+  method: 'get',
+  path: '/presupuestos',
+  tags: ['Presupuestos'],
+  summary: 'Lista los presupuestos con su estado (HU-10)',
+  responses: {
+    200: {
+      description: 'Presupuestos con su estado',
+      content: { 'application/json': { schema: z.object({ data: z.array(esquemaPresupuesto) }) } },
+    },
+  },
+});
+
 export const rutasPresupuestos = Router();
 
 rutasPresupuestos.post('/', validar({ body: esquemaCrearPresupuesto }), asincrono(crear));
+rutasPresupuestos.get(
+  '/',
+  autenticar,
+  autorizar('ADMINISTRADOR_SISTEMA', 'RESPONSABLE_EVENTOS'),
+  asincrono(listar),
+);

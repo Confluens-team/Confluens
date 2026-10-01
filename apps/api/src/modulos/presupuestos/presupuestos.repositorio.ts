@@ -87,6 +87,37 @@ export async function crearEnTransaccion<T>(
   return prisma.$transaction((tx) => ejecutar(tx));
 }
 
+export async function obtenerPresupuestos() {
+  return prisma.presupuesto.findMany({
+    select: {
+      id: true,
+      estado: true,
+      fechaEmision: true,
+      total: true,
+      evento: {
+        select: {
+          fecha: true,
+          salon: {
+            select: {
+              nombre: true,
+            },
+          },
+          cliente: {
+            select: {
+              nombre: true,
+              telefono: true,
+              correo: true,
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      fechaEmision: 'desc',
+    },
+  });
+}
+
 export type PresupuestosRepositorio = {
   buscarClientePorCorreo: typeof buscarClientePorCorreo;
   crearCliente: typeof crearCliente;
@@ -97,4 +128,5 @@ export type PresupuestosRepositorio = {
   crearEvento: typeof crearEvento;
   crearPresupuestoConLineas: typeof crearPresupuestoConLineas;
   crearEnTransaccion: typeof crearEnTransaccion;
+  obtenerPresupuestos: typeof obtenerPresupuestos;
 };
