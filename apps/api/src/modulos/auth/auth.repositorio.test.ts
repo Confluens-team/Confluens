@@ -29,14 +29,23 @@ describe('auth.repositorio: crearUsuarioCliente', () => {
   });
 
   it('si el personal ya cargó un cliente con ese correo, le vincula la cuenta y no crea otro (C7)', async () => {
-    tx.cliente.findFirst.mockResolvedValue({ id: 3, correo: datos.email, usuarioId: null });
+    tx.cliente.findFirst.mockResolvedValue({
+      id: 3,
+      correo: datos.email,
+      telefono: '351-555 1234',
+      usuarioId: null,
+    });
 
     await crearUsuarioCliente(datos);
 
     expect(tx.cliente.findFirst).toHaveBeenCalledWith({
       where: { correo: datos.email, usuarioId: null },
     });
-    expect(tx.cliente.update).toHaveBeenCalledWith({ where: { id: 3 }, data: { usuarioId: 7 } });
+    // El teléfono que cargó el personal se reemplaza por el celular validado, el que usa wa.me.
+    expect(tx.cliente.update).toHaveBeenCalledWith({
+      where: { id: 3 },
+      data: { usuarioId: 7, telefono: '+5493515551234' },
+    });
     expect(tx.cliente.create).not.toHaveBeenCalled();
   });
 

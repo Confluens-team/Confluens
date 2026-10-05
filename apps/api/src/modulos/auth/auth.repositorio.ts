@@ -11,7 +11,10 @@ export async function buscarUsuarioPorEmail(email: string) {
 
 // Alta de la cuenta del Cliente en el canal público. Usuario y Cliente se crean juntos: si el
 // Responsable de Eventos ya había cargado un Cliente con ese correo (al tomar una consulta) y
-// todavía no tiene cuenta, se le vincula el usuario nuevo en vez de duplicar la ficha comercial.
+// todavía no tiene cuenta, se le vincula el usuario nuevo en vez de duplicar la ficha comercial
+// (C7 de HU-48). Al vincular se reemplaza el teléfono por el celular validado del registro: es el
+// número al que se le escribe por WhatsApp (wa.me), y el que cargó el personal no pasó por esa
+// validación.
 export async function crearUsuarioCliente(datos: {
   email: string;
   hashContrasena: string;
@@ -30,7 +33,7 @@ export async function crearUsuarioCliente(datos: {
     if (clienteExistente) {
       await tx.cliente.update({
         where: { id: clienteExistente.id },
-        data: { usuarioId: usuario.id },
+        data: { usuarioId: usuario.id, telefono: datos.telefono },
       });
     } else {
       await tx.cliente.create({
