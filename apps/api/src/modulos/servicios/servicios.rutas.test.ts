@@ -43,6 +43,13 @@ const servicioDb = {
   actualizadoEn: new Date(),
 };
 
+// Sesión del personal: desde HU-48 estos endpoints piden sesión (C5 y C6).
+const cookiePersonal = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+  id: 1,
+  email: 're@confluens.test',
+  rol: 'RESPONSABLE_EVENTOS',
+})}`;
+
 describe('GET /api/servicios', () => {
   beforeEach(() => {
     listarActivosMock.mockReset();
@@ -51,7 +58,7 @@ describe('GET /api/servicios', () => {
   it('responde 200 con el catálogo de servicios activos', async () => {
     listarActivosMock.mockResolvedValue([servicioDb]);
 
-    const respuesta = await request(app).get('/api/servicios');
+    const respuesta = await request(app).get('/api/servicios').set('Cookie', [cookiePersonal]);
 
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.data).toHaveLength(1);
@@ -119,7 +126,10 @@ describe('POST /api/servicios', () => {
     buscarPorNombreMock.mockResolvedValue(null);
     crearMock.mockResolvedValue(servicioDb);
 
-    const respuesta = await request(app).post('/api/servicios').send(cuerpoValido);
+    const respuesta = await request(app)
+      .post('/api/servicios')
+      .set('Cookie', [cookiePersonal])
+      .send(cuerpoValido);
 
     expect(respuesta.status).toBe(201);
     expect(respuesta.body.data).toMatchObject({ nombre: 'Coffee break estándar' });
@@ -128,7 +138,10 @@ describe('POST /api/servicios', () => {
   it('con un nombre ya existente responde 409 CONFLICT (criterio 4)', async () => {
     buscarPorNombreMock.mockResolvedValue(servicioDb);
 
-    const respuesta = await request(app).post('/api/servicios').send(cuerpoValido);
+    const respuesta = await request(app)
+      .post('/api/servicios')
+      .set('Cookie', [cookiePersonal])
+      .send(cuerpoValido);
 
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
@@ -138,7 +151,10 @@ describe('POST /api/servicios', () => {
   it('con body inválido (falta precio) responde 400 VALIDATION_ERROR', async () => {
     const { precio: _precio, ...sinPrecio } = cuerpoValido;
 
-    const respuesta = await request(app).post('/api/servicios').send(sinPrecio);
+    const respuesta = await request(app)
+      .post('/api/servicios')
+      .set('Cookie', [cookiePersonal])
+      .send(sinPrecio);
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
@@ -246,5 +262,53 @@ describe('PATCH /api/servicios/:id/landing', () => {
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
     expect(actualizarLandingMock).not.toHaveBeenCalled();
+  });
+});
+
+// C5 y C6 de HU-48: el catálogo con precios pide sesión y el alta es del personal.
+describe('servicios: permisos (HU-48)', () => {
+  const cuerpoValido = {
+    nombre: 'Coffee break estándar',
+    descripcion: 'Café, té, agua, jugo y dos tipos de masas dulces/saladas',
+    unidadMedida: 'persona',
+    precio: '4500',
+    porPersona: true,
+    tercerizado: false,
+  };
+  const cookieCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+    id: 7,
+    email: 'ana@empresa.com',
+    rol: 'CLIENTE',
+  })}`;
+
+  beforeEach(() => {
+    listarActivosMock.mockReset();
+    crearMock.mockReset();
+  });
+
+  it('GET /api/servicios sin sesión responde 401 y no consulta precios', async () => {
+    const respuesta = await request(app).get('/api/servicios');
+
+    expect(respuesta.status).toBe(401);
+    expect(listarActivosMock).not.toHaveBeenCalled();
+  });
+
+  it('GET /api/servicios con sesión de Cliente responde 200 con los precios', async () => {
+    listarActivosMock.mockResolvedValue([servicioDb]);
+
+    const respuesta = await request(app).get('/api/servicios').set('Cookie', [cookieCliente]);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data[0]).toHaveProperty('precio');
+  });
+
+  it('POST /api/servicios con sesión de Cliente responde 403 y no crea nada', async () => {
+    const respuesta = await request(app)
+      .post('/api/servicios')
+      .set('Cookie', [cookieCliente])
+      .send(cuerpoValido);
+
+    expect(respuesta.status).toBe(403);
+    expect(crearMock).not.toHaveBeenCalled();
   });
 });

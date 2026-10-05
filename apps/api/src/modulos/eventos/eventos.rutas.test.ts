@@ -130,6 +130,13 @@ function eventoFixtureBase() {
 const inicioValido = '2026-11-15T20:00:00.000Z';
 const finValido = '2026-11-16T02:00:00.000Z';
 
+// Sesión del personal: desde HU-48 estos endpoints piden sesión (C5 y C6).
+const cookiePersonal = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+  id: 1,
+  email: 're@confluens.test',
+  rol: 'RESPONSABLE_EVENTOS',
+})}`;
+
 describe('GET /api/eventos/:id', () => {
   beforeEach(() => {
     buscarDetalladoMock.mockReset();
@@ -138,7 +145,7 @@ describe('GET /api/eventos/:id', () => {
   it('devuelve el detalle del evento', async () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture());
 
-    const respuesta = await request(app).get('/api/eventos/20');
+    const respuesta = await request(app).get('/api/eventos/20').set('Cookie', [cookiePersonal]);
 
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.data.id).toBe(20);
@@ -147,7 +154,7 @@ describe('GET /api/eventos/:id', () => {
   it('responde 404 si el evento no existe', async () => {
     buscarDetalladoMock.mockResolvedValue(null);
 
-    const respuesta = await request(app).get('/api/eventos/999');
+    const respuesta = await request(app).get('/api/eventos/999').set('Cookie', [cookiePersonal]);
 
     expect(respuesta.status).toBe(404);
     expect(respuesta.body.error.code).toBe('NOT_FOUND');
@@ -175,11 +182,14 @@ describe('POST /api/eventos/:id/reservar', () => {
   });
 
   it('reserva el evento (criterio 1): confirma el presupuesto y fija senaVenceEn (~10 días, RN-06)', async () => {
-    const respuesta = await request(app).post('/api/eventos/20/reservar').send({
-      distribucionId: distribucionFixture.id,
-      inicio: inicioValido,
-      fin: finValido,
-    });
+    const respuesta = await request(app)
+      .post('/api/eventos/20/reservar')
+      .set('Cookie', [cookiePersonal])
+      .send({
+        distribucionId: distribucionFixture.id,
+        inicio: inicioValido,
+        fin: finValido,
+      });
 
     expect(respuesta.status).toBe(200);
     expect(crearEnTransaccionMock).toHaveBeenCalledTimes(1);
@@ -198,6 +208,7 @@ describe('POST /api/eventos/:id/reservar', () => {
 
     const respuesta = await request(app)
       .post('/api/eventos/20/reservar')
+      .set('Cookie', [cookiePersonal])
       .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
 
     expect(respuesta.status).toBe(409);
@@ -210,6 +221,7 @@ describe('POST /api/eventos/:id/reservar', () => {
 
     const respuesta = await request(app)
       .post('/api/eventos/20/reservar')
+      .set('Cookie', [cookiePersonal])
       .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
 
     expect(respuesta.status).toBe(409);
@@ -222,6 +234,7 @@ describe('POST /api/eventos/:id/reservar', () => {
 
     const respuesta = await request(app)
       .post('/api/eventos/20/reservar')
+      .set('Cookie', [cookiePersonal])
       .send({ distribucionId: 999, inicio: inicioValido, fin: finValido });
 
     expect(respuesta.status).toBe(404);
@@ -234,6 +247,7 @@ describe('POST /api/eventos/:id/reservar', () => {
 
     const respuesta = await request(app)
       .post('/api/eventos/20/reservar')
+      .set('Cookie', [cookiePersonal])
       .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
 
     expect(respuesta.status).toBe(404);
@@ -246,6 +260,7 @@ describe('POST /api/eventos/:id/reservar', () => {
 
     const respuesta = await request(app)
       .post('/api/eventos/20/reservar')
+      .set('Cookie', [cookiePersonal])
       .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
 
     expect(respuesta.status).toBe(422);
@@ -256,12 +271,15 @@ describe('POST /api/eventos/:id/reservar', () => {
   it('reserva igual si cantidadPersonas supera la capacidad y confirmarCapacidadExcedida es true', async () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ cantidadPersonas: 300 }));
 
-    const respuesta = await request(app).post('/api/eventos/20/reservar').send({
-      distribucionId: distribucionFixture.id,
-      inicio: inicioValido,
-      fin: finValido,
-      confirmarCapacidadExcedida: true,
-    });
+    const respuesta = await request(app)
+      .post('/api/eventos/20/reservar')
+      .set('Cookie', [cookiePersonal])
+      .send({
+        distribucionId: distribucionFixture.id,
+        inicio: inicioValido,
+        fin: finValido,
+        confirmarCapacidadExcedida: true,
+      });
 
     expect(respuesta.status).toBe(200);
     expect(crearEnTransaccionMock).toHaveBeenCalledTimes(1);
@@ -272,6 +290,7 @@ describe('POST /api/eventos/:id/reservar', () => {
 
     const respuesta = await request(app)
       .post('/api/eventos/20/reservar')
+      .set('Cookie', [cookiePersonal])
       .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
 
     expect(respuesta.status).toBe(409);
@@ -281,11 +300,14 @@ describe('POST /api/eventos/:id/reservar', () => {
   });
 
   it('responde 422 si fin no es posterior a inicio', async () => {
-    const respuesta = await request(app).post('/api/eventos/20/reservar').send({
-      distribucionId: distribucionFixture.id,
-      inicio: finValido,
-      fin: inicioValido,
-    });
+    const respuesta = await request(app)
+      .post('/api/eventos/20/reservar')
+      .set('Cookie', [cookiePersonal])
+      .send({
+        distribucionId: distribucionFixture.id,
+        inicio: finValido,
+        fin: inicioValido,
+      });
 
     expect(respuesta.status).toBe(422);
     expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
@@ -309,6 +331,7 @@ describe('POST /api/eventos/:id/reservar', () => {
 
     const respuesta = await request(app)
       .post('/api/eventos/20/reservar')
+      .set('Cookie', [cookiePersonal])
       .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
 
     expect(respuesta.status).toBe(409);
@@ -326,7 +349,9 @@ describe('POST /api/eventos/:id/registrar-sena', () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Reservado' }));
     registrarSenaMock.mockResolvedValue(eventoFixtureBase());
 
-    const respuesta = await request(app).post('/api/eventos/20/registrar-sena');
+    const respuesta = await request(app)
+      .post('/api/eventos/20/registrar-sena')
+      .set('Cookie', [cookiePersonal]);
 
     expect(respuesta.status).toBe(200);
     expect(registrarSenaMock).toHaveBeenCalledWith(20);
@@ -335,7 +360,9 @@ describe('POST /api/eventos/:id/registrar-sena', () => {
   it('responde 409 si el evento no está Reservado', async () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'EnConsulta' }));
 
-    const respuesta = await request(app).post('/api/eventos/20/registrar-sena');
+    const respuesta = await request(app)
+      .post('/api/eventos/20/registrar-sena')
+      .set('Cookie', [cookiePersonal]);
 
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
@@ -353,7 +380,9 @@ describe('POST /api/eventos/:id/cancelar', () => {
   it('cancela un evento EnConsulta sin restricción de horario (criterio 5)', async () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'EnConsulta' }));
 
-    const respuesta = await request(app).post('/api/eventos/20/cancelar');
+    const respuesta = await request(app)
+      .post('/api/eventos/20/cancelar')
+      .set('Cookie', [cookiePersonal]);
 
     expect(respuesta.status).toBe(200);
     expect(cancelarMock).toHaveBeenCalledWith(20);
@@ -363,7 +392,9 @@ describe('POST /api/eventos/:id/cancelar', () => {
     const inicio = new Date(Date.now() + 72 * 60 * 60 * 1000);
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Reservado', inicio }));
 
-    const respuesta = await request(app).post('/api/eventos/20/cancelar');
+    const respuesta = await request(app)
+      .post('/api/eventos/20/cancelar')
+      .set('Cookie', [cookiePersonal]);
 
     expect(respuesta.status).toBe(200);
     expect(cancelarMock).toHaveBeenCalledWith(20);
@@ -373,7 +404,9 @@ describe('POST /api/eventos/:id/cancelar', () => {
     const inicio = new Date(Date.now() + 24 * 60 * 60 * 1000);
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Reservado', inicio }));
 
-    const respuesta = await request(app).post('/api/eventos/20/cancelar');
+    const respuesta = await request(app)
+      .post('/api/eventos/20/cancelar')
+      .set('Cookie', [cookiePersonal]);
 
     expect(respuesta.status).toBe(422);
     expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
@@ -383,7 +416,9 @@ describe('POST /api/eventos/:id/cancelar', () => {
   it('responde 409 si el evento ya está Cobrado o Cancelado', async () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Cobrado' }));
 
-    const respuesta = await request(app).post('/api/eventos/20/cancelar');
+    const respuesta = await request(app)
+      .post('/api/eventos/20/cancelar')
+      .set('Cookie', [cookiePersonal]);
 
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
@@ -460,5 +495,40 @@ describe('GET /api/eventos', () => {
     expect(respuesta.status).toBe(403);
     expect(respuesta.body.error.code).toBe('FORBIDDEN');
     expect(listarAgendaMock).not.toHaveBeenCalled();
+  });
+});
+
+// C6 de HU-48: el detalle y las acciones de estado son del panel interno.
+describe('eventos: permisos (HU-48)', () => {
+  beforeEach(() => buscarDetalladoMock.mockReset());
+
+  const cookieCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+    id: 7,
+    email: 'ana@empresa.com',
+    rol: 'CLIENTE',
+  })}`;
+
+  it.each([
+    ['get', '/api/eventos/20'],
+    ['post', '/api/eventos/20/reservar'],
+    ['post', '/api/eventos/20/registrar-sena'],
+    ['post', '/api/eventos/20/cancelar'],
+  ] as const)('%s %s sin sesión responde 401', async (metodo, ruta) => {
+    const respuesta = await request(app)[metodo](ruta);
+
+    expect(respuesta.status).toBe(401);
+    expect(buscarDetalladoMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['get', '/api/eventos/20'],
+    ['post', '/api/eventos/20/reservar'],
+    ['post', '/api/eventos/20/registrar-sena'],
+    ['post', '/api/eventos/20/cancelar'],
+  ] as const)('%s %s con sesión de Cliente responde 403', async (metodo, ruta) => {
+    const respuesta = await request(app)[metodo](ruta).set('Cookie', [cookieCliente]);
+
+    expect(respuesta.status).toBe(403);
+    expect(buscarDetalladoMock).not.toHaveBeenCalled();
   });
 });
