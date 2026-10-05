@@ -34,3 +34,7 @@ docs/.obsidian/workspace*.json
 
 # Claude Code (configuración personal)
 .claude/settings.local.json
+# Los skills y plugins de agentes se instalan con `/plugin`, no se copian dentro del repo:
+# vendorearlos mete megabytes de código de terceros que ensucian todos los diffs y que el
+# equipo tendría que auditar y actualizar a mano.
+.claude/skills/
