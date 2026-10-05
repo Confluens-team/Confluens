@@ -183,6 +183,14 @@ function PanelPersonal({ sesion }: { sesion: Sesion }) {
         <button className="underline underline-offset-2" onClick={() => navigate('/')}>
           Vista pública
         </button>
+        {sesion.rol === 'ADMINISTRADOR_SISTEMA' && (
+          <>
+            <span className="text-muted-foreground">·</span>
+            <button className="underline underline-offset-2" onClick={() => navigate('/admin')}>
+              Panel de administración
+            </button>
+          </>
+        )}
       </div>
       {vista.tipo === 'solicitudes' && (
         <ListadoSolicitudes
@@ -288,10 +296,9 @@ export default function App() {
         <Route
           path="panel"
           element={
+            // El administrador también entra: ve el panel tal como lo ve el resto del personal.
             !esPersonal(sesion) ? (
               <Navigate to="/acceso" replace />
-            ) : sesion.rol === 'ADMINISTRADOR_SISTEMA' ? (
-              <Navigate to="/admin" replace />
             ) : (
               <PanelPersonal sesion={sesion} />
             )
