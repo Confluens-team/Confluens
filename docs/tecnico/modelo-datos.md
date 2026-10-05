@@ -112,8 +112,9 @@ Prisma no genera restricciones de exclusión, así que va como SQL crudo dentro 
 
 `LineaPresupuesto` guarda el precio unitario al momento de emitir, no una referencia al precio
 actual del servicio. Es lo que permite que un incremento mensual no altere presupuestos ya
-emitidos (RN-03, HU-34). La seña congela definitivamente el presupuesto (`Confirmado`); uno
-`Expirado` no se edita: se recalcula generando otro.
+emitidos (RN-03, HU-34). La seña congela definitivamente el presupuesto (`Confirmado`). Uno
+`Expirado` se recalcula generando otro con precios vigentes, o se modifica: en ese caso conserva el
+precio de las líneas que no se tocan y vuelve a `Estimado` con `venceEn` reiniciado (HU-12).
 
 Cuando el evento es en un mes futuro, el precio que se guarda en la línea es el **proyectado**
 a ese mes (RN-13): `precio_actual × (1 + porcentajeMensual)^meses`, sin proyectar tercerizados.

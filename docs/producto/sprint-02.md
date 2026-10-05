@@ -36,7 +36,6 @@ Los puntos salen del Planning Poker del Sprint 2. Velocidad del Sprint 1: 31.
 |---|---|---|
 | S-08 — Base de la seña | No está definido si el 20% se calcula sobre el total con o sin IVA, ni cómo se registran los pagos. **Hasta definirlo, no implementar el cálculo del umbral de seña.** | HU-13, HU-14 |
 | Vincular cliente existente | Si alguien se registra con un correo que el personal ya cargó al presupuestar, se propone vincular la cuenta a esa ficha (HU-09 C7). Falta que lo confirme el PO. | HU-09 |
-| Vigencia al modificar | ¿Modificar un presupuesto Estimado reinicia los 10 días o mantiene la fecha original? | HU-12 |
 | Pago mayor al saldo | ¿Se rechaza o queda saldo a favor? Propuesta: rechazarlo. | HU-14 |
 | Quién registra pagos | El backlog pone al RF como actor; en el Sprint 1 la seña la registraba el RE. ¿Pueden los dos? | HU-14 |
 
@@ -88,15 +87,17 @@ Como Responsable de Eventos, quiero ver el detalle completo de un presupuesto, p
 
 ## HU-12 — Modificar presupuesto
 
-Como Responsable de Eventos, quiero modificar un presupuesto estimado (servicios, cantidades, personas, jornada y precios puntuales), para ajustarlo a lo que negocio con el cliente sin armarlo de nuevo.
+Como Responsable de Eventos, quiero modificar un presupuesto estimado (fecha, salón, servicios, cantidades, personas, jornada y precios puntuales), para ajustarlo a lo que negocio con el cliente sin armarlo de nuevo.
 
-- Un presupuesto Estimado es editable. Un presupuesto Confirmado solo puede modificarlo el Administrador del Sistema en casos excepcionales, sin que esa opción se muestre en el canal del cliente. Cancelado y Expirado se rechazan.
-- Puedo agregar y quitar servicios y cambiar cantidades, cantidad de personas y jornada; el total se recalcula con las reglas de HU-05 (RN-04, RN-05, tercerizados y «a cotizar»).
+- Un presupuesto Estimado o Expirado es editable desde Consultas, por el Responsable de Eventos y el Administrador del Sistema. Al guardar queda Estimado y la vigencia vuelve a contar 10 días (decisión del PO, 05/10/2026). Cancelado se rechaza. Un presupuesto Confirmado solo puede modificarlo el Administrador del Sistema en casos excepcionales, sin que esa opción se muestre en el canal del cliente (queda para la futura pestaña Eventos).
+- Puedo cambiar la fecha y el salón, agregar y quitar servicios y cambiar cantidades, cantidad de personas y jornada; el total se recalcula con las reglas de HU-05 (RN-04, RN-05, tercerizados y «a cotizar»). Los datos de contacto del cliente no se editan: los mantiene el cliente desde su cuenta.
+- Cada consulta muestra subtotal sin IVA, IVA 21% y total con IVA (RN-05).
 - Las líneas que no toco conservan su precio congelado; las líneas nuevas toman el precio vigente del catálogo.
 - Puedo ajustar a mano el precio unitario de una línea como ajuste comercial (RN-03).
 - Sobre un Expirado se ofrece «Recalcular»: genera un presupuesto Estimado nuevo para el mismo evento, con precios vigentes y 10 días de vigencia; el anterior sigue visible como Expirado.
+- Puedo dar de baja una consulta Estimado o Expirado: pasa a Cancelado y, si su evento no tiene otro presupuesto en curso, el evento también (RN-08).
 
-**Implementación.** `PATCH /api/presupuestos/:id` (`409` si el estado no lo permite; Confirmado solo con rol `ADMINISTRADOR_SISTEMA`) y `POST /api/presupuestos/:id/recalcular` (solo sobre `Expirado`). Un evento puede tener varios presupuestos.
+**Implementación.** `GET /api/presupuestos/:id` (la consulta con su evento, cliente, salón, jornada y líneas), `PATCH /api/presupuestos/:id` (`409` si no está Estimado ni Expirado o el evento ya no está EnConsulta), `POST /api/presupuestos/:id/recalcular` (solo sobre `Expirado`) y `POST /api/presupuestos/:id/dar-de-baja`. La jornada se deduce de la descripción de la línea del salón. La modificación de un Confirmado no está implementada. Un evento puede tener varios presupuestos.
 
 ## HU-13 — Registrar presupuesto confirmado
 
