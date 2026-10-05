@@ -28,7 +28,7 @@ describe('auth.repositorio: crearUsuarioCliente', () => {
     tx.usuario.create.mockResolvedValue({ id: 7, email: datos.email, rol: 'CLIENTE' });
   });
 
-  it('si el personal ya cargó un cliente con ese correo, le vincula la cuenta y no crea otro (C7)', async () => {
+  it('si ya existe una ficha con ese correo sin cuenta, le vincula la cuenta y no crea otra (C7)', async () => {
     tx.cliente.findFirst.mockResolvedValue({
       id: 3,
       correo: datos.email,

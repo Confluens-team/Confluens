@@ -114,8 +114,14 @@ queda para una iteración futura. Decisión del equipo, 04/10/2026.
 `juan@mail.com` son la misma cuenta.
 
 **Es usuario del sistema**: para ver precios y armar un presupuesto en el canal público debe
-registrarse e iniciar sesión (ver "Canal público"). Planificado para el Sprint 2. Un cliente
-cargado a mano por el Responsable de Eventos puede no tener usuario.
+registrarse e iniciar sesión (ver "Canal público"). Planificado para el Sprint 2.
+
+**El personal no crea clientes.** El cliente se da de alta solo, registrándose en la landing;
+ningún rol del personal carga clientes a mano. Decisión del equipo, 04/10/2026. Las fichas de
+Cliente cargadas por el personal antes de esa decisión (al tomar consultas o generar presupuestos
+en el Sprint 1) pueden no tener usuario: si esa persona se registra con el mismo correo, su cuenta
+se vincula a la ficha existente en lugar de crear otra, y el teléfono pasa a ser el celular
+validado del registro (C7 de HU-09 del Sprint 2).
 
 **Solicitud (consulta).** Lo que el cliente confirma desde el formulario del canal público. Llega
 asociada al cliente que la envió y guarda **todo lo que eligió**: fecha, horario, salón,

@@ -9,10 +9,10 @@ export async function buscarUsuarioPorEmail(email: string) {
   return prisma.usuario.findUnique({ where: { email } });
 }
 
-// Alta de la cuenta del Cliente en el canal público. Usuario y Cliente se crean juntos: si el
-// Responsable de Eventos ya había cargado un Cliente con ese correo (al tomar una consulta) y
-// todavía no tiene cuenta, se le vincula el usuario nuevo en vez de duplicar la ficha comercial
-// (C7 de HU-48). Al vincular se reemplaza el teléfono por el celular validado del registro: es el
+// Alta de la cuenta del Cliente en el canal público. Usuario y Cliente se crean juntos. Si ya
+// existe una ficha con ese correo sin cuenta (las que el personal cargó antes de que los clientes
+// solo se dieran de alta registrándose, ver dominio.md), se le vincula el usuario nuevo en vez de
+// duplicar la ficha comercial (C7 de HU-48). Al vincular se reemplaza el teléfono por el celular validado del registro: es el
 // número al que se le escribe por WhatsApp (wa.me), y el que cargó el personal no pasó por esa
 // validación.
 export async function crearUsuarioCliente(datos: {
