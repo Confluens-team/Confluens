@@ -22,6 +22,7 @@ import { TomarConsulta } from '@/paginas/eventos/TomarConsulta';
 import { Panel } from '@/paginas/panel/Panel';
 import { PanelAdministrador } from '@/paginas/panel/PanelAdministrador';
 import { CotizarEvento, type ResultadoCotizacion } from '@/paginas/presupuestos/CotizarEvento';
+import { ListadoPresupuestos } from '@/paginas/presupuestos/ListadoPresupuestos';
 import { PresupuestoEstimado } from '@/paginas/presupuestos/PresupuestoEstimado';
 import { RegistrarServicio } from '@/paginas/servicios/RegistrarServicio';
 import { Landing } from '@/paginas/solicitudes/Landing';
@@ -34,7 +35,8 @@ import { ListadoSolicitudes } from '@/paginas/solicitudes/ListadoSolicitudes';
 //   /acceso       login del personal
 //   /olvide-contrasena       pide el enlace para restablecer la contraseña (cliente y personal)
 //   /restablecer-contrasena  pantalla del enlace del correo (?token=)
-//   /admin/:tab   panel del Administrador del Sistema (consultas, agenda, clientes, catalogo, cuenta)
+//   /admin/:tab   panel del Administrador del Sistema (consultas, presupuestos, agenda, clientes,
+//                 catalogo, cuenta)
 //   /panel        panel del resto del personal
 // Las rutas son solo de navegación: los permisos reales los aplica la API.
 
@@ -152,12 +154,16 @@ function RutaLanding() {
 
 type VistaPersonal =
   | { tipo: 'solicitudes' }
+  | { tipo: 'presupuestos' }
   | { tipo: 'servicios' }
   | { tipo: 'tomar-consulta'; solicitud?: Solicitud }
   | { tipo: 'detalle-evento'; eventoId: number };
 
+// Roles que pueden listar presupuestos (GET /presupuestos, HU-10).
+const VEN_PRESUPUESTOS: Sesion['rol'][] = ['RESPONSABLE_EVENTOS', 'ADMINISTRADOR_SISTEMA'];
+
 // Panel del resto del personal: el menú por rol de HU-27 más el conmutador a las pantallas del
-// circuito de consultas y servicios.
+// circuito de consultas, presupuestos y servicios.
 function PanelPersonal({ sesion }: { sesion: Sesion }) {
   const navigate = useNavigate();
   const [vista, setVista] = useState<VistaPersonal>({ tipo: 'solicitudes' });
@@ -172,6 +178,17 @@ function PanelPersonal({ sesion }: { sesion: Sesion }) {
         >
           Solicitudes
         </button>
+        {VEN_PRESUPUESTOS.includes(sesion.rol) && (
+          <>
+            <span className="text-muted-foreground">·</span>
+            <button
+              className="underline underline-offset-2"
+              onClick={() => setVista({ tipo: 'presupuestos' })}
+            >
+              Presupuestos
+            </button>
+          </>
+        )}
         <span className="text-muted-foreground">·</span>
         <button
           className="underline underline-offset-2"
@@ -196,6 +213,11 @@ function PanelPersonal({ sesion }: { sesion: Sesion }) {
         <ListadoSolicitudes
           onTomar={(solicitud) => setVista({ tipo: 'tomar-consulta', solicitud })}
         />
+      )}
+      {vista.tipo === 'presupuestos' && (
+        <div className="mx-auto max-w-6xl p-6">
+          <ListadoPresupuestos />
+        </div>
       )}
       {vista.tipo === 'servicios' && <RegistrarServicio />}
       {vista.tipo === 'tomar-consulta' && (

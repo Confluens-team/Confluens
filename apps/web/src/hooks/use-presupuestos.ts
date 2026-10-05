@@ -1,11 +1,13 @@
 import type {
   CrearPresupuesto,
   CrearSolicitud,
+  FiltrosPresupuestos,
   PresupuestoDetallado,
+  PresupuestoListado,
   RespuestaExito,
   Solicitud,
 } from '@confluens/shared';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api';
 
@@ -25,6 +27,7 @@ export function useCrearPresupuesto() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['solicitudes'] });
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
     },
   });
 }
@@ -58,6 +61,26 @@ export function useSolicitarPresupuesto() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['solicitudes'] });
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
     },
+  });
+}
+
+// HU-10: listado del personal. Solo viajan los filtros con valor; mientras llega la respuesta de
+// un filtro nuevo se sigue mostrando la anterior, para que la tabla no parpadee al escribir.
+export function usePresupuestos(filtros: FiltrosPresupuestos) {
+  return useQuery({
+    queryKey: ['presupuestos', filtros],
+    queryFn: async () => {
+      const parametros = new URLSearchParams(
+        Object.entries(filtros).filter((par): par is [string, string] => !!par[1]),
+      );
+      const consulta = parametros.size > 0 ? `?${parametros}` : '';
+      const respuesta = await apiFetch<RespuestaExito<PresupuestoListado[]>>(
+        `/presupuestos${consulta}`,
+      );
+      return respuesta.data;
+    },
+    placeholderData: keepPreviousData,
   });
 }
