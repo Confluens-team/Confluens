@@ -1,5 +1,6 @@
 import type { Credenciales, PerfilCliente, RegistroCliente, Sesion } from '@confluens/shared';
 
+import { Prisma } from '../../generated/prisma/client.js';
 import { compararContrasena, hashearContrasena } from '../../lib/contrasena.js';
 import { ErrorApi } from '../../lib/errores.js';
 import { firmarToken } from '../../lib/jwt.js';
@@ -39,6 +40,8 @@ export async function iniciarSesion(
   return { sesion, token };
 }
 
+const MENSAJE_EMAIL_REGISTRADO = 'Ya existe una cuenta con ese email. Iniciá sesión.';
+
 /**
  * Crea la cuenta de un Cliente desde la landing y lo deja con la sesión iniciada, para que pase
  * directo al cotizador. El rol es siempre CLIENTE: el canal público nunca da de alta personal.
@@ -52,16 +55,26 @@ export async function registrarCliente(
 ): Promise<{ sesion: Sesion; token: string }> {
   const existente = await repositorio.buscarUsuarioPorEmail(datos.email);
   if (existente) {
-    throw ErrorApi.conflicto('Ya existe una cuenta con ese email. Iniciá sesión.');
+    throw ErrorApi.conflicto(MENSAJE_EMAIL_REGISTRADO);
   }
 
-  const usuario = await repositorio.crearUsuarioCliente({
-    email: datos.email,
-    hashContrasena: await hashearContrasena(datos.contrasena),
-    nombre: datos.nombre,
-    apellido: datos.apellido,
-    telefono: datos.telefono,
-  });
+  let usuario: Awaited<ReturnType<RegistroRepositorio['crearUsuarioCliente']>>;
+  try {
+    usuario = await repositorio.crearUsuarioCliente({
+      email: datos.email,
+      hashContrasena: await hashearContrasena(datos.contrasena),
+      nombre: datos.nombre,
+      apellido: datos.apellido,
+      telefono: datos.telefono,
+    });
+  } catch (error) {
+    // Dos registros simultáneos con el mismo email pasan los dos el chequeo de arriba; el índice
+    // único de Usuario.email frena al segundo (P2002) y se responde el mismo 409, no un 500.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      throw ErrorApi.conflicto(MENSAJE_EMAIL_REGISTRADO);
+    }
+    throw error;
+  }
 
   const sesion: Sesion = { id: usuario.id, email: usuario.email, rol: usuario.rol };
   return { sesion, token: firmarToken(sesion) };

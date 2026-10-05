@@ -2,7 +2,8 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { crearApp } from '../../app.js';
-import { hashearContrasena } from '../../lib/contrasena.js';
+import { Prisma } from '../../generated/prisma/client.js';
+import { compararContrasena, hashearContrasena } from '../../lib/contrasena.js';
 import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 
 // Se mockea el repositorio (no el servicio): así se ejercita la cadena real
@@ -163,7 +164,11 @@ describe('POST /api/auth/registro', () => {
     // La contraseña nunca llega en texto plano al repositorio.
     const [datosGuardados] = crearUsuarioClienteMock.mock.calls[0]!;
     expect(datosGuardados.hashContrasena).not.toBe(datosValidos.contrasena);
-    expect(datosGuardados.telefono).toBe('351 555 1234');
+    expect(await compararContrasena(datosValidos.contrasena, datosGuardados.hashContrasena)).toBe(
+      true,
+    );
+    // El celular llega normalizado a E.164, listo para wa.me (ver telefono.esquema.ts).
+    expect(datosGuardados.telefono).toBe('+5493515551234');
     // Nombre y apellido llegan separados a la ficha del Cliente (HU-48).
     expect(datosGuardados).toMatchObject({ nombre: 'Ana', apellido: 'Pérez' });
   });
@@ -202,6 +207,60 @@ describe('POST /api/auth/registro', () => {
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('con un email sin formato válido responde 400 indicando el campo (C2)', async () => {
+    const respuesta = await request(app)
+      .post('/api/auth/registro')
+      .send({ ...datosValidos, email: 'ana@' });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details).toEqual([expect.objectContaining({ campo: 'email' })]);
+    expect(crearUsuarioClienteMock).not.toHaveBeenCalled();
+  });
+
+  it('con un teléfono que no es un celular válido responde 400 indicando el campo', async () => {
+    const respuesta = await request(app)
+      .post('/api/auth/registro')
+      .send({ ...datosValidos, telefono: '4567890' });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details).toEqual([expect.objectContaining({ campo: 'telefono' })]);
+    expect(crearUsuarioClienteMock).not.toHaveBeenCalled();
+  });
+
+  it('busca y guarda el email en minúsculas, así otra capitalización no crea otra cuenta (C3)', async () => {
+    buscarUsuarioPorEmailMock.mockResolvedValue(null);
+    crearUsuarioClienteMock.mockImplementation(async (datos) => ({
+      id: 7,
+      email: datos.email,
+      hashContrasena: datos.hashContrasena,
+      rol: 'CLIENTE',
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+    }));
+
+    await request(app)
+      .post('/api/auth/registro')
+      .send({ ...datosValidos, email: '  Ana@Empresa.COM ' });
+
+    expect(buscarUsuarioPorEmailMock).toHaveBeenCalledWith('ana@empresa.com');
+    expect(crearUsuarioClienteMock.mock.calls[0]![0].email).toBe('ana@empresa.com');
+  });
+
+  it('si otro registro con el mismo email gana la carrera responde 409, no 500 (C3)', async () => {
+    buscarUsuarioPorEmailMock.mockResolvedValue(null);
+    crearUsuarioClienteMock.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    const respuesta = await request(app).post('/api/auth/registro').send(datosValidos);
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
   });
 });
 
