@@ -104,6 +104,15 @@ trabajo, banquete. Nombre único por salón. Su capacidad nunca supera la del sa
 teléfono y correo. **No hay baja por inactividad**: el cliente se conserva siempre con su
 historial.
 
+**Teléfono del cliente.** Es el canal de contacto principal (WhatsApp, `wa.me`), así que en el
+registro tiene que ser un **celular válido** y se guarda en formato internacional E.164
+(`+5493516123456`). Sin código de país se asume Argentina; un número argentino escrito sin el 15
+se toma como celular. Verificar que el número exista con un proveedor (código por SMS o WhatsApp)
+queda para una iteración futura. Decisión del equipo, 04/10/2026.
+
+**Correo de la cuenta.** Se guarda en minúsculas y sin espacios: `Juan@Mail.com` y
+`juan@mail.com` son la misma cuenta.
+
 **Es usuario del sistema**: para ver precios y armar un presupuesto en el canal público debe
 registrarse e iniciar sesión (ver "Canal público"). Planificado para el Sprint 2. Un cliente
 cargado a mano por el Responsable de Eventos puede no tener usuario.
