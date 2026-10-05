@@ -1,7 +1,8 @@
 import {
   esquemaCrearPresupuesto,
-  esquemaPresupuesto,
+  esquemaFiltrosPresupuestos,
   esquemaPresupuestoDetallado,
+  esquemaPresupuestoListado,
 } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -34,12 +35,18 @@ registroOpenApi.registerPath({
   method: 'get',
   path: '/presupuestos',
   tags: ['Presupuestos'],
-  summary: 'Lista los presupuestos con su estado (HU-10)',
+  summary: 'Lista los presupuestos con su estado, del más reciente al más antiguo (HU-10)',
+  request: { query: esquemaFiltrosPresupuestos },
   responses: {
     200: {
-      description: 'Presupuestos con su estado',
-      content: { 'application/json': { schema: z.object({ data: z.array(esquemaPresupuesto) }) } },
+      description: 'Presupuestos que cumplen los filtros; lista vacía si ninguno los cumple',
+      content: {
+        'application/json': { schema: z.object({ data: z.array(esquemaPresupuestoListado) }) },
+      },
     },
+    400: { description: 'Filtros inválidos (estado, fechas o rango desde/hasta)' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'El rol no es Responsable de Eventos ni Administrador del Sistema' },
   },
 });
 
@@ -50,5 +57,6 @@ rutasPresupuestos.get(
   '/',
   autenticar,
   autorizar('ADMINISTRADOR_SISTEMA', 'RESPONSABLE_EVENTOS'),
+  validar({ query: esquemaFiltrosPresupuestos }),
   asincrono(listar),
 );

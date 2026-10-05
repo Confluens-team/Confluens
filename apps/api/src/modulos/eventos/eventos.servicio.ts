@@ -38,7 +38,8 @@ export async function obtenerDetalle(
  * - Criterio 3: si cantidadPersonas supera la capacidad de la distribución elegida, se exige
  *   `confirmarCapacidadExcedida: true` explícito para continuar.
  * - Criterio 4 / RN-06: al reservar se fija `senaVenceEn` a 10 días desde ahora (el momento de
- *   la confirmación). El vencimiento automático lo procesa el trabajo de node-cron.
+ *   la confirmación). Desde HU-10 el evento ya no se cancela solo al vencer (RN-06); el plazo de
+ *   la seña lo rehacen HU-13 y HU-14.
  * - Criterio 7: `modalidadSalonRestaurante` se persiste tal cual llega, es una opción interna sin
  *   ninguna regla asociada en este sprint.
  */

@@ -1,9 +1,19 @@
-import type { CrearPresupuesto } from '@confluens/shared';
+import type { CrearPresupuesto, FiltrosPresupuestos, PresupuestoListado } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
 import { ErrorApi } from '../../lib/errores.js';
 import * as presupuestosRepositorioReal from './presupuestos.repositorio.js';
 import type { PresupuestosRepositorio } from './presupuestos.repositorio.js';
+
+// RN-08: el presupuesto tiene una vigencia de 10 días desde su emisión. Vencido, lo pasa a
+// Expirado el trabajo de trabajos/vigencia.trabajo.ts.
+export const DIAS_DE_VIGENCIA = 10;
+
+export function calcularVencimiento(fechaEmision: Date): Date {
+  const venceEn = new Date(fechaEmision);
+  venceEn.setUTCDate(venceEn.getUTCDate() + DIAS_DE_VIGENCIA);
+  return venceEn;
+}
 
 interface LineaCalculada {
   servicioId: number | null;
@@ -32,6 +42,7 @@ interface LineaCalculada {
  * - Criterio 5: se toman Salon.precioJornadaCompleta/precioMediaJornada y Servicio.precio
  *   vigentes al momento del pedido (no hay versionado de precios en el Sprint 1).
  * - Criterio 6: el Presupuesto nace en Estimado (default del schema, no se fija acá).
+ * - HU-10 / RN-08: vence a los 10 días de la emisión (`venceEn`).
  * - HU-15: si `datos.solicitudId` viene, se vincula `Solicitud.eventoId` al evento recién creado
  *   (el RE "tomó" esa solicitud), para que el detalle del evento muestre los datos originales del
  *   formulario. Se valida antes de escribir nada que la solicitud exista y no esté ya tomada.
@@ -100,6 +111,8 @@ export async function generarPresupuesto(
     .filter((linea) => linea.entraEnTotal)
     .reduce((acumulado, linea) => acumulado.plus(linea.subtotal), new Prisma.Decimal(0));
 
+  const fechaEmision = new Date();
+
   return repo.crearEnTransaccion(async (tx) => {
     let cliente = await repo.buscarClientePorCorreo(datos.correo, tx);
     if (!cliente) {
@@ -126,6 +139,8 @@ export async function generarPresupuesto(
     return repo.crearPresupuestoConLineas(
       {
         eventoId: evento.id,
+        fechaEmision,
+        venceEn: calcularVencimiento(fechaEmision),
         total: total.toFixed(2),
         lineas: todasLasLineas.map(({ entraEnTotal: _entraEnTotal, ...linea }) => linea),
       },
@@ -134,8 +149,22 @@ export async function generarPresupuesto(
   });
 }
 
+// HU-10: listado del personal con sus filtros. Mapea a PresupuestoListado para que los tipos de
+// Prisma no lleguen a la web: importes como string y la fecha del evento como YYYY-MM-DD.
 export async function listarPresupuestos(
+  filtros: FiltrosPresupuestos,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
-) {
-  return repo.obtenerPresupuestos();
+): Promise<PresupuestoListado[]> {
+  const presupuestos = await repo.obtenerPresupuestos(filtros);
+  return presupuestos.map(({ evento, ...presupuesto }) => ({
+    id: presupuesto.id,
+    eventoId: presupuesto.eventoId,
+    estado: presupuesto.estado,
+    fechaEmision: presupuesto.fechaEmision.toISOString(),
+    venceEn: presupuesto.venceEn.toISOString(),
+    total: presupuesto.total.toFixed(2),
+    fechaEvento: evento.fecha.toISOString().slice(0, 10),
+    cliente: evento.cliente,
+    salon: evento.salon,
+  }));
 }

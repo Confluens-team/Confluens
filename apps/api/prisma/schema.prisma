@@ -174,6 +174,7 @@ model Presupuesto {
   evento        Evento             @relation(fields: [eventoId], references: [id])
   estado        EstadoPresupuesto  @default(Estimado)
   fechaEmision  DateTime           @default(now())
+  venceEn       DateTime // fechaEmision + 10 días (RN-08); lo controla trabajos/vigencia.trabajo.ts
   total         Decimal            @db.Decimal(12, 2) // sin IVA (RN-05)
   lineas        LineaPresupuesto[]
   creadoEn      DateTime           @default(now())

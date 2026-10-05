@@ -1,3 +1,5 @@
+import type { FiltrosPresupuestos } from '@confluens/shared';
+
 import { prisma } from '../../lib/prisma.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 
@@ -57,6 +59,8 @@ export async function crearEvento(
 export async function crearPresupuestoConLineas(
   datos: {
     eventoId: number;
+    fechaEmision: Date;
+    venceEn: Date;
     total: string;
     lineas: {
       servicioId: number | null;
@@ -71,6 +75,8 @@ export async function crearPresupuestoConLineas(
   return tx.presupuesto.create({
     data: {
       eventoId: datos.eventoId,
+      fechaEmision: datos.fechaEmision,
+      venceEn: datos.venceEn,
       total: datos.total,
       lineas: { create: datos.lineas },
     },
@@ -87,34 +93,48 @@ export async function crearEnTransaccion<T>(
   return prisma.$transaction((tx) => ejecutar(tx));
 }
 
-export async function obtenerPresupuestos() {
+// HU-10: listado del personal, del más reciente al más antiguo por emisión (el id desempata los
+// emitidos en el mismo instante). Cada palabra de `cliente` tiene que aparecer en el nombre, el
+// apellido o el correo, así "Marina Gómez" encuentra a quien tiene nombre y apellido separados.
+export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
+  const { estado, cliente, desde, hasta } = filtros;
+  const palabras = cliente?.split(/\s+/) ?? [];
+
   return prisma.presupuesto.findMany({
+    where: {
+      estado,
+      evento: {
+        fecha: {
+          gte: desde ? new Date(desde) : undefined,
+          lte: hasta ? new Date(hasta) : undefined,
+        },
+        cliente: {
+          AND: palabras.map((palabra) => ({
+            OR: [
+              { nombre: { contains: palabra, mode: 'insensitive' as const } },
+              { apellido: { contains: palabra, mode: 'insensitive' as const } },
+              { correo: { contains: palabra, mode: 'insensitive' as const } },
+            ],
+          })),
+        },
+      },
+    },
     select: {
       id: true,
+      eventoId: true,
       estado: true,
       fechaEmision: true,
+      venceEn: true,
       total: true,
       evento: {
         select: {
           fecha: true,
-          salon: {
-            select: {
-              nombre: true,
-            },
-          },
-          cliente: {
-            select: {
-              nombre: true,
-              telefono: true,
-              correo: true,
-            },
-          },
+          salon: { select: { id: true, nombre: true } },
+          cliente: { select: { id: true, nombre: true, apellido: true, correo: true } },
         },
       },
     },
-    orderBy: {
-      fechaEmision: 'desc',
-    },
+    orderBy: [{ fechaEmision: 'desc' }, { id: 'desc' }],
   });
 }
 

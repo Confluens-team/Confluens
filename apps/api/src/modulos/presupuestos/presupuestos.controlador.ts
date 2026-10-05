@@ -1,7 +1,8 @@
 import type {
   CrearPresupuesto,
-  Presupuesto,
+  FiltrosPresupuestos,
   PresupuestoDetallado,
+  PresupuestoListado,
   RespuestaExito,
 } from '@confluens/shared';
 import type { Request, Response } from 'express';
@@ -17,10 +18,9 @@ export async function crear(req: Request, res: Response): Promise<void> {
   res.status(201).json(cuerpo);
 }
 
-export async function listar(_req: Request, res: Response): Promise<void> {
-  const presupuestos = await listarPresupuestos();
-  const cuerpo: RespuestaExito<Presupuesto[]> = {
-    data: presupuestos as unknown as Presupuesto[],
-  };
-  res.json(cuerpo);
+// req.query ya validado por validar({ query: esquemaFiltrosPresupuestos }) en presupuestos.rutas.ts.
+export async function listar(req: Request, res: Response): Promise<void> {
+  const presupuestos = await listarPresupuestos(req.query as FiltrosPresupuestos);
+  const cuerpo: RespuestaExito<PresupuestoListado[]> = { data: presupuestos };
+  res.status(200).json(cuerpo);
 }
