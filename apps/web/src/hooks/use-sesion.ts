@@ -60,7 +60,9 @@ export function useCerrarSesion() {
     mutationFn: () => apiFetch<void>('/auth/logout', { method: 'POST' }),
     onSuccess: () => {
       queryClient.setQueryData(CLAVE_SESION, null);
-      queryClient.removeQueries({ queryKey: ['perfil-cliente'] });
+      // Todo lo demás se pidió con la sesión (precios, perfil, datos del panel): se descarta para
+      // que no quede en memoria después de salir (C5 de HU-48). Lo público se vuelve a pedir.
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== CLAVE_SESION[0] });
     },
   });
 }

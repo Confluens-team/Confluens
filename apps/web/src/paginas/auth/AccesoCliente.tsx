@@ -93,12 +93,12 @@ function FormularioRegistro({
           {...register('email')}
         />
       </Campo>
-      <Campo id="reg-telefono" etiqueta="Teléfono" error={errors.telefono?.message}>
+      <Campo id="reg-telefono" etiqueta="Celular (WhatsApp)" error={errors.telefono?.message}>
         <Input
           id="reg-telefono"
           type="tel"
           autoComplete="tel"
-          placeholder="351 555 1234"
+          placeholder="351 15 612-3456"
           className="h-10"
           {...register('telefono')}
         />
