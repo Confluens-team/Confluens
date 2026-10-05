@@ -169,15 +169,18 @@ model Evento {
 
 // Un evento puede tener varios presupuestos.
 model Presupuesto {
-  id            Int                @id @default(autoincrement())
-  eventoId      Int
-  evento        Evento             @relation(fields: [eventoId], references: [id])
-  estado        EstadoPresupuesto  @default(Estimado)
-  fechaEmision  DateTime           @default(now())
-  total         Decimal            @db.Decimal(12, 2) // sin IVA (RN-05)
-  lineas        LineaPresupuesto[]
-  creadoEn      DateTime           @default(now())
-  actualizadoEn DateTime           @updatedAt
+  id              Int                @id @default(autoincrement())
+  eventoId        Int
+  evento          Evento             @relation(fields: [eventoId], references: [id])
+  estado          EstadoPresupuesto  @default(Estimado)
+  fechaEmision    DateTime           @default(now())
+  total           Decimal            @db.Decimal(12, 2) // sin IVA (RN-05)
+  // Lo marca el Responsable de Eventos al recibir el presupuesto. Define la base de cobro de
+  // RN-01: con factura, total + IVA; sin factura, total pelado. La base no se guarda, se calcula.
+  requiereFactura Boolean            @default(false)
+  lineas          LineaPresupuesto[]
+  creadoEn        DateTime           @default(now())
+  actualizadoEn   DateTime           @updatedAt
 }
 
 // Guarda el precio unitario al emitir, no una referencia al precio actual (RN-03, HU-34).
