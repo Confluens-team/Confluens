@@ -9,7 +9,7 @@ import { z } from 'zod';
 import { registroOpenApi } from '../../docs/openapi.js';
 import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
-import { autorizar } from '../../middlewares/autorizar.js';
+import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
 import { cancelar, listar, marcarSena, obtener, reservar } from './eventos.controlador.js';
 
@@ -44,6 +44,8 @@ registroOpenApi.registerPath({
   responses: {
     200: { description: 'Detalle del evento', content: respuestaEvento },
     404: { description: 'No existe el evento' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
   },
 });
 
@@ -68,6 +70,8 @@ registroOpenApi.registerPath({
     422: {
       description: 'La cantidad de personas supera la capacidad de la distribución (criterio 3)',
     },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
   },
 });
 
@@ -81,6 +85,8 @@ registroOpenApi.registerPath({
     200: { description: 'Seña registrada', content: respuestaEvento },
     404: { description: 'No existe el evento' },
     409: { description: 'El evento no está Reservado' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
   },
 });
 
@@ -95,21 +101,40 @@ registroOpenApi.registerPath({
     404: { description: 'No existe el evento' },
     409: { description: 'El evento no admite cancelación (estado Cobrado o ya Cancelado)' },
     422: { description: 'Faltan menos de 48 horas para el inicio del evento (RN-07)' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
   },
 });
 
 export const rutasEventos = Router();
 
 rutasEventos.get('/', autenticar, autorizar('ADMINISTRADOR_SISTEMA'), asincrono(listar));
-rutasEventos.get('/:id', validar({ params: esquemaIdParam }), asincrono(obtener));
+// Detalle y acciones de estado: funciones del panel interno, solo el personal (C6 de HU-48).
+rutasEventos.get(
+  '/:id',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaIdParam }),
+  asincrono(obtener),
+);
 rutasEventos.post(
   '/:id/reservar',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaIdParam, body: esquemaReservarEvento }),
   asincrono(reservar),
 );
 rutasEventos.post(
   '/:id/registrar-sena',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaIdParam }),
   asincrono(marcarSena),
 );
-rutasEventos.post('/:id/cancelar', validar({ params: esquemaIdParam }), asincrono(cancelar));
+rutasEventos.post(
+  '/:id/cancelar',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaIdParam }),
+  asincrono(cancelar),
+);

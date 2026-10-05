@@ -104,9 +104,30 @@ trabajo, banquete. Nombre único por salón. Su capacidad nunca supera la del sa
 teléfono y correo. **No hay baja por inactividad**: el cliente se conserva siempre con su
 historial.
 
+**Teléfono del cliente.** Es el canal de contacto principal (WhatsApp, `wa.me`), así que en el
+registro tiene que ser un **celular válido** y se guarda en formato internacional E.164
+(`+5493516123456`). El cliente elige el país en un selector (Argentina por defecto) y escribe solo
+el número nacional (`3516167991`): el código del país y el 9 de los celulares argentinos los
+agrega el sistema. También se aceptan el 0 y el 15 si el cliente los escribe. Verificar que el número exista con un proveedor (código por SMS o WhatsApp)
+queda para una iteración futura. Decisión del equipo, 04/10/2026.
+
+**Correo de la cuenta.** Se guarda en minúsculas y sin espacios: `Juan@Mail.com` y
+`juan@mail.com` son la misma cuenta.
+
+**Olvidé mi contraseña.** El cliente y el personal pueden pedir un enlace por correo para elegir
+una contraseña nueva. El enlace vence a los 30 minutos y sirve una sola vez. La respuesta es la
+misma exista o no una cuenta con ese correo, para no revelar qué correos están registrados. Al
+guardar la contraseña nueva queda la sesión iniciada.
+
 **Es usuario del sistema**: para ver precios y armar un presupuesto en el canal público debe
-registrarse e iniciar sesión (ver "Canal público"). Planificado para el Sprint 2. Un cliente
-cargado a mano por el Responsable de Eventos puede no tener usuario.
+registrarse e iniciar sesión (ver "Canal público"). Planificado para el Sprint 2.
+
+**El personal no crea clientes.** El cliente se da de alta solo, registrándose en la landing;
+ningún rol del personal carga clientes a mano. Decisión del equipo, 04/10/2026. Las fichas de
+Cliente cargadas por el personal antes de esa decisión (al tomar consultas o generar presupuestos
+en el Sprint 1) pueden no tener usuario: si esa persona se registra con el mismo correo, su cuenta
+se vincula a la ficha existente en lugar de crear otra, y el teléfono pasa a ser el celular
+validado del registro (C7 de HU-09 del Sprint 2).
 
 **Solicitud (consulta).** Lo que el cliente confirma desde el formulario del canal público. Llega
 asociada al cliente que la envió y guarda **todo lo que eligió**: fecha, horario, salón,

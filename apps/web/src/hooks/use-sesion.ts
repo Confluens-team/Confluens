@@ -3,7 +3,9 @@ import type {
   PerfilCliente,
   RegistroCliente,
   RespuestaExito,
+  RestablecerContrasena,
   Sesion,
+  SolicitarRestablecimiento,
 } from '@confluens/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -60,7 +62,9 @@ export function useCerrarSesion() {
     mutationFn: () => apiFetch<void>('/auth/logout', { method: 'POST' }),
     onSuccess: () => {
       queryClient.setQueryData(CLAVE_SESION, null);
-      queryClient.removeQueries({ queryKey: ['perfil-cliente'] });
+      // Todo lo demás se pidió con la sesión (precios, perfil, datos del panel): se descarta para
+      // que no quede en memoria después de salir (C5 de HU-48). Lo público se vuelve a pedir.
+      queryClient.removeQueries({ predicate: (query) => query.queryKey[0] !== CLAVE_SESION[0] });
     },
   });
 }
@@ -72,6 +76,37 @@ export function useRegistrarCliente() {
   return useMutation({
     mutationFn: async (datos: RegistroCliente) => {
       const respuesta = await apiFetch<RespuestaExito<Sesion>>('/auth/registro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
+      });
+      return respuesta.data;
+    },
+    onSuccess: (sesion) => {
+      queryClient.setQueryData(CLAVE_SESION, sesion);
+    },
+  });
+}
+
+// Olvidé mi contraseña (C8 de HU-48), para clientes y personal. La API responde 204 exista o no
+// la cuenta, así que la pantalla muestra siempre el mismo mensaje.
+export function useSolicitarRestablecimiento() {
+  return useMutation({
+    mutationFn: (datos: SolicitarRestablecimiento) =>
+      apiFetch<void>('/auth/contrasena/olvido', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
+      }),
+  });
+}
+
+// Con el token del enlace del correo. Como el login, la API deja la sesión iniciada.
+export function useRestablecerContrasena() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (datos: RestablecerContrasena) => {
+      const respuesta = await apiFetch<RespuestaExito<Sesion>>('/auth/contrasena/restablecer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(datos),

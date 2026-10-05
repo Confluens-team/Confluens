@@ -14,13 +14,14 @@ El Product Owner los valida con el cliente antes del sprint en que se aborda la 
 | S-08 | Base de la seña y de los pagos | Desde la entrevista del 24/09 el presupuesto muestra total **con** IVA (RN-05). No está definido si el 20% de la seña se calcula sobre el subtotal sin IVA o sobre el total con IVA, ni si los pagos se registran con o sin IVA. Hasta definirlo, no implementar el cálculo del umbral de seña. | HU-40 (S2), HU-41 |
 | S-09 | Recargos combinables | RN-11 define continuo (+20%) y en mesa (+30%) por servicio, pero no se aclaró si un mismo servicio puede llevar **las dos** modalidades a la vez. Modelar la modalidad como un valor único por línea (normal / continuo / mesa) hasta que se confirme. | HU-49 |
 | S-10 | Día de aplicación del incremento mensual | El cliente dijo que el porcentaje impacta "cada 31, mes a mes". Falta confirmar si es el último día de cada mes o el primero del mes siguiente. Hasta confirmar, usar el primer día de cada mes (misma fecha que usa RN-13 para contar meses). | HU-34 (S5) |
-| S-11 | Envío de correos | El canal público manda un correo al confirmar la consulta. El stack no tiene servicio de correo: hay que elegir proveedor (SMTP con Nodemailer, Resend, etc.) y registrarlo en una ADR antes de implementarlo. | HU-49 |
 | S-12 | Precios de audiovisual y pantallas LED | Las pantallas LED del Auditorio no tienen precio fijo. El Responsable de Eventos va a pedirle al proveedor precios fijos por 6 meses. Mientras tanto se cargan como servicio tercerizado "a cotizar" (ver `dominio.md`). | Seeds, HU-49 |
+| S-13 | Verificación del celular del cliente | El celular es el número al que se dispara `wa.me`. Hoy el registro valida que sea un celular y lo guarda en E.164 (`dominio.md`), pero no verifica que exista ni que tenga WhatsApp. Se decidió verificarlo con un proveedor, en dos pasos (código enviado al celular), solo para el celular. Falta elegir proveedor y canal (WhatsApp o SMS), definir qué pasa con la cuenta mientras el número no está verificado y registrarlo en una ADR antes de implementarlo. | Iteración futura (equipo, 04/10/2026) |
 
 ## Resueltos
 
 | ID | Tema | Resolución | Fuente |
 |---|---|---|---|
+| S-11 | Envío de correos | Resend, por su API HTTP (ADR 0006). Falta verificar un dominio propio en Resend antes de publicar: sin él, solo se puede enviar al correo del dueño de la cuenta. | Equipo, 04/10/2026 |
 | S-02 | Alta de clientes en el canal público | Autorregistro abierto con nombre, apellido, correo, contraseña y teléfono. Sin aprobación previa. Validación de correo: no se pidió. | Entrevista 24/09 |
 | S-03 | Inactividad de un cliente | **No hay baja por inactividad.** HU-08 del backlog global se elimina. | Entrevista 24/09 |
 | S-04 | Tipos de evento | Social y empresarial. | Refinamiento |

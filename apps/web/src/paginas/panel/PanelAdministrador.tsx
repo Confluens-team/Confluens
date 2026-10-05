@@ -1,4 +1,4 @@
-import type { Rol, Sesion } from '@confluens/shared';
+import type { Rol, Sesion, Solicitud } from '@confluens/shared';
 import {
   Building2,
   CalendarDays,
@@ -7,6 +7,7 @@ import {
   Inbox,
   LogOut,
   Settings,
+  SquareUser,
   UserRound,
   Users,
   UtensilsCrossed,
@@ -20,9 +21,12 @@ import { useCerrarSesion } from '@/hooks/use-sesion';
 import { cn } from '@/lib/utils';
 import { ListadoClientes } from '@/paginas/clientes/ListadoClientes';
 import { Agenda } from '@/paginas/eventos/Agenda';
+import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
+import { TomarConsulta } from '@/paginas/eventos/TomarConsulta';
 import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
 import { ConsultarSalones } from '@/paginas/salones/ConsultarSalones';
 import { RegistrarServicio } from '@/paginas/servicios/RegistrarServicio';
+import { ListadoSolicitudes } from '@/paginas/solicitudes/ListadoSolicitudes';
 
 type Pestania = 'consultas' | 'agenda' | 'clientes' | 'catalogo' | 'cuenta';
 
@@ -67,16 +71,37 @@ const NOMBRES_DE_ROL: Record<Rol, string> = {
   CLIENTE: 'Cliente',
 };
 
-// Pestaña reservada: la pantalla de consultas y su back los desarrolla otro integrante del equipo.
+// El circuito de consultas del Responsable de Eventos, completo para el administrador: las
+// solicitudes del canal público (HU-14), tomar una y generar su presupuesto Estimado, y el detalle
+// del evento que se crea (reservar, registrar la seña o cancelar).
+type VistaConsultas =
+  | { tipo: 'solicitudes' }
+  | { tipo: 'tomar-consulta'; solicitud: Solicitud }
+  | { tipo: 'detalle-evento'; eventoId: number };
+
 function Consultas() {
+  const [vista, setVista] = useState<VistaConsultas>({ tipo: 'solicitudes' });
+
+  if (vista.tipo === 'solicitudes') {
+    return (
+      <ListadoSolicitudes
+        onTomar={(solicitud) => setVista({ tipo: 'tomar-consulta', solicitud })}
+      />
+    );
+  }
   return (
-    <div className="rounded-xl border border-dashed bg-card px-6 py-14 text-center">
-      <Inbox className="mx-auto size-8 text-dorado" />
-      <p className="mt-3 font-medium">Recepción de consultas</p>
-      <p className="mx-auto mt-1 max-w-md text-sm text-muted-foreground">
-        Acá van a llegar las consultas de los clientes y sus presupuestos. Esta sección se habilita
-        en el próximo sprint.
-      </p>
+    <div className="space-y-4">
+      <Button variant="ghost" size="sm" onClick={() => setVista({ tipo: 'solicitudes' })}>
+        ← Volver a las consultas
+      </Button>
+      {vista.tipo === 'tomar-consulta' ? (
+        <TomarConsulta
+          solicitud={vista.solicitud}
+          onCreado={(eventoId) => setVista({ tipo: 'detalle-evento', eventoId })}
+        />
+      ) : (
+        <DetalleEvento eventoId={vista.eventoId} />
+      )}
     </div>
   );
 }
@@ -163,9 +188,10 @@ function MiCuenta({ sesion, onCerrarSesion }: { sesion: Sesion; onCerrarSesion: 
   );
 }
 
-// Panel del Administrador del Sistema: todo lo implementado hasta el Sprint 1 en cinco pestañas,
-// usando solo lo que ya expone la API. El administrador puede hacer todo lo que hace el Responsable
-// de Eventos, además de administrar la landing. Cada pestaña es una ruta: /admin/<pestaña>.
+// Panel del Administrador del Sistema: todo lo implementado en cinco pestañas, usando solo lo que
+// ya expone la API. El administrador puede hacer todo lo que hace el Responsable de Eventos, además
+// de administrar la landing, y puede pasar a la vista del personal (/panel). Cada pestaña es una
+// ruta: /admin/<pestaña>.
 export function PanelAdministrador({ sesion }: { sesion: Sesion }) {
   const navigate = useNavigate();
   const cerrarSesion = useCerrarSesion();
@@ -189,6 +215,10 @@ export function PanelAdministrador({ sesion }: { sesion: Sesion }) {
           <Logo compacto />
           <div className="flex items-center gap-2 text-sm">
             <span className="hidden text-muted-foreground sm:inline">{sesion.email}</span>
+            {/* El administrador también puede ver el panel tal como lo ve el resto del personal. */}
+            <Button variant="ghost" size="sm" onClick={() => navigate('/panel')}>
+              <SquareUser /> Vista del personal
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
               <Globe /> Ver la landing
             </Button>
