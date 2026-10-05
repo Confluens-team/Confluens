@@ -6,7 +6,13 @@ import {
   opcionesCookieSesion,
   opcionesLimpiarCookieSesion,
 } from '../../lib/jwt.js';
-import { iniciarSesion, obtenerPerfilCliente, registrarCliente } from './auth.servicio.js';
+import {
+  iniciarSesion,
+  obtenerPerfilCliente,
+  registrarCliente,
+  restablecerContrasena,
+  solicitarRestablecimiento,
+} from './auth.servicio.js';
 
 // El controlador arma la respuesta HTTP; la lógica de negocio vive en el servicio
 // (convención de arquitectura.md). req.body ya llegó validado por
@@ -44,5 +50,23 @@ export async function perfil(req: Request, res: Response): Promise<void> {
   const cuerpo: RespuestaExito<PerfilCliente> = {
     data: await obtenerPerfilCliente(req.usuario!.id),
   };
+  res.json(cuerpo);
+}
+
+// Responde 204 enseguida, haya o no una cuenta con ese email, y busca y envía después: así la
+// respuesta tampoco tarda distinto según si el email existe (C8 de HU-48). Un error al enviar el
+// correo se registra en el log; el usuario puede volver a pedir el enlace.
+export function olvidoContrasena(req: Request, res: Response): void {
+  res.status(204).send();
+  solicitarRestablecimiento(req.body.email).catch((error: unknown) => {
+    console.error('No se pudo enviar el correo para restablecer la contraseña:', error);
+  });
+}
+
+// Mismo manejo de cookie que login: con la contraseña nueva queda la sesión iniciada.
+export async function restablecer(req: Request, res: Response): Promise<void> {
+  const { sesion, token } = await restablecerContrasena(req.body);
+  res.cookie(NOMBRE_COOKIE_SESION, token, opcionesCookieSesion());
+  const cuerpo: RespuestaExito<Sesion> = { data: sesion };
   res.json(cuerpo);
 }

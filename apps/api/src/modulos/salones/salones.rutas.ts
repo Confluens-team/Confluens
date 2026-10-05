@@ -28,6 +28,7 @@ registroOpenApi.registerPath({
         },
       },
     },
+    401: { description: 'Sin sesión activa' },
   },
 });
 
@@ -75,7 +76,8 @@ export const rutasSalones = Router();
 // /publicos va antes de cualquier ruta con parámetro: si en el futuro se agrega un GET /:id,
 // Express matchearía "publicos" como id.
 rutasSalones.get('/publicos', asincrono(listarPublicos));
-rutasSalones.get('/', asincrono(listar));
+// Con precios: cualquier sesión, del personal o del cliente (C5 de HU-48). Sin sesión, /publicos.
+rutasSalones.get('/', autenticar, asincrono(listar));
 
 // autenticar antes que autorizar (autorizar confía en req.usuario) y validar al final, para que
 // un request sin sesión responda 401 y no filtre si el body estaba bien formado.

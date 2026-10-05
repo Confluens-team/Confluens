@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { registroOpenApi } from '../../docs/openapi.js';
 import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
-import { autorizar } from '../../middlewares/autorizar.js';
+import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
 import { actualizarLanding, crear, listar, listarPublicos } from './servicios.controlador.js';
 
@@ -24,6 +24,7 @@ registroOpenApi.registerPath({
       description: 'Catálogo de servicios activos, ordenado por nombre',
       content: { 'application/json': { schema: z.object({ data: z.array(esquemaServicio) }) } },
     },
+    401: { description: 'Sin sesión activa' },
   },
 });
 
@@ -39,6 +40,8 @@ registroOpenApi.registerPath({
       content: { 'application/json': { schema: z.object({ data: esquemaServicio }) } },
     },
     409: { description: 'Ya existe un servicio con ese nombre' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
   },
 });
 
@@ -85,8 +88,15 @@ export const rutasServicios = Router();
 
 // /publicos va antes de cualquier ruta con parámetro (ver salones.rutas.ts).
 rutasServicios.get('/publicos', asincrono(listarPublicos));
-rutasServicios.get('/', asincrono(listar));
-rutasServicios.post('/', validar({ body: esquemaCrearServicio }), asincrono(crear));
+// Con precios: cualquier sesión, del personal o del cliente (C5 de HU-48). Sin sesión, /publicos.
+rutasServicios.get('/', autenticar, asincrono(listar));
+rutasServicios.post(
+  '/',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ body: esquemaCrearServicio }),
+  asincrono(crear),
+);
 rutasServicios.patch(
   '/:id/landing',
   autenticar,

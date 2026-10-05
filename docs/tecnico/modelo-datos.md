@@ -70,9 +70,10 @@ enum TipoEvento {
 ## Por qué `Usuario` y `Cliente` van separados
 
 El cliente es a la vez una entidad de negocio con historial comercial y, desde el Sprint 2, una
-credencial. Si se unifican, cada cliente que el Responsable de Eventos carga a mano exige una
-contraseña que nadie tiene. La relación es 1-1 opcional: hay clientes sin usuario, y el usuario
-se crea recién cuando el cliente se registra en el canal público.
+credencial. Se mantienen separados para que los datos comerciales y el historial no dependan de
+la cuenta. La relación es 1-1 opcional porque hay fichas sin usuario: las que el personal cargó en
+el Sprint 1, antes de que se decidiera que los clientes solo se dan de alta registrándose en la
+landing (`dominio.md`). Cuando esa persona se registra, el usuario nuevo se vincula a su ficha.
 
 ## No solapamiento de reservas
 

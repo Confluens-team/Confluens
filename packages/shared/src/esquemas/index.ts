@@ -13,4 +13,5 @@ export * from './salon.esquema.js';
 export * from './servicio.esquema.js';
 export * from './sesion.esquema.js';
 export * from './solicitud.esquema.js';
+export * from './telefono.esquema.js';
 export * from './usuario.esquema.js';

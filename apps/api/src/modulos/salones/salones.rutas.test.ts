@@ -62,13 +62,20 @@ const obtenerSalonesPublicosMock = vi.mocked(obtenerSalonesPublicos);
 const obtenerSalonPorIdMock = vi.mocked(obtenerSalonPorId);
 const actualizarLandingMock = vi.mocked(actualizarLanding);
 
+// Sesión del personal: desde HU-48 estos endpoints piden sesión (C5 y C6).
+const cookiePersonal = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+  id: 1,
+  email: 're@confluens.test',
+  rol: 'RESPONSABLE_EVENTOS',
+})}`;
+
 describe('GET /api/salones', () => {
   const app = crearApp();
 
   it('responde 200 con el catálogo de salones y sus distribuciones anidadas', async () => {
     obtenerSalonesConDistribucionesMock.mockResolvedValue([auditorio, bariloche] as never);
 
-    const respuesta = await request(app).get('/api/salones');
+    const respuesta = await request(app).get('/api/salones').set('Cookie', [cookiePersonal]);
 
     expect(respuesta.status).toBe(200);
     expect(respuesta.body).toEqual({
@@ -86,7 +93,7 @@ describe('GET /api/salones', () => {
   it('sigue devolviendo los precios al canal interno', async () => {
     obtenerSalonesConDistribucionesMock.mockResolvedValue([auditorio] as never);
 
-    const respuesta = await request(app).get('/api/salones');
+    const respuesta = await request(app).get('/api/salones').set('Cookie', [cookiePersonal]);
 
     expect(respuesta.body.data[0]).toMatchObject({
       precioJornadaCompleta: '920290.00',
@@ -248,5 +255,33 @@ describe('PATCH /api/salones/:id/landing', () => {
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
     expect(actualizarLandingMock).not.toHaveBeenCalled();
+  });
+});
+
+// C5 de HU-48: los precios solo con sesión. Sin sesión, el canal público usa /salones/publicos.
+describe('GET /api/salones: permisos (HU-48)', () => {
+  const app = crearApp();
+  const cookieCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+    id: 7,
+    email: 'ana@empresa.com',
+    rol: 'CLIENTE',
+  })}`;
+
+  beforeEach(() => obtenerSalonesConDistribucionesMock.mockReset());
+
+  it('sin sesión responde 401 y no consulta precios', async () => {
+    const respuesta = await request(app).get('/api/salones');
+
+    expect(respuesta.status).toBe(401);
+    expect(obtenerSalonesConDistribucionesMock).not.toHaveBeenCalled();
+  });
+
+  it('con sesión de Cliente responde 200 con los precios', async () => {
+    obtenerSalonesConDistribucionesMock.mockResolvedValue([auditorio] as never);
+
+    const respuesta = await request(app).get('/api/salones').set('Cookie', [cookieCliente]);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data[0]).toHaveProperty('precioJornadaCompleta');
   });
 });
