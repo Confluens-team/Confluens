@@ -10,26 +10,26 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  useConsulta,
-  useDarDeBajaConsulta,
-  useModificarConsulta,
-  useRecalcularConsulta,
-} from '@/hooks/use-presupuestos';
+import { useConsulta, useDarDeBajaConsulta, useModificarConsulta } from '@/hooks/use-presupuestos';
 import { useSalones } from '@/hooks/use-salones';
 import { useServicios } from '@/hooks/use-servicios';
 import { ErrorApiCliente } from '@/lib/api';
+import { agruparPorCategoria } from '@/lib/catalogo';
 import { formatearPesos, nombreCompleto } from '@/lib/formato';
 import { DIAS_VIGENCIA_PRESUPUESTO, desglosarIva } from '@/lib/importes';
 import { cn } from '@/lib/utils';
 
+// Una línea del detalle mientras se edita. servicioId null = adicional escrito a mano.
 interface LineaEditable {
-  servicioId: number;
+  clave: string;
+  servicioId: number | null;
   descripcion: string;
   cantidad: string;
   precio: string;
   tercerizado: boolean;
 }
+
+const OTRO = 'otro';
 
 const fechaCorta = (fecha: Date) =>
   fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
@@ -39,6 +39,8 @@ const precioDeSalon = (salon: SalonConDistribuciones, jornada: TipoJornada) =>
 
 const esEntero = (valor: string) => /^\d+$/.test(valor) && Number(valor) > 0;
 const esImporte = (valor: string) => /^\d{1,10}(\.\d{1,2})?$/.test(valor);
+const subtotal = (cantidad: string, precio: string) =>
+  esEntero(cantidad) && esImporte(precio) ? Number(cantidad) * Number(precio) : 0;
 
 const mensajeDeError = (error: unknown, porDefecto: string) =>
   error instanceof ErrorApiCliente ? error.message : porDefecto;
@@ -50,25 +52,27 @@ const ESTADOS: Record<string, string> = {
   Confirmado: 'bg-emerald-100 text-emerald-900',
 };
 
+const claseSelect = 'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm';
+
 // HU-12: una consulta abierta desde el listado. Después de hablar con el cliente, el personal
-// corrige fecha, salón, personas, jornada, servicios, cantidades y precios; al guardar queda
-// Estimado y la vigencia vuelve a contar 10 días. Una Expirado además se puede recalcular con los
-// precios vigentes, y cualquiera en curso se puede dar de baja. Los datos del cliente son suyos:
-// acá solo se muestran.
+// corrige fecha, salón, personas, jornada, servicios (del catálogo o escritos a mano), cantidades y
+// precios. Al guardar queda Estimado, la vigencia vuelve a contar 10 días y se vuelve al listado.
+// En una Expirado, «Recalcular» trae los precios vigentes al formulario: al guardar, la misma
+// consulta vuelve a Estimado. Los datos del cliente son suyos: acá solo se muestran.
 export function EditarConsulta({
   id,
   onVolver,
-  onAbrir,
+  onGuardada,
+  onDadaDeBaja,
 }: {
   id: number;
   onVolver: () => void;
-  onAbrir: (id: number) => void;
+  onGuardada: (consulta: ConsultaDetallada) => void;
+  onDadaDeBaja: (consulta: ConsultaDetallada) => void;
 }) {
   const consulta = useConsulta(id);
   const salones = useSalones();
   const servicios = useServicios();
-  // Vive acá y no en el formulario, que se vuelve a armar después de guardar.
-  const [guardado, setGuardado] = useState(false);
 
   return (
     <div className="space-y-4">
@@ -83,20 +87,13 @@ export function EditarConsulta({
           No se pudo cargar la consulta.
         </p>
       )}
-      {guardado && consulta.data && (
-        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
-          Cambios guardados. La consulta vence el {fechaCorta(new Date(consulta.data.venceEn))}.
-        </p>
-      )}
       {consulta.data && salones.data && servicios.data && (
-        // La key vuelve a armar el formulario con lo que guardó la API después de cada cambio.
         <Formulario
-          key={`${consulta.data.id}-${consulta.data.venceEn}-${consulta.data.estado}`}
           consulta={consulta.data}
           salones={salones.data}
           catalogo={servicios.data}
-          onAbrir={onAbrir}
-          onGuardado={setGuardado}
+          onGuardada={onGuardada}
+          onDadaDeBaja={onDadaDeBaja}
         />
       )}
     </div>
@@ -107,20 +104,19 @@ function Formulario({
   consulta,
   salones,
   catalogo,
-  onAbrir,
-  onGuardado,
+  onGuardada,
+  onDadaDeBaja,
 }: {
   consulta: ConsultaDetallada;
   salones: SalonConDistribuciones[];
   catalogo: Servicio[];
-  onAbrir: (id: number) => void;
-  onGuardado: (guardado: boolean) => void;
+  onGuardada: (consulta: ConsultaDetallada) => void;
+  onDadaDeBaja: (consulta: ConsultaDetallada) => void;
 }) {
   const modificar = useModificarConsulta(consulta.id);
-  const recalcular = useRecalcularConsulta(consulta.id);
   const darDeBaja = useDarDeBajaConsulta(consulta.id);
 
-  const lineaSalon = consulta.lineas.find((linea) => linea.servicioId === null);
+  const lineaSalon = consulta.lineas.find((linea) => linea.tipo === 'salon');
   const [fecha, setFecha] = useState(consulta.evento.fecha);
   const [salonId, setSalonId] = useState(consulta.salon.id);
   const [jornada, setJornada] = useState<TipoJornada>(consulta.tipoJornada);
@@ -128,9 +124,10 @@ function Formulario({
   const [precioSalon, setPrecioSalon] = useState(lineaSalon?.precioUnitario ?? '0.00');
   const [lineas, setLineas] = useState<LineaEditable[]>(
     consulta.lineas
-      .filter((linea) => linea.servicioId !== null)
+      .filter((linea) => linea.tipo !== 'salon')
       .map((linea) => ({
-        servicioId: linea.servicioId!,
+        clave: `linea-${linea.id}`,
+        servicioId: linea.servicioId,
         descripcion: linea.descripcion,
         cantidad: String(linea.cantidad),
         precio: linea.precioUnitario,
@@ -138,6 +135,8 @@ function Formulario({
       })),
   );
   const [agregar, setAgregar] = useState('');
+  const [otro, setOtro] = useState({ descripcion: '', cantidad: '1', precio: '' });
+  const [recalculado, setRecalculado] = useState(false);
 
   const enCurso =
     (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
@@ -152,72 +151,111 @@ function Formulario({
     setJornada(nuevaJornada);
     const original = nuevoSalonId === consulta.salon.id && nuevaJornada === consulta.tipoJornada;
     const nuevoSalon = salones.find((s) => s.id === nuevoSalonId);
-    if (original && lineaSalon) setPrecioSalon(lineaSalon.precioUnitario);
+    if (original && lineaSalon && !recalculado) setPrecioSalon(lineaSalon.precioUnitario);
     else if (nuevoSalon) setPrecioSalon(precioDeSalon(nuevoSalon, nuevaJornada));
   }
 
-  function actualizarLinea(servicioId: number, cambios: Partial<LineaEditable>) {
+  // RN-06 / HU-12: un Expirado se recalcula con los precios vigentes del salón y de cada servicio
+  // del catálogo. Los adicionales escritos a mano conservan su precio. Se guarda con «Guardar».
+  function recalcularPrecios() {
+    if (salon) setPrecioSalon(precioDeSalon(salon, jornada));
     setLineas((anteriores) =>
-      anteriores.map((l) => (l.servicioId === servicioId ? { ...l, ...cambios } : l)),
+      anteriores.map((linea) => {
+        const servicio = catalogo.find((s) => s.id === linea.servicioId);
+        return servicio ? { ...linea, precio: servicio.precio } : linea;
+      }),
+    );
+    setRecalculado(true);
+  }
+
+  function actualizarLinea(clave: string, cambios: Partial<LineaEditable>) {
+    setLineas((anteriores) =>
+      anteriores.map((l) => (l.clave === clave ? { ...l, ...cambios } : l)),
     );
   }
 
-  // Un servicio nuevo entra con el precio vigente; si es por persona, para todas las personas.
-  function agregarServicio() {
-    const servicio = catalogo.find((s) => s.id === Number(agregar));
-    if (!servicio) return;
-    setLineas((anteriores) => [
-      ...anteriores,
-      {
-        servicioId: servicio.id,
-        descripcion: servicio.nombre,
-        cantidad: servicio.porPersona && esEntero(personas) ? personas : '1',
-        precio: servicio.precio,
-        tercerizado: servicio.tercerizado,
-      },
-    ]);
+  // Un servicio del catálogo entra con el precio vigente; si es por persona, para todas las
+  // personas. «Otro» entra con lo que se escribió a mano.
+  function agregarLinea() {
+    if (agregar === OTRO) {
+      setLineas((anteriores) => [
+        ...anteriores,
+        {
+          clave: `otro-${Date.now()}`,
+          servicioId: null,
+          descripcion: otro.descripcion.trim(),
+          cantidad: otro.cantidad,
+          precio: otro.precio,
+          tercerizado: false,
+        },
+      ]);
+      setOtro({ descripcion: '', cantidad: '1', precio: '' });
+    } else {
+      const servicio = catalogo.find((s) => s.id === Number(agregar));
+      if (!servicio) return;
+      setLineas((anteriores) => [
+        ...anteriores,
+        {
+          clave: `servicio-${servicio.id}`,
+          servicioId: servicio.id,
+          descripcion: servicio.nombre,
+          cantidad: servicio.porPersona && esEntero(personas) ? personas : '1',
+          precio: servicio.precio,
+          tercerizado: servicio.tercerizado,
+        },
+      ]);
+    }
     setAgregar('');
   }
 
   const disponibles = catalogo.filter(
     (s) => s.activo && !lineas.some((l) => l.servicioId === s.id),
   );
+  const otroValido =
+    otro.descripcion.trim().length > 0 && esEntero(otro.cantidad) && esImporte(otro.precio);
+  const puedeAgregar = agregar === OTRO ? otroValido : !!agregar;
+
   const valido =
     !!fecha &&
     esEntero(personas) &&
     esImporte(precioSalon) &&
-    lineas.every((l) => esEntero(l.cantidad) && esImporte(l.precio));
+    lineas.every((l) => esEntero(l.cantidad) && esImporte(l.precio) && l.descripcion.trim());
 
   // RN-05: los importes se cargan sin IVA y el resumen muestra el desglose.
-  const subtotalSinIva =
+  const importes = desglosarIva(
     (esImporte(precioSalon) ? Number(precioSalon) : 0) +
-    lineas.reduce(
-      (suma, l) =>
-        suma +
-        (esEntero(l.cantidad) && esImporte(l.precio) ? Number(l.cantidad) * Number(l.precio) : 0),
-      0,
-    );
-  const importes = desglosarIva(subtotalSinIva);
+      lineas.reduce((suma, l) => suma + subtotal(l.cantidad, l.precio), 0),
+  );
   const excedeCapacidad = !!salon && esEntero(personas) && Number(personas) > salon.capacidadMaxima;
 
+  // Se mandan los precios que se ven: lo que se guarda es exactamente lo que está en pantalla.
   function guardar(evento: React.FormEvent) {
     evento.preventDefault();
     if (!valido) return;
-    onGuardado(false);
+    const aImporte = (valor: string) => Number(valor).toFixed(2);
     modificar.mutate(
       {
         fecha,
         salonId,
         cantidadPersonas: Number(personas),
         tipoJornada: jornada,
-        precioSalon: Number(precioSalon).toFixed(2),
-        servicios: lineas.map((l) => ({
-          servicioId: l.servicioId,
-          cantidad: Number(l.cantidad),
-          precioUnitario: Number(l.precio).toFixed(2),
-        })),
+        precioSalon: aImporte(precioSalon),
+        servicios: lineas
+          .filter((l) => l.servicioId !== null)
+          .map((l) => ({
+            servicioId: l.servicioId!,
+            cantidad: Number(l.cantidad),
+            precioUnitario: aImporte(l.precio),
+          })),
+        adicionales: lineas
+          .filter((l) => l.servicioId === null)
+          .map((l) => ({
+            descripcion: l.descripcion.trim(),
+            cantidad: Number(l.cantidad),
+            precioUnitario: aImporte(l.precio),
+          })),
       },
-      { onSuccess: () => onGuardado(true) },
+      { onSuccess: onGuardada },
     );
   }
 
@@ -225,7 +263,7 @@ function Formulario({
     if (!window.confirm(`¿Dar de baja la consulta ${consulta.id}? Va a quedar como Cancelado.`)) {
       return;
     }
-    darDeBaja.mutate();
+    darDeBaja.mutate(undefined, { onSuccess: onDadaDeBaja });
   }
 
   return (
@@ -248,29 +286,20 @@ function Formulario({
         </span>
       </header>
 
-      {expirado && (
+      {expirado && enCurso && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
           <p className="flex items-center gap-2 font-medium">
-            <AlertTriangle className="size-4 shrink-0" /> Presupuesto vencido, recalcular
+            <AlertTriangle className="size-4 shrink-0" />
+            {recalculado
+              ? 'Precios actualizados a los vigentes. Guardá los cambios para que vuelva a Estimado.'
+              : 'Presupuesto vencido, recalcular'}
           </p>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            disabled={recalcular.isPending}
-            onClick={() =>
-              recalcular.mutate(undefined, { onSuccess: (nuevo) => onAbrir(nuevo.id) })
-            }
-          >
-            <RefreshCw />{' '}
-            {recalcular.isPending ? 'Recalculando…' : 'Recalcular con precios vigentes'}
-          </Button>
+          {!recalculado && (
+            <Button type="button" size="sm" variant="outline" onClick={recalcularPrecios}>
+              <RefreshCw /> Recalcular con precios vigentes
+            </Button>
+          )}
         </div>
-      )}
-      {recalcular.isError && (
-        <p className="text-sm text-destructive">
-          {mensajeDeError(recalcular.error, 'No se pudo recalcular la consulta.')}
-        </p>
       )}
       {!enCurso && (
         <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
@@ -311,7 +340,7 @@ function Formulario({
               <Label htmlFor="consulta-salon">Salón</Label>
               <select
                 id="consulta-salon"
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                className={claseSelect}
                 value={salonId}
                 onChange={(e) => cambiarSalonOJornada(Number(e.target.value), jornada)}
               >
@@ -337,7 +366,7 @@ function Formulario({
               <Label htmlFor="consulta-jornada">Jornada</Label>
               <select
                 id="consulta-jornada"
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                className={claseSelect}
                 value={jornada}
                 onChange={(e) => cambiarSalonOJornada(salonId, e.target.value as TipoJornada)}
               >
@@ -393,11 +422,26 @@ function Formulario({
                   <td />
                 </tr>
                 {lineas.map((linea) => (
-                  <tr key={linea.servicioId}>
+                  <tr key={linea.clave}>
                     <td className="py-2 pr-3">
-                      {linea.descripcion}
-                      {linea.tercerizado && (
-                        <span className="ml-1 text-xs text-muted-foreground">(tercerizado)</span>
+                      {linea.servicioId === null ? (
+                        <Input
+                          aria-label="Descripción del adicional"
+                          value={linea.descripcion}
+                          aria-invalid={!linea.descripcion.trim()}
+                          onChange={(e) =>
+                            actualizarLinea(linea.clave, { descripcion: e.target.value })
+                          }
+                        />
+                      ) : (
+                        <>
+                          {linea.descripcion}
+                          {linea.tercerizado && (
+                            <span className="ml-1 text-xs text-muted-foreground">
+                              (tercerizado)
+                            </span>
+                          )}
+                        </>
                       )}
                     </td>
                     <td className="py-2 pr-3">
@@ -407,9 +451,7 @@ function Formulario({
                         min={1}
                         value={linea.cantidad}
                         aria-invalid={!esEntero(linea.cantidad)}
-                        onChange={(e) =>
-                          actualizarLinea(linea.servicioId, { cantidad: e.target.value })
-                        }
+                        onChange={(e) => actualizarLinea(linea.clave, { cantidad: e.target.value })}
                       />
                     </td>
                     <td className="py-2 pr-3">
@@ -418,14 +460,12 @@ function Formulario({
                         inputMode="decimal"
                         value={linea.precio}
                         aria-invalid={!esImporte(linea.precio)}
-                        onChange={(e) =>
-                          actualizarLinea(linea.servicioId, { precio: e.target.value })
-                        }
+                        onChange={(e) => actualizarLinea(linea.clave, { precio: e.target.value })}
                       />
                     </td>
                     <td className="py-2 text-right whitespace-nowrap">
                       {esEntero(linea.cantidad) && esImporte(linea.precio)
-                        ? formatearPesos(Number(linea.cantidad) * Number(linea.precio))
+                        ? formatearPesos(subtotal(linea.cantidad, linea.precio))
                         : '—'}
                     </td>
                     <td className="py-2 text-right">
@@ -436,7 +476,7 @@ function Formulario({
                         aria-label={`Quitar ${linea.descripcion}`}
                         onClick={() =>
                           setLineas((anteriores) =>
-                            anteriores.filter((l) => l.servicioId !== linea.servicioId),
+                            anteriores.filter((l) => l.clave !== linea.clave),
                           )
                         }
                       >
@@ -448,28 +488,90 @@ function Formulario({
               </tbody>
             </table>
           </div>
-          <div className="mt-4 flex flex-wrap items-end gap-2">
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <Label htmlFor="consulta-agregar">Agregar servicio</Label>
-              <select
-                id="consulta-agregar"
-                className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
-                value={agregar}
-                onChange={(e) => setAgregar(e.target.value)}
-              >
-                <option value="">Elegí un servicio…</option>
-                {disponibles.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nombre} · {formatearPesos(s.precio)}
-                    {s.porPersona ? ' por persona' : ''}
-                    {s.tercerizado ? ' (tercerizado)' : ''}
-                  </option>
-                ))}
-              </select>
+
+          <div className="mt-4 space-y-3 rounded-lg bg-muted/50 p-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Label htmlFor="consulta-agregar">Agregar servicio</Label>
+                <select
+                  id="consulta-agregar"
+                  className={cn(claseSelect, 'bg-card')}
+                  value={agregar}
+                  onChange={(e) => setAgregar(e.target.value)}
+                >
+                  <option value="">Elegí un servicio…</option>
+                  {agruparPorCategoria(disponibles).map(([categoria, delTipo]) => (
+                    <optgroup key={categoria} label={categoria}>
+                      {delTipo.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.nombre} · {formatearPesos(s.precio)}
+                          {s.porPersona ? ' por persona' : ''}
+                          {s.tercerizado ? ' (tercerizado)' : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                  <optgroup label="Otro">
+                    <option value={OTRO}>Otro servicio (escribirlo a mano)</option>
+                  </optgroup>
+                </select>
+              </div>
+              {agregar !== OTRO && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!puedeAgregar}
+                  onClick={agregarLinea}
+                >
+                  <Plus /> Agregar
+                </Button>
+              )}
             </div>
-            <Button type="button" variant="outline" disabled={!agregar} onClick={agregarServicio}>
-              <Plus /> Agregar
-            </Button>
+            {agregar === OTRO && (
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_9rem_auto] sm:items-end">
+                <div className="space-y-1.5">
+                  <Label htmlFor="otro-descripcion">¿Qué servicio?</Label>
+                  <Input
+                    id="otro-descripcion"
+                    className="bg-card"
+                    placeholder="Por ejemplo: decoración con globos"
+                    maxLength={120}
+                    value={otro.descripcion}
+                    onChange={(e) => setOtro({ ...otro, descripcion: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="otro-cantidad">Cantidad</Label>
+                  <Input
+                    id="otro-cantidad"
+                    className="bg-card"
+                    type="number"
+                    min={1}
+                    value={otro.cantidad}
+                    onChange={(e) => setOtro({ ...otro, cantidad: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="otro-precio">Precio sin IVA</Label>
+                  <Input
+                    id="otro-precio"
+                    className="bg-card"
+                    inputMode="decimal"
+                    placeholder="0.00"
+                    value={otro.precio}
+                    onChange={(e) => setOtro({ ...otro, precio: e.target.value })}
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={!puedeAgregar}
+                  onClick={agregarLinea}
+                >
+                  <Plus /> Agregar
+                </Button>
+              </div>
+            )}
           </div>
         </section>
       </fieldset>

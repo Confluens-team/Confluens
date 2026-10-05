@@ -77,7 +77,7 @@ export function useConsulta(id: number) {
   });
 }
 
-// Modificar, recalcular o dar de baja cambian el listado, la consulta y el evento (su detalle y la
+// Modificar (también recalcular) o dar de baja cambian el listado, la consulta y el evento (su detalle y la
 // agenda): se invalida todo eso.
 function useAccionSobreConsulta<T>(accion: (datos: T) => Promise<ConsultaDetallada>) {
   const queryClient = useQueryClient();
@@ -97,17 +97,6 @@ export function useModificarConsulta(id: number) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(datos),
     });
-    return respuesta.data;
-  });
-}
-
-// Devuelve el presupuesto nuevo: el anterior queda Expirado.
-export function useRecalcularConsulta(id: number) {
-  return useAccionSobreConsulta(async () => {
-    const respuesta = await apiFetch<RespuestaExito<ConsultaDetallada>>(
-      `/presupuestos/${id}/recalcular`,
-      { method: 'POST' },
-    );
     return respuesta.data;
   });
 }
