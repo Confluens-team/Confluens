@@ -106,8 +106,9 @@ historial.
 
 **Teléfono del cliente.** Es el canal de contacto principal (WhatsApp, `wa.me`), así que en el
 registro tiene que ser un **celular válido** y se guarda en formato internacional E.164
-(`+5493516123456`). Sin código de país se asume Argentina; un número argentino escrito sin el 15
-se toma como celular. Verificar que el número exista con un proveedor (código por SMS o WhatsApp)
+(`+5493516123456`). El cliente elige el país en un selector (Argentina por defecto) y escribe solo
+el número nacional (`3516167991`): el código del país y el 9 de los celulares argentinos los
+agrega el sistema. También se aceptan el 0 y el 15 si el cliente los escribe. Verificar que el número exista con un proveedor (código por SMS o WhatsApp)
 queda para una iteración futura. Decisión del equipo, 04/10/2026.
 
 **Correo de la cuenta.** Se guarda en minúsculas y sin espacios: `Juan@Mail.com` y
