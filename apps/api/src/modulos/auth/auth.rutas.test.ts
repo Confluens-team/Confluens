@@ -55,6 +55,25 @@ describe('POST /api/auth/login', () => {
     ).toBe(true);
   });
 
+  it('un Cliente registrado inicia sesión aunque escriba el email con otras mayúsculas (C5 de HU-48)', async () => {
+    buscarUsuarioPorEmailMock.mockResolvedValue({
+      id: 7,
+      email: 'ana@empresa.com',
+      hashContrasena: await hashearContrasena('secreta123'),
+      rol: 'CLIENTE',
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+    });
+
+    const respuesta = await request(app)
+      .post('/api/auth/login')
+      .send({ email: ' Ana@Empresa.com', contrasena: 'secreta123' });
+
+    expect(buscarUsuarioPorEmailMock).toHaveBeenCalledWith('ana@empresa.com');
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.rol).toBe('CLIENTE');
+  });
+
   it('con contraseña incorrecta responde 401 sin indicar cuál dato falló (criterio 2)', async () => {
     const hash = await hashearContrasena('contrasena-correcta');
     buscarUsuarioPorEmailMock.mockResolvedValue({
