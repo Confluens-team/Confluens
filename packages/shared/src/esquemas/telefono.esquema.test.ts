@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { esquemaRegistroCliente } from './sesion.esquema.js';
-import { esquemaCelular, normalizarCelular } from './telefono.esquema.js';
+import { esquemaCelular, normalizarCelular, PAISES_TELEFONICOS } from './telefono.esquema.js';
 
 describe('normalizarCelular', () => {
   it.each([
@@ -28,6 +28,31 @@ describe('normalizarCelular', () => {
       expect(normalizarCelular(texto)).toBeNull();
     },
   );
+});
+
+describe('normalizarCelular con el país del selector', () => {
+  it('con Argentina por defecto, el número nacional sin 0 ni 15 alcanza (3516167991)', () => {
+    expect(normalizarCelular('3516167991')).toBe('+5493516167991');
+  });
+
+  it('con otro país usa su código: Uruguay + 94123456', () => {
+    expect(normalizarCelular('94123456', 'UY')).toBe('+59894123456');
+  });
+
+  it('un número que no es celular en el país elegido se rechaza', () => {
+    expect(normalizarCelular('3516167991', 'UY')).toBeNull();
+  });
+
+  it('si el texto trae + manda ese código y no el del selector', () => {
+    expect(normalizarCelular('+54 9 351 616 7991', 'UY')).toBe('+5493516167991');
+  });
+});
+
+describe('PAISES_TELEFONICOS', () => {
+  it('trae Argentina con el prefijo 54 y el resto de los países', () => {
+    expect(PAISES_TELEFONICOS).toContainEqual({ pais: 'AR', prefijo: '54' });
+    expect(PAISES_TELEFONICOS.length).toBeGreaterThan(200);
+  });
 });
 
 describe('esquemaCelular', () => {
