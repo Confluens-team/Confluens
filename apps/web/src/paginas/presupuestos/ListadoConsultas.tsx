@@ -1,5 +1,5 @@
 import type { EstadoConsulta, FiltrosPresupuestos } from '@confluens/shared';
-import { AlertTriangle, ArrowLeft, FileText, Search } from 'lucide-react';
+import { AlertTriangle, FileText, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { usePresupuestos } from '@/hooks/use-presupuestos';
 import { fechaLocal, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { desglosarIva } from '@/lib/importes';
 import { cn } from '@/lib/utils';
-import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
+import { EditarConsulta } from './EditarConsulta';
 
 // Los Confirmado no aparecen: pasan a la agenda de eventos.
 const ESTADOS: { valor: EstadoConsulta; clase: string }[] = [
@@ -25,14 +25,15 @@ const fechaCorta = (fecha: Date) =>
 
 // HU-10: las consultas del personal (cada una es un presupuesto no confirmado), de la más reciente a
 // la más antigua por emisión. Filtra por estado, cliente y rango de fechas del evento; las Expirado
-// llevan el aviso de RN-08. Los importes se guardan sin IVA y se muestran desglosados (RN-05).
+// llevan el aviso de RN-08. Los importes se guardan sin IVA y se muestran desglosados (RN-05). Cada
+// fila abre la consulta para editarla (HU-12).
 export function ListadoConsultas() {
   const [estado, setEstado] = useState<EstadoConsulta | undefined>();
   const [textoCliente, setTextoCliente] = useState('');
   const [cliente, setCliente] = useState('');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
-  const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
+  const [abierta, setAbierta] = useState<number | null>(null);
 
   // La búsqueda por cliente espera a que se deje de escribir para no pedir una vez por tecla.
   useEffect(() => {
@@ -56,16 +57,15 @@ export function ListadoConsultas() {
     setHasta('');
   }
 
-  if (eventoAbierto !== null) {
+  // HU-12: cada fila abre la consulta para verla y editarla. Recalcular abre la nueva.
+  if (abierta !== null) {
     return (
-      <div>
-        <div className="mx-auto max-w-2xl px-6 pt-6">
-          <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
-            <ArrowLeft /> Volver a las consultas
-          </Button>
-        </div>
-        <DetalleEvento eventoId={eventoAbierto} />
-      </div>
+      <EditarConsulta
+        key={abierta}
+        id={abierta}
+        onVolver={() => setAbierta(null)}
+        onAbrir={setAbierta}
+      />
     );
   }
 
@@ -202,7 +202,7 @@ export function ListadoConsultas() {
                   return (
                     <tr
                       key={presupuesto.id}
-                      onClick={() => setEventoAbierto(presupuesto.eventoId)}
+                      onClick={() => setAbierta(presupuesto.id)}
                       className={cn(
                         'cursor-pointer transition-colors hover:bg-muted/60',
                         expirado && 'bg-amber-50/70',
