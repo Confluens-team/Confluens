@@ -74,6 +74,6 @@ activo: verificar el plan de Render antes de depender de esto en producción.
 
 ## Correo saliente
 
-El canal público envía un correo al cliente cuando confirma una consulta. El proveedor todavía no
-está elegido (`../producto/pendientes.md`, S-11): se decide en una ADR antes de implementarlo, y
-la clave va en variables de entorno validadas como el resto.
+El proveedor es Resend, llamado por su API HTTP desde `apps/api/src/lib/correo.ts` (ADR 0006).
+Hoy envía el enlace para restablecer la contraseña; después, el correo de consulta recibida
+(HU-49). Sin `RESEND_API_KEY` en desarrollo, el correo se muestra en la consola de la API.

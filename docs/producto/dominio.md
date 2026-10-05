@@ -114,6 +114,11 @@ queda para una iteración futura. Decisión del equipo, 04/10/2026.
 **Correo de la cuenta.** Se guarda en minúsculas y sin espacios: `Juan@Mail.com` y
 `juan@mail.com` son la misma cuenta.
 
+**Olvidé mi contraseña.** El cliente y el personal pueden pedir un enlace por correo para elegir
+una contraseña nueva. El enlace vence a los 30 minutos y sirve una sola vez. La respuesta es la
+misma exista o no una cuenta con ese correo, para no revelar qué correos están registrados. Al
+guardar la contraseña nueva queda la sesión iniciada.
+
 **Es usuario del sistema**: para ver precios y armar un presupuesto en el canal público debe
 registrarse e iniciar sesión (ver "Canal público"). Planificado para el Sprint 2.
 
