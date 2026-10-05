@@ -1,6 +1,7 @@
 import { esquemaCredenciales, type Credenciales } from '@confluens/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useForm } from 'react-hook-form';
+import { useNavigate } from 'react-router';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,6 +17,7 @@ import { useIniciarSesion } from '@/hooks/use-sesion';
 // wrapper para un solo caso de uso (ver CLAUDE.md: no crear abstracciones para
 // operaciones puntuales).
 export function IniciarSesion() {
+  const navigate = useNavigate();
   const iniciarSesion = useIniciarSesion();
   const {
     register,
@@ -69,6 +71,13 @@ export function IniciarSesion() {
         <Button type="submit" disabled={iniciarSesion.isPending}>
           {iniciarSesion.isPending ? 'Ingresando…' : 'Ingresar'}
         </Button>
+        <button
+          type="button"
+          onClick={() => navigate('/olvide-contrasena')}
+          className="text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+        >
+          ¿Olvidaste tu contraseña?
+        </button>
       </form>
     </main>
   );

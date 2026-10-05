@@ -1,15 +1,18 @@
 import {
+  type CodigoPais,
   esquemaCredenciales,
   esquemaRegistroCliente,
+  normalizarCelular,
+  PAIS_POR_DEFECTO,
   type Credenciales,
   type RegistroCliente,
   type Sesion,
 } from '@confluens/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { X } from 'lucide-react';
+import { ChevronDown, X } from 'lucide-react';
 import { Dialog } from 'radix-ui';
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { forwardRef, useState } from 'react';
+import { type Resolver, useForm, useWatch } from 'react-hook-form';
 
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
@@ -18,6 +21,7 @@ import { Label } from '@/components/ui/label';
 import { useIniciarSesion, useRegistrarCliente } from '@/hooks/use-sesion';
 import { ErrorApiCliente } from '@/lib/api';
 import { FOTOS } from '@/lib/fotos';
+import { OPCIONES_PAIS } from '@/lib/paises';
 import { cn } from '@/lib/utils';
 
 type Modo = 'registro' | 'ingreso';
@@ -46,6 +50,61 @@ function mensajeDeError(error: unknown, porDefecto: string) {
   return error instanceof ErrorApiCliente ? error.message : porDefecto;
 }
 
+// El cliente elige el país en el selector y escribe solo el número nacional (3516167991): el
+// código del país lo agrega el sistema. A la API viaja el celular ya en formato internacional, con
+// el mismo contrato de siempre (esquemaRegistroCliente lo vuelve a validar y normalizar).
+type CamposRegistro = RegistroCliente & { pais: CodigoPais };
+
+function telefonoInternacional(numero: string, pais: CodigoPais): string {
+  const prefijo = OPCIONES_PAIS.find((opcion) => opcion.pais === pais)?.prefijo ?? '';
+  // Si no es un celular válido en ese país, se valida igual con el código adelante: así el error
+  // es el del país elegido y no se acepta por casualidad como número argentino.
+  return normalizarCelular(numero, pais) ?? (numero.trim() && `+${prefijo} ${numero.trim()}`);
+}
+
+const resolverRegistro: Resolver<CamposRegistro, unknown, RegistroCliente> = (
+  { pais, ...valores },
+  contexto,
+  opciones,
+) =>
+  zodResolver(esquemaRegistroCliente)(
+    { ...valores, telefono: telefonoInternacional(valores.telefono, pais) },
+    contexto,
+    // pais no es un campo del schema: se saca de la lista de campos a validar.
+    { ...opciones, names: opciones.names?.filter((campo) => campo !== 'pais') },
+  );
+
+// forwardRef: react-hook-form necesita el ref del <select> para fijar el país por defecto en el DOM
+// (en React 18 el ref no llega como prop; mismo motivo que en components/ui/input.tsx).
+const SelectorPais = forwardRef<
+  HTMLSelectElement,
+  React.ComponentProps<'select'> & { valor: CodigoPais }
+>(({ valor, ...props }, ref) => {
+  const elegido = OPCIONES_PAIS.find((opcion) => opcion.pais === valor);
+  // El <select> nativo queda invisible encima de la caja: se ve compacto (bandera y código) y
+  // conserva el teclado, el lector de pantalla y el selector del celular.
+  return (
+    <div className="relative flex h-10 shrink-0 items-center gap-1 rounded-lg border border-input px-2.5 text-sm focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50">
+      <span aria-hidden>{elegido?.bandera}</span>
+      <span aria-hidden>+{elegido?.prefijo}</span>
+      <ChevronDown aria-hidden className="size-3.5 text-muted-foreground" />
+      <select
+        ref={ref}
+        aria-label="País del celular"
+        className="absolute inset-0 cursor-pointer opacity-0"
+        {...props}
+      >
+        {OPCIONES_PAIS.map((opcion) => (
+          <option key={opcion.pais} value={opcion.pais}>
+            {opcion.bandera} {opcion.nombre} (+{opcion.prefijo})
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+});
+SelectorPais.displayName = 'SelectorPais';
+
 function FormularioRegistro({
   onListo,
   onIrAIngreso,
@@ -57,8 +116,13 @@ function FormularioRegistro({
   const {
     register,
     handleSubmit,
+    control,
     formState: { errors },
-  } = useForm<RegistroCliente>({ resolver: zodResolver(esquemaRegistroCliente) });
+  } = useForm<CamposRegistro, unknown, RegistroCliente>({
+    resolver: resolverRegistro,
+    defaultValues: { pais: PAIS_POR_DEFECTO },
+  });
+  const pais = useWatch({ control, name: 'pais' });
 
   const onSubmit = handleSubmit((datos) => registrar.mutate(datos, { onSuccess: onListo }));
   const emailYaRegistrado =
@@ -93,15 +157,25 @@ function FormularioRegistro({
           {...register('email')}
         />
       </Campo>
-      <Campo id="reg-telefono" etiqueta="Teléfono" error={errors.telefono?.message}>
-        <Input
-          id="reg-telefono"
-          type="tel"
-          autoComplete="tel"
-          placeholder="351 555 1234"
-          className="h-10"
-          {...register('telefono')}
-        />
+      <Campo id="reg-telefono" etiqueta="Celular (WhatsApp)" error={errors.telefono?.message}>
+        <div className="flex gap-2">
+          <SelectorPais valor={pais} {...register('pais')} />
+          <Input
+            id="reg-telefono"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel-national"
+            placeholder={pais === 'AR' ? '3516167991' : 'Número de celular'}
+            aria-describedby="reg-telefono-ayuda"
+            className="h-10"
+            {...register('telefono')}
+          />
+        </div>
+        <p id="reg-telefono-ayuda" className="text-xs text-muted-foreground">
+          {pais === 'AR'
+            ? 'Código de área y número, sin 0 ni 15.'
+            : 'Número de celular sin el código del país.'}
+        </p>
       </Campo>
       <Campo id="reg-contrasena" etiqueta="Contraseña" error={errors.contrasena?.message}>
         <Input
@@ -131,7 +205,13 @@ function FormularioRegistro({
   );
 }
 
-function FormularioIngreso({ onListo }: { onListo: (sesion: Sesion) => void }) {
+function FormularioIngreso({
+  onListo,
+  onOlvido,
+}: {
+  onListo: (sesion: Sesion) => void;
+  onOlvido: () => void;
+}) {
   const iniciarSesion = useIniciarSesion();
   const {
     register,
@@ -163,6 +243,13 @@ function FormularioIngreso({ onListo }: { onListo: (sesion: Sesion) => void }) {
           {...register('contrasena')}
         />
       </Campo>
+      <button
+        type="button"
+        onClick={onOlvido}
+        className="-mt-2 self-start text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      >
+        ¿Olvidaste tu contraseña?
+      </button>
 
       {/* Mismo mensaje genérico que devuelve la API (criterio 2 de HU-27). */}
       {iniciarSesion.isError && (
@@ -184,10 +271,12 @@ export function AccesoCliente({
   abierto,
   onCerrar,
   onIngreso,
+  onOlvido,
 }: {
   abierto: boolean;
   onCerrar: () => void;
   onIngreso: (sesion: Sesion) => void;
+  onOlvido: () => void;
 }) {
   const [modo, setModo] = useState<Modo>('registro');
 
@@ -251,7 +340,7 @@ export function AccesoCliente({
               {modo === 'registro' ? (
                 <FormularioRegistro onListo={onIngreso} onIrAIngreso={() => setModo('ingreso')} />
               ) : (
-                <FormularioIngreso onListo={onIngreso} />
+                <FormularioIngreso onListo={onIngreso} onOlvido={onOlvido} />
               )}
             </div>
           </div>

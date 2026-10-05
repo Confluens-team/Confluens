@@ -2,7 +2,9 @@ import {
   esquemaCredenciales,
   esquemaPerfilCliente,
   esquemaRegistroCliente,
+  esquemaRestablecerContrasena,
   esquemaSesion,
+  esquemaSolicitarRestablecimiento,
 } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -12,7 +14,15 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { login, logout, perfil, registro, yo } from './auth.controlador.js';
+import {
+  login,
+  logout,
+  olvidoContrasena,
+  perfil,
+  registro,
+  restablecer,
+  yo,
+} from './auth.controlador.js';
 
 registroOpenApi.registerPath({
   method: 'post',
@@ -82,6 +92,42 @@ registroOpenApi.registerPath({
   },
 });
 
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/auth/contrasena/olvido',
+  tags: ['Auth'],
+  summary: 'Envía por correo el enlace para restablecer la contraseña (C8 de HU-48)',
+  request: {
+    body: { content: { 'application/json': { schema: esquemaSolicitarRestablecimiento } } },
+  },
+  responses: {
+    204: {
+      description:
+        'Siempre la misma respuesta, exista o no una cuenta con ese email, para no revelar ' +
+        'qué emails están registrados',
+    },
+    400: { description: 'El email no tiene un formato válido' },
+  },
+});
+
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/auth/contrasena/restablecer',
+  tags: ['Auth'],
+  summary: 'Cambia la contraseña con el token del enlace e inicia la sesión',
+  request: {
+    body: { content: { 'application/json': { schema: esquemaRestablecerContrasena } } },
+  },
+  responses: {
+    200: {
+      description: 'Contraseña cambiada; la cookie de sesión queda seteada',
+      content: { 'application/json': { schema: z.object({ data: esquemaSesion }) } },
+    },
+    400: { description: 'Datos inválidos' },
+    422: { description: 'El enlace venció, fue adulterado o ya se usó' },
+  },
+});
+
 export const rutasAuth = Router();
 
 rutasAuth.post('/login', validar({ body: esquemaCredenciales }), asincrono(login));
@@ -89,3 +135,13 @@ rutasAuth.post('/logout', logout);
 rutasAuth.get('/yo', autenticar, yo);
 rutasAuth.post('/registro', validar({ body: esquemaRegistroCliente }), asincrono(registro));
 rutasAuth.get('/perfil', autenticar, autorizar('CLIENTE'), asincrono(perfil));
+rutasAuth.post(
+  '/contrasena/olvido',
+  validar({ body: esquemaSolicitarRestablecimiento }),
+  olvidoContrasena,
+);
+rutasAuth.post(
+  '/contrasena/restablecer',
+  validar({ body: esquemaRestablecerContrasena }),
+  asincrono(restablecer),
+);
