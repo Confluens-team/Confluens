@@ -57,6 +57,12 @@ function descripcionSalon(nombre: string, jornada: TipoJornada): string {
   return `Salón ${nombre} (${jornada === 'completa' ? 'jornada completa' : 'media jornada'})`;
 }
 
+// La línea del salón es la primera sin servicio: se crea antes que las demás y las líneas se leen
+// ordenadas por id. Las otras líneas sin servicio son adicionales escritos a mano (HU-12).
+function lineaDelSalon<T extends { servicioId: number | null }>(lineas: T[]): T | undefined {
+  return lineas.find((linea) => linea.servicioId === null);
+}
+
 export function jornadaDeLineaSalon(descripcion: string | undefined): TipoJornada {
   return descripcion?.endsWith('(media jornada)') ? 'media' : 'completa';
 }
@@ -203,7 +209,7 @@ type PresupuestoDetalladoRepo = NonNullable<
 
 function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallada {
   const { evento } = presupuesto;
-  const lineaSalon = presupuesto.lineas.find((linea) => linea.servicioId === null);
+  const lineaSalon = lineaDelSalon(presupuesto.lineas);
   return {
     id: presupuesto.id,
     estado: presupuesto.estado,
@@ -237,6 +243,12 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       cantidad: linea.cantidad,
       precioUnitario: linea.precioUnitario.toFixed(2),
       subtotal: linea.subtotal.toFixed(2),
+      tipo:
+        linea.id === lineaSalon?.id
+          ? 'salon'
+          : linea.servicioId === null
+            ? 'adicional'
+            : 'servicio',
       tercerizado: servicio?.tercerizado ?? false,
     })),
   };
@@ -277,6 +289,9 @@ export async function obtenerConsulta(
  *   estar activo. Un `precioUnitario` explícito es un ajuste comercial (RN-03) y manda.
  * - La línea del salón conserva su precio si no cambian el salón ni la jornada; si cambian, toma
  *   el vigente. `precioSalon` la ajusta a mano.
+ * - Los adicionales escritos a mano entran con la descripción y el precio que se cargaron.
+ * - «Recalcular» un Expirado es esto mismo, con los precios vigentes que arma la pantalla: el
+ *   presupuesto sigue siendo el mismo (decisión del PO, 05/10/2026).
  * - El total suma todas las líneas, tercerizados incluidos.
  * - Queda Estimado y la vigencia vuelve a contar 10 días desde ahora (decisión del PO,
  *   05/10/2026), también si estaba Expirado.
@@ -318,7 +333,7 @@ export async function modificarPresupuesto(
     );
   });
 
-  const salonAnterior = presupuesto.lineas.find((linea) => linea.servicioId === null);
+  const salonAnterior = lineaDelSalon(presupuesto.lineas);
   const mismoSalon =
     !!salonAnterior &&
     presupuesto.evento.salonId === datos.salonId &&
@@ -331,7 +346,11 @@ export async function modificarPresupuesto(
       (mismoSalon ? salonAnterior.precioUnitario : precioDeSalon(salon, datos.tipoJornada)),
   );
 
-  const lineas = [lineaSalon, ...lineasServicios];
+  const adicionales = datos.adicionales.map((adicional) =>
+    calcularLinea(null, adicional.descripcion, adicional.cantidad, adicional.precioUnitario),
+  );
+
+  const lineas = [lineaSalon, ...lineasServicios, ...adicionales];
   await repo.crearEnTransaccion(async (tx) => {
     await repo.actualizarEvento(
       presupuesto.eventoId,
@@ -354,57 +373,6 @@ export async function modificarPresupuesto(
     );
   });
   return obtenerConsulta(id, repo);
-}
-
-/**
- * HU-12: sobre un Expirado, genera un presupuesto Estimado nuevo para el mismo evento con los
- * mismos servicios, cantidades y jornada, pero con los precios vigentes y 10 días de vigencia. El
- * anterior queda visible como Expirado.
- */
-export async function recalcularPresupuesto(
-  id: number,
-  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
-): Promise<ConsultaDetallada> {
-  const presupuesto = await buscarOFallar(id, repo);
-  if (presupuesto.estado !== 'Expirado') {
-    throw ErrorApi.conflicto('Solo se recalcula un presupuesto Expirado');
-  }
-  exigirConsultaEnCurso(presupuesto, 'recalcular');
-
-  const anteriores = presupuesto.lineas.filter((linea) => linea.servicioId !== null);
-  const ids = anteriores.map((linea) => linea.servicioId!);
-  const catalogo = new Map(
-    (ids.length > 0 ? await repo.buscarServiciosPorIds(ids) : []).map((s) => [s.id, s]),
-  );
-
-  const lineasServicios = anteriores.map((anterior) => {
-    const servicio = catalogo.get(anterior.servicioId!);
-    if (!servicio?.activo) {
-      throw ErrorApi.reglaNegocio(
-        `El servicio "${anterior.descripcion}" ya no está activo: modificá la consulta para quitarlo`,
-      );
-    }
-    return calcularLinea(servicio.id, servicio.nombre, anterior.cantidad, servicio.precio);
-  });
-
-  const { salon } = presupuesto.evento;
-  const jornada = jornadaDeLineaSalon(
-    presupuesto.lineas.find((linea) => linea.servicioId === null)?.descripcion,
-  );
-  const lineas = [
-    calcularLinea(null, descripcionSalon(salon.nombre, jornada), 1, precioDeSalon(salon, jornada)),
-    ...lineasServicios,
-  ];
-
-  const fechaEmision = new Date();
-  const nuevo = await repo.crearPresupuestoConLineas({
-    eventoId: presupuesto.eventoId,
-    fechaEmision,
-    venceEn: calcularVencimiento(fechaEmision),
-    total: sumarLineas(lineas).toFixed(2),
-    lineas,
-  });
-  return obtenerConsulta(nuevo.id, repo);
 }
 
 /**

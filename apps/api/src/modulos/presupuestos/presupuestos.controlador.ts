@@ -15,7 +15,6 @@ import {
   listarPresupuestos,
   modificarPresupuesto,
   obtenerConsulta,
-  recalcularPresupuesto,
 } from './presupuestos.servicio.js';
 
 // req.body ya validado por validar({ body: esquemaCrearPresupuesto }) en presupuestos.rutas.ts.
@@ -47,14 +46,6 @@ export async function modificar(req: Request, res: Response): Promise<void> {
     data: await modificarPresupuesto(Number(req.params.id), req.body as ModificarPresupuesto),
   };
   res.status(200).json(cuerpo);
-}
-
-// Crea un presupuesto nuevo: responde 201 con él.
-export async function recalcular(req: Request, res: Response): Promise<void> {
-  const cuerpo: RespuestaExito<ConsultaDetallada> = {
-    data: await recalcularPresupuesto(Number(req.params.id)),
-  };
-  res.status(201).json(cuerpo);
 }
 
 export async function darDeBaja(req: Request, res: Response): Promise<void> {

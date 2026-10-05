@@ -6,9 +6,13 @@ import { esquemaEstadoEvento } from './evento.esquema.js';
 import { esquemaLineaPresupuesto } from './linea-presupuesto.esquema.js';
 import { esquemaEstadoPresupuesto } from './presupuesto.esquema.js';
 
+// Tipo de cada línea: el salón (siempre la primera), un servicio del catálogo o un adicional que el
+// personal escribió a mano. El salón y los adicionales no tienen servicioId.
+export const esquemaTipoLinea = z.enum(['salon', 'servicio', 'adicional']);
+export type TipoLinea = z.infer<typeof esquemaTipoLinea>;
+
 // Respuesta de GET /presupuestos/:id: lo que necesita la pantalla de una consulta para mostrarla y
-// editarla (HU-12). Importes sin IVA (RN-05). La línea del salón es la que tiene servicioId null;
-// `tipoJornada` sale de ella.
+// editarla (HU-12). Importes sin IVA (RN-05). `tipoJornada` sale de la línea del salón.
 export const esquemaConsultaDetallada = z.object({
   id: esquemaId,
   estado: esquemaEstadoPresupuesto,
@@ -31,7 +35,9 @@ export const esquemaConsultaDetallada = z.object({
     telefono: z.string(),
   }),
   salon: z.object({ id: esquemaId, nombre: z.string(), capacidadMaxima: z.number().int() }),
-  lineas: z.array(esquemaLineaPresupuesto.extend({ tercerizado: z.boolean() })),
+  lineas: z.array(
+    esquemaLineaPresupuesto.extend({ tipo: esquemaTipoLinea, tercerizado: z.boolean() }),
+  ),
 });
 export type ConsultaDetallada = z.infer<typeof esquemaConsultaDetallada>;
 
@@ -43,6 +49,14 @@ export const esquemaServicioModificado = z.object({
   precioUnitario: esquemaImporte.optional(),
 });
 export type ServicioModificado = z.infer<typeof esquemaServicioModificado>;
+
+// Un adicional que no está en el catálogo: el personal escribe qué es y cuánto cuesta (sin IVA).
+export const esquemaAdicional = z.object({
+  descripcion: z.string().trim().min(1).max(120),
+  cantidad: z.number().int().positive(),
+  precioUnitario: esquemaImporte,
+});
+export type Adicional = z.infer<typeof esquemaAdicional>;
 
 // Body de PATCH /presupuestos/:id (HU-12): el estado completo de la consulta, no un parche parcial.
 // `precioSalon` ajusta a mano el precio de la línea del salón.
@@ -59,5 +73,6 @@ export const esquemaModificarPresupuesto = z.object({
       (servicios) => new Set(servicios.map((s) => s.servicioId)).size === servicios.length,
       'Un servicio no puede aparecer dos veces',
     ),
+  adicionales: z.array(esquemaAdicional).default([]),
 });
 export type ModificarPresupuesto = z.infer<typeof esquemaModificarPresupuesto>;

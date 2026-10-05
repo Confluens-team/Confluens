@@ -5,12 +5,11 @@ import { crearApp } from '../../app.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 
-// HU-12: detalle, modificación, recalcular y dar de baja una consulta. Mismo criterio que
+// HU-12: detalle, modificación (también recalcular) y dar de baja una consulta. Mismo criterio que
 // presupuestos.rutas.test.ts: el repositorio se mockea entero y la transacción ejecuta el callback.
 vi.mock('./presupuestos.repositorio.js', () => ({
   buscarSalon: vi.fn(),
   buscarServiciosPorIds: vi.fn(),
-  crearPresupuestoConLineas: vi.fn(),
   crearEnTransaccion: vi.fn((ejecutar: (tx: undefined) => unknown) => ejecutar(undefined)),
   buscarPresupuestoDetallado: vi.fn(),
   actualizarEvento: vi.fn(),
@@ -22,7 +21,6 @@ vi.mock('./presupuestos.repositorio.js', () => ({
 const repo = await import('./presupuestos.repositorio.js');
 const buscarSalonMock = vi.mocked(repo.buscarSalon);
 const buscarServiciosPorIdsMock = vi.mocked(repo.buscarServiciosPorIds);
-const crearPresupuestoConLineasMock = vi.mocked(repo.crearPresupuestoConLineas);
 const buscarPresupuestoDetalladoMock = vi.mocked(repo.buscarPresupuestoDetallado);
 const actualizarEventoMock = vi.mocked(repo.actualizarEvento);
 const actualizarPresupuestoMock = vi.mocked(repo.actualizarPresupuesto);
@@ -171,8 +169,39 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       cantidad: 10,
       precioUnitario: '8000.00',
       subtotal: '80000.00',
+      tipo: 'servicio',
       tercerizado: false,
     });
+  });
+
+  it('distingue el salón (la primera línea sin servicio) de los adicionales escritos a mano', async () => {
+    const base = consulta() as unknown as { lineas: object[] };
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({
+        lineas: [
+          ...base.lineas,
+          {
+            id: 3,
+            presupuestoId: 31,
+            servicioId: null,
+            descripcion: 'Decoración con globos',
+            cantidad: 1,
+            precioUnitario: D('25000'),
+            subtotal: D('25000'),
+            servicio: null,
+          },
+        ],
+      }),
+    );
+
+    const respuesta = await request(app).get('/api/presupuestos/31').set('Cookie', [cookieRE]);
+
+    expect(respuesta.body.data.lineas.map((l: { tipo: string }) => l.tipo)).toEqual([
+      'salon',
+      'servicio',
+      'adicional',
+    ]);
+    expect(respuesta.body.data.tipoJornada).toBe('completa');
   });
 
   it('responde 404 si el presupuesto no existe', async () => {
@@ -279,6 +308,55 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
     });
   });
 
+  it('guarda los adicionales escritos a mano con su precio, después de los servicios', async () => {
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        adicionales: [
+          { descripcion: '  Decoración con globos ', cantidad: 2, precioUnitario: '12500' },
+        ],
+      });
+
+    expect(lineasGuardadas()[2]).toEqual({
+      servicioId: null,
+      descripcion: 'Decoración con globos',
+      cantidad: 2,
+      precioUnitario: '12500.00',
+      subtotal: '25000.00',
+    });
+    // 142200 + 12 × 8000 + 2 × 12500
+    expect((datosDelPresupuesto() as { total: string }).total).toBe('263200.00');
+  });
+
+  it('responde 400 VALIDATION_ERROR si un adicional no tiene descripción o precio', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, adicionales: [{ descripcion: ' ', cantidad: 1 }] });
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it('recalcular un Expirado con los precios vigentes lo vuelve Estimado sin crear otro', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({ estado: 'Expirado' }));
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        cantidadPersonas: 10,
+        precioSalon: '150000',
+        servicios: [{ servicioId: 1, cantidad: 10, precioUnitario: '8730' }],
+      });
+
+    expect(respuesta.status).toBe(200);
+    expect(datosDelPresupuesto()).toMatchObject({ estado: 'Estimado', total: '237300.00' });
+    expect(reemplazarLineasMock.mock.calls[0]![0]).toBe(31);
+  });
+
   it('un Expirado modificado vuelve a Estimado', async () => {
     buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({ estado: 'Expirado' }));
 
@@ -360,47 +438,6 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
-  });
-});
-
-describe('POST /api/presupuestos/:id/recalcular (HU-12)', () => {
-  beforeEach(() => {
-    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({ estado: 'Expirado' }));
-    crearPresupuestoConLineasMock.mockResolvedValue({ id: 32 } as never);
-  });
-
-  it('genera un Estimado nuevo con los precios vigentes y 10 días de vigencia', async () => {
-    const respuesta = await request(app)
-      .post('/api/presupuestos/31/recalcular')
-      .set('Cookie', [cookieRE]);
-
-    expect(respuesta.status).toBe(201);
-    const [datos] = crearPresupuestoConLineasMock.mock.calls[0]!;
-    expect(datos.eventoId).toBe(20);
-    expect(datos.lineas.map((l) => l.precioUnitario)).toEqual(['150000.00', '8730.00']);
-    expect(datos.total).toBe('237300.00'); // 150000 + 10 × 8730
-    expect(datos.venceEn.getTime() - datos.fechaEmision.getTime()).toBe(DIEZ_DIAS);
-    expect(actualizarPresupuestoMock).not.toHaveBeenCalled(); // el anterior queda Expirado
-  });
-
-  it('responde 409 si el presupuesto no está Expirado', async () => {
-    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta());
-
-    const respuesta = await request(app)
-      .post('/api/presupuestos/31/recalcular')
-      .set('Cookie', [cookieRE]);
-
-    expect(respuesta.status).toBe(409);
-  });
-
-  it('responde 422 si un servicio ya no está activo', async () => {
-    buscarServiciosPorIdsMock.mockResolvedValue([{ ...coffee, activo: false }]);
-
-    const respuesta = await request(app)
-      .post('/api/presupuestos/31/recalcular')
-      .set('Cookie', [cookieRE]);
-
-    expect(respuesta.status).toBe(422);
   });
 });
 

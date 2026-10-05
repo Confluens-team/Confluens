@@ -14,14 +14,7 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import {
-  crear,
-  darDeBaja,
-  listar,
-  modificar,
-  obtener,
-  recalcular,
-} from './presupuestos.controlador.js';
+import { crear, darDeBaja, listar, modificar, obtener } from './presupuestos.controlador.js';
 
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
 const respuestaConsulta = {
@@ -88,7 +81,7 @@ registroOpenApi.registerPath({
   method: 'patch',
   path: '/presupuestos/{id}',
   tags: ['Presupuestos'],
-  summary: 'Modifica una consulta Estimado o Expirado y reinicia su vigencia (HU-12)',
+  summary: 'Modifica o recalcula una consulta Estimado o Expirado y reinicia su vigencia (HU-12)',
   request: {
     params: esquemaIdParam,
     body: { content: { 'application/json': { schema: esquemaModificarPresupuesto } } },
@@ -105,24 +98,6 @@ registroOpenApi.registerPath({
         'El presupuesto no está Estimado ni Expirado, o el evento ya no está en consulta',
     },
     422: { description: 'Se agregó un servicio que no está activo' },
-    ...erroresDeSesion,
-  },
-});
-
-registroOpenApi.registerPath({
-  method: 'post',
-  path: '/presupuestos/{id}/recalcular',
-  tags: ['Presupuestos'],
-  summary: 'Genera un presupuesto nuevo con precios vigentes a partir de uno Expirado (HU-12)',
-  request: { params: esquemaIdParam },
-  responses: {
-    201: {
-      description: 'Presupuesto Estimado nuevo; el anterior queda Expirado',
-      content: respuestaConsulta,
-    },
-    404: { description: 'No existe el presupuesto' },
-    409: { description: 'El presupuesto no está Expirado' },
-    422: { description: 'Un servicio del presupuesto ya no está activo' },
     ...erroresDeSesion,
   },
 });
@@ -167,12 +142,6 @@ rutasPresupuestos.patch(
   ...personalDeConsultas,
   validar({ params: esquemaIdParam, body: esquemaModificarPresupuesto }),
   asincrono(modificar),
-);
-rutasPresupuestos.post(
-  '/:id/recalcular',
-  ...personalDeConsultas,
-  validar({ params: esquemaIdParam }),
-  asincrono(recalcular),
 );
 rutasPresupuestos.post(
   '/:id/dar-de-baja',
