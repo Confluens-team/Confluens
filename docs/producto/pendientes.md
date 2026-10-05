@@ -16,6 +16,7 @@ El Product Owner los valida con el cliente antes del sprint en que se aborda la 
 | S-10 | Día de aplicación del incremento mensual | El cliente dijo que el porcentaje impacta "cada 31, mes a mes". Falta confirmar si es el último día de cada mes o el primero del mes siguiente. Hasta confirmar, usar el primer día de cada mes (misma fecha que usa RN-13 para contar meses). | HU-34 (S5) |
 | S-11 | Envío de correos | El canal público manda un correo al confirmar la consulta. El stack no tiene servicio de correo: hay que elegir proveedor (SMTP con Nodemailer, Resend, etc.) y registrarlo en una ADR antes de implementarlo. | HU-49 |
 | S-12 | Precios de audiovisual y pantallas LED | Las pantallas LED del Auditorio no tienen precio fijo. El Responsable de Eventos va a pedirle al proveedor precios fijos por 6 meses. Mientras tanto se cargan como servicio tercerizado "a cotizar" (ver `dominio.md`). | Seeds, HU-49 |
+| S-13 | Verificación del celular del cliente | El celular es el número al que se dispara `wa.me`. Hoy el registro valida que sea un celular y lo guarda en E.164 (`dominio.md`), pero no verifica que exista ni que tenga WhatsApp. Se decidió verificarlo con un proveedor, en dos pasos (código enviado al celular), solo para el celular. Falta elegir proveedor y canal (WhatsApp o SMS), definir qué pasa con la cuenta mientras el número no está verificado y registrarlo en una ADR antes de implementarlo. | Iteración futura (equipo, 04/10/2026) |
 
 ## Resueltos
 
