@@ -15,7 +15,7 @@ export const esquemaPresupuesto = z.object({
   eventoId: esquemaId,
   estado: esquemaEstadoPresupuesto,
   fechaEmision: esquemaFechaHora,
-  venceEn: esquemaFechaHora, // fechaEmision + 10 días (RN-08)
+  venceEn: esquemaFechaHora, // 10 días desde la emisión o la última modificación (RN-08)
   total: esquemaImporte,
   creadoEn: esquemaFechaHora,
   actualizadoEn: esquemaFechaHora,

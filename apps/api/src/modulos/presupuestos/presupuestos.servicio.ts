@@ -1,4 +1,11 @@
-import type { CrearPresupuesto, FiltrosPresupuestos, PresupuestoListado } from '@confluens/shared';
+import type {
+  ConsultaDetallada,
+  CrearPresupuesto,
+  FiltrosPresupuestos,
+  ModificarPresupuesto,
+  PresupuestoListado,
+  TipoJornada,
+} from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
 import { ErrorApi } from '../../lib/errores.js';
@@ -26,6 +33,39 @@ interface LineaCalculada {
   cantidad: number;
   precioUnitario: string;
   subtotal: string;
+}
+
+function calcularLinea(
+  servicioId: number | null,
+  descripcion: string,
+  cantidad: number,
+  precioUnitario: Prisma.Decimal | string,
+): LineaCalculada {
+  const precio = new Prisma.Decimal(precioUnitario);
+  return {
+    servicioId,
+    descripcion,
+    cantidad,
+    precioUnitario: precio.toFixed(2),
+    subtotal: precio.times(cantidad).toFixed(2),
+  };
+}
+
+// La línea del salón no tiene servicio: se identifica por esta descripción, y de ella sale la
+// jornada al editar la consulta (jornadaDeLineaSalon).
+function descripcionSalon(nombre: string, jornada: TipoJornada): string {
+  return `Salón ${nombre} (${jornada === 'completa' ? 'jornada completa' : 'media jornada'})`;
+}
+
+export function jornadaDeLineaSalon(descripcion: string | undefined): TipoJornada {
+  return descripcion?.endsWith('(media jornada)') ? 'media' : 'completa';
+}
+
+function precioDeSalon(
+  salon: { precioJornadaCompleta: Prisma.Decimal; precioMediaJornada: Prisma.Decimal },
+  jornada: TipoJornada,
+): Prisma.Decimal {
+  return jornada === 'completa' ? salon.precioJornadaCompleta : salon.precioMediaJornada;
 }
 
 /**
@@ -83,27 +123,17 @@ export async function generarPresupuesto(
   // Línea del salón: cantidad=1 porque el precio no es "por persona", es fijo para el evento
   // completo. servicioId null: modelo-datos.md documenta que la línea del salón se identifica
   // por su descripción, no por una FK a Servicio.
-  const precioSalon =
-    datos.tipoJornada === 'completa' ? salon.precioJornadaCompleta : salon.precioMediaJornada;
-  const lineaSalon: LineaCalculada = {
-    servicioId: null,
-    descripcion: `Salón ${salon.nombre} (${datos.tipoJornada === 'completa' ? 'jornada completa' : 'media jornada'})`,
-    cantidad: 1,
-    precioUnitario: precioSalon.toFixed(2),
-    subtotal: precioSalon.toFixed(2),
-  };
+  const lineaSalon = calcularLinea(
+    null,
+    descripcionSalon(salon.nombre, datos.tipoJornada),
+    1,
+    precioDeSalon(salon, datos.tipoJornada),
+  );
 
-  const lineasServicios: LineaCalculada[] = datos.servicios.map((seleccionado) => {
+  const lineasServicios = datos.servicios.map((seleccionado) => {
     // El bucle de validación de arriba ya garantizó que existe.
     const servicio = serviciosPorId.get(seleccionado.servicioId)!;
-    const subtotal = servicio.precio.times(seleccionado.cantidad);
-    return {
-      servicioId: servicio.id,
-      descripcion: servicio.nombre,
-      cantidad: seleccionado.cantidad,
-      precioUnitario: servicio.precio.toFixed(2),
-      subtotal: subtotal.toFixed(2),
-    };
+    return calcularLinea(servicio.id, servicio.nombre, seleccionado.cantidad, servicio.precio);
   });
 
   const todasLasLineas = [lineaSalon, ...lineasServicios];
@@ -165,4 +195,235 @@ export async function listarPresupuestos(
     cliente: evento.cliente,
     salon: evento.salon,
   }));
+}
+
+type PresupuestoDetalladoRepo = NonNullable<
+  Awaited<ReturnType<PresupuestosRepositorio['buscarPresupuestoDetallado']>>
+>;
+
+function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallada {
+  const { evento } = presupuesto;
+  const lineaSalon = presupuesto.lineas.find((linea) => linea.servicioId === null);
+  return {
+    id: presupuesto.id,
+    estado: presupuesto.estado,
+    fechaEmision: presupuesto.fechaEmision.toISOString(),
+    venceEn: presupuesto.venceEn.toISOString(),
+    total: presupuesto.total.toFixed(2),
+    tipoJornada: jornadaDeLineaSalon(lineaSalon?.descripcion),
+    evento: {
+      id: evento.id,
+      estado: evento.estado,
+      fecha: evento.fecha.toISOString().slice(0, 10),
+      cantidadPersonas: evento.cantidadPersonas,
+    },
+    cliente: {
+      id: evento.cliente.id,
+      nombre: evento.cliente.nombre,
+      apellido: evento.cliente.apellido,
+      correo: evento.cliente.correo,
+      telefono: evento.cliente.telefono,
+    },
+    salon: {
+      id: evento.salon.id,
+      nombre: evento.salon.nombre,
+      capacidadMaxima: evento.salon.capacidadMaxima,
+    },
+    lineas: presupuesto.lineas.map(({ servicio, ...linea }) => ({
+      id: linea.id,
+      presupuestoId: linea.presupuestoId,
+      servicioId: linea.servicioId,
+      descripcion: linea.descripcion,
+      cantidad: linea.cantidad,
+      precioUnitario: linea.precioUnitario.toFixed(2),
+      subtotal: linea.subtotal.toFixed(2),
+      tercerizado: servicio?.tercerizado ?? false,
+    })),
+  };
+}
+
+async function buscarOFallar(id: number, repo: PresupuestosRepositorio) {
+  const presupuesto = await repo.buscarPresupuestoDetallado(id);
+  if (!presupuesto) throw ErrorApi.noEncontrado(`No existe el presupuesto ${id}`);
+  return presupuesto;
+}
+
+// HU-12: solo se tocan las consultas en curso (Estimado o Expirado) de un evento que sigue en
+// consulta. Un Confirmado ya pasó a la agenda y un Cancelado se dio de baja.
+function exigirConsultaEnCurso(presupuesto: PresupuestoDetalladoRepo, accion: string) {
+  if (presupuesto.estado !== 'Estimado' && presupuesto.estado !== 'Expirado') {
+    throw ErrorApi.conflicto(`No se puede ${accion} un presupuesto ${presupuesto.estado}`);
+  }
+  if (presupuesto.evento.estado !== 'EnConsulta') {
+    throw ErrorApi.conflicto(
+      `No se puede ${accion} el presupuesto de un evento ${presupuesto.evento.estado}`,
+    );
+  }
+}
+
+export async function obtenerConsulta(
+  id: number,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+): Promise<ConsultaDetallada> {
+  return mapearConsulta(await buscarOFallar(id, repo));
+}
+
+/**
+ * Modifica una consulta después de hablar con el cliente (HU-12). Recibe el estado completo:
+ * fecha, salón, personas, jornada y servicios.
+ *
+ * - Solo Estimado o Expirado, con el evento EnConsulta (409 si no).
+ * - Un servicio que ya estaba conserva su precio congelado; uno nuevo toma el vigente y tiene que
+ *   estar activo. Un `precioUnitario` explícito es un ajuste comercial (RN-03) y manda.
+ * - La línea del salón conserva su precio si no cambian el salón ni la jornada; si cambian, toma
+ *   el vigente. `precioSalon` la ajusta a mano.
+ * - El total suma todas las líneas, tercerizados incluidos.
+ * - Queda Estimado y la vigencia vuelve a contar 10 días desde ahora (decisión del PO,
+ *   05/10/2026), también si estaba Expirado.
+ */
+export async function modificarPresupuesto(
+  id: number,
+  datos: ModificarPresupuesto,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+): Promise<ConsultaDetallada> {
+  const presupuesto = await buscarOFallar(id, repo);
+  exigirConsultaEnCurso(presupuesto, 'modificar');
+
+  const salon = await repo.buscarSalon(datos.salonId);
+  if (!salon) throw ErrorApi.noEncontrado(`No existe el salón ${datos.salonId}`);
+
+  const lineasAnteriores = new Map(
+    presupuesto.lineas
+      .filter((linea) => linea.servicioId !== null)
+      .map((linea) => [linea.servicioId!, linea]),
+  );
+  const ids = datos.servicios.map((s) => s.servicioId);
+  const catalogo = new Map(
+    (ids.length > 0 ? await repo.buscarServiciosPorIds(ids) : []).map((s) => [s.id, s]),
+  );
+
+  const lineasServicios = datos.servicios.map((elegido) => {
+    const servicio = catalogo.get(elegido.servicioId);
+    if (!servicio) throw ErrorApi.noEncontrado(`No existe el servicio ${elegido.servicioId}`);
+    const anterior = lineasAnteriores.get(elegido.servicioId);
+    if (!anterior && !servicio.activo) {
+      throw ErrorApi.reglaNegocio(`El servicio "${servicio.nombre}" no está activo`);
+    }
+    const precio = elegido.precioUnitario ?? anterior?.precioUnitario ?? servicio.precio;
+    return calcularLinea(
+      servicio.id,
+      anterior?.descripcion ?? servicio.nombre,
+      elegido.cantidad,
+      precio,
+    );
+  });
+
+  const salonAnterior = presupuesto.lineas.find((linea) => linea.servicioId === null);
+  const mismoSalon =
+    !!salonAnterior &&
+    presupuesto.evento.salonId === datos.salonId &&
+    jornadaDeLineaSalon(salonAnterior.descripcion) === datos.tipoJornada;
+  const lineaSalon = calcularLinea(
+    null,
+    descripcionSalon(salon.nombre, datos.tipoJornada),
+    1,
+    datos.precioSalon ??
+      (mismoSalon ? salonAnterior.precioUnitario : precioDeSalon(salon, datos.tipoJornada)),
+  );
+
+  const lineas = [lineaSalon, ...lineasServicios];
+  await repo.crearEnTransaccion(async (tx) => {
+    await repo.actualizarEvento(
+      presupuesto.eventoId,
+      {
+        fecha: new Date(datos.fecha),
+        salon: { connect: { id: datos.salonId } },
+        cantidadPersonas: datos.cantidadPersonas,
+      },
+      tx,
+    );
+    await repo.reemplazarLineas(id, lineas, tx);
+    await repo.actualizarPresupuesto(
+      id,
+      {
+        estado: 'Estimado',
+        venceEn: calcularVencimiento(new Date()),
+        total: sumarLineas(lineas).toFixed(2),
+      },
+      tx,
+    );
+  });
+  return obtenerConsulta(id, repo);
+}
+
+/**
+ * HU-12: sobre un Expirado, genera un presupuesto Estimado nuevo para el mismo evento con los
+ * mismos servicios, cantidades y jornada, pero con los precios vigentes y 10 días de vigencia. El
+ * anterior queda visible como Expirado.
+ */
+export async function recalcularPresupuesto(
+  id: number,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+): Promise<ConsultaDetallada> {
+  const presupuesto = await buscarOFallar(id, repo);
+  if (presupuesto.estado !== 'Expirado') {
+    throw ErrorApi.conflicto('Solo se recalcula un presupuesto Expirado');
+  }
+  exigirConsultaEnCurso(presupuesto, 'recalcular');
+
+  const anteriores = presupuesto.lineas.filter((linea) => linea.servicioId !== null);
+  const ids = anteriores.map((linea) => linea.servicioId!);
+  const catalogo = new Map(
+    (ids.length > 0 ? await repo.buscarServiciosPorIds(ids) : []).map((s) => [s.id, s]),
+  );
+
+  const lineasServicios = anteriores.map((anterior) => {
+    const servicio = catalogo.get(anterior.servicioId!);
+    if (!servicio?.activo) {
+      throw ErrorApi.reglaNegocio(
+        `El servicio "${anterior.descripcion}" ya no está activo: modificá la consulta para quitarlo`,
+      );
+    }
+    return calcularLinea(servicio.id, servicio.nombre, anterior.cantidad, servicio.precio);
+  });
+
+  const { salon } = presupuesto.evento;
+  const jornada = jornadaDeLineaSalon(
+    presupuesto.lineas.find((linea) => linea.servicioId === null)?.descripcion,
+  );
+  const lineas = [
+    calcularLinea(null, descripcionSalon(salon.nombre, jornada), 1, precioDeSalon(salon, jornada)),
+    ...lineasServicios,
+  ];
+
+  const fechaEmision = new Date();
+  const nuevo = await repo.crearPresupuestoConLineas({
+    eventoId: presupuesto.eventoId,
+    fechaEmision,
+    venceEn: calcularVencimiento(fechaEmision),
+    total: sumarLineas(lineas).toFixed(2),
+    lineas,
+  });
+  return obtenerConsulta(nuevo.id, repo);
+}
+
+/**
+ * HU-12: dar de baja una consulta la pasa a Cancelado (RN-08: solo se da de baja a mano). El
+ * evento se cancela solo si no le queda otro presupuesto en curso o confirmado.
+ */
+export async function darDeBajaPresupuesto(
+  id: number,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+): Promise<ConsultaDetallada> {
+  const presupuesto = await buscarOFallar(id, repo);
+  exigirConsultaEnCurso(presupuesto, 'dar de baja');
+
+  await repo.crearEnTransaccion(async (tx) => {
+    await repo.actualizarPresupuesto(id, { estado: 'Cancelado' }, tx);
+    const otros = await repo.contarOtrosPresupuestosVigentes(presupuesto.eventoId, id, tx);
+    if (otros === 0) {
+      await repo.actualizarEvento(presupuesto.eventoId, { estado: 'Cancelado' }, tx);
+    }
+  });
+  return obtenerConsulta(id, repo);
 }
