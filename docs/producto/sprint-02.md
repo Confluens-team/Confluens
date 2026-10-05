@@ -62,14 +62,15 @@ Como Cliente, quiero registrarme en la aplicación con mis datos de contacto y u
 
 Como Responsable de Eventos, quiero consultar el listado de presupuestos con su estado, para hacer el seguimiento de los que están vigentes, vencidos o confirmados sin revisar planillas.
 
-- Veo cada presupuesto con número, cliente, salón, fecha del evento, fecha de emisión, fecha de vencimiento, total y estado.
-- Puedo filtrar por estado (Estimado, Confirmado, Cancelado, Expirado), por cliente y por rango de fechas del evento.
+- Veo cada presupuesto con número, cliente, salón, fecha del evento, fecha de emisión, fecha de vencimiento, subtotal sin IVA, IVA 21%, total con IVA y estado (RN-05).
+- Puedo filtrar por estado (Estimado, Expirado, Cancelado), por cliente y por rango de fechas del evento.
+- Los presupuestos Confirmado no aparecen: una vez confirmado, el evento pasa a la agenda (decisión del PO, 05/10/2026).
 - Los presupuestos Expirado se destacan con el aviso «Presupuesto vencido, recalcular» (RN-08).
 - El listado se ordena del más reciente al más antiguo por fecha de emisión.
 - Desde cada fila accedo al detalle del presupuesto (HU-11).
 - Si ningún presupuesto cumple los filtros, el sistema lo informa.
 
-**Implementación.** `GET /api/presupuestos?estado=&cliente=&desde=&hasta=`, para el Responsable de Eventos y el Administrador del Sistema. `cliente` es texto libre: cada palabra tiene que aparecer en el nombre, el apellido o el correo (se cambió el `clienteId` original porque `GET /clientes` es solo del administrador y el Responsable de Eventos no tendría de dónde elegirlo; decisión del equipo, 05/10/2026). `desde` y `hasta` acotan la fecha del evento, inclusive. Hasta que exista HU-11, cada fila abre el detalle del evento. Requiere `Presupuesto.venceEn` (= emisión + 10 días) y el trabajo programado `controlarVigencia`, que pasa a `Expirado` los `Estimado` vencidos. Ese trabajo **reemplaza** a `senas.trabajo.ts`: ya no hay cancelación automática (RN-06, RN-08).
+**Implementación.** En la interfaz el listado se llama **Consultas** (pestaña de `/admin` y vista de `/panel`) y reemplaza a la pantalla de solicitudes del Sprint 1. `GET /api/presupuestos?estado=&cliente=&desde=&hasta=`, para el Responsable de Eventos y el Administrador del Sistema; sin `estado` devuelve todos menos los `Confirmado`. `cliente` es texto libre: cada palabra tiene que aparecer en el nombre, el apellido o el correo (se cambió el `clienteId` original porque `GET /clientes` es solo del administrador y el Responsable de Eventos no tendría de dónde elegirlo; decisión del equipo, 05/10/2026). `desde` y `hasta` acotan la fecha del evento, inclusive. Requiere `Presupuesto.venceEn` (= emisión + 10 días) y el trabajo programado `controlarVigencia`, que pasa a `Expirado` los `Estimado` vencidos. Ese trabajo **reemplaza** a `senas.trabajo.ts`: ya no hay cancelación automática (RN-06, RN-08).
 
 ## HU-11 — Consultar detalle de un presupuesto
 
