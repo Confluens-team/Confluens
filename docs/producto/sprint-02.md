@@ -30,17 +30,21 @@ Orden por dependencia: Registrarse → Consultar y ajustar el presupuesto → Co
 
 Los puntos salen del Planning Poker del Sprint 2. Velocidad del Sprint 1: 31.
 
-## Bloqueantes y pendientes del sprint
+## Bloqueantes del sprint — resueltos
 
-| Tema | Situación | Afecta |
+Los cinco bloqueantes con los que abrió el sprint los resolvió el PO el **05/10/2026**. Ninguna
+historia queda bloqueada.
+
+| Tema | Resolución | Afecta |
 |---|---|---|
-| S-08 — Base de la seña | No está definido si el 20% se calcula sobre el total con o sin IVA, ni cómo se registran los pagos. **Hasta definirlo, no implementar el cálculo del umbral de seña.** | HU-13, HU-14 |
-| Vincular cliente existente | Si alguien se registra con un correo que el personal ya cargó al presupuestar, se propone vincular la cuenta a esa ficha (HU-09 C7). Falta que lo confirme el PO. | HU-09 |
-| Vigencia al modificar | ¿Modificar un presupuesto Estimado reinicia los 10 días o mantiene la fecha original? | HU-12 |
-| Pago mayor al saldo | ¿Se rechaza o queda saldo a favor? Propuesta: rechazarlo. | HU-14 |
-| Quién registra pagos | El backlog pone al RF como actor; en el Sprint 1 la seña la registraba el RE. ¿Pueden los dos? | HU-14 |
+| S-08 — Base de la seña | **Depende de si el cliente requiere factura.** El Responsable de Eventos lo marca en el presupuesto al recibirlo. Con factura, el 20% se calcula sobre el **total con IVA**; sin factura, sobre el **subtotal sin IVA**. El saldo y el umbral del 100% se miden contra esa misma base (RN-01). | HU-13, HU-14 |
+| Vincular cliente existente | **Se vincula.** Si alguien se registra con un correo que el personal ya cargó al presupuestar, la cuenta se asocia a esa ficha en lugar de duplicar el cliente (HU-09 C7). | HU-09 |
+| Vigencia al modificar | Modificar un presupuesto Estimado **reinicia los 10 días** de vigencia. | HU-12 |
+| Pago mayor al saldo | **Se rechaza**, informando que el importe excede el total a pagar. | HU-14 |
+| Quién registra pagos | Pueden registrar pagos **RE, RF y GG** (`RESPONSABLE_EVENTOS`, `RESPONSABLE_FINANZAS`, `GERENTE_GENERAL`), más el `ADMINISTRADOR_SISTEMA` por su acceso total. El rol Cliente no. | HU-14 |
 
-Si un punto de esta tabla bloquea una tarea, **parar y preguntar** (mismo criterio que `pendientes.md`).
+Si aparece un punto nuevo que bloquee una tarea, **parar y preguntar** (mismo criterio que
+`pendientes.md`).
 
 ## HU-09 — Registrarse como cliente en la aplicación
 
@@ -93,6 +97,7 @@ Como Responsable de Eventos, quiero modificar un presupuesto estimado (servicios
 - Puedo agregar y quitar servicios y cambiar cantidades, cantidad de personas y jornada; el total se recalcula con las reglas de HU-05 (RN-04, RN-05, tercerizados y «a cotizar»).
 - Las líneas que no toco conservan su precio congelado; las líneas nuevas toman el precio vigente del catálogo.
 - Puedo ajustar a mano el precio unitario de una línea como ajuste comercial (RN-03).
+- Modificar un presupuesto Estimado **reinicia su vigencia**: `venceEn` se recalcula a 10 días desde la modificación.
 - Sobre un Expirado se ofrece «Recalcular»: genera un presupuesto Estimado nuevo para el mismo evento, con precios vigentes y 10 días de vigencia; el anterior sigue visible como Expirado.
 
 **Implementación.** `PATCH /api/presupuestos/:id` (`409` si el estado no lo permite; Confirmado solo con rol `ADMINISTRADOR_SISTEMA`) y `POST /api/presupuestos/:id/recalcular` (solo sobre `Expirado`). Un evento puede tener varios presupuestos.
@@ -101,7 +106,7 @@ Como Responsable de Eventos, quiero modificar un presupuesto estimado (servicios
 
 Como Responsable de Eventos, quiero que el presupuesto quede registrado como Confirmado cuando el cliente abona la seña dentro de su vigencia, para congelar sus precios y dejar tomado el salón.
 
-- Cuando los pagos del evento alcanzan el 20% del total (RN-01, base según S-08) dentro de la vigencia, el presupuesto pasa a Confirmado y el evento a Reservado.
+- Cuando los pagos del evento alcanzan el 20% de la base de cobro (RN-01: total con IVA si el cliente requiere factura, subtotal sin IVA si no) dentro de la vigencia, el presupuesto pasa a Confirmado y el evento a Reservado.
 - Un presupuesto Confirmado conserva sus precios aunque suba el tarifario (RN-06, RN-10); solo admite modificaciones excepcionales del Administrador del Sistema (HU-12).
 - Solo se confirma un presupuesto Estimado vigente; si está Expirado se rechaza pidiendo recalcularlo (RN-06).
 - Un evento tiene como máximo un presupuesto Confirmado.
@@ -110,22 +115,19 @@ Como Responsable de Eventos, quiero que el presupuesto quede registrado como Con
 
 **Implementación.** No tiene endpoint propio: la confirmación la dispara el registro de un pago (HU-14) al cruzar el 20%, dentro de la misma transacción. **Reemplaza** el comportamiento del Sprint 1, donde reservar pasaba el evento a `Reservado` y el presupuesto a `Confirmado` sin seña. El no solapamiento sigue validándose en la aplicación y con la restricción `EXCLUDE` (btree_gist). «En conflicto» es una consulta de la aplicación, no un campo nuevo (`modelo-datos.md`).
 
-**Bloqueado por S-08** en el cálculo del umbral.
-
 ## HU-14 — Registrar pago de un evento
 
 Como Responsable de Finanzas, quiero registrar cada pago que hace un cliente por su evento, con fecha, importe y medio de pago, para llevar el saldo al día y que el evento avance de estado según lo abonado.
 
 - Registro un pago con fecha, importe mayor a cero, medio de pago (Efectivo, Tarjeta o A la habitación) y una observación opcional; queda asociado al evento.
-- El importe es libre, sin mínimo; el sistema muestra el saldo actualizado (total menos pagos registrados).
-- Si el acumulado alcanza el 20% del total, se dispara la confirmación de HU-13 (evento Reservado, presupuesto Confirmado).
-- Si el acumulado alcanza el 100% del total, el evento pasa a Cobrado.
+- El importe es libre, sin mínimo; el sistema muestra el saldo actualizado (base de cobro menos pagos registrados).
+- Un pago que excede el saldo se rechaza, informando que el importe supera el total a pagar. No queda saldo a favor.
+- Si el acumulado alcanza el 20% de la base de cobro, se dispara la confirmación de HU-13 (evento Reservado, presupuesto Confirmado).
+- Si el acumulado alcanza el 100% de la base de cobro, el evento pasa a Cobrado.
 - No se registran pagos en eventos Cancelado o Cobrado, ni en eventos sin presupuesto.
-- Solo los roles con permiso de cobro pueden registrar pagos; el rol Cliente no accede.
+- Registran pagos el RE, el RF y el GG, más el Administrador del Sistema por su acceso total; el rol Cliente no accede.
 
-**Implementación.** Entidades nuevas `Pago` (eventoId, fecha, importe, medioPagoId, observación) y `MedioPago`. Los tres medios se cargan por seed; el ABM es del Sprint 3 (HU-36 a HU-39). `POST /api/eventos/:id/pagos`. Importes con `Decimal`, nunca `Float`. Saldo = total − suma de pagos, calculado, no guardado.
-
-**Bloqueado por S-08** en el cálculo del umbral de seña.
+**Implementación.** Entidades nuevas `Pago` (eventoId, fecha, importe, medioPagoId, observación) y `MedioPago`. Los tres medios se cargan por seed; el ABM es del Sprint 3 (HU-36 a HU-39). `POST /api/eventos/:id/pagos`, autorizado a `RESPONSABLE_EVENTOS`, `RESPONSABLE_FINANZAS`, `GERENTE_GENERAL` y `ADMINISTRADOR_SISTEMA`. Importes con `Decimal`, nunca `Float`. Saldo = base de cobro − suma de pagos, calculado, no guardado.
 
 ## HU-15 — Consultar calendario de eventos
 
