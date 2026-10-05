@@ -1,8 +1,7 @@
-import type { Rol, Sesion, Solicitud } from '@confluens/shared';
+import type { Rol, Sesion } from '@confluens/shared';
 import {
   Building2,
   CalendarDays,
-  FileText,
   Globe,
   Images,
   Inbox,
@@ -22,28 +21,19 @@ import { useCerrarSesion } from '@/hooks/use-sesion';
 import { cn } from '@/lib/utils';
 import { ListadoClientes } from '@/paginas/clientes/ListadoClientes';
 import { Agenda } from '@/paginas/eventos/Agenda';
-import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
-import { TomarConsulta } from '@/paginas/eventos/TomarConsulta';
 import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
 import { ConsultarSalones } from '@/paginas/salones/ConsultarSalones';
-import { ListadoPresupuestos } from '@/paginas/presupuestos/ListadoPresupuestos';
+import { ListadoConsultas } from '@/paginas/presupuestos/ListadoConsultas';
 import { RegistrarServicio } from '@/paginas/servicios/RegistrarServicio';
-import { ListadoSolicitudes } from '@/paginas/solicitudes/ListadoSolicitudes';
 
-type Pestania = 'consultas' | 'presupuestos' | 'agenda' | 'clientes' | 'catalogo' | 'cuenta';
+type Pestania = 'consultas' | 'agenda' | 'clientes' | 'catalogo' | 'cuenta';
 
 const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: string }[] = [
   {
     valor: 'consultas',
     texto: 'Consultas',
     icono: Inbox,
-    bajada: 'Consultas recibidas desde el canal público.',
-  },
-  {
-    valor: 'presupuestos',
-    texto: 'Presupuestos',
-    icono: FileText,
-    bajada: 'Presupuestos emitidos, con su estado y su vencimiento.',
+    bajada: 'Presupuestos pedidos por los clientes que todavía no se confirmaron.',
   },
   {
     valor: 'agenda',
@@ -78,41 +68,6 @@ const NOMBRES_DE_ROL: Record<Rol, string> = {
   ADMINISTRADOR_SISTEMA: 'Administrador del Sistema',
   CLIENTE: 'Cliente',
 };
-
-// El circuito de consultas del Responsable de Eventos, completo para el administrador: las
-// solicitudes del canal público (HU-14), tomar una y generar su presupuesto Estimado, y el detalle
-// del evento que se crea (reservar, registrar la seña o cancelar).
-type VistaConsultas =
-  | { tipo: 'solicitudes' }
-  | { tipo: 'tomar-consulta'; solicitud: Solicitud }
-  | { tipo: 'detalle-evento'; eventoId: number };
-
-function Consultas() {
-  const [vista, setVista] = useState<VistaConsultas>({ tipo: 'solicitudes' });
-
-  if (vista.tipo === 'solicitudes') {
-    return (
-      <ListadoSolicitudes
-        onTomar={(solicitud) => setVista({ tipo: 'tomar-consulta', solicitud })}
-      />
-    );
-  }
-  return (
-    <div className="space-y-4">
-      <Button variant="ghost" size="sm" onClick={() => setVista({ tipo: 'solicitudes' })}>
-        ← Volver a las consultas
-      </Button>
-      {vista.tipo === 'tomar-consulta' ? (
-        <TomarConsulta
-          solicitud={vista.solicitud}
-          onCreado={(eventoId) => setVista({ tipo: 'detalle-evento', eventoId })}
-        />
-      ) : (
-        <DetalleEvento eventoId={vista.eventoId} />
-      )}
-    </div>
-  );
-}
 
 // Todo lo que se consulta o se carga del catálogo: salones (HU-03), servicios (HU-02) y el contenido
 // de la landing (HU-08).
@@ -196,7 +151,7 @@ function MiCuenta({ sesion, onCerrarSesion }: { sesion: Sesion; onCerrarSesion: 
   );
 }
 
-// Panel del Administrador del Sistema: todo lo implementado en seis pestañas, usando solo lo que
+// Panel del Administrador del Sistema: todo lo implementado en cinco pestañas, usando solo lo que
 // ya expone la API. El administrador puede hacer todo lo que hace el Responsable de Eventos, además
 // de administrar la landing, y puede pasar a la vista del personal (/panel). Cada pestaña es una
 // ruta: /admin/<pestaña>.
@@ -261,8 +216,7 @@ export function PanelAdministrador({ sesion }: { sesion: Sesion }) {
           <h1 className="text-2xl font-semibold text-bordo">{activa.texto}</h1>
           <p className="text-sm text-muted-foreground">{activa.bajada}</p>
         </div>
-        {pestania === 'consultas' && <Consultas />}
-        {pestania === 'presupuestos' && <ListadoPresupuestos />}
+        {pestania === 'consultas' && <ListadoConsultas />}
         {pestania === 'agenda' && <Agenda />}
         {pestania === 'clientes' && <ListadoClientes />}
         {pestania === 'catalogo' && <CatalogoYLanding />}

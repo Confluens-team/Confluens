@@ -433,6 +433,15 @@ describe('GET /api/presupuestos (HU-10)', () => {
     expect(obtenerPresupuestosMock).not.toHaveBeenCalled();
   });
 
+  it('responde 400 VALIDATION_ERROR si se filtra por Confirmado, que no se lista', async () => {
+    const respuesta = await request(app)
+      .get('/api/presupuestos?estado=Confirmado')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(400);
+    expect(obtenerPresupuestosMock).not.toHaveBeenCalled();
+  });
+
   it('responde 400 VALIDATION_ERROR si la fecha hasta es anterior a la fecha desde', async () => {
     const respuesta = await request(app)
       .get('/api/presupuestos?desde=2026-11-30&hasta=2026-11-01')

@@ -6,6 +6,10 @@ import { esquemaFecha, esquemaFechaHora, esquemaId, esquemaImporte } from './com
 export const esquemaEstadoPresupuesto = z.enum(['Estimado', 'Confirmado', 'Cancelado', 'Expirado']);
 export type EstadoPresupuesto = z.infer<typeof esquemaEstadoPresupuesto>;
 
+// HU-10: el listado de consultas no muestra los Confirmado, que pasan a la agenda de eventos.
+export const esquemaEstadoConsulta = esquemaEstadoPresupuesto.exclude(['Confirmado']);
+export type EstadoConsulta = z.infer<typeof esquemaEstadoConsulta>;
+
 export const esquemaPresupuesto = z.object({
   id: esquemaId,
   eventoId: esquemaId,
@@ -38,14 +42,15 @@ export const esquemaPresupuestoListado = z.object({
 });
 export type PresupuestoListado = z.infer<typeof esquemaPresupuestoListado>;
 
-// Filtros de GET /presupuestos (HU-10). `cliente` busca por nombre, apellido o correo; `desde` y
-// `hasta` acotan la fecha del evento, inclusive. Un parámetro vacío (?cliente=) cuenta como ausente.
+// Filtros de GET /presupuestos (HU-10). Sin `estado` lista todos menos los Confirmado. `cliente`
+// busca por nombre, apellido o correo; `desde` y `hasta` acotan la fecha del evento, inclusive. Un
+// parámetro vacío (?cliente=) cuenta como ausente.
 const vacioComoAusente = (valor: unknown) =>
   typeof valor === 'string' && valor.trim() === '' ? undefined : valor;
 
 export const esquemaFiltrosPresupuestos = z
   .object({
-    estado: z.preprocess(vacioComoAusente, esquemaEstadoPresupuesto.optional()),
+    estado: z.preprocess(vacioComoAusente, esquemaEstadoConsulta.optional()),
     cliente: z.preprocess(vacioComoAusente, z.string().trim().max(100).optional()),
     desde: z.preprocess(vacioComoAusente, esquemaFecha.optional()),
     hasta: z.preprocess(vacioComoAusente, esquemaFecha.optional()),

@@ -1,4 +1,4 @@
-import type { Sesion, Solicitud } from '@confluens/shared';
+import type { Sesion } from '@confluens/shared';
 import { useEffect, useState } from 'react';
 import {
   Navigate,
@@ -17,16 +17,13 @@ import { AccesoCliente } from '@/paginas/auth/AccesoCliente';
 import { IniciarSesion } from '@/paginas/auth/IniciarSesion';
 import { OlvideContrasena } from '@/paginas/auth/OlvideContrasena';
 import { RestablecerContrasena } from '@/paginas/auth/RestablecerContrasena';
-import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
-import { TomarConsulta } from '@/paginas/eventos/TomarConsulta';
 import { Panel } from '@/paginas/panel/Panel';
 import { PanelAdministrador } from '@/paginas/panel/PanelAdministrador';
 import { CotizarEvento, type ResultadoCotizacion } from '@/paginas/presupuestos/CotizarEvento';
-import { ListadoPresupuestos } from '@/paginas/presupuestos/ListadoPresupuestos';
+import { ListadoConsultas } from '@/paginas/presupuestos/ListadoConsultas';
 import { PresupuestoEstimado } from '@/paginas/presupuestos/PresupuestoEstimado';
 import { RegistrarServicio } from '@/paginas/servicios/RegistrarServicio';
 import { Landing } from '@/paginas/solicitudes/Landing';
-import { ListadoSolicitudes } from '@/paginas/solicitudes/ListadoSolicitudes';
 
 // Rutas de la web (ADR 0005, reemplaza a la 0002):
 //   /             landing pública
@@ -35,8 +32,7 @@ import { ListadoSolicitudes } from '@/paginas/solicitudes/ListadoSolicitudes';
 //   /acceso       login del personal
 //   /olvide-contrasena       pide el enlace para restablecer la contraseña (cliente y personal)
 //   /restablecer-contrasena  pantalla del enlace del correo (?token=)
-//   /admin/:tab   panel del Administrador del Sistema (consultas, presupuestos, agenda, clientes,
-//                 catalogo, cuenta)
+//   /admin/:tab   panel del Administrador del Sistema (consultas, agenda, clientes, catalogo, cuenta)
 //   /panel        panel del resto del personal
 // Las rutas son solo de navegación: los permisos reales los aplica la API.
 
@@ -152,48 +148,31 @@ function RutaLanding() {
   return <Landing onCotizar={cotizar} onAccesoPersonal={() => navigate('/acceso')} />;
 }
 
-type VistaPersonal =
-  | { tipo: 'solicitudes' }
-  | { tipo: 'presupuestos' }
-  | { tipo: 'servicios' }
-  | { tipo: 'tomar-consulta'; solicitud?: Solicitud }
-  | { tipo: 'detalle-evento'; eventoId: number };
+type VistaPersonal = 'consultas' | 'servicios';
 
-// Roles que pueden listar presupuestos (GET /presupuestos, HU-10).
-const VEN_PRESUPUESTOS: Sesion['rol'][] = ['RESPONSABLE_EVENTOS', 'ADMINISTRADOR_SISTEMA'];
+// Roles que ven las consultas (GET /presupuestos, HU-10).
+const VEN_CONSULTAS: Sesion['rol'][] = ['RESPONSABLE_EVENTOS', 'ADMINISTRADOR_SISTEMA'];
 
-// Panel del resto del personal: el menú por rol de HU-27 más el conmutador a las pantallas del
-// circuito de consultas, presupuestos y servicios.
+// Panel del resto del personal: el menú por rol de HU-27 más el conmutador a las consultas y los
+// servicios. Los roles que no ven consultas arrancan en servicios.
 function PanelPersonal({ sesion }: { sesion: Sesion }) {
   const navigate = useNavigate();
-  const [vista, setVista] = useState<VistaPersonal>({ tipo: 'solicitudes' });
+  const veConsultas = VEN_CONSULTAS.includes(sesion.rol);
+  const [vista, setVista] = useState<VistaPersonal>(veConsultas ? 'consultas' : 'servicios');
 
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Panel sesion={sesion} />
       <div className="flex justify-center gap-2 border-t bg-card p-2 text-xs">
-        <button
-          className="underline underline-offset-2"
-          onClick={() => setVista({ tipo: 'solicitudes' })}
-        >
-          Solicitudes
-        </button>
-        {VEN_PRESUPUESTOS.includes(sesion.rol) && (
+        {veConsultas && (
           <>
-            <span className="text-muted-foreground">·</span>
-            <button
-              className="underline underline-offset-2"
-              onClick={() => setVista({ tipo: 'presupuestos' })}
-            >
-              Presupuestos
+            <button className="underline underline-offset-2" onClick={() => setVista('consultas')}>
+              Consultas
             </button>
+            <span className="text-muted-foreground">·</span>
           </>
         )}
-        <span className="text-muted-foreground">·</span>
-        <button
-          className="underline underline-offset-2"
-          onClick={() => setVista({ tipo: 'servicios' })}
-        >
+        <button className="underline underline-offset-2" onClick={() => setVista('servicios')}>
           Servicios
         </button>
         <span className="text-muted-foreground">·</span>
@@ -209,24 +188,12 @@ function PanelPersonal({ sesion }: { sesion: Sesion }) {
           </>
         )}
       </div>
-      {vista.tipo === 'solicitudes' && (
-        <ListadoSolicitudes
-          onTomar={(solicitud) => setVista({ tipo: 'tomar-consulta', solicitud })}
-        />
-      )}
-      {vista.tipo === 'presupuestos' && (
+      {vista === 'consultas' && (
         <div className="mx-auto max-w-6xl p-6">
-          <ListadoPresupuestos />
+          <ListadoConsultas />
         </div>
       )}
-      {vista.tipo === 'servicios' && <RegistrarServicio />}
-      {vista.tipo === 'tomar-consulta' && (
-        <TomarConsulta
-          solicitud={vista.solicitud}
-          onCreado={(eventoId) => setVista({ tipo: 'detalle-evento', eventoId })}
-        />
-      )}
-      {vista.tipo === 'detalle-evento' && <DetalleEvento eventoId={vista.eventoId} />}
+      {vista === 'servicios' && <RegistrarServicio />}
     </div>
   );
 }

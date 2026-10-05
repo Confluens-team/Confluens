@@ -1,4 +1,4 @@
-import type { EstadoPresupuesto, FiltrosPresupuestos, PresupuestoListado } from '@confluens/shared';
+import type { EstadoConsulta, FiltrosPresupuestos } from '@confluens/shared';
 import { AlertTriangle, ArrowLeft, FileText, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -11,28 +11,23 @@ import { desglosarIva } from '@/lib/importes';
 import { cn } from '@/lib/utils';
 import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
 
-const ESTADOS: { valor: EstadoPresupuesto; clase: string }[] = [
+// Los Confirmado no aparecen: pasan a la agenda de eventos.
+const ESTADOS: { valor: EstadoConsulta; clase: string }[] = [
   { valor: 'Estimado', clase: 'bg-muted text-foreground' },
-  { valor: 'Confirmado', clase: 'bg-emerald-100 text-emerald-900' },
-  { valor: 'Cancelado', clase: 'bg-bordo/10 text-bordo' },
   { valor: 'Expirado', clase: 'bg-amber-100 text-amber-900' },
+  { valor: 'Cancelado', clase: 'bg-bordo/10 text-bordo' },
 ];
 
-const claseDeEstado = (estado: EstadoPresupuesto) =>
-  ESTADOS.find((e) => e.valor === estado)?.clase ?? '';
+const claseDeEstado = (estado: string) => ESTADOS.find((e) => e.valor === estado)?.clase ?? '';
 
 const fechaCorta = (fecha: Date) =>
   fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
-// RN-05: se guarda sin IVA y se muestra el total con IVA.
-const totalConIva = (presupuesto: PresupuestoListado) =>
-  formatearPesos(desglosarIva(presupuesto.total).total);
-
-// HU-10: listado de presupuestos del personal, del más reciente al más antiguo por emisión. Filtra
-// por estado, cliente y rango de fechas del evento; los Expirado llevan el aviso de RN-08. Hasta
-// que exista el detalle del presupuesto (HU-11), cada fila abre el detalle de su evento.
-export function ListadoPresupuestos() {
-  const [estado, setEstado] = useState<EstadoPresupuesto | undefined>();
+// HU-10: las consultas del personal (cada una es un presupuesto no confirmado), de la más reciente a
+// la más antigua por emisión. Filtra por estado, cliente y rango de fechas del evento; las Expirado
+// llevan el aviso de RN-08. Los importes se guardan sin IVA y se muestran desglosados (RN-05).
+export function ListadoConsultas() {
+  const [estado, setEstado] = useState<EstadoConsulta | undefined>();
   const [textoCliente, setTextoCliente] = useState('');
   const [cliente, setCliente] = useState('');
   const [desde, setDesde] = useState('');
@@ -66,7 +61,7 @@ export function ListadoPresupuestos() {
       <div>
         <div className="mx-auto max-w-2xl px-6 pt-6">
           <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
-            <ArrowLeft /> Volver a los presupuestos
+            <ArrowLeft /> Volver a las consultas
           </Button>
         </div>
         <DetalleEvento eventoId={eventoAbierto} />
@@ -146,11 +141,11 @@ export function ListadoPresupuestos() {
       </div>
 
       {presupuestos.isLoading && (
-        <p className="text-sm text-muted-foreground">Cargando los presupuestos…</p>
+        <p className="text-sm text-muted-foreground">Cargando las consultas…</p>
       )}
       {presupuestos.isError && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          No se pudieron cargar los presupuestos.
+          No se pudieron cargar las consultas.
         </p>
       )}
 
@@ -159,7 +154,7 @@ export function ListadoPresupuestos() {
           <FileText className="mx-auto size-8 text-dorado" />
           {hayFiltros ? (
             <>
-              <p className="mt-3 font-medium">Ningún presupuesto cumple los filtros</p>
+              <p className="mt-3 font-medium">Ninguna consulta cumple los filtros</p>
               <p className="text-sm text-muted-foreground">
                 Probá con otro estado, cliente o rango de fechas.
               </p>
@@ -169,9 +164,9 @@ export function ListadoPresupuestos() {
             </>
           ) : (
             <>
-              <p className="mt-3 font-medium">Todavía no hay presupuestos</p>
+              <p className="mt-3 font-medium">Todavía no hay consultas</p>
               <p className="text-sm text-muted-foreground">
-                Aparecen acá cuando se genera uno desde una consulta.
+                Aparecen acá cuando un cliente pide un presupuesto desde la landing.
               </p>
             </>
           )}
@@ -181,11 +176,11 @@ export function ListadoPresupuestos() {
       {lista.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">
-            {lista.length} {lista.length === 1 ? 'presupuesto' : 'presupuestos'} · del más reciente
-            al más antiguo
+            {lista.length} {lista.length === 1 ? 'consulta' : 'consultas'} · de la más reciente a la
+            más antigua
           </p>
           <div className="overflow-x-auto rounded-xl bg-card ring-1 ring-border">
-            <table className="w-full min-w-[56rem] text-left text-sm">
+            <table className="w-full min-w-[64rem] text-left text-sm">
               <thead className="border-b text-xs text-muted-foreground">
                 <tr>
                   <th className="px-4 py-3 font-medium">Nº</th>
@@ -194,6 +189,8 @@ export function ListadoPresupuestos() {
                   <th className="px-4 py-3 font-medium">Evento</th>
                   <th className="px-4 py-3 font-medium">Emisión</th>
                   <th className="px-4 py-3 font-medium">Vence</th>
+                  <th className="px-4 py-3 text-right font-medium">Subtotal</th>
+                  <th className="px-4 py-3 text-right font-medium">IVA 21%</th>
                   <th className="px-4 py-3 text-right font-medium">Total</th>
                   <th className="w-48 px-4 py-3 font-medium">Estado</th>
                 </tr>
@@ -201,6 +198,7 @@ export function ListadoPresupuestos() {
               <tbody className="divide-y">
                 {lista.map((presupuesto) => {
                   const expirado = presupuesto.estado === 'Expirado';
+                  const importes = desglosarIva(presupuesto.total);
                   return (
                     <tr
                       key={presupuesto.id}
@@ -214,7 +212,7 @@ export function ListadoPresupuestos() {
                         <button
                           type="button"
                           className="font-medium text-bordo underline-offset-2 hover:underline"
-                          aria-label={`Ver el presupuesto ${presupuesto.id}`}
+                          aria-label={`Ver la consulta ${presupuesto.id}`}
                         >
                           {presupuesto.id}
                         </button>
@@ -238,8 +236,15 @@ export function ListadoPresupuestos() {
                         {fechaCorta(new Date(presupuesto.venceEn))}
                       </td>
                       <td className="px-4 py-3 text-right whitespace-nowrap">
-                        {totalConIva(presupuesto)}
-                        <p className="text-xs text-muted-foreground">IVA incluido</p>
+                        {formatearPesos(importes.subtotal)}
+                        <p className="text-xs text-muted-foreground">sin IVA</p>
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        {formatearPesos(importes.iva)}
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium whitespace-nowrap">
+                        {formatearPesos(importes.total)}
+                        <p className="text-xs font-normal text-muted-foreground">con IVA</p>
                       </td>
                       <td className="px-4 py-3">
                         <span

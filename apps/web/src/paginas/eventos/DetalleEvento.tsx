@@ -26,8 +26,7 @@ interface DetalleEventoProps {
 
 // Vista central de HU-15: confirmar+reservar en un solo paso (criterios 1-3, 7), registrar la
 // seña cobrada y cancelar (criterio 5 / RN-07). No existe un catálogo de distribuciones navegable
-// todavía (mismo gap que salones/servicios en TomarConsulta.tsx), así que distribucionId se carga
-// por id numérico.
+// todavía, así que distribucionId se carga por id numérico.
 export function DetalleEvento({ eventoId }: DetalleEventoProps) {
   const { data: evento, isLoading, isError } = useEvento(eventoId);
   const reservarEvento = useReservarEvento(eventoId);

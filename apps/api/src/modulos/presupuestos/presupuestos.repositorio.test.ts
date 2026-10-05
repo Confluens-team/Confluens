@@ -20,6 +20,12 @@ describe('presupuestos.repositorio: obtenerPresupuestos', () => {
     expect(findMany.mock.calls[0]![0].orderBy).toEqual([{ fechaEmision: 'desc' }, { id: 'desc' }]);
   });
 
+  it('sin filtro de estado excluye los Confirmado, que pasan a la agenda', async () => {
+    await obtenerPresupuestos({});
+
+    expect(findMany.mock.calls[0]![0].where.estado).toEqual({ not: 'Confirmado' });
+  });
+
   it('cada palabra del cliente tiene que aparecer en el nombre, el apellido o el correo', async () => {
     await obtenerPresupuestos({ cliente: 'Marina Gómez' });
 
