@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { crearApp } from '../../app.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { compararContrasena, hashearContrasena } from '../../lib/contrasena.js';
-import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
+import { firmarToken, firmarTokenRestablecimiento, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 
 // Se mockea el repositorio (no el servicio): así se ejercita la cadena real
 // rutas → controlador → servicio, y solo se reemplaza el punto de contacto con
@@ -14,10 +14,23 @@ vi.mock('./auth.repositorio.js', () => ({
   buscarUsuarioPorEmail: vi.fn(),
   crearUsuarioCliente: vi.fn(),
   buscarClientePorUsuarioId: vi.fn(),
+  buscarUsuarioPorId: vi.fn(),
+  actualizarContrasena: vi.fn(),
 }));
+// El envío de correo también se mockea: los tests no llaman a Resend.
+vi.mock('../../lib/correo.js', () => ({ enviarCorreo: vi.fn() }));
 
-const { buscarUsuarioPorEmail, crearUsuarioCliente, buscarClientePorUsuarioId } =
-  await import('./auth.repositorio.js');
+const {
+  buscarUsuarioPorEmail,
+  crearUsuarioCliente,
+  buscarClientePorUsuarioId,
+  buscarUsuarioPorId,
+  actualizarContrasena,
+} = await import('./auth.repositorio.js');
+const { enviarCorreo } = await import('../../lib/correo.js');
+const buscarUsuarioPorIdMock = vi.mocked(buscarUsuarioPorId);
+const actualizarContrasenaMock = vi.mocked(actualizarContrasena);
+const enviarCorreoMock = vi.mocked(enviarCorreo);
 const buscarUsuarioPorEmailMock = vi.mocked(buscarUsuarioPorEmail);
 const crearUsuarioClienteMock = vi.mocked(crearUsuarioCliente);
 const buscarClientePorUsuarioIdMock = vi.mocked(buscarClientePorUsuarioId);
@@ -321,5 +334,108 @@ describe('GET /api/auth/perfil', () => {
       .set('Cookie', [`${NOMBRE_COOKIE_SESION}=${token}`]);
 
     expect(respuesta.status).toBe(403);
+  });
+});
+
+// C8 de HU-48: olvidé mi contraseña, para clientes y personal.
+describe('POST /api/auth/contrasena/olvido', () => {
+  beforeEach(() => {
+    buscarUsuarioPorEmailMock.mockReset();
+    enviarCorreoMock.mockReset();
+  });
+
+  it('con un email registrado responde 204 y manda el enlace a ese email', async () => {
+    buscarUsuarioPorEmailMock.mockResolvedValue({
+      id: 1,
+      email: 're@confluens.test',
+      hashContrasena: await hashearContrasena('x'),
+      rol: 'RESPONSABLE_EVENTOS',
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+    });
+
+    const respuesta = await request(app)
+      .post('/api/auth/contrasena/olvido')
+      .send({ email: 'RE@confluens.test' });
+
+    expect(respuesta.status).toBe(204);
+    // El envío corre después de responder.
+    await vi.waitFor(() => expect(enviarCorreoMock).toHaveBeenCalledTimes(1));
+    expect(buscarUsuarioPorEmailMock).toHaveBeenCalledWith('re@confluens.test');
+    expect(enviarCorreoMock.mock.calls[0]![0].para).toBe('re@confluens.test');
+  });
+
+  it('con un email sin cuenta responde el mismo 204 y no manda nada', async () => {
+    buscarUsuarioPorEmailMock.mockResolvedValue(null);
+
+    const respuesta = await request(app)
+      .post('/api/auth/contrasena/olvido')
+      .send({ email: 'nadie@empresa.com' });
+
+    expect(respuesta.status).toBe(204);
+    await vi.waitFor(() => expect(buscarUsuarioPorEmailMock).toHaveBeenCalled());
+    expect(enviarCorreoMock).not.toHaveBeenCalled();
+  });
+
+  it('con un email sin formato válido responde 400 indicando el campo', async () => {
+    const respuesta = await request(app)
+      .post('/api/auth/contrasena/olvido')
+      .send({ email: 'ana@' });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details).toEqual([expect.objectContaining({ campo: 'email' })]);
+  });
+});
+
+describe('POST /api/auth/contrasena/restablecer', () => {
+  beforeEach(() => {
+    buscarUsuarioPorIdMock.mockReset();
+    actualizarContrasenaMock.mockReset();
+  });
+
+  it('con un token válido cambia la contraseña, responde 200 e inicia la sesión', async () => {
+    const hashActual = await hashearContrasena('vieja-123');
+    buscarUsuarioPorIdMock.mockResolvedValue({
+      id: 1,
+      email: 're@confluens.test',
+      hashContrasena: hashActual,
+      rol: 'RESPONSABLE_EVENTOS',
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+    });
+
+    const respuesta = await request(app)
+      .post('/api/auth/contrasena/restablecer')
+      .send({ token: firmarTokenRestablecimiento(1, hashActual), contrasena: 'nueva-456' });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body).toEqual({
+      data: { id: 1, email: 're@confluens.test', rol: 'RESPONSABLE_EVENTOS' },
+    });
+    const cookies = respuesta.headers['set-cookie'] as unknown as string[];
+    expect(cookies.some((c) => c.startsWith(`${NOMBRE_COOKIE_SESION}=`))).toBe(true);
+    const [, hashNuevo] = actualizarContrasenaMock.mock.calls[0]!;
+    expect(await compararContrasena('nueva-456', hashNuevo)).toBe(true);
+  });
+
+  it('con un token inválido responde 422 y no cambia nada', async () => {
+    const respuesta = await request(app)
+      .post('/api/auth/contrasena/restablecer')
+      .send({ token: 'no-es-un-token', contrasena: 'nueva-456' });
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+    expect(actualizarContrasenaMock).not.toHaveBeenCalled();
+  });
+
+  it('con una contraseña de menos de 6 caracteres responde 400', async () => {
+    const respuesta = await request(app)
+      .post('/api/auth/contrasena/restablecer')
+      .send({ token: 'x', contrasena: '123' });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details).toEqual([
+      expect.objectContaining({ campo: 'contrasena' }),
+    ]);
   });
 });

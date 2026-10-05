@@ -51,12 +51,25 @@ export async function crearUsuarioCliente(datos: {
   });
 }
 
+export async function buscarUsuarioPorId(id: number) {
+  return prisma.usuario.findUnique({ where: { id } });
+}
+
+export async function actualizarContrasena(id: number, hashContrasena: string) {
+  return prisma.usuario.update({ where: { id }, data: { hashContrasena } });
+}
+
 export async function buscarClientePorUsuarioId(usuarioId: number) {
   return prisma.cliente.findUnique({ where: { usuarioId } });
 }
 
 export type AuthRepositorio = {
   buscarUsuarioPorEmail: typeof buscarUsuarioPorEmail;
+};
+
+export type RestablecimientoRepositorio = AuthRepositorio & {
+  buscarUsuarioPorId: typeof buscarUsuarioPorId;
+  actualizarContrasena: typeof actualizarContrasena;
 };
 
 // Tipo aparte (y no más campos en AuthRepositorio) para que los fakes de iniciarSesion en

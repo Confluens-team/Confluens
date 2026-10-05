@@ -1,11 +1,27 @@
-import type { Credenciales, PerfilCliente, RegistroCliente, Sesion } from '@confluens/shared';
+import type {
+  Credenciales,
+  PerfilCliente,
+  RegistroCliente,
+  RestablecerContrasena,
+  Sesion,
+} from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
 import { compararContrasena, hashearContrasena } from '../../lib/contrasena.js';
+import { type Correo, enviarCorreo } from '../../lib/correo.js';
 import { ErrorApi } from '../../lib/errores.js';
-import { firmarToken } from '../../lib/jwt.js';
+import {
+  firmarToken,
+  firmarTokenRestablecimiento,
+  usuarioDelTokenRestablecimiento,
+  verificarTokenRestablecimiento,
+} from '../../lib/jwt.js';
 import * as authRepositorioReal from './auth.repositorio.js';
-import type { AuthRepositorio, RegistroRepositorio } from './auth.repositorio.js';
+import type {
+  AuthRepositorio,
+  RegistroRepositorio,
+  RestablecimientoRepositorio,
+} from './auth.repositorio.js';
 
 // Hash bcrypt fijo de un valor arbitrario, sin usuario asociado. Se compara contra
 // él cuando el email no existe, para que iniciarSesion() tarde lo mismo (una
@@ -93,4 +109,60 @@ export async function obtenerPerfilCliente(usuarioId: number): Promise<PerfilCli
     telefono: cliente.telefono,
     correo: cliente.correo,
   };
+}
+
+// Mismo origen que usa app.ts para CORS: el enlace del correo abre la web.
+const URL_FRONTEND = process.env['FRONTEND_URL'] ?? 'http://localhost:5173';
+
+function correoDeRestablecimiento(para: string, enlace: string): Correo {
+  const asunto = 'Restablecé tu contraseña de Los Abuelos';
+  const texto =
+    'Recibimos un pedido para restablecer la contraseña de tu cuenta.\n\n' +
+    `Para elegir una nueva, abrí este enlace (vence en 30 minutos y sirve una sola vez):\n${enlace}\n\n` +
+    'Si no lo pediste, ignorá este correo: tu contraseña no cambia.';
+  const html =
+    '<p>Recibimos un pedido para restablecer la contraseña de tu cuenta.</p>' +
+    `<p><a href="${enlace}">Elegir una contraseña nueva</a></p>` +
+    '<p>El enlace vence en 30 minutos y sirve una sola vez.</p>' +
+    '<p>Si no lo pediste, ignorá este correo: tu contraseña no cambia.</p>';
+  return { para, asunto, texto, html };
+}
+
+/**
+ * C8 de HU-48: manda el enlace para restablecer la contraseña, a clientes y al personal. Si el
+ * email no tiene cuenta no hace nada: el controlador responde lo mismo en los dos casos, así el
+ * formulario no sirve para averiguar qué emails están registrados.
+ */
+export async function solicitarRestablecimiento(
+  email: string,
+  repositorio: AuthRepositorio = authRepositorioReal,
+  enviar: (correo: Correo) => Promise<void> = enviarCorreo,
+): Promise<void> {
+  const usuario = await repositorio.buscarUsuarioPorEmail(email);
+  if (!usuario) return;
+
+  const token = firmarTokenRestablecimiento(usuario.id, usuario.hashContrasena);
+  const enlace = `${URL_FRONTEND}/restablecer-contrasena?token=${encodeURIComponent(token)}`;
+  await enviar(correoDeRestablecimiento(usuario.email, enlace));
+}
+
+const MENSAJE_ENLACE_INVALIDO = 'El enlace venció o ya se usó. Pedí uno nuevo.';
+
+/**
+ * Cambia la contraseña con el token del enlace y deja la sesión iniciada, como el login. Un token
+ * vencido, adulterado o ya usado (la contraseña cambió desde que se firmó) se rechaza con 422.
+ */
+export async function restablecerContrasena(
+  { token, contrasena }: RestablecerContrasena,
+  repositorio: RestablecimientoRepositorio = authRepositorioReal,
+): Promise<{ sesion: Sesion; token: string }> {
+  const id = usuarioDelTokenRestablecimiento(token);
+  const usuario = id ? await repositorio.buscarUsuarioPorId(id) : null;
+  if (!usuario || !verificarTokenRestablecimiento(token, usuario.hashContrasena)) {
+    throw ErrorApi.reglaNegocio(MENSAJE_ENLACE_INVALIDO);
+  }
+
+  await repositorio.actualizarContrasena(usuario.id, await hashearContrasena(contrasena));
+  const sesion: Sesion = { id: usuario.id, email: usuario.email, rol: usuario.rol };
+  return { sesion, token: firmarToken(sesion) };
 }

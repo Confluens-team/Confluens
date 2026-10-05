@@ -31,6 +31,37 @@ export function firmarToken(sesion: Sesion): string {
   return jwt.sign(sesion, obtenerSecreto(), { expiresIn: `${JWT_EXPIRA_MINUTOS}m` });
 }
 
+// Token del enlace para restablecer la contraseña (C8 de HU-48). Vence a los 30 minutos y se firma
+// con el secreto más el hash actual de la contraseña del usuario: en cuanto la contraseña cambia,
+// el enlace deja de servir, así que es de un solo uso sin guardar nada en la base (ADR 0006). Al
+// firmarse con otro secreto, no sirve como sesión, y un token de sesión no sirve para restablecer.
+const RESTABLECER_EXPIRA_MINUTOS = 30;
+const PROPOSITO_RESTABLECER = 'restablecer-contrasena';
+
+export function firmarTokenRestablecimiento(usuarioId: number, hashContrasena: string): string {
+  return jwt.sign({ proposito: PROPOSITO_RESTABLECER }, obtenerSecreto() + hashContrasena, {
+    subject: String(usuarioId),
+    expiresIn: `${RESTABLECER_EXPIRA_MINUTOS}m`,
+  });
+}
+
+// Id del usuario al que dice pertenecer el token, sin verificar la firma: hace falta para buscar
+// su hash y recién ahí verificar con verificarTokenRestablecimiento().
+export function usuarioDelTokenRestablecimiento(token: string): number | null {
+  const payload = jwt.decode(token);
+  const id = typeof payload === 'object' && payload ? Number(payload.sub) : NaN;
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+export function verificarTokenRestablecimiento(token: string, hashContrasena: string): boolean {
+  try {
+    const payload = jwt.verify(token, obtenerSecreto() + hashContrasena);
+    return typeof payload === 'object' && payload.proposito === PROPOSITO_RESTABLECER;
+  } catch {
+    return false;
+  }
+}
+
 // Opciones de la cookie de sesión, compartidas entre el login (auth.controlador.ts)
 // y la renovación en cada request (middlewares/autenticar.ts) para que no se
 // desincronicen.
