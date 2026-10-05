@@ -15,13 +15,17 @@ export function calcularVencimiento(fechaEmision: Date): Date {
   return venceEn;
 }
 
+// Total sin IVA (RN-05): la suma de todas las líneas, tercerizados incluidos (dominio.md).
+function sumarLineas(lineas: LineaCalculada[]): Prisma.Decimal {
+  return lineas.reduce((acumulado, linea) => acumulado.plus(linea.subtotal), new Prisma.Decimal(0));
+}
+
 interface LineaCalculada {
   servicioId: number | null;
   descripcion: string;
   cantidad: number;
   precioUnitario: string;
   subtotal: string;
-  entraEnTotal: boolean;
 }
 
 /**
@@ -35,10 +39,8 @@ interface LineaCalculada {
  * - Criterio 2 / RN-04: cada línea de servicio usa la cantidad indicada por el RE, no
  *   necesariamente Evento.cantidadPersonas.
  * - Criterio 3 / RN-05: Salon y Servicio ya guardan sus precios sin IVA; no hay conversión acá.
- * - Criterio 4: los servicios tercerizados generan línea (transparencia para el RE: qué se
- *   cotizó) pero su subtotal se excluye de la suma que compone `total`. Decisión de diseño
- *   confirmada para esta implementación, no una regla de negocio cerrada (ver plan de HU-09):
- *   si se define lo contrario, alcanza con cambiar el filtro `entraEnTotal` de acá abajo.
+ * - Criterio 4 (corregido el 24/09/2026, dominio.md): los servicios tercerizados suman al total
+ *   como cualquier otro; lo que no reciben es el incremento mensual.
  * - Criterio 5: se toman Salon.precioJornadaCompleta/precioMediaJornada y Servicio.precio
  *   vigentes al momento del pedido (no hay versionado de precios en el Sprint 1).
  * - Criterio 6: el Presupuesto nace en Estimado (default del schema, no se fija acá).
@@ -89,7 +91,6 @@ export async function generarPresupuesto(
     cantidad: 1,
     precioUnitario: precioSalon.toFixed(2),
     subtotal: precioSalon.toFixed(2),
-    entraEnTotal: true,
   };
 
   const lineasServicios: LineaCalculada[] = datos.servicios.map((seleccionado) => {
@@ -102,14 +103,11 @@ export async function generarPresupuesto(
       cantidad: seleccionado.cantidad,
       precioUnitario: servicio.precio.toFixed(2),
       subtotal: subtotal.toFixed(2),
-      entraEnTotal: !servicio.tercerizado,
     };
   });
 
   const todasLasLineas = [lineaSalon, ...lineasServicios];
-  const total = todasLasLineas
-    .filter((linea) => linea.entraEnTotal)
-    .reduce((acumulado, linea) => acumulado.plus(linea.subtotal), new Prisma.Decimal(0));
+  const total = sumarLineas(todasLasLineas);
 
   const fechaEmision = new Date();
 
@@ -142,7 +140,7 @@ export async function generarPresupuesto(
         fechaEmision,
         venceEn: calcularVencimiento(fechaEmision),
         total: total.toFixed(2),
-        lineas: todasLasLineas.map(({ entraEnTotal: _entraEnTotal, ...linea }) => linea),
+        lineas: todasLasLineas,
       },
       tx,
     );

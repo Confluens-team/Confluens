@@ -110,7 +110,7 @@ model Servicio {
   unidadMedida  String
   precio        Decimal            @db.Decimal(12, 2) // sin IVA (RN-05)
   porPersona    Boolean
-  tercerizado   Boolean            @default(false) // no entra en el total del presupuesto
+  tercerizado   Boolean            @default(false) // suma al total; no recibe el incremento mensual
   activo        Boolean            @default(true)
   categoria     String?
   fotoUrl       String?

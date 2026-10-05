@@ -142,7 +142,7 @@ export function RegistrarServicio() {
             onCheckedChange={(marcado) => actualizarCampo('tercerizado', marcado === true)}
           />
           <Label htmlFor="tercerizado">
-            Tercerizado (su precio no entra en el total del presupuesto)
+            Tercerizado (suma al total, pero no recibe el incremento mensual)
           </Label>
         </div>
 

@@ -207,7 +207,7 @@ describe('POST /api/presupuestos', () => {
     );
   });
 
-  it('excluye los servicios tercerizados del total pero los incluye como línea', async () => {
+  it('suma los servicios tercerizados al total, como una línea más', async () => {
     buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
     buscarServiciosPorIdsMock.mockResolvedValue([
       servicioFixture({ id: 1, precio: new Prisma.Decimal('8730'), tercerizado: false }),
@@ -230,13 +230,13 @@ describe('POST /api/presupuestos', () => {
       });
 
     expect(respuesta.status).toBe(201);
-    // total = salón (142200) + servicio 1 (8730*10=87300), sin el tercerizado (20000*10=200000)
+    // total = salón (142200) + servicio 1 (8730*10=87300) + tercerizado (20000*10=200000)
     expect(crearPresupuestoConLineasMock).toHaveBeenCalledWith(
-      expect.objectContaining({ total: '229500.00' }),
+      expect.objectContaining({ total: '429500.00' }),
       undefined,
     );
     const [datos] = crearPresupuestoConLineasMock.mock.calls[0]!;
-    expect(datos.lineas).toHaveLength(3); // salón + servicio no tercerizado + tercerizado
+    expect(datos.lineas).toHaveLength(3); // salón + servicio propio + tercerizado
   });
 
   it('calcula la línea de un servicio con una cantidad menor a la del evento (RN-04)', async () => {
