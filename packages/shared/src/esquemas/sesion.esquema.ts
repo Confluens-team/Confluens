@@ -1,7 +1,17 @@
 import { z } from 'zod';
 
 import { esquemaId } from './comunes.esquema.js';
+import { esquemaCelular } from './telefono.esquema.js';
 import { esquemaRol } from './usuario.esquema.js';
+
+// Email de una cuenta: sin espacios y en minúsculas antes de validar el formato, en el registro y
+// en el login por igual. Así Juan@Mail.com y juan@mail.com son la misma cuenta (C3 de HU-48) y el
+// registro encuentra la ficha de Cliente que el personal cargó con ese correo (C7).
+const esquemaEmailDeCuenta = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email({ error: 'Ingresá un email válido (por ejemplo: nombre@empresa.com)' }));
 
 // Credenciales que viajan en el body de POST /auth/login (HU-27).
 // Sin política de longitud/complejidad de contraseña acá: esa regla es de alta de
@@ -17,7 +27,7 @@ import { esquemaRol } from './usuario.esquema.js';
 // formularios internos de personal ya capacitado en el sistema, mientras que el
 // login es la primera pantalla que cualquier persona ve.
 export const esquemaCredenciales = z.object({
-  email: z.email({ error: 'Ingresá un email válido (por ejemplo: nombre@empresa.com)' }),
+  email: esquemaEmailDeCuenta,
   contrasena: z.string().min(1, { error: 'Ingresá tu contraseña' }),
 });
 export type Credenciales = z.infer<typeof esquemaCredenciales>;
@@ -41,8 +51,9 @@ export type Sesion = z.infer<typeof esquemaSesion>;
 export const esquemaRegistroCliente = z.object({
   nombre: z.string().trim().min(1, { error: 'Ingresá tu nombre' }),
   apellido: z.string().trim().min(1, { error: 'Ingresá tu apellido' }),
-  email: z.email({ error: 'Ingresá un email válido (por ejemplo: nombre@empresa.com)' }),
-  telefono: z.string().trim().min(6, { error: 'Ingresá un teléfono de contacto' }),
+  email: esquemaEmailDeCuenta,
+  // Celular para el contacto por WhatsApp; llega normalizado a E.164 (ver telefono.esquema.ts).
+  telefono: esquemaCelular,
   contrasena: z.string().min(6, { error: 'La contraseña debe tener al menos 6 caracteres' }),
 });
 export type RegistroCliente = z.infer<typeof esquemaRegistroCliente>;
