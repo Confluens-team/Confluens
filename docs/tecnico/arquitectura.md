@@ -63,8 +63,9 @@ aunque se active en el Sprint 2.
 
 `node-cron` en el proceso del backend, para dos tareas:
 
-- **Expiración de presupuestos** (RN-08): pasa a `Expirado` los `Estimado` con `venceEn` vencido.
-  No cancela eventos ni borra nada.
+- **Expiración de presupuestos** (RN-08, `trabajos/vigencia.trabajo.ts`): pasa a `Expirado` los
+  `Estimado` con `venceEn` vencido. Corre al levantar la API y después cada hora. No cancela
+  eventos ni borra nada.
 - **Incremento mensual de precios** (RN-10): aplica `porcentajeMensual` a los servicios propios y
   a los salones, y registra un `AjustePrecio`. No toca tercerizados ni presupuestos emitidos.
 

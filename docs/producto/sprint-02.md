@@ -69,7 +69,7 @@ Como Responsable de Eventos, quiero consultar el listado de presupuestos con su 
 - Desde cada fila accedo al detalle del presupuesto (HU-11).
 - Si ningún presupuesto cumple los filtros, el sistema lo informa.
 
-**Implementación.** `GET /api/presupuestos?estado=&clienteId=&desde=&hasta=`. Requiere `Presupuesto.venceEn` (= emisión + 10 días) y el trabajo programado `controlarVigencia`, que pasa a `Expirado` los `Estimado` vencidos. Ese trabajo **reemplaza** a `senas.trabajo.ts`: ya no hay cancelación automática (RN-06, RN-08).
+**Implementación.** `GET /api/presupuestos?estado=&cliente=&desde=&hasta=`, para el Responsable de Eventos y el Administrador del Sistema. `cliente` es texto libre: cada palabra tiene que aparecer en el nombre, el apellido o el correo (se cambió el `clienteId` original porque `GET /clientes` es solo del administrador y el Responsable de Eventos no tendría de dónde elegirlo; decisión del equipo, 05/10/2026). `desde` y `hasta` acotan la fecha del evento, inclusive. Hasta que exista HU-11, cada fila abre el detalle del evento. Requiere `Presupuesto.venceEn` (= emisión + 10 días) y el trabajo programado `controlarVigencia`, que pasa a `Expirado` los `Estimado` vencidos. Ese trabajo **reemplaza** a `senas.trabajo.ts`: ya no hay cancelación automática (RN-06, RN-08).
 
 ## HU-11 — Consultar detalle de un presupuesto
 
