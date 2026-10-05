@@ -205,7 +205,13 @@ function FormularioRegistro({
   );
 }
 
-function FormularioIngreso({ onListo }: { onListo: (sesion: Sesion) => void }) {
+function FormularioIngreso({
+  onListo,
+  onOlvido,
+}: {
+  onListo: (sesion: Sesion) => void;
+  onOlvido: () => void;
+}) {
   const iniciarSesion = useIniciarSesion();
   const {
     register,
@@ -237,6 +243,13 @@ function FormularioIngreso({ onListo }: { onListo: (sesion: Sesion) => void }) {
           {...register('contrasena')}
         />
       </Campo>
+      <button
+        type="button"
+        onClick={onOlvido}
+        className="-mt-2 self-start text-sm text-muted-foreground underline underline-offset-2 hover:text-foreground"
+      >
+        ¿Olvidaste tu contraseña?
+      </button>
 
       {/* Mismo mensaje genérico que devuelve la API (criterio 2 de HU-27). */}
       {iniciarSesion.isError && (
@@ -258,10 +271,12 @@ export function AccesoCliente({
   abierto,
   onCerrar,
   onIngreso,
+  onOlvido,
 }: {
   abierto: boolean;
   onCerrar: () => void;
   onIngreso: (sesion: Sesion) => void;
+  onOlvido: () => void;
 }) {
   const [modo, setModo] = useState<Modo>('registro');
 
@@ -325,7 +340,7 @@ export function AccesoCliente({
               {modo === 'registro' ? (
                 <FormularioRegistro onListo={onIngreso} onIrAIngreso={() => setModo('ingreso')} />
               ) : (
-                <FormularioIngreso onListo={onIngreso} />
+                <FormularioIngreso onListo={onIngreso} onOlvido={onOlvido} />
               )}
             </div>
           </div>

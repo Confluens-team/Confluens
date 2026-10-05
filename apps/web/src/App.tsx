@@ -15,6 +15,8 @@ import { EncabezadoSitio } from '@/components/EncabezadoSitio';
 import { useCerrarSesion, useSesion } from '@/hooks/use-sesion';
 import { AccesoCliente } from '@/paginas/auth/AccesoCliente';
 import { IniciarSesion } from '@/paginas/auth/IniciarSesion';
+import { OlvideContrasena } from '@/paginas/auth/OlvideContrasena';
+import { RestablecerContrasena } from '@/paginas/auth/RestablecerContrasena';
 import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
 import { TomarConsulta } from '@/paginas/eventos/TomarConsulta';
 import { Panel } from '@/paginas/panel/Panel';
@@ -30,6 +32,8 @@ import { ListadoSolicitudes } from '@/paginas/solicitudes/ListadoSolicitudes';
 //   /cotizar      cotizador del cliente registrado (?salon=<id> lo preselecciona)
 //   /presupuesto  presupuesto recién generado (viaja en el state de la navegación)
 //   /acceso       login del personal
+//   /olvide-contrasena       pide el enlace para restablecer la contraseña (cliente y personal)
+//   /restablecer-contrasena  pantalla del enlace del correo (?token=)
 //   /admin/:tab   panel del Administrador del Sistema (consultas, agenda, clientes, catalogo, cuenta)
 //   /panel        panel del resto del personal
 // Las rutas son solo de navegación: los permisos reales los aplica la API.
@@ -98,6 +102,10 @@ function SitioPublico({ sesionCliente }: { sesionCliente: Sesion | null }) {
         onIngreso={() => {
           setAcceso({ abierto: false });
           irACotizar(salonDelAcceso);
+        }}
+        onOlvido={() => {
+          cerrarAcceso();
+          navigate('/olvide-contrasena');
         }}
       />
     </div>
@@ -209,6 +217,35 @@ function RutaAcceso({ sesion }: { sesion: Sesion | null | undefined }) {
   );
 }
 
+// Se llega desde el login del cliente (modal de la landing) o del personal (/acceso): "Volver"
+// regresa a la pantalla anterior, o a la landing si se entró directo.
+function volverOInicio(navigate: ReturnType<typeof useNavigate>) {
+  if (window.history.state?.idx > 0) navigate(-1);
+  else navigate('/');
+}
+
+function RutaOlvideContrasena() {
+  const navigate = useNavigate();
+  return <OlvideContrasena onVolver={() => volverOInicio(navigate)} />;
+}
+
+// Con la contraseña nueva queda la sesión iniciada: el cliente vuelve a la landing y el personal
+// entra a su panel.
+function RutaRestablecerContrasena() {
+  const navigate = useNavigate();
+  const [parametros] = useSearchParams();
+  return (
+    <RestablecerContrasena
+      token={parametros.get('token')}
+      onListo={(sesion) =>
+        navigate(esPersonal(sesion) ? inicioDelPersonal(sesion) : '/', { replace: true })
+      }
+      onPedirOtro={() => navigate('/olvide-contrasena', { replace: true })}
+      onVolver={() => navigate('/')}
+    />
+  );
+}
+
 export default function App() {
   const { data: sesion, isLoading } = useSesion();
   const sesionCliente = sesion?.rol === 'CLIENTE' ? sesion : null;
@@ -234,6 +271,8 @@ export default function App() {
         </Route>
 
         <Route path="acceso" element={<RutaAcceso sesion={sesion} />} />
+        <Route path="olvide-contrasena" element={<RutaOlvideContrasena />} />
+        <Route path="restablecer-contrasena" element={<RutaRestablecerContrasena />} />
 
         <Route
           path="admin/:pestania?"
