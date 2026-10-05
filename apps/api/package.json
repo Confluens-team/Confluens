@@ -5,7 +5,7 @@
   "description": "API REST de Confluens (Express + Prisma)",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --conditions=development --env-file=../../.env src/servidor.ts",
+    "dev": "prisma generate && tsx watch --conditions=development --env-file=../../.env src/servidor.ts",
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "start": "node dist/servidor.js",
     "typecheck": "prisma generate && tsc --noEmit",
