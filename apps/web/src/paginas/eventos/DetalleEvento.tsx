@@ -4,15 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  useCancelarEvento,
-  useEvento,
-  useRegistrarSena,
-  useReservarEvento,
-} from '@/hooks/use-eventos';
+import { useAgendarEvento, useCancelarEvento, useEvento } from '@/hooks/use-eventos';
 import { ErrorApiCliente } from '@/lib/api';
-
-const PORCENTAJE_SENA = 0.2; // RN-01: 20% del total. Cálculo puro de frontend, sin soporte de backend.
+import { CuentaDelEvento } from './CuentaDelEvento';
 
 const formateadorFecha = new Intl.DateTimeFormat('es-AR', {
   dateStyle: 'medium',
@@ -24,14 +18,14 @@ interface DetalleEventoProps {
   eventoId: number;
 }
 
-// Vista central de HU-15: confirmar+reservar en un solo paso (criterios 1-3, 7), registrar la
-// seña cobrada y cancelar (criterio 5 / RN-07). No existe un catálogo de distribuciones navegable
-// todavía (mismo gap que salones/servicios en TomarConsulta.tsx), así que distribucionId se carga
-// por id numérico.
+// Vista central de HU-15: agendar el evento (distribución, horario y modalidad) y cancelarlo
+// (criterio 5 / RN-07). Agendar NO reserva: el evento sigue EnConsulta hasta que un pago cruce el
+// 20% de la base de cobro (HU-13), y eso pasa en la tarjeta de cuenta (CuentaDelEvento, HU-14).
+// No existe un catálogo de distribuciones navegable todavía (mismo gap que salones/servicios en
+// TomarConsulta.tsx), así que distribucionId se carga por id numérico.
 export function DetalleEvento({ eventoId }: DetalleEventoProps) {
   const { data: evento, isLoading, isError } = useEvento(eventoId);
-  const reservarEvento = useReservarEvento(eventoId);
-  const registrarSena = useRegistrarSena(eventoId);
+  const agendarEvento = useAgendarEvento(eventoId);
   const cancelarEvento = useCancelarEvento(eventoId);
 
   const [distribucionId, setDistribucionId] = useState('');
@@ -49,15 +43,14 @@ export function DetalleEvento({ eventoId }: DetalleEventoProps) {
     evento.presupuestos.find((p) => p.estado === 'Estimado') ??
     evento.presupuestos[0];
   const total = presupuestoVigente ? Number(presupuestoVigente.total) : 0;
-  const montoSena = total * PORCENTAJE_SENA;
 
   const capacidadExcedida =
-    reservarEvento.isError &&
-    reservarEvento.error instanceof ErrorApiCliente &&
-    reservarEvento.error.code === 'BUSINESS_RULE_VIOLATION';
+    agendarEvento.isError &&
+    agendarEvento.error instanceof ErrorApiCliente &&
+    agendarEvento.error.code === 'BUSINESS_RULE_VIOLATION';
 
-  function enviarReserva(confirmarCapacidadExcedida: boolean) {
-    reservarEvento.mutate({
+  function enviarAgenda(confirmarCapacidadExcedida: boolean) {
+    agendarEvento.mutate({
       distribucionId: Number(distribucionId),
       inicio: new Date(inicio).toISOString(),
       fin: new Date(fin).toISOString(),
@@ -66,9 +59,9 @@ export function DetalleEvento({ eventoId }: DetalleEventoProps) {
     });
   }
 
-  function manejarEnvioReserva(eventoFormulario: React.FormEvent) {
+  function manejarEnvioAgenda(eventoFormulario: React.FormEvent) {
     eventoFormulario.preventDefault();
-    enviarReserva(false);
+    enviarAgenda(false);
   }
 
   function manejarCancelacion() {
@@ -134,10 +127,10 @@ export function DetalleEvento({ eventoId }: DetalleEventoProps) {
       {evento.estado === 'EnConsulta' && (
         <Card>
           <CardHeader>
-            <CardTitle>Confirmar y reservar</CardTitle>
+            <CardTitle>Agendar evento</CardTitle>
           </CardHeader>
           <CardContent>
-            <form onSubmit={manejarEnvioReserva} className="space-y-4">
+            <form onSubmit={manejarEnvioAgenda} className="space-y-4">
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="distribucionId">Distribución (id)</Label>
@@ -181,11 +174,11 @@ export function DetalleEvento({ eventoId }: DetalleEventoProps) {
                 </div>
               </div>
 
-              {reservarEvento.isError && (
+              {agendarEvento.isError && (
                 <p className="text-sm text-destructive">
-                  {reservarEvento.error instanceof ErrorApiCliente
-                    ? reservarEvento.error.message
-                    : 'No se pudo reservar el evento.'}
+                  {agendarEvento.error instanceof ErrorApiCliente
+                    ? agendarEvento.error.message
+                    : 'No se pudo agendar el evento.'}
                 </p>
               )}
 
@@ -194,14 +187,14 @@ export function DetalleEvento({ eventoId }: DetalleEventoProps) {
                   type="button"
                   variant="destructive"
                   className="w-full"
-                  disabled={reservarEvento.isPending}
-                  onClick={() => enviarReserva(true)}
+                  disabled={agendarEvento.isPending}
+                  onClick={() => enviarAgenda(true)}
                 >
                   Confirmar igual
                 </Button>
               ) : (
-                <Button type="submit" disabled={reservarEvento.isPending} className="w-full">
-                  {reservarEvento.isPending ? 'Reservando…' : 'Confirmar y reservar'}
+                <Button type="submit" disabled={agendarEvento.isPending} className="w-full">
+                  {agendarEvento.isPending ? 'Agendando…' : 'Agendar evento'}
                 </Button>
               )}
             </form>
@@ -209,30 +202,27 @@ export function DetalleEvento({ eventoId }: DetalleEventoProps) {
         </Card>
       )}
 
+      {/* HU-14: el saldo, el formulario de cobro y el historial. Sin presupuesto no hay base de
+          cobro contra la que medir nada, así que no hay cuenta que mostrar. */}
+      {presupuestoVigente && (
+        <CuentaDelEvento
+          eventoId={evento.id}
+          admitePagos={evento.estado !== 'Cancelado' && evento.estado !== 'Cobrado'}
+        />
+      )}
+
       {evento.estado === 'Reservado' && (
         <Card>
           <CardHeader>
-            <CardTitle>Seña</CardTitle>
+            <CardTitle>Reserva</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <p>
-              <span className="text-muted-foreground">Monto de la seña (20%): </span>
-              {formateadorMoneda.format(montoSena)}
-            </p>
-            {evento.senaVenceEn && (
-              <p>
-                <span className="text-muted-foreground">Vence: </span>
-                {formateadorFecha.format(new Date(evento.senaVenceEn))}
-              </p>
-            )}
-            {evento.senaRegistradaEn ? (
+            {evento.senaRegistradaEn && (
               <p className="text-muted-foreground">
-                Seña registrada el {formateadorFecha.format(new Date(evento.senaRegistradaEn))}
+                El salón quedó reservado el{' '}
+                {formateadorFecha.format(new Date(evento.senaRegistradaEn))}, cuando los pagos
+                alcanzaron la seña.
               </p>
-            ) : (
-              <Button disabled={registrarSena.isPending} onClick={() => registrarSena.mutate()}>
-                {registrarSena.isPending ? 'Registrando…' : 'Registrar seña cobrada'}
-              </Button>
             )}
 
             {cancelarEvento.isError && (
