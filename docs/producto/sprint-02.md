@@ -88,6 +88,8 @@ Como Responsable de Eventos, quiero ver el detalle completo de un presupuesto, p
 - Si el evento tiene más de un presupuesto, puedo navegar a los demás desde el detalle.
 - Un presupuesto Expirado muestra el aviso «Presupuesto vencido, recalcular» (RN-08).
 
+**Hecho (06/10/2026).** El detalle es la pantalla de la consulta: se abre desde Consultas y, para un presupuesto Confirmado, desde el detalle del evento en la agenda y el calendario («Ver detalle del presupuesto»), en solo lectura. Muestra distribución y horario cuando el evento ya se agendó, la leyenda de validez y la lista de los presupuestos del evento para pasar de uno a otro. «A cotizar»: `Servicio.precio` admite `null` solo en tercerizados (CHECK en la base), el alta de servicios lo ofrece y `LineaPresupuesto.aCotizar` marca la línea, que va en 0 hasta que el personal completa el precio desde la consulta.
+
 **Implementación.** `GET /api/presupuestos/:id`. IVA y total no se guardan: se calculan al mostrar con la constante del 21% (RN-05). Los tercerizados **suman** al total salvo los «a cotizar» (`Servicio.precio = null`, ver `../tecnico/modelo-datos.md`); esto corrige el criterio de HU-05 del Sprint 1.
 
 ## HU-12 — Modificar presupuesto
