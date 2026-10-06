@@ -14,7 +14,7 @@ const listarConResumenMock = vi.mocked(listarConResumen);
 
 const FECHA = new Date('2026-09-29T00:00:00.000Z');
 
-const cookieDe = (rol: 'ADMINISTRADOR_SISTEMA' | 'GERENTE_GENERAL') =>
+const cookieDe = (rol: 'ADMINISTRADOR_SISTEMA' | 'GERENTE_GENERAL' | 'CLIENTE') =>
   `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 9, email: 'admin@confluens.test', rol })}`;
 
 describe('GET /api/clientes', () => {
@@ -58,10 +58,21 @@ describe('GET /api/clientes', () => {
     expect(listarConResumenMock).not.toHaveBeenCalled();
   });
 
-  it('con otro rol responde 403 FORBIDDEN', async () => {
+  // Provisorio (06/10/2026): todo el personal ve todo hasta que se dividan las funciones por rol.
+  it('otro rol del personal también accede', async () => {
+    listarConResumenMock.mockResolvedValue([]);
+
     const respuesta = await request(app)
       .get('/api/clientes')
       .set('Cookie', [cookieDe('GERENTE_GENERAL')]);
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('con sesión de Cliente responde 403 FORBIDDEN', async () => {
+    const respuesta = await request(app)
+      .get('/api/clientes')
+      .set('Cookie', [cookieDe('CLIENTE')]);
 
     expect(respuesta.status).toBe(403);
     expect(respuesta.body.error.code).toBe('FORBIDDEN');

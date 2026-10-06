@@ -29,7 +29,9 @@ const app = crearApp();
 const D = (valor: string) => new Prisma.Decimal(valor);
 const DIEZ_DIAS = 10 * 24 * 60 * 60 * 1000;
 
-function cookieDe(rol: 'RESPONSABLE_EVENTOS' | 'ADMINISTRADOR_SISTEMA' | 'RESPONSABLE_FINANZAS') {
+function cookieDe(
+  rol: 'RESPONSABLE_EVENTOS' | 'ADMINISTRADOR_SISTEMA' | 'RESPONSABLE_FINANZAS' | 'CLIENTE',
+) {
   return `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 1, email: 'personal@confluens.test', rol })}`;
 }
 const cookieRE = cookieDe('RESPONSABLE_EVENTOS');
@@ -239,12 +241,17 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
     expect(respuesta.status).toBe(404);
   });
 
-  it('responde 401 sin sesión y 403 con otro rol', async () => {
+  // Provisorio (06/10/2026): todo el personal entra; el Cliente no.
+  it('responde 401 sin sesión, 403 al Cliente y deja entrar a cualquier rol del personal', async () => {
     expect((await request(app).get('/api/presupuestos/31')).status).toBe(401);
-    const conOtroRol = await request(app)
+    const cliente = await request(app)
+      .get('/api/presupuestos/31')
+      .set('Cookie', [cookieDe('CLIENTE')]);
+    expect(cliente.status).toBe(403);
+    const finanzas = await request(app)
       .get('/api/presupuestos/31')
       .set('Cookie', [cookieDe('RESPONSABLE_FINANZAS')]);
-    expect(conOtroRol.status).toBe(403);
+    expect(finanzas.status).toBe(200);
   });
 });
 
