@@ -72,8 +72,8 @@ const NOMBRES_DE_ROL: Record<Rol, string> = {
 };
 
 // El circuito de consultas del Responsable de Eventos, completo para el administrador: las
-// solicitudes del canal público (HU-14), tomar una y generar su presupuesto Estimado, y el detalle
-// del evento que se crea (reservar, registrar la seña o cancelar).
+// solicitudes del canal público (HU-04), tomar una y generar su presupuesto Estimado, y el detalle
+// del evento que se crea (agendar el horario, registrar los pagos o cancelar).
 type VistaConsultas =
   | { tipo: 'solicitudes' }
   | { tipo: 'tomar-consulta'; solicitud: Solicitud }
