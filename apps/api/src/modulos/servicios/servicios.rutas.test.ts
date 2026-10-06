@@ -223,16 +223,18 @@ describe('PATCH /api/servicios/:id/landing', () => {
     expect(actualizarLandingMock).not.toHaveBeenCalled();
   });
 
-  it('con otro rol responde 403 FORBIDDEN (criterio 5)', async () => {
-    const cookieRe = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+  // Provisorio (06/10/2026): todo el personal puede editar la landing hasta que se dividan las
+  // funciones por rol; el Cliente sigue sin acceso.
+  it('con sesión de Cliente responde 403 FORBIDDEN (criterio 5)', async () => {
+    const cookieDeCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
       id: 1,
-      email: 're@confluens.test',
-      rol: 'RESPONSABLE_EVENTOS',
+      email: 'cliente@confluens.test',
+      rol: 'CLIENTE',
     })}`;
 
     const respuesta = await request(app)
       .patch('/api/servicios/1/landing')
-      .set('Cookie', [cookieRe])
+      .set('Cookie', [cookieDeCliente])
       .send({ fotoUrl: null });
 
     expect(respuesta.status).toBe(403);

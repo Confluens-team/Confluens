@@ -10,7 +10,7 @@ import { z } from 'zod';
 import { registroOpenApi } from '../../docs/openapi.js';
 import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
-import { autorizar } from '../../middlewares/autorizar.js';
+import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
 import { actualizarLanding, listar, listarPublicos } from './salones.controlador.js';
 
@@ -66,7 +66,7 @@ registroOpenApi.registerPath({
       content: { 'application/json': { schema: z.object({ data: esquemaSalon }) } },
     },
     401: { description: 'Sin sesión activa' },
-    403: { description: 'La sesión no es de un Administrador del Sistema' },
+    403: { description: 'La sesión no es del personal' },
     404: { description: 'No existe el salón indicado' },
   },
 });
@@ -81,10 +81,12 @@ rutasSalones.get('/', autenticar, asincrono(listar));
 
 // autenticar antes que autorizar (autorizar confía en req.usuario) y validar al final, para que
 // un request sin sesión responda 401 y no filtre si el body estaba bien formado.
+// Provisorio (decisión del PO, 06/10/2026): todo el personal ve y hace todo hasta que se dividan
+// las funciones por rol.
 rutasSalones.patch(
   '/:id/landing',
   autenticar,
-  autorizar('ADMINISTRADOR_SISTEMA'),
+  autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaParamsId, body: esquemaActualizarLandingSalon }),
   asincrono(actualizarLanding),
 );

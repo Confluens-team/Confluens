@@ -79,7 +79,7 @@ registroOpenApi.registerPath({
       content: { 'application/json': { schema: z.object({ data: esquemaServicio }) } },
     },
     401: { description: 'Sin sesión activa' },
-    403: { description: 'La sesión no es de un Administrador del Sistema' },
+    403: { description: 'La sesión no es del personal' },
     404: { description: 'No existe el servicio indicado' },
   },
 });
@@ -97,10 +97,12 @@ rutasServicios.post(
   validar({ body: esquemaCrearServicio }),
   asincrono(crear),
 );
+// Provisorio (decisión del PO, 06/10/2026): todo el personal ve y hace todo hasta que se dividan
+// las funciones por rol.
 rutasServicios.patch(
   '/:id/landing',
   autenticar,
-  autorizar('ADMINISTRADOR_SISTEMA'),
+  autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaParamsId, body: esquemaActualizarLandingServicio }),
   asincrono(actualizarLanding),
 );

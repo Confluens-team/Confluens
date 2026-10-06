@@ -204,6 +204,11 @@ evento reservado (ver RN-12).
 | Sistema | `SYS` | Actor no humano: tareas programadas, cálculos, auditoría, envío de correos. |
 | Cliente | `CLI` | Externo a la organización, con credenciales propias. Solo el canal público: ve precios, arma y confirma consultas, consulta las suyas. Nunca accede al panel interno. Se implementa en el Sprint 2. |
 
+**Provisorio (decisión del PO, 06/10/2026).** Mientras no se dividan las funciones por rol, todo el
+personal (RE, RF, GG y ADM) entra al mismo panel interno (`/admin`) y puede ver y hacer todo lo que
+ahí existe, incluido el contenido de la landing. El Cliente sigue sin acceso al panel. La tabla de
+arriba describe la división a la que se apunta, que se implementa más adelante.
+
 ---
 
 ## Reglas de negocio

@@ -338,7 +338,9 @@ describe('POST /api/presupuestos', () => {
   });
 });
 
-function cookieDe(rol: 'RESPONSABLE_EVENTOS' | 'ADMINISTRADOR_SISTEMA' | 'RESPONSABLE_FINANZAS') {
+function cookieDe(
+  rol: 'RESPONSABLE_EVENTOS' | 'ADMINISTRADOR_SISTEMA' | 'RESPONSABLE_FINANZAS' | 'CLIENTE',
+) {
   return `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 1, email: 'personal@confluens.test', rol })}`;
 }
 
@@ -469,10 +471,19 @@ describe('GET /api/presupuestos (HU-10)', () => {
     expect(respuesta.body.error.code).toBe('UNAUTHENTICATED');
   });
 
-  it('con otro rol responde 403 FORBIDDEN', async () => {
+  // Provisorio (06/10/2026): todo el personal ve las consultas hasta que se dividan las funciones.
+  it('otro rol del personal también accede', async () => {
     const respuesta = await request(app)
       .get('/api/presupuestos')
       .set('Cookie', [cookieDe('RESPONSABLE_FINANZAS')]);
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('con sesión de Cliente responde 403 FORBIDDEN', async () => {
+    const respuesta = await request(app)
+      .get('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')]);
 
     expect(respuesta.status).toBe(403);
     expect(respuesta.body.error.code).toBe('FORBIDDEN');
