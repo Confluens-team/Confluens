@@ -7,7 +7,6 @@ import {
   Inbox,
   LogOut,
   Settings,
-  SquareUser,
   UserRound,
   Users,
   UtensilsCrossed,
@@ -151,11 +150,10 @@ function MiCuenta({ sesion, onCerrarSesion }: { sesion: Sesion; onCerrarSesion: 
   );
 }
 
-// Panel del Administrador del Sistema: todo lo implementado en cinco pestañas, usando solo lo que
-// ya expone la API. El administrador puede hacer todo lo que hace el Responsable de Eventos, además
-// de administrar la landing, y puede pasar a la vista del personal (/panel). Cada pestaña es una
-// ruta: /admin/<pestaña>.
-export function PanelAdministrador({ sesion }: { sesion: Sesion }) {
+// Panel interno: una sola vista para todo el personal, con todo lo implementado en cinco pestañas.
+// Por ahora todos los roles ven las mismas pestañas; qué ve cada uno se revisa más adelante, y
+// mientras tanto los permisos los aplica la API. Cada pestaña es una ruta: /admin/<pestaña>.
+export function PanelInterno({ sesion }: { sesion: Sesion }) {
   const navigate = useNavigate();
   const cerrarSesion = useCerrarSesion();
   const pestania = useParams()['pestania'] as Pestania | undefined;
@@ -178,10 +176,6 @@ export function PanelAdministrador({ sesion }: { sesion: Sesion }) {
           <Logo compacto />
           <div className="flex items-center gap-2 text-sm">
             <span className="hidden text-muted-foreground sm:inline">{sesion.email}</span>
-            {/* El administrador también puede ver el panel tal como lo ve el resto del personal. */}
-            <Button variant="ghost" size="sm" onClick={() => navigate('/panel')}>
-              <SquareUser /> Vista del personal
-            </Button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
               <Globe /> Ver la landing
             </Button>
