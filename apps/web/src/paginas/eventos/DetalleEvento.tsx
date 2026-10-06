@@ -6,8 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAgendarEvento, useCancelarEvento, useEvento } from '@/hooks/use-eventos';
 import { ErrorApiCliente } from '@/lib/api';
-
-const PORCENTAJE_SENA = 0.2; // RN-01: 20% del total. Cálculo puro de frontend, sin soporte de backend.
+import { CuentaDelEvento } from './CuentaDelEvento';
 
 const formateadorFecha = new Intl.DateTimeFormat('es-AR', {
   dateStyle: 'medium',
@@ -21,9 +20,9 @@ interface DetalleEventoProps {
 
 // Vista central de HU-15: agendar el evento (distribución, horario y modalidad) y cancelarlo
 // (criterio 5 / RN-07). Agendar NO reserva: el evento sigue EnConsulta hasta que un pago cruce el
-// 20% de la base de cobro (HU-13). No existe un catálogo de distribuciones navegable todavía
-// (mismo gap que salones/servicios en TomarConsulta.tsx), así que distribucionId se carga por id
-// numérico.
+// 20% de la base de cobro (HU-13), y eso pasa en la tarjeta de cuenta (CuentaDelEvento, HU-14).
+// No existe un catálogo de distribuciones navegable todavía (mismo gap que salones/servicios en
+// TomarConsulta.tsx), así que distribucionId se carga por id numérico.
 export function DetalleEvento({ eventoId }: DetalleEventoProps) {
   const { data: evento, isLoading, isError } = useEvento(eventoId);
   const agendarEvento = useAgendarEvento(eventoId);
@@ -44,7 +43,6 @@ export function DetalleEvento({ eventoId }: DetalleEventoProps) {
     evento.presupuestos.find((p) => p.estado === 'Estimado') ??
     evento.presupuestos[0];
   const total = presupuestoVigente ? Number(presupuestoVigente.total) : 0;
-  const montoSena = total * PORCENTAJE_SENA;
 
   const capacidadExcedida =
     agendarEvento.isError &&
@@ -204,25 +202,26 @@ export function DetalleEvento({ eventoId }: DetalleEventoProps) {
         </Card>
       )}
 
+      {/* HU-14: el saldo, el formulario de cobro y el historial. Sin presupuesto no hay base de
+          cobro contra la que medir nada, así que no hay cuenta que mostrar. */}
+      {presupuestoVigente && (
+        <CuentaDelEvento
+          eventoId={evento.id}
+          admitePagos={evento.estado !== 'Cancelado' && evento.estado !== 'Cobrado'}
+        />
+      )}
+
       {evento.estado === 'Reservado' && (
         <Card>
           <CardHeader>
-            <CardTitle>Seña</CardTitle>
+            <CardTitle>Reserva</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <p>
-              <span className="text-muted-foreground">Monto de la seña (20%): </span>
-              {formateadorMoneda.format(montoSena)}
-            </p>
-            {evento.senaVenceEn && (
-              <p>
-                <span className="text-muted-foreground">Vence: </span>
-                {formateadorFecha.format(new Date(evento.senaVenceEn))}
-              </p>
-            )}
             {evento.senaRegistradaEn && (
               <p className="text-muted-foreground">
-                Seña registrada el {formateadorFecha.format(new Date(evento.senaRegistradaEn))}
+                El salón quedó reservado el{' '}
+                {formateadorFecha.format(new Date(evento.senaRegistradaEn))}, cuando los pagos
+                alcanzaron la seña.
               </p>
             )}
 
