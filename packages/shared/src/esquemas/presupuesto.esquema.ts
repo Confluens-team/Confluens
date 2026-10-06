@@ -15,7 +15,7 @@ export const esquemaPresupuesto = z.object({
   eventoId: esquemaId,
   estado: esquemaEstadoPresupuesto,
   fechaEmision: esquemaFechaHora,
-  venceEn: esquemaFechaHora, // fechaEmision + 10 días (RN-08)
+  venceEn: esquemaFechaHora, // 10 días desde la emisión o la última modificación (RN-08)
   total: esquemaImporte,
   // Define la base de cobro de RN-01: con factura la seña se calcula sobre el total CON IVA, sin
   // factura sobre este total, que está sin IVA (RN-05).

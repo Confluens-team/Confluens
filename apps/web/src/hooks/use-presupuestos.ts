@@ -1,7 +1,9 @@
 import type {
+  ConsultaDetallada,
   CrearPresupuesto,
   CrearSolicitud,
   FiltrosPresupuestos,
+  ModificarPresupuesto,
   PresupuestoDetallado,
   PresupuestoListado,
   RespuestaExito,
@@ -61,5 +63,50 @@ export function usePresupuestos(filtros: FiltrosPresupuestos) {
       return respuesta.data;
     },
     placeholderData: keepPreviousData,
+  });
+}
+
+// HU-12: una consulta con todo lo necesario para mostrarla y editarla.
+export function useConsulta(id: number) {
+  return useQuery({
+    queryKey: ['presupuestos', 'consulta', id],
+    queryFn: async () => {
+      const respuesta = await apiFetch<RespuestaExito<ConsultaDetallada>>(`/presupuestos/${id}`);
+      return respuesta.data;
+    },
+  });
+}
+
+// Modificar (también recalcular) o dar de baja cambian el listado, la consulta y el evento (su detalle y la
+// agenda): se invalida todo eso.
+function useAccionSobreConsulta<T>(accion: (datos: T) => Promise<ConsultaDetallada>) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: accion,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
+    },
+  });
+}
+
+export function useModificarConsulta(id: number) {
+  return useAccionSobreConsulta(async (datos: ModificarPresupuesto) => {
+    const respuesta = await apiFetch<RespuestaExito<ConsultaDetallada>>(`/presupuestos/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(datos),
+    });
+    return respuesta.data;
+  });
+}
+
+export function useDarDeBajaConsulta(id: number) {
+  return useAccionSobreConsulta(async () => {
+    const respuesta = await apiFetch<RespuestaExito<ConsultaDetallada>>(
+      `/presupuestos/${id}/dar-de-baja`,
+      { method: 'POST' },
+    );
+    return respuesta.data;
   });
 }

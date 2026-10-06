@@ -1,5 +1,5 @@
 import { desglosarIva, type EstadoConsulta, type FiltrosPresupuestos } from '@confluens/shared';
-import { AlertTriangle, ArrowLeft, FileText, Search } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Search, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,8 @@ import { usePresupuestos } from '@/hooks/use-presupuestos';
 import { fechaLocal, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
+
+import { EditarConsulta } from './EditarConsulta';
 
 // Los Confirmado no aparecen: pasan a la agenda de eventos.
 const ESTADOS: { valor: EstadoConsulta; clase: string }[] = [
@@ -22,15 +24,23 @@ const claseDeEstado = (estado: string) => ESTADOS.find((e) => e.valor === estado
 const fechaCorta = (fecha: Date) =>
   fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 
+// En la columna de vigencia el año va con dos dígitos para que la tabla entre sin scroll.
+const fechaCompacta = (fecha: Date) =>
+  fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit' });
+
 // HU-10: las consultas del personal (cada una es un presupuesto no confirmado), de la más reciente a
 // la más antigua por emisión. Filtra por estado, cliente y rango de fechas del evento; las Expirado
-// llevan el aviso de RN-08. Los importes se guardan sin IVA y se muestran desglosados (RN-05).
+// llevan el aviso de RN-08. Los importes se guardan sin IVA y se muestran desglosados (RN-05). Cada
+// fila abre la consulta para editarla (HU-12).
 export function ListadoConsultas() {
   const [estado, setEstado] = useState<EstadoConsulta | undefined>();
   const [textoCliente, setTextoCliente] = useState('');
   const [cliente, setCliente] = useState('');
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
+  const [abierta, setAbierta] = useState<number | null>(null);
+  // Lo que pasó con la última consulta que se cerró (guardada o dada de baja).
+  const [aviso, setAviso] = useState<string | null>(null);
   const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
 
   // La búsqueda por cliente espera a que se deje de escribir para no pedir una vez por tecla.
@@ -55,16 +65,42 @@ export function ListadoConsultas() {
     setHasta('');
   }
 
-  if (eventoAbierto !== null) {
+  // HU-12: cada fila abre la consulta para verla y editarla; al guardar o dar de baja se vuelve
+  // al listado, arriba de todo, con el aviso de lo que pasó.
+  function cerrar(mensaje: string | null) {
+    setAbierta(null);
+    setEventoAbierto(null);
+    setAviso(mensaje);
+    window.scrollTo({ top: 0 });
+  }
+
+  // Agendar y cobrar viven en el detalle del evento (HU-13 y HU-14): se abre desde la consulta y
+  // se vuelve a ella.
+  if (abierta !== null && eventoAbierto !== null) {
     return (
-      <div>
-        <div className="mx-auto max-w-2xl px-6 pt-6">
-          <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
-            <ArrowLeft /> Volver a las consultas
-          </Button>
-        </div>
+      <div className="space-y-2">
+        <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
+          <ArrowLeft /> Volver a la consulta {abierta}
+        </Button>
         <DetalleEvento eventoId={eventoAbierto} />
       </div>
+    );
+  }
+
+  if (abierta !== null) {
+    return (
+      <EditarConsulta
+        key={abierta}
+        id={abierta}
+        onVolver={() => cerrar(null)}
+        onGuardada={(consulta) =>
+          cerrar(
+            `Consulta ${consulta.id} guardada: queda Estimado hasta el ${fechaCorta(new Date(consulta.venceEn))}.`,
+          )
+        }
+        onDadaDeBaja={(consulta) => cerrar(`Consulta ${consulta.id} dada de baja.`)}
+        onAbrirEvento={setEventoAbierto}
+      />
     );
   }
 
@@ -72,6 +108,16 @@ export function ListadoConsultas() {
 
   return (
     <div className="space-y-6">
+      {aviso && (
+        <div className="flex items-start justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
+          <p className="flex items-center gap-2">
+            <CheckCircle2 className="size-4 shrink-0" /> {aviso}
+          </p>
+          <button type="button" aria-label="Cerrar el aviso" onClick={() => setAviso(null)}>
+            <X className="size-4" />
+          </button>
+        </div>
+      )}
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           {[
@@ -179,19 +225,18 @@ export function ListadoConsultas() {
             más antigua
           </p>
           <div className="overflow-x-auto rounded-xl bg-card ring-1 ring-border">
-            <table className="w-full min-w-[64rem] text-left text-sm">
+            <table className="w-full min-w-[52rem] text-left text-sm">
               <thead className="border-b text-xs text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 font-medium">Nº</th>
-                  <th className="px-4 py-3 font-medium">Cliente</th>
-                  <th className="px-4 py-3 font-medium">Salón</th>
-                  <th className="px-4 py-3 font-medium">Evento</th>
-                  <th className="px-4 py-3 font-medium">Emisión</th>
-                  <th className="px-4 py-3 font-medium">Vence</th>
-                  <th className="px-4 py-3 text-right font-medium">Subtotal</th>
-                  <th className="px-4 py-3 text-right font-medium">IVA 21%</th>
-                  <th className="px-4 py-3 text-right font-medium">Total</th>
-                  <th className="w-48 px-4 py-3 font-medium">Estado</th>
+                  <th className="px-3 py-3 font-medium">Nº</th>
+                  <th className="px-3 py-3 font-medium">Cliente</th>
+                  <th className="px-3 py-3 font-medium">Salón</th>
+                  <th className="px-3 py-3 font-medium">Evento</th>
+                  <th className="px-3 py-3 font-medium">Vigencia</th>
+                  <th className="px-3 py-3 text-right font-medium">Subtotal</th>
+                  <th className="px-3 py-3 text-right font-medium">IVA 21%</th>
+                  <th className="px-3 py-3 text-right font-medium">Total</th>
+                  <th className="w-40 px-3 py-3 font-medium">Estado</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -201,13 +246,13 @@ export function ListadoConsultas() {
                   return (
                     <tr
                       key={presupuesto.id}
-                      onClick={() => setEventoAbierto(presupuesto.eventoId)}
+                      onClick={() => setAbierta(presupuesto.id)}
                       className={cn(
                         'cursor-pointer transition-colors hover:bg-muted/60',
                         expirado && 'bg-amber-50/70',
                       )}
                     >
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <button
                           type="button"
                           className="font-medium text-bordo underline-offset-2 hover:underline"
@@ -216,7 +261,7 @@ export function ListadoConsultas() {
                           {presupuesto.id}
                         </button>
                       </td>
-                      <td className="max-w-[14rem] px-4 py-3">
+                      <td className="max-w-[10rem] px-3 py-3">
                         <p className="truncate font-medium">
                           {nombreCompleto(presupuesto.cliente)}
                         </p>
@@ -224,28 +269,32 @@ export function ListadoConsultas() {
                           {presupuesto.cliente.correo}
                         </p>
                       </td>
-                      <td className="px-4 py-3">{presupuesto.salon.nombre}</td>
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-3 py-3">{presupuesto.salon.nombre}</td>
+                      <td className="px-3 py-3 whitespace-nowrap">
                         {fechaCorta(fechaLocal(presupuesto.fechaEvento))}
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {fechaCorta(new Date(presupuesto.fechaEmision))}
+                      <td className="px-3 py-3 whitespace-nowrap">
+                        <p>
+                          <span className="text-xs text-muted-foreground">Emitida </span>
+                          {fechaCompacta(new Date(presupuesto.fechaEmision))}
+                        </p>
+                        <p>
+                          <span className="text-xs text-muted-foreground">Vence </span>
+                          {fechaCompacta(new Date(presupuesto.venceEn))}
+                        </p>
                       </td>
-                      <td className="px-4 py-3 whitespace-nowrap">
-                        {fechaCorta(new Date(presupuesto.venceEn))}
-                      </td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <td className="px-3 py-3 text-right whitespace-nowrap">
                         {formatearPesos(importes.subtotal)}
                         <p className="text-xs text-muted-foreground">sin IVA</p>
                       </td>
-                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                      <td className="px-3 py-3 text-right whitespace-nowrap">
                         {formatearPesos(importes.iva)}
                       </td>
-                      <td className="px-4 py-3 text-right font-medium whitespace-nowrap">
+                      <td className="px-3 py-3 text-right font-medium whitespace-nowrap">
                         {formatearPesos(importes.total)}
                         <p className="text-xs font-normal text-muted-foreground">con IVA</p>
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-3 py-3">
                         <span
                           className={cn(
                             'inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold',

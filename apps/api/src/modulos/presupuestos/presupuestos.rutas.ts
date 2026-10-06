@@ -1,6 +1,8 @@
 import {
+  esquemaConsultaDetallada,
   esquemaCrearPresupuesto,
   esquemaFiltrosPresupuestos,
+  esquemaModificarPresupuesto,
   esquemaPresupuestoDetallado,
   esquemaPresupuestoListado,
 } from '@confluens/shared';
@@ -12,7 +14,16 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { crear, listar } from './presupuestos.controlador.js';
+import { crear, darDeBaja, listar, modificar, obtener } from './presupuestos.controlador.js';
+
+const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
+const respuestaConsulta = {
+  'application/json': { schema: z.object({ data: esquemaConsultaDetallada }) },
+};
+const erroresDeSesion = {
+  401: { description: 'Sin sesión activa' },
+  403: { description: 'El rol no es Responsable de Eventos ni Administrador del Sistema' },
+};
 
 registroOpenApi.registerPath({
   method: 'post',
@@ -50,13 +61,91 @@ registroOpenApi.registerPath({
   },
 });
 
+registroOpenApi.registerPath({
+  method: 'get',
+  path: '/presupuestos/{id}',
+  tags: ['Presupuestos'],
+  summary: 'Detalle de una consulta para mostrarla y editarla (HU-12)',
+  request: { params: esquemaIdParam },
+  responses: {
+    200: {
+      description: 'La consulta con su evento, cliente, salón y líneas',
+      content: respuestaConsulta,
+    },
+    404: { description: 'No existe el presupuesto' },
+    ...erroresDeSesion,
+  },
+});
+
+registroOpenApi.registerPath({
+  method: 'patch',
+  path: '/presupuestos/{id}',
+  tags: ['Presupuestos'],
+  summary: 'Modifica o recalcula una consulta Estimado o Expirado y reinicia su vigencia (HU-12)',
+  request: {
+    params: esquemaIdParam,
+    body: { content: { 'application/json': { schema: esquemaModificarPresupuesto } } },
+  },
+  responses: {
+    200: {
+      description: 'Consulta modificada, en Estimado y con 10 días de vigencia',
+      content: respuestaConsulta,
+    },
+    400: { description: 'Datos inválidos' },
+    404: { description: 'No existe el presupuesto, el salón o un servicio' },
+    409: {
+      description:
+        'El presupuesto no está Estimado ni Expirado, o el evento ya no está en consulta',
+    },
+    422: { description: 'Se agregó un servicio que no está activo' },
+    ...erroresDeSesion,
+  },
+});
+
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/presupuestos/{id}/dar-de-baja',
+  tags: ['Presupuestos'],
+  summary: 'Da de baja una consulta: pasa a Cancelado (HU-12, RN-08)',
+  request: { params: esquemaIdParam },
+  responses: {
+    200: { description: 'Consulta cancelada', content: respuestaConsulta },
+    404: { description: 'No existe el presupuesto' },
+    409: { description: 'El presupuesto no está Estimado ni Expirado' },
+    ...erroresDeSesion,
+  },
+});
+
 export const rutasPresupuestos = Router();
 
 rutasPresupuestos.post('/', validar({ body: esquemaCrearPresupuesto }), asincrono(crear));
-rutasPresupuestos.get(
-  '/',
+// Las consultas las gestionan el Responsable de Eventos y el administrador (HU-10 y HU-12).
+const personalDeConsultas = [
   autenticar,
   autorizar('ADMINISTRADOR_SISTEMA', 'RESPONSABLE_EVENTOS'),
+] as const;
+
+rutasPresupuestos.get(
+  '/',
+  ...personalDeConsultas,
   validar({ query: esquemaFiltrosPresupuestos }),
   asincrono(listar),
+);
+rutasPresupuestos.get(
+  '/:id',
+  ...personalDeConsultas,
+  validar({ params: esquemaIdParam }),
+  asincrono(obtener),
+);
+rutasPresupuestos.patch(
+  '/:id',
+  ...personalDeConsultas,
+  validar({ params: esquemaIdParam, body: esquemaModificarPresupuesto }),
+  asincrono(modificar),
+);
+rutasPresupuestos.post(
+  '/:id/dar-de-baja',
+  ...personalDeConsultas,
+  validar({ params: esquemaIdParam }),
+  asincrono(darDeBaja),
 );

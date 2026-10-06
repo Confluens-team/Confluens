@@ -60,7 +60,7 @@ enum TipoEvento {
 | `LineaSolicitud` | Lo que eligió el cliente, con la misma forma que `LineaPresupuesto` (servicio, cantidad, modalidad, precio unitario mostrado). Al convertir la solicitud en evento, estas líneas se copian al presupuesto `Estimado`. |
 | `Evento` | Cliente, salón, distribución, fecha, horario desde/hasta (`inicio`/`fin`), cantidad de personas, estado, tipo de evento, modalidad salón-restaurante. El salón es obligatorio desde `EnConsulta`; la distribución y el horario pueden completarse después (ver restricciones). La jornada (media / completa) se deriva del horario: ≤ 4 h es media. |
 | `Presupuesto` | Pertenece a un evento. Estado, `emitidoEn`, `venceEn` (= emisión + 10 días, RN-08), `subtotal` sin IVA, `requiereFactura` (booleano, default `false`): si el evento se factura, la base de cobro de RN-01 incluye el IVA y la seña del 20% se calcula sobre ese total. IVA y total **no se guardan**: se calculan al mostrar (RN-05). Un evento puede tener varios. |
-| `LineaPresupuesto` | Servicio, descripción, cantidad, `modalidad` (`ModalidadServicio`), precio base congelado, precio unitario congelado (base + recargo), subtotal. `aCotizar` (booleano): la línea no tiene importe y no suma. El precio del salón va como una línea más, con servicio `null`. |
+| `LineaPresupuesto` | Servicio, descripción, cantidad, `modalidad` (`ModalidadServicio`), precio base congelado, precio unitario congelado (base + recargo), subtotal. `aCotizar` (booleano): la línea no tiene importe y no suma. El precio del salón va como una línea más, con servicio `null`, y es siempre la **primera** línea del presupuesto. Las demás líneas con servicio `null` son adicionales que el personal escribió a mano, con su descripción y su precio (HU-12). |
 | `ConfiguracionPrecios` | Fila única. `porcentajeMensual` (Decimal) editable por el Responsable de Eventos (RN-10). |
 | `AjustePrecio` | Historial de aumentos: fecha, porcentaje, alcance (`Global` o un `servicioId`), si fue automático o manual, usuario. Sirve para auditar y para explicar por qué cambió un precio. |
 | `Pago` | Evento, fecha, monto, medio de pago, observación (nullable). A diferencia del resto de los importes, el `monto` **no** es sin IVA (RN-05): es la plata entregada, y se mide contra la base de cobro de RN-01. |
@@ -112,8 +112,10 @@ Prisma no genera restricciones de exclusión, así que va como SQL crudo dentro 
 
 `LineaPresupuesto` guarda el precio unitario al momento de emitir, no una referencia al precio
 actual del servicio. Es lo que permite que un incremento mensual no altere presupuestos ya
-emitidos (RN-03, HU-34). La seña congela definitivamente el presupuesto (`Confirmado`); uno
-`Expirado` no se edita: se recalcula generando otro.
+emitidos (RN-03, HU-34). La seña congela definitivamente el presupuesto (`Confirmado`). Uno
+`Expirado` se recalcula (toma los precios vigentes) o se modifica (conserva el precio de las líneas
+que no se tocan): en los dos casos es el mismo presupuesto, que vuelve a `Estimado` con `venceEn`
+reiniciado (HU-12).
 
 Cuando el evento es en un mes futuro, el precio que se guarda en la línea es el **proyectado**
 a ese mes (RN-13): `precio_actual × (1 + porcentajeMensual)^meses`, sin proyectar tercerizados.

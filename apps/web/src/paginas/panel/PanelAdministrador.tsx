@@ -190,7 +190,13 @@ export function PanelAdministrador({ sesion }: { sesion: Sesion }) {
             </Button>
           </div>
         </div>
-        <nav className="mx-auto flex max-w-6xl gap-1 overflow-x-auto px-4 sm:px-6" role="tablist">
+        {/* overflow-y-hidden: el -mb-px de las pestañas dejaba el contenido 1px más alto que la
+            barra y aparecía una barra de scroll vertical. En pantallas angostas se sigue pudiendo
+            deslizar de costado, sin mostrar la barra. */}
+        <nav
+          className="mx-auto flex max-w-6xl gap-1 overflow-x-auto overflow-y-hidden px-4 [scrollbar-width:none] sm:px-6 [&::-webkit-scrollbar]:hidden"
+          role="tablist"
+        >
           {PESTANIAS.map(({ valor, texto, icono: Icono }) => (
             <button
               key={valor}

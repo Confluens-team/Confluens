@@ -138,6 +138,72 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
   });
 }
 
+// HU-12: la consulta completa para mostrarla y editarla. De cada servicio se trae si es tercerizado
+// para informarlo en pantalla; las líneas salen en el orden en que se cargaron.
+export async function buscarPresupuestoDetallado(
+  id: number,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.presupuesto.findUnique({
+    where: { id },
+    include: {
+      evento: { include: { cliente: true, salon: true } },
+      lineas: { include: { servicio: { select: { tercerizado: true } } }, orderBy: { id: 'asc' } },
+    },
+  });
+}
+
+export async function actualizarEvento(
+  id: number,
+  datos: Prisma.EventoUpdateInput,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.evento.update({ where: { id }, data: datos });
+}
+
+export async function actualizarPresupuesto(
+  id: number,
+  datos: Prisma.PresupuestoUpdateInput,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.presupuesto.update({ where: { id }, data: datos });
+}
+
+// HU-12: modificar reemplaza todas las líneas. Las que no cambiaron vuelven con su precio congelado,
+// que el servicio ya resolvió.
+export async function reemplazarLineas(
+  presupuestoId: number,
+  lineas: {
+    servicioId: number | null;
+    descripcion: string;
+    cantidad: number;
+    precioUnitario: string;
+    subtotal: string;
+  }[],
+  tx: Prisma.TransactionClient = prisma,
+) {
+  await tx.lineaPresupuesto.deleteMany({ where: { presupuestoId } });
+  await tx.lineaPresupuesto.createMany({
+    data: lineas.map((linea) => ({ ...linea, presupuestoId })),
+  });
+}
+
+// HU-12: al dar de baja una consulta, el evento se cancela solo si no le queda otro presupuesto
+// en curso o confirmado.
+export async function contarOtrosPresupuestosVigentes(
+  eventoId: number,
+  excluirId: number,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.presupuesto.count({
+    where: {
+      eventoId,
+      id: { not: excluirId },
+      estado: { in: ['Estimado', 'Expirado', 'Confirmado'] },
+    },
+  });
+}
+
 export type PresupuestosRepositorio = {
   buscarClientePorCorreo: typeof buscarClientePorCorreo;
   crearCliente: typeof crearCliente;
@@ -149,4 +215,9 @@ export type PresupuestosRepositorio = {
   crearPresupuestoConLineas: typeof crearPresupuestoConLineas;
   crearEnTransaccion: typeof crearEnTransaccion;
   obtenerPresupuestos: typeof obtenerPresupuestos;
+  buscarPresupuestoDetallado: typeof buscarPresupuestoDetallado;
+  actualizarEvento: typeof actualizarEvento;
+  actualizarPresupuesto: typeof actualizarPresupuesto;
+  reemplazarLineas: typeof reemplazarLineas;
+  contarOtrosPresupuestosVigentes: typeof contarOtrosPresupuestosVigentes;
 };

@@ -9,7 +9,7 @@ export const esquemaServicio = z.object({
   unidadMedida: z.string().min(1),
   precio: esquemaImporte,
   porPersona: z.boolean(),
-  tercerizado: z.boolean(), // su precio no entra en el total del presupuesto
+  tercerizado: z.boolean(), // suma al total; no recibe el incremento mensual (RN-10)
   activo: z.boolean(),
   categoria: z.string().nullable(), // agrupa el catálogo en la landing (HU-07)
   fotoUrl: z.url().nullable(),

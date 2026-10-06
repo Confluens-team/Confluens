@@ -42,18 +42,23 @@ RN-08).
 Estimado ──confirmar()──> Confirmado
     │
     ├──cancelar()──> Cancelado
-    └──controlarVigencia()──> Expirado
+    └──controlarVigencia()──> Expirado ──modificar()──> Estimado
+                                  │
+                                  └──cancelar()──> Cancelado
 ```
 
 | Estado | Significado |
 |---|---|
-| `Estimado` | Recién generado. Editable. Vigente durante 10 días desde su emisión (RN-08). |
+| `Estimado` | Recién generado. Editable. Vigente durante 10 días desde su emisión o su última modificación (RN-08). |
 | `Confirmado` | Se abonó la seña dentro de la vigencia. **La seña congela el presupuesto**: sus precios ya no cambian aunque suba el tarifario. Bloqueado para edición por el cliente. |
 | `Cancelado` | Dado de baja sin confirmarse. Solo manual. |
-| `Expirado` | Pasaron 10 días sin seña. **No se borra ni cancela nada**: el presupuesto queda visible, marcado con un aviso para que el Responsable de Eventos sepa que hay que recalcularlo. |
+| `Expirado` | Pasaron 10 días sin seña. **No se borra ni cancela nada**: el presupuesto queda visible, marcado con un aviso para que el Responsable de Eventos sepa que hay que recalcularlo. También se puede modificar (vuelve a `Estimado`) o dar de baja. |
 
-Recalcular un presupuesto `Expirado` = generar uno nuevo para el mismo evento con los precios
-vigentes (un evento puede tener varios presupuestos). El evento sigue `EnConsulta`.
+Recalcular un presupuesto `Expirado` = actualizar **ese mismo** presupuesto con los precios
+vigentes del salón y de los servicios del catálogo; al guardarlo vuelve a `Estimado` con 10 días
+nuevos. Modificarlo también edita el mismo presupuesto, pero las líneas que no se tocan conservan
+su precio. En los dos casos el evento sigue `EnConsulta` (decisiones del PO, 05/10/2026). Dar de
+baja una consulta cancela también su evento si no le queda otro presupuesto en curso.
 
 ---
 
@@ -212,7 +217,7 @@ evento reservado (ver RN-12).
 | RN-05 | **Todos los importes se guardan sin IVA.** El presupuesto (en pantalla y en PDF) muestra tres renglones: **subtotal sin IVA**, **IVA 21%** calculado sobre ese subtotal, y **total** = subtotal + IVA. La tasa del 21% va en una constante, no desparramada por el código. |
 | RN-06 | La seña se abona **dentro de la vigencia del presupuesto (10 días)** y es lo que lo congela (`Confirmado`) y pasa el evento a `Reservado`. Si vencen los 10 días sin seña, **no se cancela nada automáticamente**: el presupuesto pasa a `Expirado` y hay que recalcularlo (con los precios vigentes) antes de cobrar la seña. Lo abonado no es reembolsable. |
 | RN-07 | La cancelación por parte del cliente requiere un mínimo de **48 horas corridas** de anticipación. **Fines de semana y feriados cuentan** (hay eventos todos los días), así que no hace falta calendario de feriados. |
-| RN-08 | El presupuesto tiene una **vigencia de 10 días** desde su emisión. Vencida, un control automático lo pasa a `Expirado` y el sistema **muestra un aviso** al Responsable de Eventos ("presupuesto vencido, recalcular"). El presupuesto **no se borra ni se cancela solo**: solo se da de baja a mano, si el Responsable de Eventos lo decide. |
+| RN-08 | El presupuesto tiene una **vigencia de 10 días** desde su emisión; **cada modificación la reinicia** (decisión del PO, 05/10/2026). Vencida, un control automático lo pasa a `Expirado` y el sistema **muestra un aviso** al Responsable de Eventos ("presupuesto vencido, recalcular"). El presupuesto **no se borra ni se cancela solo**: solo se da de baja a mano, si el Responsable de Eventos lo decide. |
 | RN-09 | **Modificaciones y plazo de 7 días.** El cliente puede modificar su consulta o evento hasta **7 días antes** de la fecha del evento; después, cualquier modificación del lado del cliente se **bloquea** (no solo se avisa). El Responsable de Eventos puede modificar **en todo momento**, sin límite de plazo. Esto reemplaza la condición del PDF sobre confirmar asistentes 7 días antes y sumar hasta 5 personas a 48 hs. |
 | RN-10 | **Incremento de precios.** El Responsable de Eventos define un **porcentaje de incremento mensual**, modificable en cualquier momento. Se aplica automáticamente al tarifario una vez por mes. Además puede aplicar aumentos **a mitad de mes**, **a todo el catálogo** o **a servicios puntuales**. No afecta a los servicios tercerizados ni a presupuestos ya emitidos. |
 | RN-11 | **Recargo por modalidad.** Continuo en salón: +20%. En mesas con mozo: +30%. Se aplica **sobre el precio base por persona** del servicio, **sin IVA**, y **por cada servicio** en que el cliente elija esa modalidad (si elige tres coffees y marca continuo en dos, el recargo va solo en esos dos). Es opcional: el cliente elige. |

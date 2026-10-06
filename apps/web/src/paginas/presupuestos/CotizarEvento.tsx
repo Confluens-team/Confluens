@@ -109,7 +109,6 @@ export function CotizarEvento({
             descripcion: `Salón ${salonElegido.nombre}`,
             detalle: jornada === 'completa' ? 'Jornada completa' : 'Media jornada',
             subtotal: precioSalon(salonElegido, jornada),
-            entraEnTotal: true,
           },
         ]
       : []),
@@ -124,12 +123,12 @@ export function CotizarEvento({
             ? `${cantidad} × ${formatearPesos(s.precio)}`
             : `Precio fijo · ${formatearPesos(s.precio)}`,
           subtotal: Number(s.precio) * cantidad,
-          entraEnTotal: !s.tercerizado,
         };
       }),
   ];
   const { subtotal, iva, total } = desglosarIva(
-    lineas.filter((l) => l.entraEnTotal).reduce((suma, l) => suma + l.subtotal, 0),
+    // Los tercerizados suman como cualquier servicio (dominio.md, 24/09/2026).
+    lineas.reduce((suma, l) => suma + l.subtotal, 0),
   );
 
   function alternarServicio(servicioId: number) {

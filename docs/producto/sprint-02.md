@@ -92,16 +92,20 @@ Como Responsable de Eventos, quiero ver el detalle completo de un presupuesto, p
 
 ## HU-12 — Modificar presupuesto
 
-Como Responsable de Eventos, quiero modificar un presupuesto estimado (servicios, cantidades, personas, jornada y precios puntuales), para ajustarlo a lo que negocio con el cliente sin armarlo de nuevo.
+Como Responsable de Eventos, quiero modificar un presupuesto estimado (fecha, salón, servicios, cantidades, personas, jornada y precios puntuales), para ajustarlo a lo que negocio con el cliente sin armarlo de nuevo.
 
-- Un presupuesto Estimado es editable. Un presupuesto Confirmado solo puede modificarlo el Administrador del Sistema en casos excepcionales, sin que esa opción se muestre en el canal del cliente. Cancelado y Expirado se rechazan.
-- Puedo agregar y quitar servicios y cambiar cantidades, cantidad de personas y jornada; el total se recalcula con las reglas de HU-05 (RN-04, RN-05, tercerizados y «a cotizar»).
+- Un presupuesto Estimado o Expirado es editable desde Consultas, por el Responsable de Eventos y el Administrador del Sistema. Al guardar queda Estimado y la vigencia vuelve a contar 10 días (decisión del PO, 05/10/2026). Cancelado se rechaza. Un presupuesto Confirmado solo puede modificarlo el Administrador del Sistema en casos excepcionales, sin que esa opción se muestre en el canal del cliente (queda para la futura pestaña Eventos).
+- Puedo cambiar la fecha y el salón, agregar servicios del catálogo (agrupados por tipo) o uno que no está en el catálogo escribiendo qué es y su precio, quitar servicios y cambiar cantidades, cantidad de personas y jornada; el total se recalcula con las reglas de HU-05 (RN-04, RN-05, tercerizados y «a cotizar»). Los datos de contacto del cliente no se editan: los mantiene el cliente desde su cuenta.
+- Cada consulta muestra subtotal sin IVA, IVA 21% y total con IVA (RN-05).
 - Las líneas que no toco conservan su precio congelado; las líneas nuevas toman el precio vigente del catálogo.
 - Puedo ajustar a mano el precio unitario de una línea como ajuste comercial (RN-03).
-- Modificar un presupuesto Estimado **reinicia su vigencia**: `venceEn` se recalcula a 10 días desde la modificación.
-- Sobre un Expirado se ofrece «Recalcular»: genera un presupuesto Estimado nuevo para el mismo evento, con precios vigentes y 10 días de vigencia; el anterior sigue visible como Expirado.
+- Sobre un Expirado se ofrece «Recalcular»: actualiza ese mismo presupuesto con los precios vigentes y, al guardar, vuelve a Estimado con 10 días de vigencia (decisión del PO, 05/10/2026: no se genera un presupuesto nuevo).
+- Al guardar los cambios vuelvo al listado de consultas, con un aviso de que se guardó.
+- Puedo dar de baja una consulta Estimado o Expirado: pasa a Cancelado y, si su evento no tiene otro presupuesto en curso, el evento también (RN-08).
+- Marco si el cliente requiere factura, que define la base de cobro de la seña y del saldo (RN-01).
+- Desde la consulta llego a agendar el evento y registrar los pagos (HU-13 y HU-14).
 
-**Implementación.** `PATCH /api/presupuestos/:id` (`409` si el estado no lo permite; Confirmado solo con rol `ADMINISTRADOR_SISTEMA`) y `POST /api/presupuestos/:id/recalcular` (solo sobre `Expirado`). Un evento puede tener varios presupuestos.
+**Implementación.** `GET /api/presupuestos/:id` (la consulta con su evento, cliente, salón, jornada y líneas), `PATCH /api/presupuestos/:id` (`409` si no está Estimado ni Expirado o el evento ya no está EnConsulta; recalcular es este mismo PATCH con los precios vigentes que arma la pantalla; los servicios escritos a mano van en `adicionales`) y `POST /api/presupuestos/:id/dar-de-baja`. El PATCH también recibe `requiereFactura`. La línea del salón es la primera del presupuesto y de su descripción se deduce la jornada. La modificación de un Confirmado no está implementada. Un evento puede tener varios presupuestos.
 
 ## HU-13 — Registrar presupuesto confirmado
 
