@@ -102,8 +102,10 @@ Como Responsable de Eventos, quiero modificar un presupuesto estimado (fecha, sa
 - Sobre un Expirado se ofrece «Recalcular»: actualiza ese mismo presupuesto con los precios vigentes y, al guardar, vuelve a Estimado con 10 días de vigencia (decisión del PO, 05/10/2026: no se genera un presupuesto nuevo).
 - Al guardar los cambios vuelvo al listado de consultas, con un aviso de que se guardó.
 - Puedo dar de baja una consulta Estimado o Expirado: pasa a Cancelado y, si su evento no tiene otro presupuesto en curso, el evento también (RN-08).
+- Marco si el cliente requiere factura, que define la base de cobro de la seña y del saldo (RN-01).
+- Desde la consulta llego a agendar el evento y registrar los pagos (HU-13 y HU-14).
 
-**Implementación.** `GET /api/presupuestos/:id` (la consulta con su evento, cliente, salón, jornada y líneas), `PATCH /api/presupuestos/:id` (`409` si no está Estimado ni Expirado o el evento ya no está EnConsulta; recalcular es este mismo PATCH con los precios vigentes que arma la pantalla; los servicios escritos a mano van en `adicionales`) y `POST /api/presupuestos/:id/dar-de-baja`. La línea del salón es la primera del presupuesto y de su descripción se deduce la jornada. La modificación de un Confirmado no está implementada. Un evento puede tener varios presupuestos.
+**Implementación.** `GET /api/presupuestos/:id` (la consulta con su evento, cliente, salón, jornada y líneas), `PATCH /api/presupuestos/:id` (`409` si no está Estimado ni Expirado o el evento ya no está EnConsulta; recalcular es este mismo PATCH con los precios vigentes que arma la pantalla; los servicios escritos a mano van en `adicionales`) y `POST /api/presupuestos/:id/dar-de-baja`. El PATCH también recibe `requiereFactura`. La línea del salón es la primera del presupuesto y de su descripción se deduce la jornada. La modificación de un Confirmado no está implementada. Un evento puede tener varios presupuestos.
 
 ## HU-13 — Registrar presupuesto confirmado
 
