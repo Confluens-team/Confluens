@@ -1,4 +1,5 @@
 import type { PresupuestoDetallado, SalonConDistribuciones, TipoJornada } from '@confluens/shared';
+import { DIAS_VIGENCIA_PRESUPUESTO, desglosarIva, PORCENTAJE_SENA } from '@confluens/shared';
 import { AlertTriangle, CalendarDays, Check, Clock, Sparkles, Users } from 'lucide-react';
 import { useState } from 'react';
 
@@ -13,7 +14,6 @@ import { usePerfilCliente } from '@/hooks/use-sesion';
 import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
 import { formatearPesos, hoyISO, nombreCompleto } from '@/lib/formato';
-import { DIAS_VIGENCIA_PRESUPUESTO, PORCENTAJE_SENA, desglosarIva } from '@/lib/importes';
 import { FOTOS, fotoDeSalon } from '@/lib/fotos';
 import { cn } from '@/lib/utils';
 
@@ -523,7 +523,8 @@ export function CotizarEvento({
               {total > 0 && (
                 <p className="mt-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
                   Validez de {DIAS_VIGENCIA_PRESUPUESTO} días. Para reservar el salón se abona una
-                  seña del {PORCENTAJE_SENA}% del total dentro de ese plazo.
+                  seña del {PORCENTAJE_SENA}% dentro de ese plazo, calculada sobre el total con IVA
+                  si el evento se factura y sobre el subtotal si no (RN-01).
                 </p>
               )}
 

@@ -1,8 +1,10 @@
-import type {
-  ConsultaDetallada,
-  SalonConDistribuciones,
-  Servicio,
-  TipoJornada,
+import {
+  DIAS_VIGENCIA_PRESUPUESTO,
+  desglosarIva,
+  type ConsultaDetallada,
+  type SalonConDistribuciones,
+  type Servicio,
+  type TipoJornada,
 } from '@confluens/shared';
 import { AlertTriangle, ArrowLeft, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
@@ -16,7 +18,6 @@ import { useServicios } from '@/hooks/use-servicios';
 import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
 import { formatearPesos, nombreCompleto } from '@/lib/formato';
-import { DIAS_VIGENCIA_PRESUPUESTO, desglosarIva } from '@/lib/importes';
 import { cn } from '@/lib/utils';
 
 // Una línea del detalle mientras se edita. servicioId null = adicional escrito a mano.

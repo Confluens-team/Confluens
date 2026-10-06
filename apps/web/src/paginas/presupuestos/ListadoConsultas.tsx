@@ -1,4 +1,4 @@
-import type { EstadoConsulta, FiltrosPresupuestos } from '@confluens/shared';
+import { desglosarIva, type EstadoConsulta, type FiltrosPresupuestos } from '@confluens/shared';
 import { AlertTriangle, CheckCircle2, FileText, Search, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { usePresupuestos } from '@/hooks/use-presupuestos';
 import { fechaLocal, formatearPesos, nombreCompleto } from '@/lib/formato';
-import { desglosarIva } from '@/lib/importes';
 import { cn } from '@/lib/utils';
 import { EditarConsulta } from './EditarConsulta';
 

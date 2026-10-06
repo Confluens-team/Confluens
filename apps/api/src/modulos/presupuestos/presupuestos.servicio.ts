@@ -1,10 +1,11 @@
-import type {
-  ConsultaDetallada,
-  CrearPresupuesto,
-  FiltrosPresupuestos,
-  ModificarPresupuesto,
-  PresupuestoListado,
-  TipoJornada,
+import {
+  DIAS_VIGENCIA_PRESUPUESTO,
+  type ConsultaDetallada,
+  type CrearPresupuesto,
+  type FiltrosPresupuestos,
+  type ModificarPresupuesto,
+  type PresupuestoListado,
+  type TipoJornada,
 } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
@@ -14,11 +15,9 @@ import type { PresupuestosRepositorio } from './presupuestos.repositorio.js';
 
 // RN-08: el presupuesto tiene una vigencia de 10 días desde su emisión. Vencido, lo pasa a
 // Expirado el trabajo de trabajos/vigencia.trabajo.ts.
-export const DIAS_DE_VIGENCIA = 10;
-
 export function calcularVencimiento(fechaEmision: Date): Date {
   const venceEn = new Date(fechaEmision);
-  venceEn.setUTCDate(venceEn.getUTCDate() + DIAS_DE_VIGENCIA);
+  venceEn.setUTCDate(venceEn.getUTCDate() + DIAS_VIGENCIA_PRESUPUESTO);
   return venceEn;
 }
 
