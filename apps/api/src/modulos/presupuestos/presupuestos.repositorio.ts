@@ -68,6 +68,7 @@ export async function crearPresupuestoConLineas(
       cantidad: number;
       precioUnitario: string;
       subtotal: string;
+      aCotizar: boolean;
     }[];
   },
   tx: Prisma.TransactionClient = prisma,
@@ -147,7 +148,18 @@ export async function buscarPresupuestoDetallado(
   return tx.presupuesto.findUnique({
     where: { id },
     include: {
-      evento: { include: { cliente: true, salon: true } },
+      evento: {
+        include: {
+          cliente: true,
+          salon: true,
+          distribucion: true,
+          // HU-11: los presupuestos del evento, para navegar entre ellos desde el detalle.
+          presupuestos: {
+            select: { id: true, estado: true, fechaEmision: true, total: true },
+            orderBy: [{ fechaEmision: 'asc' }, { id: 'asc' }],
+          },
+        },
+      },
       lineas: { include: { servicio: { select: { tercerizado: true } } }, orderBy: { id: 'asc' } },
     },
   });
@@ -179,6 +191,7 @@ export async function reemplazarLineas(
     cantidad: number;
     precioUnitario: string;
     subtotal: string;
+    aCotizar: boolean;
   }[],
   tx: Prisma.TransactionClient = prisma,
 ) {

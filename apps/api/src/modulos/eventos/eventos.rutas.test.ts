@@ -81,6 +81,7 @@ const lineaFixture = {
   cantidad: 1,
   precioUnitario: new Prisma.Decimal('142200'),
   subtotal: new Prisma.Decimal('142200'),
+  aCotizar: false,
 };
 
 const presupuestoEstimadoFixture = {

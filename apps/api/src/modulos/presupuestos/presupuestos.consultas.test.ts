@@ -49,7 +49,9 @@ const salonParana = {
   actualizadoEn: new Date(),
 };
 
-function servicio(datos: { id: number; nombre: string; precio: string } & Record<string, unknown>) {
+function servicio(
+  datos: { id: number; nombre: string; precio: string | null } & Record<string, unknown>,
+) {
   return {
     descripcion: '',
     unidadMedida: 'persona',
@@ -61,7 +63,7 @@ function servicio(datos: { id: number; nombre: string; precio: string } & Record
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     ...datos,
-    precio: D(datos.precio),
+    precio: datos.precio === null ? null : D(datos.precio),
   };
 }
 
@@ -101,6 +103,15 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         correo: 'marina@example.com',
       },
       salon: salonParana,
+      distribucion: null,
+      presupuestos: [
+        {
+          id: 31,
+          estado: 'Estimado',
+          fechaEmision: new Date('2026-09-20T15:00:00.000Z'),
+          total: D('222200'),
+        },
+      ],
       ...evento,
     },
     lineas: [
@@ -112,6 +123,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         cantidad: 1,
         precioUnitario: D('142200'),
         subtotal: D('142200'),
+        aCotizar: false,
         servicio: null,
       },
       {
@@ -122,6 +134,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         cantidad: 10,
         precioUnitario: D('8000'),
         subtotal: D('80000'),
+        aCotizar: false,
         servicio: { tercerizado: false },
       },
     ],
@@ -170,6 +183,7 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       cantidad: 10,
       precioUnitario: '8000.00',
       subtotal: '80000.00',
+      aCotizar: false,
       tipo: 'servicio',
       tercerizado: false,
     });
@@ -189,6 +203,7 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
             cantidad: 1,
             precioUnitario: D('25000'),
             subtotal: D('25000'),
+            aCotizar: false,
             servicio: null,
           },
         ],
@@ -203,6 +218,46 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       'adicional',
     ]);
     expect(respuesta.body.data.tipoJornada).toBe('completa');
+  });
+
+  it('muestra distribución, horario y los presupuestos del evento para navegar (HU-11)', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta(
+        {},
+        {
+          distribucionId: 2,
+          distribucion: { id: 2, nombre: 'Banquete' },
+          inicio: new Date('2026-11-15T23:00:00.000Z'),
+          fin: new Date('2026-11-16T05:00:00.000Z'),
+          presupuestos: [
+            {
+              id: 30,
+              estado: 'Expirado',
+              fechaEmision: new Date('2026-09-01'),
+              total: D('100000'),
+            },
+            {
+              id: 31,
+              estado: 'Estimado',
+              fechaEmision: new Date('2026-09-20'),
+              total: D('222200'),
+            },
+          ],
+        },
+      ),
+    );
+
+    const respuesta = await request(app).get('/api/presupuestos/31').set('Cookie', [cookieRE]);
+
+    expect(respuesta.body.data.evento).toMatchObject({
+      distribucion: { id: 2, nombre: 'Banquete' },
+      inicio: '2026-11-15T23:00:00.000Z',
+      fin: '2026-11-16T05:00:00.000Z',
+    });
+    expect(respuesta.body.data.presupuestosDelEvento).toEqual([
+      { id: 30, estado: 'Expirado', fechaEmision: '2026-09-01T00:00:00.000Z', total: '100000.00' },
+      { id: 31, estado: 'Estimado', fechaEmision: '2026-09-20T00:00:00.000Z', total: '222200.00' },
+    ]);
   });
 
   it('responde 404 si el presupuesto no existe', async () => {
@@ -241,6 +296,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
         cantidad: 1,
         precioUnitario: '142200.00',
         subtotal: '142200.00',
+        aCotizar: false,
       },
       {
         servicioId: 1,
@@ -248,6 +304,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
         cantidad: 12,
         precioUnitario: '8000.00',
         subtotal: '96000.00',
+        aCotizar: false,
       },
     ]);
     const { estado, total, venceEn } = datosDelPresupuesto() as {
@@ -278,6 +335,67 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
     expect(lineasGuardadas()[2]).toMatchObject({ servicioId: 2, precioUnitario: '50000.00' });
     // 142200 + 12 × 8000 + 50000
     expect((datosDelPresupuesto() as { total: string }).total).toBe('288200.00');
+  });
+
+  it('un tercerizado a cotizar entra sin importe y no suma al total (HU-11)', async () => {
+    const leds = servicio({ id: 3, nombre: 'Pantallas LED', precio: null, tercerizado: true });
+    buscarServiciosPorIdsMock.mockResolvedValue([coffee, leds]);
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [...bodyBase.servicios, { servicioId: 3, cantidad: 1 }] });
+
+    expect(lineasGuardadas()[2]).toEqual({
+      servicioId: 3,
+      descripcion: 'Pantallas LED',
+      cantidad: 1,
+      precioUnitario: '0.00',
+      subtotal: '0.00',
+      aCotizar: true,
+    });
+    expect((datosDelPresupuesto() as { total: string }).total).toBe('238200.00');
+  });
+
+  it('una línea a cotizar sigue así hasta que llega su precio, y con él suma (HU-11)', async () => {
+    const leds = servicio({ id: 3, nombre: 'Pantallas LED', precio: null, tercerizado: true });
+    buscarServiciosPorIdsMock.mockResolvedValue([coffee, leds]);
+    const base = consulta() as unknown as { lineas: object[] };
+    const conLeds = {
+      lineas: [
+        ...base.lineas,
+        {
+          id: 3,
+          presupuestoId: 31,
+          servicioId: 3,
+          descripcion: 'Pantallas LED',
+          cantidad: 1,
+          precioUnitario: D('0'),
+          subtotal: D('0'),
+          aCotizar: true,
+          servicio: { tercerizado: true },
+        },
+      ],
+    };
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta(conLeds));
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [...bodyBase.servicios, { servicioId: 3, cantidad: 1 }] });
+    expect(lineasGuardadas()[2]).toMatchObject({ aCotizar: true, subtotal: '0.00' });
+
+    reemplazarLineasMock.mockClear();
+    actualizarPresupuestoMock.mockClear();
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        servicios: [...bodyBase.servicios, { servicioId: 3, cantidad: 1, precioUnitario: '90000' }],
+      });
+    expect(lineasGuardadas()[2]).toMatchObject({ aCotizar: false, subtotal: '90000.00' });
+    expect((datosDelPresupuesto() as { total: string }).total).toBe('328200.00');
   });
 
   it('un precio unitario explícito es un ajuste comercial y manda (RN-03)', async () => {
@@ -326,6 +444,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       cantidad: 2,
       precioUnitario: '12500.00',
       subtotal: '25000.00',
+      aCotizar: false,
     });
     // 142200 + 12 × 8000 + 2 × 12500
     expect((datosDelPresupuesto() as { total: string }).total).toBe('263200.00');

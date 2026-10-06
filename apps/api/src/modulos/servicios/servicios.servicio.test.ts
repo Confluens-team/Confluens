@@ -32,7 +32,7 @@ function repositorioFake(servicios: Servicio[]): ServiciosRepositorio {
       const nuevo: Servicio = {
         id: servicios.length + 1,
         ...datos,
-        precio: new Decimal(datos.precio),
+        precio: datos.precio === null ? null : new Decimal(datos.precio),
         activo: true,
         // El alta del catálogo no publica contenido de la landing: lo hace HU-08.
         categoria: null,

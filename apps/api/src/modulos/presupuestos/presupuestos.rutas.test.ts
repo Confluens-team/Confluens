@@ -68,7 +68,7 @@ const servicioFixtureBase = {
   nombre: 'Coffee Refresh',
   descripcion: 'Café, tés, leche, jugo, agua con y sin gas',
   unidadMedida: 'persona',
-  precio: new Prisma.Decimal('8730'),
+  precio: new Prisma.Decimal('8730') as Prisma.Decimal | null,
   porPersona: true,
   tercerizado: false,
   activo: true,
@@ -238,6 +238,29 @@ describe('POST /api/presupuestos', () => {
     );
     const [datos] = crearPresupuestoConLineasMock.mock.calls[0]!;
     expect(datos.lineas).toHaveLength(3); // salón + servicio propio + tercerizado
+  });
+
+  it('un tercerizado a cotizar entra sin importe, con la marca, y no suma al total (HU-11)', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+    buscarServiciosPorIdsMock.mockResolvedValue([
+      servicioFixture({ id: 4, nombre: 'Pantallas LED', precio: null, tercerizado: true }),
+    ]);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .send({ ...bodyBase, servicios: [{ servicioId: 4, cantidad: 1 }] });
+
+    expect(respuesta.status).toBe(201);
+    const [datos] = crearPresupuestoConLineasMock.mock.calls[0]!;
+    expect(datos.lineas[1]).toEqual({
+      servicioId: 4,
+      descripcion: 'Pantallas LED',
+      cantidad: 1,
+      precioUnitario: '0.00',
+      subtotal: '0.00',
+      aCotizar: true,
+    });
+    expect(datos.total).toBe('142200.00'); // solo el salón
   });
 
   it('calcula la línea de un servicio con una cantidad menor a la del evento (RN-04)', async () => {

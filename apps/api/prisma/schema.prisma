@@ -108,7 +108,9 @@ model Servicio {
   nombre        String             @unique
   descripcion   String
   unidadMedida  String
-  precio        Decimal            @db.Decimal(12, 2) // sin IVA (RN-05)
+  // Sin IVA (RN-05). null = "a cotizar" (HU-11): solo un tercerizado puede no tener precio fijo
+  // (CHECK servicio_a_cotizar_solo_tercerizado en la migración).
+  precio        Decimal?           @db.Decimal(12, 2)
   porPersona    Boolean
   tercerizado   Boolean            @default(false) // suma al total; no recibe el incremento mensual
   activo        Boolean            @default(true)
@@ -201,6 +203,9 @@ model LineaPresupuesto {
   cantidad       Int
   precioUnitario Decimal     @db.Decimal(12, 2) // congelado, sin IVA (RN-05)
   subtotal       Decimal     @db.Decimal(12, 2) // sin IVA (RN-05)
+  // HU-11: tercerizado sin precio todavía. Va con precio y subtotal en 0, así no suma al total;
+  // deja de estar a cotizar cuando el personal completa el precio.
+  aCotizar       Boolean     @default(false)
 }
 
 // Catálogo de medios de pago (Efectivo, Tarjeta, A la habitación). Baja lógica con `activo`: no se

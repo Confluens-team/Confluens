@@ -148,6 +148,32 @@ describe('POST /api/servicios', () => {
     expect(crearMock).not.toHaveBeenCalled();
   });
 
+  it('un tercerizado puede darse de alta a cotizar, sin precio (HU-11)', async () => {
+    buscarPorNombreMock.mockResolvedValue(null);
+    crearMock.mockResolvedValue({ ...servicioDb, precio: null, tercerizado: true });
+
+    const respuesta = await request(app)
+      .post('/api/servicios')
+      .set('Cookie', [cookiePersonal])
+      .send({ ...cuerpoValido, precio: null, tercerizado: true });
+
+    expect(respuesta.status).toBe(201);
+    expect(crearMock).toHaveBeenCalledWith(expect.objectContaining({ precio: null }));
+  });
+
+  it('un servicio propio no puede quedar a cotizar: responde 400 VALIDATION_ERROR', async () => {
+    const respuesta = await request(app)
+      .post('/api/servicios')
+      .set('Cookie', [cookiePersonal])
+      .send({ ...cuerpoValido, precio: null });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details).toEqual([
+      { campo: 'precio', mensaje: 'Solo un servicio tercerizado puede quedar a cotizar' },
+    ]);
+    expect(crearMock).not.toHaveBeenCalled();
+  });
+
   it('con body inválido (falta precio) responde 400 VALIDATION_ERROR', async () => {
     const { precio: _precio, ...sinPrecio } = cuerpoValido;
 
