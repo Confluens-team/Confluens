@@ -2,9 +2,8 @@ import { prisma } from '../../lib/prisma.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 
 // Capa de acceso a datos del módulo. Cada función acepta un `tx` opcional (default: el cliente
-// global) para poder correr dentro de la transacción de reservar(), y para que los tests puedan
-// mockear el módulo entero sin simular una transacción real (mismo criterio que presupuestos y
-// solicitudes).
+// global) para poder correr dentro de una transacción, y para que los tests puedan mockear el
+// módulo entero sin simular una transacción real (mismo criterio que presupuestos y solicitudes).
 
 export async function buscarDetallado(id: number, tx: Prisma.TransactionClient = prisma) {
   return tx.evento.findUnique({
@@ -21,7 +20,7 @@ export async function buscarDetallado(id: number, tx: Prisma.TransactionClient =
 
 // Agenda del panel del administrador: los eventos que ocupan el salón (Reservado y Cobrado; los
 // EnConsulta no bloquean y los Cancelado ya lo liberaron). Del presupuesto se trae solo el total
-// del Confirmado más reciente, que es el que quedó tomado al reservar.
+// del Confirmado más reciente, que es el que quedó congelado al acreditarse la seña.
 export async function listarAgenda(tx: Prisma.TransactionClient = prisma) {
   return tx.evento.findMany({
     where: { estado: { in: ['Reservado', 'Cobrado'] } },
@@ -47,7 +46,7 @@ export async function buscarDistribucion(id: number, tx: Prisma.TransactionClien
 }
 
 // El evento puede acumular varios presupuestos (Presupuesto.eventoId no es único): se toma el
-// Estimado más reciente como "el vigente" a confirmar.
+// Estimado más reciente como "el vigente", que es el que se confirma al acreditarse la seña.
 export async function buscarPresupuestoEstimado(
   eventoId: number,
   tx: Prisma.TransactionClient = prisma,
@@ -58,9 +57,10 @@ export async function buscarPresupuestoEstimado(
   });
 }
 
-// Criterio 2 (parte "aplicación"): pre-chequeo antes de intentar el update, para poder informar
-// con qué evento se superpone (el error de la constraint EXCLUDE de Postgres no lo dice). La
-// constraint sigue siendo la red de seguridad final ante una carrera entre dos reservas.
+// RN-12, parte "aplicación": pre-chequeo antes de intentar el update, para poder informar con qué
+// evento se superpone (el error de la constraint EXCLUDE de Postgres no lo dice). La constraint
+// sigue siendo la red de seguridad final ante una carrera entre dos reservas. Lo usan agendar() y
+// el módulo de pagos, que es el que termina ocupando el salón.
 export async function buscarSolapamiento(
   datos: { salonId: number; inicio: Date; fin: Date; excluirEventoId: number },
   tx: Prisma.TransactionClient = prisma,
@@ -76,37 +76,28 @@ export async function buscarSolapamiento(
   });
 }
 
-export async function reservar(
+// Agendar NO cambia el estado ni toca el presupuesto: solo deja el evento con su franja horaria y
+// su distribución definidas, todavía EnConsulta. El paso a Reservado lo hace el módulo de pagos
+// cuando el acumulado cruza el 20% de la base de cobro (HU-13).
+export async function agendar(
   datos: {
     eventoId: number;
-    presupuestoId: number;
     distribucionId: number;
     inicio: Date;
     fin: Date;
-    senaVenceEn: Date;
     modalidadSalonRestaurante: boolean;
   },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  await tx.presupuesto.update({
-    where: { id: datos.presupuestoId },
-    data: { estado: 'Confirmado' },
-  });
   return tx.evento.update({
     where: { id: datos.eventoId },
     data: {
-      estado: 'Reservado',
       distribucionId: datos.distribucionId,
       inicio: datos.inicio,
       fin: datos.fin,
-      senaVenceEn: datos.senaVenceEn,
       modalidadSalonRestaurante: datos.modalidadSalonRestaurante,
     },
   });
-}
-
-export async function registrarSena(id: number, tx: Prisma.TransactionClient = prisma) {
-  return tx.evento.update({ where: { id }, data: { senaRegistradaEn: new Date() } });
 }
 
 // Cancelar el evento también cancela su(s) presupuesto(s) activos: un evento Cancelado no puede
@@ -131,8 +122,7 @@ export type EventosRepositorio = {
   buscarDistribucion: typeof buscarDistribucion;
   buscarPresupuestoEstimado: typeof buscarPresupuestoEstimado;
   buscarSolapamiento: typeof buscarSolapamiento;
-  reservar: typeof reservar;
-  registrarSena: typeof registrarSena;
+  agendar: typeof agendar;
   cancelar: typeof cancelar;
   crearEnTransaccion: typeof crearEnTransaccion;
 };

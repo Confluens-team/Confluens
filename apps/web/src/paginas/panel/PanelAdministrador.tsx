@@ -39,7 +39,7 @@ const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: 
     valor: 'agenda',
     texto: 'Agenda',
     icono: CalendarDays,
-    bajada: 'Eventos reservados y cobrados, con el estado de su seña.',
+    bajada: 'Eventos reservados y cobrados, con lo que falta pagar de cada uno.',
   },
   {
     valor: 'clientes',

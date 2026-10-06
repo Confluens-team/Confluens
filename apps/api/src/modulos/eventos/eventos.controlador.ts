@@ -1,18 +1,12 @@
 import type {
+  AgendarEvento,
   EventoAgenda,
   EventoDetallado,
-  ReservarEvento,
   RespuestaExito,
 } from '@confluens/shared';
 import type { Request, Response } from 'express';
 
-import {
-  cancelarEvento,
-  listarAgenda,
-  obtenerDetalle,
-  registrarSena,
-  reservarEvento,
-} from './eventos.servicio.js';
+import { agendarEvento, cancelarEvento, listarAgenda, obtenerDetalle } from './eventos.servicio.js';
 
 export async function listar(_req: Request, res: Response): Promise<void> {
   const eventos = await listarAgenda();
@@ -28,17 +22,10 @@ export async function obtener(req: Request, res: Response): Promise<void> {
   res.status(200).json(cuerpo);
 }
 
-// req.body ya validado por validar({ body: esquemaReservarEvento }) en eventos.rutas.ts.
-export async function reservar(req: Request, res: Response): Promise<void> {
+// req.body ya validado por validar({ body: esquemaAgendarEvento }) en eventos.rutas.ts.
+export async function agendar(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
-  const evento = await reservarEvento(id, req.body as ReservarEvento);
-  const cuerpo: RespuestaExito<EventoDetallado> = { data: evento as unknown as EventoDetallado };
-  res.status(200).json(cuerpo);
-}
-
-export async function marcarSena(req: Request, res: Response): Promise<void> {
-  const id = Number(req.params.id);
-  const evento = await registrarSena(id);
+  const evento = await agendarEvento(id, req.body as AgendarEvento);
   const cuerpo: RespuestaExito<EventoDetallado> = { data: evento as unknown as EventoDetallado };
   res.status(200).json(cuerpo);
 }

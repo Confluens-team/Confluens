@@ -11,10 +11,9 @@ vi.mock('./eventos.repositorio.js', () => ({
   buscarDistribucion: vi.fn(),
   buscarPresupuestoEstimado: vi.fn(),
   buscarSolapamiento: vi.fn(),
-  reservar: vi.fn(),
-  registrarSena: vi.fn(),
+  agendar: vi.fn(),
   cancelar: vi.fn(),
-  // No hay transacción real en el test: se ejecuta el callback tal cual, `reservar` ya está
+  // No hay transacción real en el test: se ejecuta el callback tal cual, `agendar` ya está
   // mockeada arriba y no usa el `tx` que recibiría de una transacción real.
   crearEnTransaccion: vi.fn((ejecutar: (tx: undefined) => unknown) => ejecutar(undefined)),
 }));
@@ -23,10 +22,8 @@ const {
   buscarDetallado,
   listarAgenda,
   buscarDistribucion,
-  buscarPresupuestoEstimado,
   buscarSolapamiento,
-  reservar,
-  registrarSena,
+  agendar,
   cancelar,
   crearEnTransaccion,
 } = await import('./eventos.repositorio.js');
@@ -34,10 +31,8 @@ const {
 const buscarDetalladoMock = vi.mocked(buscarDetallado);
 const listarAgendaMock = vi.mocked(listarAgenda);
 const buscarDistribucionMock = vi.mocked(buscarDistribucion);
-const buscarPresupuestoEstimadoMock = vi.mocked(buscarPresupuestoEstimado);
 const buscarSolapamientoMock = vi.mocked(buscarSolapamiento);
-const reservarMock = vi.mocked(reservar);
-const registrarSenaMock = vi.mocked(registrarSena);
+const agendarMock = vi.mocked(agendar);
 const cancelarMock = vi.mocked(cancelar);
 const crearEnTransaccionMock = vi.mocked(crearEnTransaccion);
 
@@ -94,6 +89,7 @@ const presupuestoEstimadoFixture = {
   fechaEmision: new Date(),
   venceEn: new Date(),
   total: new Prisma.Decimal('142200'),
+  requiereFactura: false,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
 };
@@ -162,29 +158,30 @@ describe('GET /api/eventos/:id', () => {
   });
 });
 
-describe('POST /api/eventos/:id/reservar', () => {
+describe('POST /api/eventos/:id/agendar', () => {
   beforeEach(() => {
     buscarDetalladoMock.mockReset();
     buscarDistribucionMock.mockReset();
-    buscarPresupuestoEstimadoMock.mockReset();
     buscarSolapamientoMock.mockReset();
-    reservarMock.mockReset();
+    agendarMock.mockReset();
     crearEnTransaccionMock.mockClear();
 
     buscarDetalladoMock.mockResolvedValue(eventoFixture());
     buscarDistribucionMock.mockResolvedValue(distribucionFixture);
-    buscarPresupuestoEstimadoMock.mockResolvedValue(presupuestoEstimadoFixture);
     buscarSolapamientoMock.mockResolvedValue(null);
-    reservarMock.mockResolvedValue({
+    agendarMock.mockResolvedValue({
       ...eventoFixtureBase(),
-      estado: 'Reservado',
       distribucionId: distribucionFixture.id,
+      inicio: new Date(inicioValido),
+      fin: new Date(finValido),
     });
   });
 
-  it('reserva el evento (criterio 1): confirma el presupuesto y fija senaVenceEn (~10 días, RN-06)', async () => {
+  // La aserción central de HU-13: agendar fija el horario y NADA MÁS. El evento sigue EnConsulta y
+  // el presupuesto sigue Estimado; la reserva la dispara el pago que cruza el 20% (módulo pagos).
+  it('fija distribución y horario sin reservar: el evento sigue EnConsulta y el presupuesto Estimado', async () => {
     const respuesta = await request(app)
-      .post('/api/eventos/20/reservar')
+      .post('/api/eventos/20/agendar')
       .set('Cookie', [cookiePersonal])
       .send({
         distribucionId: distribucionFixture.id,
@@ -194,34 +191,23 @@ describe('POST /api/eventos/:id/reservar', () => {
 
     expect(respuesta.status).toBe(200);
     expect(crearEnTransaccionMock).toHaveBeenCalledTimes(1);
-    const [datosReserva] = reservarMock.mock.calls[0]!;
-    expect(datosReserva.eventoId).toBe(20);
-    expect(datosReserva.presupuestoId).toBe(presupuestoEstimadoFixture.id);
-    expect(datosReserva.distribucionId).toBe(distribucionFixture.id);
-    const diezDiasEnMs = 10 * 24 * 60 * 60 * 1000;
-    const diferencia = datosReserva.senaVenceEn.getTime() - Date.now();
-    expect(diferencia).toBeGreaterThan(diezDiasEnMs - 5000);
-    expect(diferencia).toBeLessThanOrEqual(diezDiasEnMs);
+    const [datosAgenda] = agendarMock.mock.calls[0]!;
+    expect(datosAgenda).toEqual({
+      eventoId: 20,
+      distribucionId: distribucionFixture.id,
+      inicio: new Date(inicioValido),
+      fin: new Date(finValido),
+      modalidadSalonRestaurante: false,
+    });
+    expect(respuesta.body.data.estado).toBe('EnConsulta');
+    expect(respuesta.body.data.presupuestos[0].estado).toBe('Estimado');
   });
 
   it('responde 409 si el evento no está EnConsulta', async () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Reservado' }));
 
     const respuesta = await request(app)
-      .post('/api/eventos/20/reservar')
-      .set('Cookie', [cookiePersonal])
-      .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
-
-    expect(respuesta.status).toBe(409);
-    expect(respuesta.body.error.code).toBe('CONFLICT');
-    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
-  });
-
-  it('responde 409 si el evento no tiene un presupuesto Estimado', async () => {
-    buscarPresupuestoEstimadoMock.mockResolvedValue(null);
-
-    const respuesta = await request(app)
-      .post('/api/eventos/20/reservar')
+      .post('/api/eventos/20/agendar')
       .set('Cookie', [cookiePersonal])
       .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
 
@@ -234,7 +220,7 @@ describe('POST /api/eventos/:id/reservar', () => {
     buscarDistribucionMock.mockResolvedValue(null);
 
     const respuesta = await request(app)
-      .post('/api/eventos/20/reservar')
+      .post('/api/eventos/20/agendar')
       .set('Cookie', [cookiePersonal])
       .send({ distribucionId: 999, inicio: inicioValido, fin: finValido });
 
@@ -247,7 +233,7 @@ describe('POST /api/eventos/:id/reservar', () => {
     buscarDistribucionMock.mockResolvedValue({ ...distribucionFixture, salonId: 999 });
 
     const respuesta = await request(app)
-      .post('/api/eventos/20/reservar')
+      .post('/api/eventos/20/agendar')
       .set('Cookie', [cookiePersonal])
       .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
 
@@ -260,7 +246,7 @@ describe('POST /api/eventos/:id/reservar', () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ cantidadPersonas: 300 }));
 
     const respuesta = await request(app)
-      .post('/api/eventos/20/reservar')
+      .post('/api/eventos/20/agendar')
       .set('Cookie', [cookiePersonal])
       .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
 
@@ -269,11 +255,11 @@ describe('POST /api/eventos/:id/reservar', () => {
     expect(crearEnTransaccionMock).not.toHaveBeenCalled();
   });
 
-  it('reserva igual si cantidadPersonas supera la capacidad y confirmarCapacidadExcedida es true', async () => {
+  it('agenda igual si cantidadPersonas supera la capacidad y confirmarCapacidadExcedida es true', async () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ cantidadPersonas: 300 }));
 
     const respuesta = await request(app)
-      .post('/api/eventos/20/reservar')
+      .post('/api/eventos/20/agendar')
       .set('Cookie', [cookiePersonal])
       .send({
         distribucionId: distribucionFixture.id,
@@ -290,7 +276,7 @@ describe('POST /api/eventos/:id/reservar', () => {
     buscarSolapamientoMock.mockResolvedValue(eventoFixture({ id: 55 }));
 
     const respuesta = await request(app)
-      .post('/api/eventos/20/reservar')
+      .post('/api/eventos/20/agendar')
       .set('Cookie', [cookiePersonal])
       .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
 
@@ -302,7 +288,7 @@ describe('POST /api/eventos/:id/reservar', () => {
 
   it('responde 422 si fin no es posterior a inicio', async () => {
     const respuesta = await request(app)
-      .post('/api/eventos/20/reservar')
+      .post('/api/eventos/20/agendar')
       .set('Cookie', [cookiePersonal])
       .send({
         distribucionId: distribucionFixture.id,
@@ -331,43 +317,12 @@ describe('POST /api/eventos/:id/reservar', () => {
     );
 
     const respuesta = await request(app)
-      .post('/api/eventos/20/reservar')
+      .post('/api/eventos/20/agendar')
       .set('Cookie', [cookiePersonal])
       .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
 
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
-  });
-});
-
-describe('POST /api/eventos/:id/registrar-sena', () => {
-  beforeEach(() => {
-    buscarDetalladoMock.mockReset();
-    registrarSenaMock.mockReset();
-  });
-
-  it('registra la seña cobrada', async () => {
-    buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Reservado' }));
-    registrarSenaMock.mockResolvedValue(eventoFixtureBase());
-
-    const respuesta = await request(app)
-      .post('/api/eventos/20/registrar-sena')
-      .set('Cookie', [cookiePersonal]);
-
-    expect(respuesta.status).toBe(200);
-    expect(registrarSenaMock).toHaveBeenCalledWith(20);
-  });
-
-  it('responde 409 si el evento no está Reservado', async () => {
-    buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'EnConsulta' }));
-
-    const respuesta = await request(app)
-      .post('/api/eventos/20/registrar-sena')
-      .set('Cookie', [cookiePersonal]);
-
-    expect(respuesta.status).toBe(409);
-    expect(respuesta.body.error.code).toBe('CONFLICT');
-    expect(registrarSenaMock).not.toHaveBeenCalled();
   });
 });
 
@@ -511,8 +466,7 @@ describe('eventos: permisos (HU-48)', () => {
 
   it.each([
     ['get', '/api/eventos/20'],
-    ['post', '/api/eventos/20/reservar'],
-    ['post', '/api/eventos/20/registrar-sena'],
+    ['post', '/api/eventos/20/agendar'],
     ['post', '/api/eventos/20/cancelar'],
   ] as const)('%s %s sin sesión responde 401', async (metodo, ruta) => {
     const respuesta = await request(app)[metodo](ruta);
@@ -523,8 +477,7 @@ describe('eventos: permisos (HU-48)', () => {
 
   it.each([
     ['get', '/api/eventos/20'],
-    ['post', '/api/eventos/20/reservar'],
-    ['post', '/api/eventos/20/registrar-sena'],
+    ['post', '/api/eventos/20/agendar'],
     ['post', '/api/eventos/20/cancelar'],
   ] as const)('%s %s con sesión de Cliente responde 403', async (metodo, ruta) => {
     const respuesta = await request(app)[metodo](ruta).set('Cookie', [cookieCliente]);
