@@ -111,10 +111,11 @@ export function PresupuestoEstimado({
                   <td className="py-3 pr-3">{linea.descripcion}</td>
                   <td className="py-3 text-right tabular-nums">{linea.cantidad}</td>
                   <td className="hidden py-3 text-right tabular-nums sm:table-cell">
-                    {formatearPesos(linea.precioUnitario)}
+                    {linea.aCotizar ? '—' : formatearPesos(linea.precioUnitario)}
                   </td>
                   <td className="py-3 text-right font-medium tabular-nums">
-                    {formatearPesos(linea.subtotal)}
+                    {/* HU-11: un tercerizado sin precio fijo va sin importe y no suma. */}
+                    {linea.aCotizar ? 'A cotizar' : formatearPesos(linea.subtotal)}
                   </td>
                 </tr>
               ))}

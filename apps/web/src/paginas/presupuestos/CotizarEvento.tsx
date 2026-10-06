@@ -109,6 +109,7 @@ export function CotizarEvento({
             descripcion: `Salón ${salonElegido.nombre}`,
             detalle: jornada === 'completa' ? 'Jornada completa' : 'Media jornada',
             subtotal: precioSalon(salonElegido, jornada),
+            aCotizar: false,
           },
         ]
       : []),
@@ -116,6 +117,16 @@ export function CotizarEvento({
       .filter((s) => elegidos.has(s.id))
       .map((s) => {
         const cantidad = cantidadDe(s.id, s.porPersona);
+        // HU-11: un tercerizado sin precio fijo entra "a cotizar": sin importe y sin sumar.
+        if (s.precio === null) {
+          return {
+            clave: `servicio-${s.id}`,
+            descripcion: s.nombre,
+            detalle: 'A cotizar: el precio lo confirma el equipo',
+            subtotal: 0,
+            aCotizar: true,
+          };
+        }
         return {
           clave: `servicio-${s.id}`,
           descripcion: s.nombre,
@@ -123,6 +134,7 @@ export function CotizarEvento({
             ? `${cantidad} × ${formatearPesos(s.precio)}`
             : `Precio fijo · ${formatearPesos(s.precio)}`,
           subtotal: Number(s.precio) * cantidad,
+          aCotizar: false,
         };
       }),
   ];
@@ -430,7 +442,11 @@ export function CotizarEvento({
                           </span>
                         </label>
                         <div className="shrink-0 text-right">
-                          <p className="font-semibold">{formatearPesos(servicio.precio)}</p>
+                          <p className="font-semibold">
+                            {servicio.precio === null
+                              ? 'A cotizar'
+                              : formatearPesos(servicio.precio)}
+                          </p>
                           <p className="text-[0.65rem] text-muted-foreground">
                             {servicio.porPersona ? 'por persona' : 'precio fijo'}
                           </p>
@@ -451,7 +467,7 @@ export function CotizarEvento({
                             )}
                           />
                           personas
-                          {cantidadPersonas > 0 && (
+                          {cantidadPersonas > 0 && servicio.precio !== null && (
                             <span className="ml-auto font-medium text-foreground">
                               {formatearPesos(
                                 Number(servicio.precio) *
@@ -494,7 +510,9 @@ export function CotizarEvento({
                         <span className="block truncate font-medium">{linea.descripcion}</span>
                         <span className="text-xs text-muted-foreground">{linea.detalle}</span>
                       </span>
-                      <span className="shrink-0 font-medium">{formatearPesos(linea.subtotal)}</span>
+                      <span className="shrink-0 font-medium">
+                        {linea.aCotizar ? 'A cotizar' : formatearPesos(linea.subtotal)}
+                      </span>
                     </li>
                   ))}
                 </ul>

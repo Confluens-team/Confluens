@@ -16,6 +16,8 @@ const formateadorMoneda = new Intl.NumberFormat('es-AR', { style: 'currency', cu
 
 interface DetalleEventoProps {
   eventoId: number;
+  // HU-11: abre el detalle completo del presupuesto (líneas, IVA, vigencia y los demás del evento).
+  onVerPresupuesto?: (presupuestoId: number) => void;
 }
 
 // Vista central de HU-15: agendar el evento (distribución, horario y modalidad) y cancelarlo
@@ -23,7 +25,7 @@ interface DetalleEventoProps {
 // 20% de la base de cobro (HU-13), y eso pasa en la tarjeta de cuenta (CuentaDelEvento, HU-14).
 // No existe un catálogo de distribuciones navegable todavía, así que distribucionId se carga por
 // id numérico.
-export function DetalleEvento({ eventoId }: DetalleEventoProps) {
+export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps) {
   const { data: evento, isLoading, isError } = useEvento(eventoId);
   const agendarEvento = useAgendarEvento(eventoId);
   const cancelarEvento = useCancelarEvento(eventoId);
@@ -112,7 +114,11 @@ export function DetalleEvento({ eventoId }: DetalleEventoProps) {
                   <span>
                     {linea.descripcion} ×{linea.cantidad}
                   </span>
-                  <span>{formateadorMoneda.format(Number(linea.subtotal))}</span>
+                  <span>
+                    {linea.aCotizar
+                      ? 'A cotizar'
+                      : formateadorMoneda.format(Number(linea.subtotal))}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -120,6 +126,16 @@ export function DetalleEvento({ eventoId }: DetalleEventoProps) {
               <span>Total (sin IVA)</span>
               <span>{formateadorMoneda.format(total)}</span>
             </p>
+            {onVerPresupuesto && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-3"
+                onClick={() => onVerPresupuesto(presupuestoVigente.id)}
+              >
+                Ver detalle del presupuesto
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}

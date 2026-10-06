@@ -8,6 +8,8 @@ import { useSalones } from '@/hooks/use-salones';
 import { fechaLocal, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { CalendarioEventos } from './CalendarioEventos';
+import { EditarConsulta } from '@/paginas/presupuestos/EditarConsulta';
+
 import { DetalleEvento } from './DetalleEvento';
 import { ESTADOS, ESTADOS_DEL_FILTRO } from './estado-evento';
 
@@ -161,6 +163,8 @@ export function Agenda() {
   // Ventana visible del calendario; la manda él mismo al cambiar de mes o de vista.
   const [rango, setRango] = useState<{ desde: string; hasta: string } | null>(null);
   const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
+  // HU-15 → HU-11: desde el evento se abre el detalle de su presupuesto.
+  const [presupuestoAbierto, setPresupuestoAbierto] = useState<number | null>(null);
 
   const salones = useSalones();
   const enCalendario = vista === 'calendario';
@@ -192,6 +196,22 @@ export function Agenda() {
     });
   }
 
+  if (eventoAbierto !== null && presupuestoAbierto !== null) {
+    const volverAlEvento = () => setPresupuestoAbierto(null);
+    return (
+      <EditarConsulta
+        key={presupuestoAbierto}
+        id={presupuestoAbierto}
+        textoVolver="Volver al evento"
+        onVolver={volverAlEvento}
+        onGuardada={volverAlEvento}
+        onDadaDeBaja={volverAlEvento}
+        onAbrirEvento={volverAlEvento}
+        onAbrirPresupuesto={setPresupuestoAbierto}
+      />
+    );
+  }
+
   if (eventoAbierto !== null) {
     return (
       <div>
@@ -200,7 +220,7 @@ export function Agenda() {
             <ArrowLeft /> Volver a la agenda
           </Button>
         </div>
-        <DetalleEvento eventoId={eventoAbierto} />
+        <DetalleEvento eventoId={eventoAbierto} onVerPresupuesto={setPresupuestoAbierto} />
       </div>
     );
   }
