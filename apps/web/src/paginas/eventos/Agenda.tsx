@@ -8,25 +8,23 @@ import { fechaLocal, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { DetalleEvento } from './DetalleEvento';
 
-type Filtro = 'todos' | 'sena-pendiente' | 'sena-pagada' | 'cobrado';
+type Filtro = 'todos' | 'reservado' | 'cobrado';
 
-// Hoy reservar y registrar la seña son pasos separados (HU-15): un evento Reservado puede tener la
-// seña pendiente o ya cobrada, y la agenda los distingue.
+// Ya no existe el caso "Reservado con la seña pendiente": la reserva la dispara el pago que cruza
+// el 20% de la base de cobro (HU-13), así que todo evento Reservado tiene la seña cobrada. Lo que
+// distingue la agenda es cuánto falta pagar: Reservado (al menos el 20%) o Cobrado (el 100%).
 function situacion(evento: EventoAgenda): Exclude<Filtro, 'todos'> {
-  if (evento.estado === 'Cobrado') return 'cobrado';
-  return evento.senaRegistradaEn ? 'sena-pagada' : 'sena-pendiente';
+  return evento.estado === 'Cobrado' ? 'cobrado' : 'reservado';
 }
 
 const ETIQUETAS: Record<Exclude<Filtro, 'todos'>, { texto: string; clase: string }> = {
-  'sena-pendiente': { texto: 'Seña pendiente', clase: 'bg-amber-100 text-amber-900' },
-  'sena-pagada': { texto: 'Seña pagada', clase: 'bg-emerald-100 text-emerald-900' },
+  reservado: { texto: 'Reservado', clase: 'bg-emerald-100 text-emerald-900' },
   cobrado: { texto: 'Cobrado', clase: 'bg-bordo/10 text-bordo' },
 };
 
 const FILTROS: { valor: Filtro; texto: string }[] = [
   { valor: 'todos', texto: 'Todos' },
-  { valor: 'sena-pagada', texto: 'Seña pagada' },
-  { valor: 'sena-pendiente', texto: 'Seña pendiente' },
+  { valor: 'reservado', texto: 'Reservado' },
   { valor: 'cobrado', texto: 'Cobrado' },
 ];
 
@@ -40,8 +38,8 @@ const hora = (instante: string | null) =>
     : null;
 
 // Agenda del panel del administrador: los eventos que ocupan un salón (Reservado y Cobrado),
-// agrupados por mes. Al abrir uno se muestra su detalle (HU-15), desde donde se registra la seña o
-// se cancela.
+// agrupados por mes. Al abrir uno se muestra su detalle (HU-15), desde donde se agenda el horario,
+// se registran los pagos o se cancela.
 export function Agenda() {
   const agenda = useAgenda();
   const [filtro, setFiltro] = useState<Filtro>('todos');

@@ -17,8 +17,12 @@ export const esquemaEvento = z.object({
   fin: esquemaFechaHora.nullable(),
   cantidadPersonas: z.number().int().positive(),
   estado: esquemaEstadoEvento,
-  senaVenceEn: esquemaFechaHora.nullable(), // plazo de 10 días desde la confirmación (RN-06)
-  senaRegistradaEn: esquemaFechaHora.nullable(), // cuándo el RE marcó la seña como cobrada
+  // Columna del Sprint 1 que quedó sin escribirse: la vigencia de los 10 días es del presupuesto,
+  // no del evento (RN-06, RN-08), y un evento puede tener varios presupuestos (dominio.md:55).
+  senaVenceEn: esquemaFechaHora.nullable(),
+  // Instante en que el acumulado de pagos cruzó el 20% de la base de cobro y el salón quedó
+  // reservado (HU-13). Lo escribe el módulo de pagos, no una acción manual.
+  senaRegistradaEn: esquemaFechaHora.nullable(),
   modalidadSalonRestaurante: z.boolean(), // opción interna, no visible al cliente
   creadoEn: esquemaFechaHora,
   actualizadoEn: esquemaFechaHora,

@@ -1,7 +1,7 @@
 import type {
+  AgendarEvento,
   EventoAgenda,
   EventoDetallado,
-  ReservarEvento,
   RespuestaExito,
 } from '@confluens/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -31,12 +31,13 @@ export function useEvento(id: number) {
   });
 }
 
-// Confirma el presupuesto Estimado y reserva el salón en un solo paso (criterios 1-3 y 7).
-export function useReservarEvento(id: number) {
+// Fija distribución, horario y modalidad del evento. NO lo reserva: el evento sigue EnConsulta
+// hasta que un pago cruce el 20% de la base de cobro (HU-13).
+export function useAgendarEvento(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (datos: ReservarEvento) => {
-      const respuesta = await apiFetch<RespuestaExito<EventoDetallado>>(`/eventos/${id}/reservar`, {
+    mutationFn: async (datos: AgendarEvento) => {
+      const respuesta = await apiFetch<RespuestaExito<EventoDetallado>>(`/eventos/${id}/agendar`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(datos),
@@ -50,25 +51,7 @@ export function useReservarEvento(id: number) {
   });
 }
 
-// RN-06: el RE marca la seña como cobrada.
-export function useRegistrarSena(id: number) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async () => {
-      const respuesta = await apiFetch<RespuestaExito<EventoDetallado>>(
-        `/eventos/${id}/registrar-sena`,
-        { method: 'POST' },
-      );
-      return respuesta.data;
-    },
-    onSuccess: () => {
-      // ['eventos'] alcanza al detalle y a la agenda del administrador, que cambia con el estado.
-      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
-    },
-  });
-}
-
-// Criterio 5 / RN-07: solo se admite hasta 48 horas antes del inicio.
+// RN-07: solo se admite hasta 48 horas antes del inicio. Siempre manual (dominio.md).
 export function useCancelarEvento(id: number) {
   const queryClient = useQueryClient();
   return useMutation({

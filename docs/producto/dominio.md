@@ -157,12 +157,20 @@ IVA** y se presenta con **subtotal sin IVA, IVA 21% y total**. Al emitirse conge
 sus líneas, aunque después cambie el catálogo. Lleva la leyenda **"Este presupuesto tiene una
 validez de 10 días"**.
 
+**Requiere factura.** Marca que el Responsable de Eventos pone en el presupuesto al recibirlo,
+según si el cliente pide factura o no. Define la **base de cobro** (ver RN-01).
+
+**Base de cobro.** Importe contra el que se miden la seña, el saldo y el cierre del evento. Si el
+cliente **requiere factura** es el **total con IVA**; si no, el **subtotal sin IVA**. No se guarda:
+se calcula a partir del presupuesto y de su marca de factura.
+
 **Evento.** Entidad central: cliente, salón, distribución, fecha, horario, cantidad de personas,
 servicios, presupuesto y pagos.
 
-**Pago.** Importe recibido con fecha y medio de pago. Monto libre, sin mínimo.
+**Pago.** Importe recibido con fecha y medio de pago. Monto libre, sin mínimo. Un pago que excede
+el saldo se rechaza: no hay saldo a favor.
 
-**Saldo.** Total acordado menos la suma de los pagos registrados.
+**Saldo.** Base de cobro menos la suma de los pagos registrados.
 
 **Medio de pago.** Efectivo, tarjeta, a la habitación.
 
@@ -186,7 +194,7 @@ evento reservado (ver RN-12).
 |---|---|---|
 | Responsable de Eventos | `RE` | Consulta, presupuesto, agenda y reserva. **También administra los precios**: porcentaje de incremento mensual, ajustes por servicio y precios de los tercerizados. Mayor uso diario. En las entrevistas es "Fran". |
 | Responsable de Finanzas | `RF` | Cobros, medios de pago, seguimiento de deuda. |
-| Gerente General | `GG` | Reportes, usuarios. Lectura de todo. Único que ve la auditoría. |
+| Gerente General | `GG` | Reportes, usuarios. Lectura de todo. Único que ve la auditoría. **También registra pagos**, igual que el RE y el RF (HU-14). |
 | Administrador del Sistema | `ADM` | Acceso completo: todo lo del Gerente General más el contenido público de la landing (qué salones se publican y qué fotos se muestran). |
 | Sistema | `SYS` | Actor no humano: tareas programadas, cálculos, auditoría, envío de correos. |
 | Cliente | `CLI` | Externo a la organización, con credenciales propias. Solo el canal público: ve precios, arma y confirma consultas, consulta las suyas. Nunca accede al panel interno. Se implementa en el Sprint 2. |
@@ -197,7 +205,7 @@ evento reservado (ver RN-12).
 
 | Código | Regla |
 |---|---|
-| RN-01 | La seña equivale al 20% del total del evento. |
+| RN-01 | La seña equivale al **20% de la base de cobro del evento**. La base depende de si el cliente **requiere factura**, dato que el Responsable de Eventos marca en el presupuesto: **con factura**, la base es el **total con IVA**; **sin factura**, el **subtotal sin IVA** (RN-05). El porcentaje es siempre 20%. |
 | RN-02 | La prioridad entre clientes al reasignar salones la define la organización (el Responsable de Eventos). |
 | RN-03 | El precio informado es de referencia; el Responsable de Eventos puede ajustarlo comercialmente en casos particulares, y el ajuste queda auditado. |
 | RN-04 | Los servicios no necesariamente cubren a todos los asistentes: pueden contratarse para menos. |
@@ -217,7 +225,8 @@ evento reservado (ver RN-12).
 
 - Agregar o renombrar un estado de evento o presupuesto (incluido renombrar `Reservado` a
   `Confirmado`: hoy es solo una etiqueta de pantalla).
-- Cambiar el porcentaje de la seña, la vigencia de 10 días, el plazo de 48 horas o el de 7 días.
+- Cambiar el porcentaje de la seña, la base de cobro de RN-01, la vigencia de 10 días, el plazo de
+  48 horas o el de 7 días.
 - Cambiar la tasa de IVA o dejar de guardar los importes sin IVA.
 - Definir qué pasa con lo abonado por encima de la seña ante una cancelación en plazo.
 - Cancelar o dar de baja automáticamente un evento o un presupuesto: todas las bajas son manuales.

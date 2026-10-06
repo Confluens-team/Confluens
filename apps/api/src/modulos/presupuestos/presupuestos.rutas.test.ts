@@ -151,6 +151,7 @@ describe('POST /api/presupuestos', () => {
         estado: 'Estimado' as const,
         fechaEmision: new Date(),
         total: new Prisma.Decimal(datos.total),
+        requiereFactura: false,
         creadoEn: new Date(),
         actualizadoEn: new Date(),
         evento: eventoFixture,
