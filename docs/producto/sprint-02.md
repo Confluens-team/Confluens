@@ -119,7 +119,7 @@ Como Responsable de Eventos, quiero que el presupuesto quede registrado como Con
 
 Como Responsable de Finanzas, quiero registrar cada pago que hace un cliente por su evento, con fecha, importe y medio de pago, para llevar el saldo al día y que el evento avance de estado según lo abonado.
 
-- Registro un pago con fecha, importe mayor a cero, medio de pago (Efectivo, Tarjeta o A la habitación) y una observación opcional; queda asociado al evento.
+- Registro un pago con fecha, monto mayor a cero, medio de pago (Efectivo, Tarjeta o A la habitación) y una observación opcional; queda asociado al evento.
 - El importe es libre, sin mínimo; el sistema muestra el saldo actualizado (base de cobro menos pagos registrados).
 - Un pago que excede el saldo se rechaza, informando que el importe supera el total a pagar. No queda saldo a favor.
 - Si el acumulado alcanza el 20% de la base de cobro, se dispara la confirmación de HU-13 (evento Reservado, presupuesto Confirmado).
@@ -127,7 +127,7 @@ Como Responsable de Finanzas, quiero registrar cada pago que hace un cliente por
 - No se registran pagos en eventos Cancelado o Cobrado, ni en eventos sin presupuesto.
 - Registran pagos el RE, el RF y el GG, más el Administrador del Sistema por su acceso total; el rol Cliente no accede.
 
-**Implementación.** Entidades nuevas `Pago` (eventoId, fecha, importe, medioPagoId, observación) y `MedioPago`. Los tres medios se cargan por seed; el ABM es del Sprint 3 (HU-36 a HU-39). `POST /api/eventos/:id/pagos`, autorizado a `RESPONSABLE_EVENTOS`, `RESPONSABLE_FINANZAS`, `GERENTE_GENERAL` y `ADMINISTRADOR_SISTEMA`. Importes con `Decimal`, nunca `Float`. Saldo = base de cobro − suma de pagos, calculado, no guardado.
+**Implementación.** Entidades nuevas `Pago` (eventoId, fecha, monto, medioPagoId, observación) y `MedioPago`. Los tres medios se cargan por seed; el ABM es del Sprint 3 (HU-36 a HU-39). `POST /api/eventos/:id/pagos`, autorizado a `RESPONSABLE_EVENTOS`, `RESPONSABLE_FINANZAS`, `GERENTE_GENERAL` y `ADMINISTRADOR_SISTEMA`. Importes con `Decimal`, nunca `Float`. Saldo = base de cobro − suma de pagos, calculado, no guardado.
 
 ## HU-15 — Consultar calendario de eventos
 
