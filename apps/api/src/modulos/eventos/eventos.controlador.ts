@@ -2,14 +2,16 @@ import type {
   AgendarEvento,
   EventoAgenda,
   EventoDetallado,
+  FiltrosAgenda,
   RespuestaExito,
 } from '@confluens/shared';
 import type { Request, Response } from 'express';
 
 import { agendarEvento, cancelarEvento, listarAgenda, obtenerDetalle } from './eventos.servicio.js';
 
-export async function listar(_req: Request, res: Response): Promise<void> {
-  const eventos = await listarAgenda();
+// req.query ya validado por validar({ query: esquemaFiltrosAgenda }) en eventos.rutas.ts.
+export async function listar(req: Request, res: Response): Promise<void> {
+  const eventos = await listarAgenda(req.query as unknown as FiltrosAgenda);
   const cuerpo: RespuestaExito<EventoAgenda[]> = { data: eventos as unknown as EventoAgenda[] };
   res.status(200).json(cuerpo);
 }

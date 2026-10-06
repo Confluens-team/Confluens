@@ -17,6 +17,7 @@ import { AccesoCliente } from '@/paginas/auth/AccesoCliente';
 import { IniciarSesion } from '@/paginas/auth/IniciarSesion';
 import { OlvideContrasena } from '@/paginas/auth/OlvideContrasena';
 import { RestablecerContrasena } from '@/paginas/auth/RestablecerContrasena';
+import { Agenda } from '@/paginas/eventos/Agenda';
 import { Panel } from '@/paginas/panel/Panel';
 import { PanelAdministrador } from '@/paginas/panel/PanelAdministrador';
 import { CotizarEvento, type ResultadoCotizacion } from '@/paginas/presupuestos/CotizarEvento';
@@ -148,13 +149,14 @@ function RutaLanding() {
   return <Landing onCotizar={cotizar} onAccesoPersonal={() => navigate('/acceso')} />;
 }
 
-type VistaPersonal = 'consultas' | 'servicios';
+type VistaPersonal = 'consultas' | 'agenda' | 'servicios';
 
 // Roles que ven las consultas (GET /presupuestos, HU-10).
 const VEN_CONSULTAS: Sesion['rol'][] = ['RESPONSABLE_EVENTOS', 'ADMINISTRADOR_SISTEMA'];
 
-// Panel del resto del personal: el menú por rol de HU-27 más el conmutador a las consultas y los
-// servicios. Los roles que no ven consultas arrancan en servicios.
+// Panel del resto del personal: el menú por rol de HU-27 más el conmutador a las consultas, la
+// agenda y los servicios. Los roles que no ven consultas arrancan en servicios. La agenda (HU-15)
+// la ve todo el personal interno, igual que GET /eventos.
 function PanelPersonal({ sesion }: { sesion: Sesion }) {
   const navigate = useNavigate();
   const veConsultas = VEN_CONSULTAS.includes(sesion.rol);
@@ -172,6 +174,10 @@ function PanelPersonal({ sesion }: { sesion: Sesion }) {
             <span className="text-muted-foreground">·</span>
           </>
         )}
+        <button className="underline underline-offset-2" onClick={() => setVista('agenda')}>
+          Agenda
+        </button>
+        <span className="text-muted-foreground">·</span>
         <button className="underline underline-offset-2" onClick={() => setVista('servicios')}>
           Servicios
         </button>
@@ -191,6 +197,11 @@ function PanelPersonal({ sesion }: { sesion: Sesion }) {
       {vista === 'consultas' && (
         <div className="mx-auto max-w-6xl p-6">
           <ListadoConsultas />
+        </div>
+      )}
+      {vista === 'agenda' && (
+        <div className="mx-auto max-w-6xl p-6">
+          <Agenda />
         </div>
       )}
       {vista === 'servicios' && <RegistrarServicio />}

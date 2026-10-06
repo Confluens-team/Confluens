@@ -14,3 +14,9 @@ export const esquemaFechaHora = z.iso.datetime();
 // UI. Es el mismo mensaje que AGENTS.md usa como ejemplo de VALIDATION_ERROR (campo fechaDeseada),
 // así que queda como estándar para cualquier fecha de calendario del sistema.
 export const esquemaFecha = z.iso.date('Fecha inválida');
+
+// Para los filtros de los listados: un parámetro presente pero vacío (?cliente=) cuenta como
+// ausente. La web manda el querystring armado desde el estado del formulario, así que un campo
+// que el usuario borró llega como string vacío y no tiene que fallar la validación.
+export const vacioComoAusente = (valor: unknown) =>
+  typeof valor === 'string' && valor.trim() === '' ? undefined : valor;
