@@ -105,6 +105,7 @@ const lineaFixture = {
   cantidad: 1,
   precioUnitario: new Prisma.Decimal(TOTAL_SIN_IVA),
   subtotal: new Prisma.Decimal(TOTAL_SIN_IVA),
+  aCotizar: false,
 };
 
 type EstadoPresupuestoFixture = 'Estimado' | 'Confirmado' | 'Cancelado' | 'Expirado';

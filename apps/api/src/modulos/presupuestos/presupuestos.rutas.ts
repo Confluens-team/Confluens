@@ -12,7 +12,7 @@ import { z } from 'zod';
 import { registroOpenApi } from '../../docs/openapi.js';
 import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
-import { autorizar } from '../../middlewares/autorizar.js';
+import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
 import { crear, darDeBaja, listar, modificar, obtener } from './presupuestos.controlador.js';
 
@@ -22,7 +22,7 @@ const respuestaConsulta = {
 };
 const erroresDeSesion = {
   401: { description: 'Sin sesión activa' },
-  403: { description: 'El rol no es Responsable de Eventos ni Administrador del Sistema' },
+  403: { description: 'La sesión no es del personal' },
 };
 
 registroOpenApi.registerPath({
@@ -57,7 +57,7 @@ registroOpenApi.registerPath({
     },
     400: { description: 'Filtros inválidos (estado, fechas o rango desde/hasta)' },
     401: { description: 'Sin sesión activa' },
-    403: { description: 'El rol no es Responsable de Eventos ni Administrador del Sistema' },
+    403: { description: 'La sesión no es del personal' },
   },
 });
 
@@ -119,11 +119,10 @@ registroOpenApi.registerPath({
 export const rutasPresupuestos = Router();
 
 rutasPresupuestos.post('/', validar({ body: esquemaCrearPresupuesto }), asincrono(crear));
-// Las consultas las gestionan el Responsable de Eventos y el administrador (HU-10 y HU-12).
-const personalDeConsultas = [
-  autenticar,
-  autorizar('ADMINISTRADOR_SISTEMA', 'RESPONSABLE_EVENTOS'),
-] as const;
+// Las consultas (HU-10 y HU-12) las gestiona el personal.
+// Provisorio (decisión del PO, 06/10/2026): todo el personal ve y hace todo hasta que se dividan
+// las funciones por rol.
+const personalDeConsultas = [autenticar, autorizar(...ROLES_PERSONAL)] as const;
 
 rutasPresupuestos.get(
   '/',

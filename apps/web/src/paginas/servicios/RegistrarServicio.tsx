@@ -23,6 +23,8 @@ const valoresIniciales = {
   precio: '',
   porPersona: false,
   tercerizado: false,
+  // HU-11: un tercerizado puede no tener precio fijo todavía. No viaja: se traduce a precio null.
+  aCotizar: false,
 };
 
 // Estado del formulario con useState controlado en vez de React Hook Form, mismo criterio que
@@ -50,7 +52,11 @@ export function RegistrarServicio() {
 
     // Se valida con el mismo schema que usa el servidor (packages/shared): si el body no pasa
     // acá, tampoco pasaría la API, así que se evita el request y se muestra el error al toque.
-    const resultado = esquemaCrearServicio.safeParse(valores);
+    const { aCotizar, ...cuerpo } = valores;
+    const resultado = esquemaCrearServicio.safeParse({
+      ...cuerpo,
+      precio: aCotizar && cuerpo.tercerizado ? null : cuerpo.precio,
+    });
     if (!resultado.success) {
       const errores: Record<string, string> = {};
       for (const issue of resultado.error.issues) {
@@ -118,8 +124,9 @@ export function RegistrarServicio() {
           <Input
             id="precio"
             inputMode="decimal"
-            placeholder="0.00"
-            value={valores.precio}
+            placeholder={valores.aCotizar ? 'A cotizar' : '0.00'}
+            disabled={valores.aCotizar}
+            value={valores.aCotizar ? '' : valores.precio}
             onChange={(e) => actualizarCampo('precio', e.target.value)}
           />
           {erroresCampos['precio'] && (
@@ -140,12 +147,28 @@ export function RegistrarServicio() {
           <Checkbox
             id="tercerizado"
             checked={valores.tercerizado}
-            onCheckedChange={(marcado) => actualizarCampo('tercerizado', marcado === true)}
+            onCheckedChange={(marcado) => {
+              actualizarCampo('tercerizado', marcado === true);
+              if (marcado !== true) actualizarCampo('aCotizar', false);
+            }}
           />
           <Label htmlFor="tercerizado">
             Tercerizado (suma al total, pero no recibe el incremento mensual)
           </Label>
         </div>
+
+        {valores.tercerizado && (
+          <div className="flex items-center gap-2 pl-6">
+            <Checkbox
+              id="aCotizar"
+              checked={valores.aCotizar}
+              onCheckedChange={(marcado) => actualizarCampo('aCotizar', marcado === true)}
+            />
+            <Label htmlFor="aCotizar">
+              A cotizar (sin precio fijo: en el presupuesto va sin importe y no suma)
+            </Label>
+          </div>
+        )}
 
         {crearServicio.isError && (
           <p className="text-sm text-destructive">
@@ -179,7 +202,9 @@ export function RegistrarServicio() {
                 </p>
               </div>
               <span className="font-medium">
-                {formateadorPrecio.format(Number(servicio.precio))}
+                {servicio.precio === null
+                  ? 'A cotizar'
+                  : formateadorPrecio.format(Number(servicio.precio))}
               </span>
             </li>
           ))}

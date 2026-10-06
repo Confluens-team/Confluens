@@ -7,7 +7,7 @@ export const esquemaServicio = z.object({
   nombre: z.string().min(1),
   descripcion: z.string().min(1),
   unidadMedida: z.string().min(1),
-  precio: esquemaImporte,
+  precio: esquemaImporte.nullable(), // null = "a cotizar": solo tercerizados (HU-11)
   porPersona: z.boolean(),
   tercerizado: z.boolean(), // suma al total; no recibe el incremento mensual (RN-10)
   activo: z.boolean(),
@@ -23,14 +23,20 @@ export type Servicio = z.infer<typeof esquemaServicio>;
 // sprint, así que tampoco es parte del contrato de creación. "categoria" y "fotoUrl" son contenido
 // de la landing: los administra el Administrador del Sistema (HU-08), no el alta del catálogo, y
 // nacen en null.
-export const esquemaCrearServicio = esquemaServicio.omit({
-  id: true,
-  activo: true,
-  categoria: true,
-  fotoUrl: true,
-  creadoEn: true,
-  actualizadoEn: true,
-});
+export const esquemaCrearServicio = esquemaServicio
+  .omit({
+    id: true,
+    activo: true,
+    categoria: true,
+    fotoUrl: true,
+    creadoEn: true,
+    actualizadoEn: true,
+  })
+  // HU-11: "a cotizar" (precio null) es solo para tercerizados (dominio.md).
+  .refine((servicio) => servicio.precio !== null || servicio.tercerizado, {
+    path: ['precio'],
+    message: 'Solo un servicio tercerizado puede quedar a cotizar',
+  });
 export type CrearServicio = z.infer<typeof esquemaCrearServicio>;
 
 // Forma que devuelve GET /api/servicios/publicos (HU-07). Mismo criterio que esquemaSalonPublico:

@@ -20,7 +20,8 @@ import { agruparPorCategoria } from '@/lib/catalogo';
 import { formatearPesos, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 
-// Una línea del detalle mientras se edita. servicioId null = adicional escrito a mano.
+// Una línea del detalle mientras se edita. servicioId null = adicional escrito a mano. Un
+// tercerizado puede quedar con el precio vacío: "a cotizar" (HU-11).
 interface LineaEditable {
   clave: string;
   servicioId: number | null;
@@ -42,6 +43,17 @@ const esEntero = (valor: string) => /^\d+$/.test(valor) && Number(valor) > 0;
 const esImporte = (valor: string) => /^\d{1,10}(\.\d{1,2})?$/.test(valor);
 const subtotal = (cantidad: string, precio: string) =>
   esEntero(cantidad) && esImporte(precio) ? Number(cantidad) * Number(precio) : 0;
+// HU-11: solo un tercerizado del catálogo puede quedar sin precio, a cotizar.
+const aCotizar = (linea: LineaEditable) =>
+  linea.precio === '' && linea.servicioId !== null && linea.tercerizado;
+const precioValido = (linea: LineaEditable) => esImporte(linea.precio) || aCotizar(linea);
+
+const hora = (instante: string) =>
+  new Date(instante).toLocaleTimeString('es-AR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  });
 
 const mensajeDeError = (error: unknown, porDefecto: string) =>
   error instanceof ErrorApiCliente ? error.message : porDefecto;
@@ -66,12 +78,15 @@ export function EditarConsulta({
   onGuardada,
   onDadaDeBaja,
   onAbrirEvento,
+  textoVolver = 'Volver a las consultas',
 }: {
   id: number;
   onVolver: () => void;
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onAbrirEvento: (eventoId: number) => void;
+  // Se abre desde Consultas o desde un evento de la agenda (HU-15).
+  textoVolver?: string;
 }) {
   const consulta = useConsulta(id);
   const salones = useSalones();
@@ -80,7 +95,7 @@ export function EditarConsulta({
   return (
     <div className="space-y-4">
       <Button variant="ghost" size="sm" onClick={onVolver}>
-        <ArrowLeft /> Volver a las consultas
+        <ArrowLeft /> {textoVolver}
       </Button>
       {(consulta.isLoading || salones.isLoading || servicios.isLoading) && (
         <p className="text-sm text-muted-foreground">Cargando la consulta…</p>
@@ -137,7 +152,7 @@ function Formulario({
         servicioId: linea.servicioId,
         descripcion: linea.descripcion,
         cantidad: String(linea.cantidad),
-        precio: linea.precioUnitario,
+        precio: linea.aCotizar ? '' : linea.precioUnitario,
         tercerizado: linea.tercerizado,
       })),
   );
@@ -169,7 +184,8 @@ function Formulario({
     setLineas((anteriores) =>
       anteriores.map((linea) => {
         const servicio = catalogo.find((s) => s.id === linea.servicioId);
-        return servicio ? { ...linea, precio: servicio.precio } : linea;
+        // Un tercerizado que sigue a cotizar en el catálogo conserva lo que tenía.
+        return servicio?.precio != null ? { ...linea, precio: servicio.precio } : linea;
       }),
     );
     setRecalculado(true);
@@ -207,7 +223,7 @@ function Formulario({
           servicioId: servicio.id,
           descripcion: servicio.nombre,
           cantidad: servicio.porPersona && esEntero(personas) ? personas : '1',
-          precio: servicio.precio,
+          precio: servicio.precio ?? '',
           tercerizado: servicio.tercerizado,
         },
       ]);
@@ -226,7 +242,9 @@ function Formulario({
     !!fecha &&
     esEntero(personas) &&
     esImporte(precioSalon) &&
-    lineas.every((l) => esEntero(l.cantidad) && esImporte(l.precio) && l.descripcion.trim());
+    lineas.every((l) => esEntero(l.cantidad) && precioValido(l) && l.descripcion.trim());
+  const cantidadACotizar = lineas.filter(aCotizar).length;
+  const { distribucion, inicio, fin } = consulta.evento;
 
   // RN-05: los importes se cargan sin IVA y el resumen muestra el desglose.
   const importes = desglosarIva(
@@ -253,7 +271,8 @@ function Formulario({
           .map((l) => ({
             servicioId: l.servicioId!,
             cantidad: Number(l.cantidad),
-            precioUnitario: aImporte(l.precio),
+            // Sin precio, el tercerizado queda a cotizar (HU-11).
+            precioUnitario: aCotizar(l) ? undefined : aImporte(l.precio),
           })),
         adicionales: lineas
           .filter((l) => l.servicioId === null)
@@ -278,7 +297,10 @@ function Formulario({
     <form onSubmit={guardar} className="space-y-6">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-xl font-semibold text-bordo">Consulta {consulta.id}</h2>
+          {/* Un Confirmado ya no es una consulta: pasó a la agenda (HU-11 desde HU-15). */}
+          <h2 className="text-xl font-semibold text-bordo">
+            {consulta.estado === 'Confirmado' ? 'Presupuesto' : 'Consulta'} {consulta.id}
+          </h2>
           <p className="text-sm text-muted-foreground">
             Emitida el {fechaCorta(new Date(consulta.fechaEmision))} · vence el{' '}
             {fechaCorta(new Date(consulta.venceEn))}
@@ -389,6 +411,12 @@ function Formulario({
               salón {salon.nombre} ({salon.capacidadMaxima}).
             </p>
           )}
+          <p className="mt-4 text-sm">
+            <span className="text-muted-foreground">Distribución y horario: </span>
+            {distribucion && inicio && fin
+              ? `${distribucion.nombre} · de ${hora(inicio)} a ${hora(fin)}`
+              : 'sin agendar todavía (se cargan al agendar el evento)'}
+          </p>
           <label className="mt-4 flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -478,14 +506,19 @@ function Formulario({
                         aria-label={`Precio unitario de ${linea.descripcion}`}
                         inputMode="decimal"
                         value={linea.precio}
-                        aria-invalid={!esImporte(linea.precio)}
+                        placeholder={linea.tercerizado ? 'A cotizar' : undefined}
+                        aria-invalid={!precioValido(linea)}
                         onChange={(e) => actualizarLinea(linea.clave, { precio: e.target.value })}
                       />
                     </td>
                     <td className="py-2 text-right whitespace-nowrap">
-                      {esEntero(linea.cantidad) && esImporte(linea.precio)
-                        ? formatearPesos(subtotal(linea.cantidad, linea.precio))
-                        : '—'}
+                      {aCotizar(linea) ? (
+                        <span className="text-xs font-medium text-amber-900">A cotizar</span>
+                      ) : esEntero(linea.cantidad) && esImporte(linea.precio) ? (
+                        formatearPesos(subtotal(linea.cantidad, linea.precio))
+                      ) : (
+                        '—'
+                      )}
                     </td>
                     <td className="py-2 text-right">
                       <Button
@@ -523,7 +556,7 @@ function Formulario({
                     <optgroup key={categoria} label={categoria}>
                       {delTipo.map((s) => (
                         <option key={s.id} value={s.id}>
-                          {s.nombre} · {formatearPesos(s.precio)}
+                          {s.nombre} · {s.precio === null ? 'a cotizar' : formatearPesos(s.precio)}
                           {s.porPersona ? ' por persona' : ''}
                           {s.tercerizado ? ' (tercerizado)' : ''}
                         </option>
@@ -610,6 +643,16 @@ function Formulario({
             <dd>{formatearPesos(importes.total)}</dd>
           </div>
         </dl>
+        {cantidadACotizar > 0 && (
+          <p className="mt-3 text-right text-xs text-amber-900">
+            {cantidadACotizar === 1
+              ? 'Un servicio está a cotizar y no suma al total.'
+              : `${cantidadACotizar} servicios están a cotizar y no suman al total.`}
+          </p>
+        )}
+        <p className="mt-3 text-right text-xs text-muted-foreground">
+          Este presupuesto tiene una validez de {DIAS_VIGENCIA_PRESUPUESTO} días.
+        </p>
       </section>
 
       {enCurso && (

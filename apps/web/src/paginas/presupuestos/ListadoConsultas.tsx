@@ -82,7 +82,13 @@ export function ListadoConsultas() {
         <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
           <ArrowLeft /> Volver a la consulta {abierta}
         </Button>
-        <DetalleEvento eventoId={eventoAbierto} />
+        <DetalleEvento
+          eventoId={eventoAbierto}
+          onVerPresupuesto={(id) => {
+            setEventoAbierto(null);
+            setAbierta(id);
+          }}
+        />
       </div>
     );
   }

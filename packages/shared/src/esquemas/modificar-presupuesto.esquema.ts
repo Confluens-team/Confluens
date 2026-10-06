@@ -26,6 +26,10 @@ export const esquemaConsultaDetallada = z.object({
     estado: esquemaEstadoEvento,
     fecha: esquemaFecha,
     cantidadPersonas: z.number().int().positive(),
+    // HU-11: se completan al agendar el evento; hasta entonces son null.
+    distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
+    inicio: esquemaFechaHora.nullable(),
+    fin: esquemaFechaHora.nullable(),
   }),
   // Solo lectura: los datos de contacto los mantiene el cliente desde su cuenta.
   cliente: z.object({
@@ -44,6 +48,7 @@ export type ConsultaDetallada = z.infer<typeof esquemaConsultaDetallada>;
 
 // Un servicio del presupuesto modificado. Sin `precioUnitario` conserva el precio congelado si ya
 // estaba en el presupuesto, o toma el vigente si es nuevo; con él es un ajuste comercial (RN-03).
+// Un tercerizado a cotizar sin `precioUnitario` sigue a cotizar; con él, queda con ese precio.
 export const esquemaServicioModificado = z.object({
   servicioId: esquemaId,
   cantidad: z.number().int().positive(),

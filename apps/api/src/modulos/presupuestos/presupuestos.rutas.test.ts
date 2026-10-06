@@ -68,7 +68,7 @@ const servicioFixtureBase = {
   nombre: 'Coffee Refresh',
   descripcion: 'Café, tés, leche, jugo, agua con y sin gas',
   unidadMedida: 'persona',
-  precio: new Prisma.Decimal('8730'),
+  precio: new Prisma.Decimal('8730') as Prisma.Decimal | null,
   porPersona: true,
   tercerizado: false,
   activo: true,
@@ -240,6 +240,29 @@ describe('POST /api/presupuestos', () => {
     expect(datos.lineas).toHaveLength(3); // salón + servicio propio + tercerizado
   });
 
+  it('un tercerizado a cotizar entra sin importe, con la marca, y no suma al total (HU-11)', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+    buscarServiciosPorIdsMock.mockResolvedValue([
+      servicioFixture({ id: 4, nombre: 'Pantallas LED', precio: null, tercerizado: true }),
+    ]);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .send({ ...bodyBase, servicios: [{ servicioId: 4, cantidad: 1 }] });
+
+    expect(respuesta.status).toBe(201);
+    const [datos] = crearPresupuestoConLineasMock.mock.calls[0]!;
+    expect(datos.lineas[1]).toEqual({
+      servicioId: 4,
+      descripcion: 'Pantallas LED',
+      cantidad: 1,
+      precioUnitario: '0.00',
+      subtotal: '0.00',
+      aCotizar: true,
+    });
+    expect(datos.total).toBe('142200.00'); // solo el salón
+  });
+
   it('calcula la línea de un servicio con una cantidad menor a la del evento (RN-04)', async () => {
     buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
     buscarServiciosPorIdsMock.mockResolvedValue([servicioFixture()]);
@@ -338,7 +361,9 @@ describe('POST /api/presupuestos', () => {
   });
 });
 
-function cookieDe(rol: 'RESPONSABLE_EVENTOS' | 'ADMINISTRADOR_SISTEMA' | 'RESPONSABLE_FINANZAS') {
+function cookieDe(
+  rol: 'RESPONSABLE_EVENTOS' | 'ADMINISTRADOR_SISTEMA' | 'RESPONSABLE_FINANZAS' | 'CLIENTE',
+) {
   return `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 1, email: 'personal@confluens.test', rol })}`;
 }
 
@@ -469,10 +494,19 @@ describe('GET /api/presupuestos (HU-10)', () => {
     expect(respuesta.body.error.code).toBe('UNAUTHENTICATED');
   });
 
-  it('con otro rol responde 403 FORBIDDEN', async () => {
+  // Provisorio (06/10/2026): todo el personal ve las consultas hasta que se dividan las funciones.
+  it('otro rol del personal también accede', async () => {
     const respuesta = await request(app)
       .get('/api/presupuestos')
       .set('Cookie', [cookieDe('RESPONSABLE_FINANZAS')]);
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('con sesión de Cliente responde 403 FORBIDDEN', async () => {
+    const respuesta = await request(app)
+      .get('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')]);
 
     expect(respuesta.status).toBe(403);
     expect(respuesta.body.error.code).toBe('FORBIDDEN');

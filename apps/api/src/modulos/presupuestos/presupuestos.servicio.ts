@@ -32,21 +32,25 @@ interface LineaCalculada {
   cantidad: number;
   precioUnitario: string;
   subtotal: string;
+  aCotizar: boolean;
 }
 
+// Sin precio (null) la línea queda "a cotizar" (HU-11): va en 0, así no suma al total, hasta que el
+// personal complete el precio.
 function calcularLinea(
   servicioId: number | null,
   descripcion: string,
   cantidad: number,
-  precioUnitario: Prisma.Decimal | string,
+  precioUnitario: Prisma.Decimal | string | null,
 ): LineaCalculada {
-  const precio = new Prisma.Decimal(precioUnitario);
+  const precio = new Prisma.Decimal(precioUnitario ?? 0);
   return {
     servicioId,
     descripcion,
     cantidad,
     precioUnitario: precio.toFixed(2),
     subtotal: precio.times(cantidad).toFixed(2),
+    aCotizar: precioUnitario === null,
   };
 }
 
@@ -85,7 +89,8 @@ function precioDeSalon(
  *   necesariamente Evento.cantidadPersonas.
  * - Criterio 3 / RN-05: Salon y Servicio ya guardan sus precios sin IVA; no hay conversión acá.
  * - Criterio 4 (corregido el 24/09/2026, dominio.md): los servicios tercerizados suman al total
- *   como cualquier otro; lo que no reciben es el incremento mensual.
+ *   como cualquier otro; lo que no reciben es el incremento mensual. Un tercerizado sin precio
+ *   entra "a cotizar" (HU-11): sin importe y sin sumar.
  * - Criterio 5: se toman Salon.precioJornadaCompleta/precioMediaJornada y Servicio.precio
  *   vigentes al momento del pedido (no hay versionado de precios en el Sprint 1).
  * - Criterio 6: el Presupuesto nace en Estimado (default del schema, no se fija acá).
@@ -222,6 +227,11 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       estado: evento.estado,
       fecha: evento.fecha.toISOString().slice(0, 10),
       cantidadPersonas: evento.cantidadPersonas,
+      distribucion: evento.distribucion
+        ? { id: evento.distribucion.id, nombre: evento.distribucion.nombre }
+        : null,
+      inicio: evento.inicio?.toISOString() ?? null,
+      fin: evento.fin?.toISOString() ?? null,
     },
     cliente: {
       id: evento.cliente.id,
@@ -243,6 +253,7 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       cantidad: linea.cantidad,
       precioUnitario: linea.precioUnitario.toFixed(2),
       subtotal: linea.subtotal.toFixed(2),
+      aCotizar: linea.aCotizar,
       tipo:
         linea.id === lineaSalon?.id
           ? 'salon'
@@ -290,6 +301,7 @@ export async function obtenerConsulta(
  * - La línea del salón conserva su precio si no cambian el salón ni la jornada; si cambian, toma
  *   el vigente. `precioSalon` la ajusta a mano.
  * - Los adicionales escritos a mano entran con la descripción y el precio que se cargaron.
+ * - Un tercerizado a cotizar sigue así hasta que llega su precio (HU-11).
  * - `requiereFactura` (RN-01) define si la base de cobro de la seña incluye el IVA.
  * - «Recalcular» un Expirado es esto mismo, con los precios vigentes que arma la pantalla: el
  *   presupuesto sigue siendo el mismo (decisión del PO, 05/10/2026).
@@ -325,7 +337,10 @@ export async function modificarPresupuesto(
     if (!anterior && !servicio.activo) {
       throw ErrorApi.reglaNegocio(`El servicio "${servicio.nombre}" no está activo`);
     }
-    const precio = elegido.precioUnitario ?? anterior?.precioUnitario ?? servicio.precio;
+    // Lo que ya tenía precio lo conserva; lo nuevo, y lo que seguía a cotizar, toma el del catálogo,
+    // que también puede ser null (sigue a cotizar).
+    const congelado = anterior && !anterior.aCotizar ? anterior.precioUnitario : undefined;
+    const precio = elegido.precioUnitario ?? congelado ?? servicio.precio;
     return calcularLinea(
       servicio.id,
       anterior?.descripcion ?? servicio.nombre,
@@ -379,7 +394,7 @@ export async function modificarPresupuesto(
 
 /**
  * HU-12: dar de baja una consulta la pasa a Cancelado (RN-08: solo se da de baja a mano). El
- * evento se cancela solo si no le queda otro presupuesto en curso o confirmado.
+ * evento también se cancela: cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026).
  */
 export async function darDeBajaPresupuesto(
   id: number,
@@ -390,10 +405,7 @@ export async function darDeBajaPresupuesto(
 
   await repo.crearEnTransaccion(async (tx) => {
     await repo.actualizarPresupuesto(id, { estado: 'Cancelado' }, tx);
-    const otros = await repo.contarOtrosPresupuestosVigentes(presupuesto.eventoId, id, tx);
-    if (otros === 0) {
-      await repo.actualizarEvento(presupuesto.eventoId, { estado: 'Cancelado' }, tx);
-    }
+    await repo.actualizarEvento(presupuesto.eventoId, { estado: 'Cancelado' }, tx);
   });
   return obtenerConsulta(id, repo);
 }

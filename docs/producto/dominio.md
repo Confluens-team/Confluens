@@ -57,8 +57,9 @@ Estimado ──confirmar()──> Confirmado
 Recalcular un presupuesto `Expirado` = actualizar **ese mismo** presupuesto con los precios
 vigentes del salón y de los servicios del catálogo; al guardarlo vuelve a `Estimado` con 10 días
 nuevos. Modificarlo también edita el mismo presupuesto, pero las líneas que no se tocan conservan
-su precio. En los dos casos el evento sigue `EnConsulta` (decisiones del PO, 05/10/2026). Dar de
-baja una consulta cancela también su evento si no le queda otro presupuesto en curso.
+su precio. En los dos casos el evento sigue `EnConsulta` (decisiones del PO, 05/10/2026). **Cada
+evento tiene un solo presupuesto** (decisión del PO, 06/10/2026), así que dar de baja una consulta
+cancela también su evento.
 
 ---
 
@@ -203,6 +204,11 @@ evento reservado (ver RN-12).
 | Administrador del Sistema | `ADM` | Acceso completo: todo lo del Gerente General más el contenido público de la landing (qué salones se publican y qué fotos se muestran). |
 | Sistema | `SYS` | Actor no humano: tareas programadas, cálculos, auditoría, envío de correos. |
 | Cliente | `CLI` | Externo a la organización, con credenciales propias. Solo el canal público: ve precios, arma y confirma consultas, consulta las suyas. Nunca accede al panel interno. Se implementa en el Sprint 2. |
+
+**Provisorio (decisión del PO, 06/10/2026).** Mientras no se dividan las funciones por rol, todo el
+personal (RE, RF, GG y ADM) entra al mismo panel interno (`/admin`) y puede ver y hacer todo lo que
+ahí existe, incluido el contenido de la landing. El Cliente sigue sin acceso al panel. La tabla de
+arriba describe la división a la que se apunta, que se implementa más adelante.
 
 ---
 

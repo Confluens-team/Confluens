@@ -148,6 +148,32 @@ describe('POST /api/servicios', () => {
     expect(crearMock).not.toHaveBeenCalled();
   });
 
+  it('un tercerizado puede darse de alta a cotizar, sin precio (HU-11)', async () => {
+    buscarPorNombreMock.mockResolvedValue(null);
+    crearMock.mockResolvedValue({ ...servicioDb, precio: null, tercerizado: true });
+
+    const respuesta = await request(app)
+      .post('/api/servicios')
+      .set('Cookie', [cookiePersonal])
+      .send({ ...cuerpoValido, precio: null, tercerizado: true });
+
+    expect(respuesta.status).toBe(201);
+    expect(crearMock).toHaveBeenCalledWith(expect.objectContaining({ precio: null }));
+  });
+
+  it('un servicio propio no puede quedar a cotizar: responde 400 VALIDATION_ERROR', async () => {
+    const respuesta = await request(app)
+      .post('/api/servicios')
+      .set('Cookie', [cookiePersonal])
+      .send({ ...cuerpoValido, precio: null });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details).toEqual([
+      { campo: 'precio', mensaje: 'Solo un servicio tercerizado puede quedar a cotizar' },
+    ]);
+    expect(crearMock).not.toHaveBeenCalled();
+  });
+
   it('con body inválido (falta precio) responde 400 VALIDATION_ERROR', async () => {
     const { precio: _precio, ...sinPrecio } = cuerpoValido;
 
@@ -223,16 +249,18 @@ describe('PATCH /api/servicios/:id/landing', () => {
     expect(actualizarLandingMock).not.toHaveBeenCalled();
   });
 
-  it('con otro rol responde 403 FORBIDDEN (criterio 5)', async () => {
-    const cookieRe = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+  // Provisorio (06/10/2026): todo el personal puede editar la landing hasta que se dividan las
+  // funciones por rol; el Cliente sigue sin acceso.
+  it('con sesión de Cliente responde 403 FORBIDDEN (criterio 5)', async () => {
+    const cookieDeCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
       id: 1,
-      email: 're@confluens.test',
-      rol: 'RESPONSABLE_EVENTOS',
+      email: 'cliente@confluens.test',
+      rol: 'CLIENTE',
     })}`;
 
     const respuesta = await request(app)
       .patch('/api/servicios/1/landing')
-      .set('Cookie', [cookieRe])
+      .set('Cookie', [cookieDeCliente])
       .send({ fotoUrl: null });
 
     expect(respuesta.status).toBe(403);

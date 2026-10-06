@@ -61,8 +61,9 @@ export async function buscarDistribucion(id: number, tx: Prisma.TransactionClien
   return tx.distribucion.findUnique({ where: { id } });
 }
 
-// El evento puede acumular varios presupuestos (Presupuesto.eventoId no es único): se toma el
-// Estimado más reciente como "el vigente", que es el que se confirma al acreditarse la seña.
+// Cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026), pero Presupuesto.eventoId
+// no es único en el modelo: se toma el Estimado más reciente, que es el que se confirma al
+// acreditarse la seña.
 export async function buscarPresupuestoEstimado(
   eventoId: number,
   tx: Prisma.TransactionClient = prisma,

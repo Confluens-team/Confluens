@@ -68,6 +68,7 @@ export async function crearPresupuestoConLineas(
       cantidad: number;
       precioUnitario: string;
       subtotal: string;
+      aCotizar: boolean;
     }[];
   },
   tx: Prisma.TransactionClient = prisma,
@@ -147,7 +148,13 @@ export async function buscarPresupuestoDetallado(
   return tx.presupuesto.findUnique({
     where: { id },
     include: {
-      evento: { include: { cliente: true, salon: true } },
+      evento: {
+        include: {
+          cliente: true,
+          salon: true,
+          distribucion: true,
+        },
+      },
       lineas: { include: { servicio: { select: { tercerizado: true } } }, orderBy: { id: 'asc' } },
     },
   });
@@ -179,28 +186,13 @@ export async function reemplazarLineas(
     cantidad: number;
     precioUnitario: string;
     subtotal: string;
+    aCotizar: boolean;
   }[],
   tx: Prisma.TransactionClient = prisma,
 ) {
   await tx.lineaPresupuesto.deleteMany({ where: { presupuestoId } });
   await tx.lineaPresupuesto.createMany({
     data: lineas.map((linea) => ({ ...linea, presupuestoId })),
-  });
-}
-
-// HU-12: al dar de baja una consulta, el evento se cancela solo si no le queda otro presupuesto
-// en curso o confirmado.
-export async function contarOtrosPresupuestosVigentes(
-  eventoId: number,
-  excluirId: number,
-  tx: Prisma.TransactionClient = prisma,
-) {
-  return tx.presupuesto.count({
-    where: {
-      eventoId,
-      id: { not: excluirId },
-      estado: { in: ['Estimado', 'Expirado', 'Confirmado'] },
-    },
   });
 }
 
@@ -219,5 +211,4 @@ export type PresupuestosRepositorio = {
   actualizarEvento: typeof actualizarEvento;
   actualizarPresupuesto: typeof actualizarPresupuesto;
   reemplazarLineas: typeof reemplazarLineas;
-  contarOtrosPresupuestosVigentes: typeof contarOtrosPresupuestosVigentes;
 };

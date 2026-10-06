@@ -15,7 +15,6 @@ vi.mock('./presupuestos.repositorio.js', () => ({
   actualizarEvento: vi.fn(),
   actualizarPresupuesto: vi.fn(),
   reemplazarLineas: vi.fn(),
-  contarOtrosPresupuestosVigentes: vi.fn(),
 }));
 
 const repo = await import('./presupuestos.repositorio.js');
@@ -25,13 +24,14 @@ const buscarPresupuestoDetalladoMock = vi.mocked(repo.buscarPresupuestoDetallado
 const actualizarEventoMock = vi.mocked(repo.actualizarEvento);
 const actualizarPresupuestoMock = vi.mocked(repo.actualizarPresupuesto);
 const reemplazarLineasMock = vi.mocked(repo.reemplazarLineas);
-const contarOtrosMock = vi.mocked(repo.contarOtrosPresupuestosVigentes);
 
 const app = crearApp();
 const D = (valor: string) => new Prisma.Decimal(valor);
 const DIEZ_DIAS = 10 * 24 * 60 * 60 * 1000;
 
-function cookieDe(rol: 'RESPONSABLE_EVENTOS' | 'ADMINISTRADOR_SISTEMA' | 'RESPONSABLE_FINANZAS') {
+function cookieDe(
+  rol: 'RESPONSABLE_EVENTOS' | 'ADMINISTRADOR_SISTEMA' | 'RESPONSABLE_FINANZAS' | 'CLIENTE',
+) {
   return `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 1, email: 'personal@confluens.test', rol })}`;
 }
 const cookieRE = cookieDe('RESPONSABLE_EVENTOS');
@@ -49,7 +49,9 @@ const salonParana = {
   actualizadoEn: new Date(),
 };
 
-function servicio(datos: { id: number; nombre: string; precio: string } & Record<string, unknown>) {
+function servicio(
+  datos: { id: number; nombre: string; precio: string | null } & Record<string, unknown>,
+) {
   return {
     descripcion: '',
     unidadMedida: 'persona',
@@ -61,7 +63,7 @@ function servicio(datos: { id: number; nombre: string; precio: string } & Record
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     ...datos,
-    precio: D(datos.precio),
+    precio: datos.precio === null ? null : D(datos.precio),
   };
 }
 
@@ -101,6 +103,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         correo: 'marina@example.com',
       },
       salon: salonParana,
+      distribucion: null,
       ...evento,
     },
     lineas: [
@@ -112,6 +115,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         cantidad: 1,
         precioUnitario: D('142200'),
         subtotal: D('142200'),
+        aCotizar: false,
         servicio: null,
       },
       {
@@ -122,6 +126,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         cantidad: 10,
         precioUnitario: D('8000'),
         subtotal: D('80000'),
+        aCotizar: false,
         servicio: { tercerizado: false },
       },
     ],
@@ -145,7 +150,6 @@ beforeEach(() => {
   buscarPresupuestoDetalladoMock.mockResolvedValue(consulta());
   buscarSalonMock.mockResolvedValue(salonParana);
   buscarServiciosPorIdsMock.mockResolvedValue([coffee, pantallas]);
-  contarOtrosMock.mockResolvedValue(0);
 });
 
 describe('GET /api/presupuestos/:id (HU-12)', () => {
@@ -170,6 +174,7 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       cantidad: 10,
       precioUnitario: '8000.00',
       subtotal: '80000.00',
+      aCotizar: false,
       tipo: 'servicio',
       tercerizado: false,
     });
@@ -189,6 +194,7 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
             cantidad: 1,
             precioUnitario: D('25000'),
             subtotal: D('25000'),
+            aCotizar: false,
             servicio: null,
           },
         ],
@@ -205,6 +211,28 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
     expect(respuesta.body.data.tipoJornada).toBe('completa');
   });
 
+  it('muestra la distribución y el horario del evento agendado (HU-11)', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta(
+        {},
+        {
+          distribucionId: 2,
+          distribucion: { id: 2, nombre: 'Banquete' },
+          inicio: new Date('2026-11-15T23:00:00.000Z'),
+          fin: new Date('2026-11-16T05:00:00.000Z'),
+        },
+      ),
+    );
+
+    const respuesta = await request(app).get('/api/presupuestos/31').set('Cookie', [cookieRE]);
+
+    expect(respuesta.body.data.evento).toMatchObject({
+      distribucion: { id: 2, nombre: 'Banquete' },
+      inicio: '2026-11-15T23:00:00.000Z',
+      fin: '2026-11-16T05:00:00.000Z',
+    });
+  });
+
   it('responde 404 si el presupuesto no existe', async () => {
     buscarPresupuestoDetalladoMock.mockResolvedValue(null);
 
@@ -213,12 +241,17 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
     expect(respuesta.status).toBe(404);
   });
 
-  it('responde 401 sin sesión y 403 con otro rol', async () => {
+  // Provisorio (06/10/2026): todo el personal entra; el Cliente no.
+  it('responde 401 sin sesión, 403 al Cliente y deja entrar a cualquier rol del personal', async () => {
     expect((await request(app).get('/api/presupuestos/31')).status).toBe(401);
-    const conOtroRol = await request(app)
+    const cliente = await request(app)
+      .get('/api/presupuestos/31')
+      .set('Cookie', [cookieDe('CLIENTE')]);
+    expect(cliente.status).toBe(403);
+    const finanzas = await request(app)
       .get('/api/presupuestos/31')
       .set('Cookie', [cookieDe('RESPONSABLE_FINANZAS')]);
-    expect(conOtroRol.status).toBe(403);
+    expect(finanzas.status).toBe(200);
   });
 });
 
@@ -241,6 +274,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
         cantidad: 1,
         precioUnitario: '142200.00',
         subtotal: '142200.00',
+        aCotizar: false,
       },
       {
         servicioId: 1,
@@ -248,6 +282,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
         cantidad: 12,
         precioUnitario: '8000.00',
         subtotal: '96000.00',
+        aCotizar: false,
       },
     ]);
     const { estado, total, venceEn } = datosDelPresupuesto() as {
@@ -278,6 +313,67 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
     expect(lineasGuardadas()[2]).toMatchObject({ servicioId: 2, precioUnitario: '50000.00' });
     // 142200 + 12 × 8000 + 50000
     expect((datosDelPresupuesto() as { total: string }).total).toBe('288200.00');
+  });
+
+  it('un tercerizado a cotizar entra sin importe y no suma al total (HU-11)', async () => {
+    const leds = servicio({ id: 3, nombre: 'Pantallas LED', precio: null, tercerizado: true });
+    buscarServiciosPorIdsMock.mockResolvedValue([coffee, leds]);
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [...bodyBase.servicios, { servicioId: 3, cantidad: 1 }] });
+
+    expect(lineasGuardadas()[2]).toEqual({
+      servicioId: 3,
+      descripcion: 'Pantallas LED',
+      cantidad: 1,
+      precioUnitario: '0.00',
+      subtotal: '0.00',
+      aCotizar: true,
+    });
+    expect((datosDelPresupuesto() as { total: string }).total).toBe('238200.00');
+  });
+
+  it('una línea a cotizar sigue así hasta que llega su precio, y con él suma (HU-11)', async () => {
+    const leds = servicio({ id: 3, nombre: 'Pantallas LED', precio: null, tercerizado: true });
+    buscarServiciosPorIdsMock.mockResolvedValue([coffee, leds]);
+    const base = consulta() as unknown as { lineas: object[] };
+    const conLeds = {
+      lineas: [
+        ...base.lineas,
+        {
+          id: 3,
+          presupuestoId: 31,
+          servicioId: 3,
+          descripcion: 'Pantallas LED',
+          cantidad: 1,
+          precioUnitario: D('0'),
+          subtotal: D('0'),
+          aCotizar: true,
+          servicio: { tercerizado: true },
+        },
+      ],
+    };
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta(conLeds));
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [...bodyBase.servicios, { servicioId: 3, cantidad: 1 }] });
+    expect(lineasGuardadas()[2]).toMatchObject({ aCotizar: true, subtotal: '0.00' });
+
+    reemplazarLineasMock.mockClear();
+    actualizarPresupuestoMock.mockClear();
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        servicios: [...bodyBase.servicios, { servicioId: 3, cantidad: 1, precioUnitario: '90000' }],
+      });
+    expect(lineasGuardadas()[2]).toMatchObject({ aCotizar: false, subtotal: '90000.00' });
+    expect((datosDelPresupuesto() as { total: string }).total).toBe('328200.00');
   });
 
   it('un precio unitario explícito es un ajuste comercial y manda (RN-03)', async () => {
@@ -326,6 +422,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       cantidad: 2,
       precioUnitario: '12500.00',
       subtotal: '25000.00',
+      aCotizar: false,
     });
     // 142200 + 12 × 8000 + 2 × 12500
     expect((datosDelPresupuesto() as { total: string }).total).toBe('263200.00');
@@ -452,7 +549,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
 });
 
 describe('POST /api/presupuestos/:id/dar-de-baja (HU-12)', () => {
-  it('pasa la consulta a Cancelado y cancela el evento si no le queda otro presupuesto', async () => {
+  it('pasa la consulta a Cancelado y cancela su evento (un presupuesto por evento)', async () => {
     const respuesta = await request(app)
       .post('/api/presupuestos/31/dar-de-baja')
       .set('Cookie', [cookieRE]);
@@ -460,15 +557,6 @@ describe('POST /api/presupuestos/:id/dar-de-baja (HU-12)', () => {
     expect(respuesta.status).toBe(200);
     expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, { estado: 'Cancelado' }, undefined);
     expect(actualizarEventoMock).toHaveBeenCalledWith(20, { estado: 'Cancelado' }, undefined);
-  });
-
-  it('no cancela el evento si le queda otro presupuesto en curso', async () => {
-    contarOtrosMock.mockResolvedValue(1);
-
-    await request(app).post('/api/presupuestos/31/dar-de-baja').set('Cookie', [cookieRE]);
-
-    expect(actualizarPresupuestoMock).toHaveBeenCalled();
-    expect(actualizarEventoMock).not.toHaveBeenCalled();
   });
 
   it('responde 409 si el presupuesto está Confirmado', async () => {

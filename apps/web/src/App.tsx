@@ -17,13 +17,9 @@ import { AccesoCliente } from '@/paginas/auth/AccesoCliente';
 import { IniciarSesion } from '@/paginas/auth/IniciarSesion';
 import { OlvideContrasena } from '@/paginas/auth/OlvideContrasena';
 import { RestablecerContrasena } from '@/paginas/auth/RestablecerContrasena';
-import { Agenda } from '@/paginas/eventos/Agenda';
-import { Panel } from '@/paginas/panel/Panel';
-import { PanelAdministrador } from '@/paginas/panel/PanelAdministrador';
+import { PanelInterno } from '@/paginas/panel/PanelInterno';
 import { CotizarEvento, type ResultadoCotizacion } from '@/paginas/presupuestos/CotizarEvento';
-import { ListadoConsultas } from '@/paginas/presupuestos/ListadoConsultas';
 import { PresupuestoEstimado } from '@/paginas/presupuestos/PresupuestoEstimado';
-import { RegistrarServicio } from '@/paginas/servicios/RegistrarServicio';
 import { Landing } from '@/paginas/solicitudes/Landing';
 
 // Rutas de la web (ADR 0005, reemplaza a la 0002):
@@ -33,16 +29,16 @@ import { Landing } from '@/paginas/solicitudes/Landing';
 //   /acceso       login del personal
 //   /olvide-contrasena       pide el enlace para restablecer la contraseña (cliente y personal)
 //   /restablecer-contrasena  pantalla del enlace del correo (?token=)
-//   /admin/:tab   panel del Administrador del Sistema (consultas, agenda, clientes, catalogo, cuenta)
-//   /panel        panel del resto del personal
+//   /admin/:tab   panel interno, el mismo para todo el personal (consultas, agenda, clientes,
+//                 catalogo, cuenta)
 // Las rutas son solo de navegación: los permisos reales los aplica la API.
 
 const esPersonal = (sesion: Sesion | null | undefined): sesion is Sesion =>
   !!sesion && sesion.rol !== 'CLIENTE';
 
-// Destino del personal según el rol.
-const inicioDelPersonal = (sesion: Sesion) =>
-  sesion.rol === 'ADMINISTRADOR_SISTEMA' ? '/admin' : '/panel';
+// Todo el personal entra a la misma vista. Qué ve cada rol se revisa más adelante; mientras tanto,
+// los permisos los sigue aplicando la API.
+const INICIO_DEL_PERSONAL = '/admin';
 
 // Cada navegación arranca arriba de la página, como antes con irA().
 function VolverArriba() {
@@ -149,70 +145,10 @@ function RutaLanding() {
   return <Landing onCotizar={cotizar} onAccesoPersonal={() => navigate('/acceso')} />;
 }
 
-type VistaPersonal = 'consultas' | 'agenda' | 'servicios';
-
-// Roles que ven las consultas (GET /presupuestos, HU-10).
-const VEN_CONSULTAS: Sesion['rol'][] = ['RESPONSABLE_EVENTOS', 'ADMINISTRADOR_SISTEMA'];
-
-// Panel del resto del personal: el menú por rol de HU-27 más el conmutador a las consultas, la
-// agenda y los servicios. Los roles que no ven consultas arrancan en servicios. La agenda (HU-15)
-// la ve todo el personal interno, igual que GET /eventos.
-function PanelPersonal({ sesion }: { sesion: Sesion }) {
-  const navigate = useNavigate();
-  const veConsultas = VEN_CONSULTAS.includes(sesion.rol);
-  const [vista, setVista] = useState<VistaPersonal>(veConsultas ? 'consultas' : 'servicios');
-
-  return (
-    <div className="min-h-screen bg-background text-foreground">
-      <Panel sesion={sesion} />
-      <div className="flex justify-center gap-2 border-t bg-card p-2 text-xs">
-        {veConsultas && (
-          <>
-            <button className="underline underline-offset-2" onClick={() => setVista('consultas')}>
-              Consultas
-            </button>
-            <span className="text-muted-foreground">·</span>
-          </>
-        )}
-        <button className="underline underline-offset-2" onClick={() => setVista('agenda')}>
-          Agenda
-        </button>
-        <span className="text-muted-foreground">·</span>
-        <button className="underline underline-offset-2" onClick={() => setVista('servicios')}>
-          Servicios
-        </button>
-        <span className="text-muted-foreground">·</span>
-        <button className="underline underline-offset-2" onClick={() => navigate('/')}>
-          Vista pública
-        </button>
-        {sesion.rol === 'ADMINISTRADOR_SISTEMA' && (
-          <>
-            <span className="text-muted-foreground">·</span>
-            <button className="underline underline-offset-2" onClick={() => navigate('/admin')}>
-              Panel de administración
-            </button>
-          </>
-        )}
-      </div>
-      {vista === 'consultas' && (
-        <div className="mx-auto max-w-6xl p-6">
-          <ListadoConsultas />
-        </div>
-      )}
-      {vista === 'agenda' && (
-        <div className="mx-auto max-w-6xl p-6">
-          <Agenda />
-        </div>
-      )}
-      {vista === 'servicios' && <RegistrarServicio />}
-    </div>
-  );
-}
-
 function RutaAcceso({ sesion }: { sesion: Sesion | null | undefined }) {
   const navigate = useNavigate();
   // Con la sesión del personal ya iniciada (también justo después del login) va a su panel.
-  if (esPersonal(sesion)) return <Navigate to={inicioDelPersonal(sesion)} replace />;
+  if (esPersonal(sesion)) return <Navigate to={INICIO_DEL_PERSONAL} replace />;
   return (
     <div className="min-h-screen bg-background text-foreground">
       <div className="flex justify-start border-b bg-card p-2 text-xs">
@@ -246,7 +182,7 @@ function RutaRestablecerContrasena() {
     <RestablecerContrasena
       token={parametros.get('token')}
       onListo={(sesion) =>
-        navigate(esPersonal(sesion) ? inicioDelPersonal(sesion) : '/', { replace: true })
+        navigate(esPersonal(sesion) ? INICIO_DEL_PERSONAL : '/', { replace: true })
       }
       onPedirOtro={() => navigate('/olvide-contrasena', { replace: true })}
       onVolver={() => navigate('/')}
@@ -285,22 +221,10 @@ export default function App() {
         <Route
           path="admin/:pestania?"
           element={
-            sesion?.rol === 'ADMINISTRADOR_SISTEMA' ? (
-              <PanelAdministrador sesion={sesion} />
+            esPersonal(sesion) ? (
+              <PanelInterno sesion={sesion} />
             ) : (
               <Navigate to="/acceso" replace />
-            )
-          }
-        />
-
-        <Route
-          path="panel"
-          element={
-            // El administrador también entra: ve el panel tal como lo ve el resto del personal.
-            !esPersonal(sesion) ? (
-              <Navigate to="/acceso" replace />
-            ) : (
-              <PanelPersonal sesion={sesion} />
             )
           }
         />
