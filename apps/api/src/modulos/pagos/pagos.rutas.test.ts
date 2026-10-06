@@ -117,6 +117,7 @@ function presupuestoFixture(
     eventoId: 20,
     estado: (datos.estado ?? 'Estimado') as EstadoPresupuestoFixture,
     fechaEmision: new Date(),
+    venceEn: new Date(),
     total: new Prisma.Decimal(TOTAL_SIN_IVA),
     requiereFactura: datos.requiereFactura ?? false,
     creadoEn: new Date(),

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { crearApp } from '../../app.js';
 import { Prisma } from '../../generated/prisma/client.js';
+import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 
 vi.mock('./presupuestos.repositorio.js', () => ({
   buscarClientePorCorreo: vi.fn(),
@@ -16,6 +17,7 @@ vi.mock('./presupuestos.repositorio.js', () => ({
   // No hay transacción real en el test: se ejecuta el callback tal cual, cada función interna
   // que llama ya está mockeada arriba y no usa el `tx` que recibiría de una transacción real.
   crearEnTransaccion: vi.fn((ejecutar: (tx: undefined) => unknown) => ejecutar(undefined)),
+  obtenerPresupuestos: vi.fn(),
 }));
 
 const {
@@ -28,6 +30,7 @@ const {
   crearEvento,
   crearPresupuestoConLineas,
   crearEnTransaccion,
+  obtenerPresupuestos,
 } = await import('./presupuestos.repositorio.js');
 
 const buscarClientePorCorreoMock = vi.mocked(buscarClientePorCorreo);
@@ -39,6 +42,7 @@ const vincularSolicitudAEventoMock = vi.mocked(vincularSolicitudAEvento);
 const crearEventoMock = vi.mocked(crearEvento);
 const crearPresupuestoConLineasMock = vi.mocked(crearPresupuestoConLineas);
 const crearEnTransaccionMock = vi.mocked(crearEnTransaccion);
+const obtenerPresupuestosMock = vi.mocked(obtenerPresupuestos);
 
 const app = crearApp();
 
@@ -150,6 +154,7 @@ describe('POST /api/presupuestos', () => {
         eventoId: datos.eventoId,
         estado: 'Estimado' as const,
         fechaEmision: new Date(),
+        venceEn: new Date(),
         total: new Prisma.Decimal(datos.total),
         requiereFactura: false,
         creadoEn: new Date(),
@@ -179,6 +184,15 @@ describe('POST /api/presupuestos', () => {
       { nombre: bodyBase.nombre, telefono: bodyBase.telefono, correo: bodyBase.correo },
       undefined,
     );
+  });
+
+  it('emite el presupuesto con vencimiento a los 10 días (HU-10, RN-08)', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+
+    await request(app).post('/api/presupuestos').send(bodyBase);
+
+    const { fechaEmision, venceEn } = crearPresupuestoConLineasMock.mock.calls[0]![0];
+    expect(venceEn.getTime() - fechaEmision.getTime()).toBe(10 * 24 * 60 * 60 * 1000);
   });
 
   it('reutiliza el cliente existente cuando ya hay uno con ese correo', async () => {
@@ -321,5 +335,146 @@ describe('POST /api/presupuestos', () => {
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
     expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+});
+
+function cookieDe(rol: 'RESPONSABLE_EVENTOS' | 'ADMINISTRADOR_SISTEMA' | 'RESPONSABLE_FINANZAS') {
+  return `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 1, email: 'personal@confluens.test', rol })}`;
+}
+
+const presupuestoDelListado = {
+  id: 31,
+  eventoId: 20,
+  estado: 'Expirado' as const,
+  fechaEmision: new Date('2026-09-20T15:00:00.000Z'),
+  venceEn: new Date('2026-09-30T15:00:00.000Z'),
+  total: new Prisma.Decimal('229500'),
+  evento: {
+    fecha: new Date('2026-11-15T00:00:00.000Z'),
+    salon: { id: 5, nombre: 'Paraná' },
+    cliente: { id: 10, nombre: 'Marina', apellido: 'Gómez', correo: 'marina@example.com' },
+  },
+};
+
+describe('GET /api/presupuestos (HU-10)', () => {
+  beforeEach(() => {
+    obtenerPresupuestosMock.mockReset();
+    obtenerPresupuestosMock.mockResolvedValue([presupuestoDelListado]);
+  });
+
+  it('lista cada presupuesto con número, cliente, salón, fechas, total y estado', async () => {
+    const respuesta = await request(app)
+      .get('/api/presupuestos')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body).toEqual({
+      data: [
+        {
+          id: 31,
+          eventoId: 20,
+          estado: 'Expirado',
+          fechaEmision: '2026-09-20T15:00:00.000Z',
+          venceEn: '2026-09-30T15:00:00.000Z',
+          total: '229500.00',
+          fechaEvento: '2026-11-15',
+          cliente: { id: 10, nombre: 'Marina', apellido: 'Gómez', correo: 'marina@example.com' },
+          salon: { id: 5, nombre: 'Paraná' },
+        },
+      ],
+    });
+  });
+
+  it('pasa al repositorio los filtros de estado, cliente y rango de fechas del evento', async () => {
+    await request(app)
+      .get('/api/presupuestos')
+      .query({
+        estado: 'Estimado',
+        cliente: '  Marina Gómez ',
+        desde: '2026-11-01',
+        hasta: '2026-11-30',
+      })
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(obtenerPresupuestosMock).toHaveBeenCalledWith({
+      estado: 'Estimado',
+      cliente: 'Marina Gómez',
+      desde: '2026-11-01',
+      hasta: '2026-11-30',
+    });
+  });
+
+  it('toma los filtros vacíos como ausentes', async () => {
+    const respuesta = await request(app)
+      .get('/api/presupuestos?estado=&cliente=&desde=&hasta=')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(200);
+    expect(obtenerPresupuestosMock).toHaveBeenCalledWith({});
+  });
+
+  it('responde una lista vacía si ningún presupuesto cumple los filtros', async () => {
+    obtenerPresupuestosMock.mockResolvedValue([]);
+
+    const respuesta = await request(app)
+      .get('/api/presupuestos?estado=Cancelado')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body).toEqual({ data: [] });
+  });
+
+  it('responde 400 VALIDATION_ERROR con un estado que no existe', async () => {
+    const respuesta = await request(app)
+      .get('/api/presupuestos?estado=Vencido')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(obtenerPresupuestosMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 400 VALIDATION_ERROR si se filtra por Confirmado, que no se lista', async () => {
+    const respuesta = await request(app)
+      .get('/api/presupuestos?estado=Confirmado')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(400);
+    expect(obtenerPresupuestosMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 400 VALIDATION_ERROR si la fecha hasta es anterior a la fecha desde', async () => {
+    const respuesta = await request(app)
+      .get('/api/presupuestos?desde=2026-11-30&hasta=2026-11-01')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details).toEqual([
+      { campo: 'hasta', mensaje: 'La fecha hasta no puede ser anterior a la fecha desde' },
+    ]);
+  });
+
+  it('el Administrador del Sistema también accede', async () => {
+    const respuesta = await request(app)
+      .get('/api/presupuestos')
+      .set('Cookie', [cookieDe('ADMINISTRADOR_SISTEMA')]);
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('sin cookie de sesión responde 401 UNAUTHENTICATED', async () => {
+    const respuesta = await request(app).get('/api/presupuestos');
+
+    expect(respuesta.status).toBe(401);
+    expect(respuesta.body.error.code).toBe('UNAUTHENTICATED');
+  });
+
+  it('con otro rol responde 403 FORBIDDEN', async () => {
+    const respuesta = await request(app)
+      .get('/api/presupuestos')
+      .set('Cookie', [cookieDe('RESPONSABLE_FINANZAS')]);
+
+    expect(respuesta.status).toBe(403);
+    expect(respuesta.body.error.code).toBe('FORBIDDEN');
   });
 });

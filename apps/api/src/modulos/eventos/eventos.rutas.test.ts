@@ -87,6 +87,7 @@ const presupuestoEstimadoFixture = {
   eventoId: 20,
   estado: 'Estimado' as const,
   fechaEmision: new Date(),
+  venceEn: new Date(),
   total: new Prisma.Decimal('142200'),
   requiereFactura: false,
   creadoEn: new Date(),

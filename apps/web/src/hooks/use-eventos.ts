@@ -47,6 +47,8 @@ export function useAgendarEvento(id: number) {
     onSuccess: () => {
       // ['eventos'] alcanza al detalle y a la agenda del administrador, que cambia con el estado.
       void queryClient.invalidateQueries({ queryKey: ['eventos'] });
+      // Reservar o cancelar cambia el estado del presupuesto (HU-10).
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
     },
   });
 }
@@ -64,6 +66,8 @@ export function useCancelarEvento(id: number) {
     onSuccess: () => {
       // ['eventos'] alcanza al detalle y a la agenda del administrador, que cambia con el estado.
       void queryClient.invalidateQueries({ queryKey: ['eventos'] });
+      // Reservar o cancelar cambia el estado del presupuesto (HU-10).
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
     },
   });
 }

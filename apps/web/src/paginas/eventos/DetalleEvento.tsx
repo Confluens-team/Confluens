@@ -21,8 +21,8 @@ interface DetalleEventoProps {
 // Vista central de HU-15: agendar el evento (distribución, horario y modalidad) y cancelarlo
 // (criterio 5 / RN-07). Agendar NO reserva: el evento sigue EnConsulta hasta que un pago cruce el
 // 20% de la base de cobro (HU-13), y eso pasa en la tarjeta de cuenta (CuentaDelEvento, HU-14).
-// No existe un catálogo de distribuciones navegable todavía (mismo gap que salones/servicios en
-// TomarConsulta.tsx), así que distribucionId se carga por id numérico.
+// No existe un catálogo de distribuciones navegable todavía, así que distribucionId se carga por
+// id numérico.
 export function DetalleEvento({ eventoId }: DetalleEventoProps) {
   const { data: evento, isLoading, isError } = useEvento(eventoId);
   const agendarEvento = useAgendarEvento(eventoId);
