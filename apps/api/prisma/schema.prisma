@@ -161,7 +161,7 @@ model Evento {
   cantidadPersonas          Int
   estado                    EstadoEvento  @default(EnConsulta)
   // Columna del Sprint 1 que quedó sin escribirse: la vigencia de los 10 días es del presupuesto y
-  // no del evento (RN-06, RN-08), y un evento puede tener varios presupuestos.
+  // no del evento (RN-06, RN-08).
   senaVenceEn               DateTime?
   // Instante en que el acumulado de pagos cruzó el 20% de la base de cobro y el salón quedó
   // reservado (HU-13). Lo escribe el módulo de pagos, no una acción manual.
@@ -174,7 +174,8 @@ model Evento {
   actualizadoEn             DateTime      @updatedAt
 }
 
-// Un evento puede tener varios presupuestos.
+// Cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026): lo garantiza la aplicación,
+// que crea el presupuesto junto con su evento. La relación queda de uno a muchos en el modelo.
 model Presupuesto {
   id              Int                @id @default(autoincrement())
   eventoId        Int

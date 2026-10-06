@@ -262,12 +262,6 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
             : 'servicio',
       tercerizado: servicio?.tercerizado ?? false,
     })),
-    presupuestosDelEvento: evento.presupuestos.map((otro) => ({
-      id: otro.id,
-      estado: otro.estado,
-      fechaEmision: otro.fechaEmision.toISOString(),
-      total: otro.total.toFixed(2),
-    })),
   };
 }
 
@@ -400,7 +394,7 @@ export async function modificarPresupuesto(
 
 /**
  * HU-12: dar de baja una consulta la pasa a Cancelado (RN-08: solo se da de baja a mano). El
- * evento se cancela solo si no le queda otro presupuesto en curso o confirmado.
+ * evento también se cancela: cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026).
  */
 export async function darDeBajaPresupuesto(
   id: number,
@@ -411,10 +405,7 @@ export async function darDeBajaPresupuesto(
 
   await repo.crearEnTransaccion(async (tx) => {
     await repo.actualizarPresupuesto(id, { estado: 'Cancelado' }, tx);
-    const otros = await repo.contarOtrosPresupuestosVigentes(presupuesto.eventoId, id, tx);
-    if (otros === 0) {
-      await repo.actualizarEvento(presupuesto.eventoId, { estado: 'Cancelado' }, tx);
-    }
+    await repo.actualizarEvento(presupuesto.eventoId, { estado: 'Cancelado' }, tx);
   });
   return obtenerConsulta(id, repo);
 }

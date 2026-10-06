@@ -57,8 +57,9 @@ Estimado ──confirmar()──> Confirmado
 Recalcular un presupuesto `Expirado` = actualizar **ese mismo** presupuesto con los precios
 vigentes del salón y de los servicios del catálogo; al guardarlo vuelve a `Estimado` con 10 días
 nuevos. Modificarlo también edita el mismo presupuesto, pero las líneas que no se tocan conservan
-su precio. En los dos casos el evento sigue `EnConsulta` (decisiones del PO, 05/10/2026). Dar de
-baja una consulta cancela también su evento si no le queda otro presupuesto en curso.
+su precio. En los dos casos el evento sigue `EnConsulta` (decisiones del PO, 05/10/2026). **Cada
+evento tiene un solo presupuesto** (decisión del PO, 06/10/2026), así que dar de baja una consulta
+cancela también su evento.
 
 ---
 

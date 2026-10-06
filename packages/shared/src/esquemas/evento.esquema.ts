@@ -29,7 +29,7 @@ export const esquemaEvento = z.object({
   cantidadPersonas: z.number().int().positive(),
   estado: esquemaEstadoEvento,
   // Columna del Sprint 1 que quedó sin escribirse: la vigencia de los 10 días es del presupuesto,
-  // no del evento (RN-06, RN-08), y un evento puede tener varios presupuestos (dominio.md:55).
+  // no del evento (RN-06, RN-08).
   senaVenceEn: esquemaFechaHora.nullable(),
   // Instante en que el acumulado de pagos cruzó el 20% de la base de cobro y el salón quedó
   // reservado (HU-13). Lo escribe el módulo de pagos, no una acción manual.

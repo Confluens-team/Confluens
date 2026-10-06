@@ -85,10 +85,10 @@ Como Responsable de Eventos, quiero ver el detalle completo de un presupuesto, p
 - Los precios son los congelados al emitir, aunque el catálogo haya cambiado después.
 - Un servicio tercerizado «a cotizar» aparece sin importe, con esa leyenda, y no suma al total.
 - Se muestran subtotal sin IVA, IVA 21% y total (RN-05), y la leyenda «Este presupuesto tiene una validez de 10 días».
-- Si el evento tiene más de un presupuesto, puedo navegar a los demás desde el detalle.
+- ~~Si el evento tiene más de un presupuesto, puedo navegar a los demás desde el detalle.~~ Se saca: cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026).
 - Un presupuesto Expirado muestra el aviso «Presupuesto vencido, recalcular» (RN-08).
 
-**Hecho (06/10/2026).** El detalle es la pantalla de la consulta: se abre desde Consultas y, para un presupuesto Confirmado, desde el detalle del evento en la agenda y el calendario («Ver detalle del presupuesto»), en solo lectura. Muestra distribución y horario cuando el evento ya se agendó, la leyenda de validez y la lista de los presupuestos del evento para pasar de uno a otro. «A cotizar»: `Servicio.precio` admite `null` solo en tercerizados (CHECK en la base), el alta de servicios lo ofrece y `LineaPresupuesto.aCotizar` marca la línea, que va en 0 hasta que el personal completa el precio desde la consulta.
+**Hecho (06/10/2026).** El detalle es la pantalla de la consulta: se abre desde Consultas y, para un presupuesto Confirmado, desde el detalle del evento en la agenda y el calendario («Ver detalle del presupuesto»), en solo lectura. Muestra distribución y horario cuando el evento ya se agendó, la leyenda de validez y, como cada evento tiene un solo presupuesto, no hay navegación entre presupuestos. «A cotizar»: `Servicio.precio` admite `null` solo en tercerizados (CHECK en la base), el alta de servicios lo ofrece y `LineaPresupuesto.aCotizar` marca la línea, que va en 0 hasta que el personal completa el precio desde la consulta.
 
 **Implementación.** `GET /api/presupuestos/:id`. IVA y total no se guardan: se calculan al mostrar con la constante del 21% (RN-05). Los tercerizados **suman** al total salvo los «a cotizar» (`Servicio.precio = null`, ver `../tecnico/modelo-datos.md`); esto corrige el criterio de HU-05 del Sprint 1.
 
@@ -103,11 +103,11 @@ Como Responsable de Eventos, quiero modificar un presupuesto estimado (fecha, sa
 - Puedo ajustar a mano el precio unitario de una línea como ajuste comercial (RN-03).
 - Sobre un Expirado se ofrece «Recalcular»: actualiza ese mismo presupuesto con los precios vigentes y, al guardar, vuelve a Estimado con 10 días de vigencia (decisión del PO, 05/10/2026: no se genera un presupuesto nuevo).
 - Al guardar los cambios vuelvo al listado de consultas, con un aviso de que se guardó.
-- Puedo dar de baja una consulta Estimado o Expirado: pasa a Cancelado y, si su evento no tiene otro presupuesto en curso, el evento también (RN-08).
+- Puedo dar de baja una consulta Estimado o Expirado: pasa a Cancelado y su evento también, porque cada evento tiene un solo presupuesto (RN-08).
 - Marco si el cliente requiere factura, que define la base de cobro de la seña y del saldo (RN-01).
 - Desde la consulta llego a agendar el evento y registrar los pagos (HU-13 y HU-14).
 
-**Implementación.** `GET /api/presupuestos/:id` (la consulta con su evento, cliente, salón, jornada y líneas), `PATCH /api/presupuestos/:id` (`409` si no está Estimado ni Expirado o el evento ya no está EnConsulta; recalcular es este mismo PATCH con los precios vigentes que arma la pantalla; los servicios escritos a mano van en `adicionales`) y `POST /api/presupuestos/:id/dar-de-baja`. El PATCH también recibe `requiereFactura`. La línea del salón es la primera del presupuesto y de su descripción se deduce la jornada. La modificación de un Confirmado no está implementada. Un evento puede tener varios presupuestos.
+**Implementación.** `GET /api/presupuestos/:id` (la consulta con su evento, cliente, salón, jornada y líneas), `PATCH /api/presupuestos/:id` (`409` si no está Estimado ni Expirado o el evento ya no está EnConsulta; recalcular es este mismo PATCH con los precios vigentes que arma la pantalla; los servicios escritos a mano van en `adicionales`) y `POST /api/presupuestos/:id/dar-de-baja`. El PATCH también recibe `requiereFactura`. La línea del salón es la primera del presupuesto y de su descripción se deduce la jornada. La modificación de un Confirmado no está implementada. Cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026).
 
 ## HU-13 — Registrar presupuesto confirmado
 

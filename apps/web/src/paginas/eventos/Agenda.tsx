@@ -207,7 +207,6 @@ export function Agenda() {
         onGuardada={volverAlEvento}
         onDadaDeBaja={volverAlEvento}
         onAbrirEvento={volverAlEvento}
-        onAbrirPresupuesto={setPresupuestoAbierto}
       />
     );
   }

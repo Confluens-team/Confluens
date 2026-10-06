@@ -78,7 +78,6 @@ export function EditarConsulta({
   onGuardada,
   onDadaDeBaja,
   onAbrirEvento,
-  onAbrirPresupuesto,
   textoVolver = 'Volver a las consultas',
 }: {
   id: number;
@@ -86,8 +85,6 @@ export function EditarConsulta({
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onAbrirEvento: (eventoId: number) => void;
-  // HU-11: abrir otro presupuesto del mismo evento.
-  onAbrirPresupuesto: (presupuestoId: number) => void;
   // Se abre desde Consultas o desde un evento de la agenda (HU-15).
   textoVolver?: string;
 }) {
@@ -116,7 +113,6 @@ export function EditarConsulta({
           onGuardada={onGuardada}
           onDadaDeBaja={onDadaDeBaja}
           onAbrirEvento={onAbrirEvento}
-          onAbrirPresupuesto={onAbrirPresupuesto}
         />
       )}
     </div>
@@ -130,7 +126,6 @@ function Formulario({
   onGuardada,
   onDadaDeBaja,
   onAbrirEvento,
-  onAbrirPresupuesto,
 }: {
   consulta: ConsultaDetallada;
   salones: SalonConDistribuciones[];
@@ -138,7 +133,6 @@ function Formulario({
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onAbrirEvento: (eventoId: number) => void;
-  onAbrirPresupuesto: (presupuestoId: number) => void;
 }) {
   const modificar = useModificarConsulta(consulta.id);
   const darDeBaja = useDarDeBajaConsulta(consulta.id);
@@ -251,7 +245,6 @@ function Formulario({
     lineas.every((l) => esEntero(l.cantidad) && precioValido(l) && l.descripcion.trim());
   const cantidadACotizar = lineas.filter(aCotizar).length;
   const { distribucion, inicio, fin } = consulta.evento;
-  const otrosPresupuestos = consulta.presupuestosDelEvento;
 
   // RN-05: los importes se cargan sin IVA y el resumen muestra el desglose.
   const importes = desglosarIva(
@@ -661,38 +654,6 @@ function Formulario({
           Este presupuesto tiene una validez de {DIAS_VIGENCIA_PRESUPUESTO} días.
         </p>
       </section>
-
-      {otrosPresupuestos.length > 1 && (
-        <section className="rounded-xl bg-card p-5 ring-1 ring-border">
-          <h3 className="text-sm font-semibold">Presupuestos de este evento</h3>
-          <ul className="mt-3 flex flex-wrap gap-2">
-            {otrosPresupuestos.map((otro) => (
-              <li key={otro.id}>
-                <button
-                  type="button"
-                  disabled={otro.id === consulta.id}
-                  onClick={() => onAbrirPresupuesto(otro.id)}
-                  className={cn(
-                    'rounded-lg border px-3 py-2 text-left text-xs transition-colors',
-                    otro.id === consulta.id
-                      ? 'border-bordo bg-bordo/5'
-                      : 'border-border hover:bg-muted/60',
-                  )}
-                >
-                  <span className="block font-medium">
-                    Presupuesto {otro.id}
-                    {otro.id === consulta.id && ' (este)'}
-                  </span>
-                  <span className="text-muted-foreground">
-                    {otro.estado} · {fechaCorta(new Date(otro.fechaEmision))} ·{' '}
-                    {formatearPesos(desglosarIva(otro.total).total)}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       {enCurso && (
         <div className="flex flex-wrap items-center justify-between gap-3">

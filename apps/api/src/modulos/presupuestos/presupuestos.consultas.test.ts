@@ -15,7 +15,6 @@ vi.mock('./presupuestos.repositorio.js', () => ({
   actualizarEvento: vi.fn(),
   actualizarPresupuesto: vi.fn(),
   reemplazarLineas: vi.fn(),
-  contarOtrosPresupuestosVigentes: vi.fn(),
 }));
 
 const repo = await import('./presupuestos.repositorio.js');
@@ -25,7 +24,6 @@ const buscarPresupuestoDetalladoMock = vi.mocked(repo.buscarPresupuestoDetallado
 const actualizarEventoMock = vi.mocked(repo.actualizarEvento);
 const actualizarPresupuestoMock = vi.mocked(repo.actualizarPresupuesto);
 const reemplazarLineasMock = vi.mocked(repo.reemplazarLineas);
-const contarOtrosMock = vi.mocked(repo.contarOtrosPresupuestosVigentes);
 
 const app = crearApp();
 const D = (valor: string) => new Prisma.Decimal(valor);
@@ -104,14 +102,6 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
       },
       salon: salonParana,
       distribucion: null,
-      presupuestos: [
-        {
-          id: 31,
-          estado: 'Estimado',
-          fechaEmision: new Date('2026-09-20T15:00:00.000Z'),
-          total: D('222200'),
-        },
-      ],
       ...evento,
     },
     lineas: [
@@ -158,7 +148,6 @@ beforeEach(() => {
   buscarPresupuestoDetalladoMock.mockResolvedValue(consulta());
   buscarSalonMock.mockResolvedValue(salonParana);
   buscarServiciosPorIdsMock.mockResolvedValue([coffee, pantallas]);
-  contarOtrosMock.mockResolvedValue(0);
 });
 
 describe('GET /api/presupuestos/:id (HU-12)', () => {
@@ -220,7 +209,7 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
     expect(respuesta.body.data.tipoJornada).toBe('completa');
   });
 
-  it('muestra distribución, horario y los presupuestos del evento para navegar (HU-11)', async () => {
+  it('muestra la distribución y el horario del evento agendado (HU-11)', async () => {
     buscarPresupuestoDetalladoMock.mockResolvedValue(
       consulta(
         {},
@@ -229,20 +218,6 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
           distribucion: { id: 2, nombre: 'Banquete' },
           inicio: new Date('2026-11-15T23:00:00.000Z'),
           fin: new Date('2026-11-16T05:00:00.000Z'),
-          presupuestos: [
-            {
-              id: 30,
-              estado: 'Expirado',
-              fechaEmision: new Date('2026-09-01'),
-              total: D('100000'),
-            },
-            {
-              id: 31,
-              estado: 'Estimado',
-              fechaEmision: new Date('2026-09-20'),
-              total: D('222200'),
-            },
-          ],
         },
       ),
     );
@@ -254,10 +229,6 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       inicio: '2026-11-15T23:00:00.000Z',
       fin: '2026-11-16T05:00:00.000Z',
     });
-    expect(respuesta.body.data.presupuestosDelEvento).toEqual([
-      { id: 30, estado: 'Expirado', fechaEmision: '2026-09-01T00:00:00.000Z', total: '100000.00' },
-      { id: 31, estado: 'Estimado', fechaEmision: '2026-09-20T00:00:00.000Z', total: '222200.00' },
-    ]);
   });
 
   it('responde 404 si el presupuesto no existe', async () => {
@@ -571,7 +542,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
 });
 
 describe('POST /api/presupuestos/:id/dar-de-baja (HU-12)', () => {
-  it('pasa la consulta a Cancelado y cancela el evento si no le queda otro presupuesto', async () => {
+  it('pasa la consulta a Cancelado y cancela su evento (un presupuesto por evento)', async () => {
     const respuesta = await request(app)
       .post('/api/presupuestos/31/dar-de-baja')
       .set('Cookie', [cookieRE]);
@@ -579,15 +550,6 @@ describe('POST /api/presupuestos/:id/dar-de-baja (HU-12)', () => {
     expect(respuesta.status).toBe(200);
     expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, { estado: 'Cancelado' }, undefined);
     expect(actualizarEventoMock).toHaveBeenCalledWith(20, { estado: 'Cancelado' }, undefined);
-  });
-
-  it('no cancela el evento si le queda otro presupuesto en curso', async () => {
-    contarOtrosMock.mockResolvedValue(1);
-
-    await request(app).post('/api/presupuestos/31/dar-de-baja').set('Cookie', [cookieRE]);
-
-    expect(actualizarPresupuestoMock).toHaveBeenCalled();
-    expect(actualizarEventoMock).not.toHaveBeenCalled();
   });
 
   it('responde 409 si el presupuesto está Confirmado', async () => {

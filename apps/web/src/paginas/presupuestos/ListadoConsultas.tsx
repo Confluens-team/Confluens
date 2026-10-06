@@ -106,7 +106,6 @@ export function ListadoConsultas() {
         }
         onDadaDeBaja={(consulta) => cerrar(`Consulta ${consulta.id} dada de baja.`)}
         onAbrirEvento={setEventoAbierto}
-        onAbrirPresupuesto={setAbierta}
       />
     );
   }

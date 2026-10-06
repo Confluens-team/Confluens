@@ -43,15 +43,6 @@ export const esquemaConsultaDetallada = z.object({
   lineas: z.array(
     esquemaLineaPresupuesto.extend({ tipo: esquemaTipoLinea, tercerizado: z.boolean() }),
   ),
-  // HU-11: todos los presupuestos del evento, este incluido, para navegar entre ellos.
-  presupuestosDelEvento: z.array(
-    z.object({
-      id: esquemaId,
-      estado: esquemaEstadoPresupuesto,
-      fechaEmision: esquemaFechaHora,
-      total: esquemaImporte,
-    }),
-  ),
 });
 export type ConsultaDetallada = z.infer<typeof esquemaConsultaDetallada>;
 

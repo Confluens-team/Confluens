@@ -153,11 +153,6 @@ export async function buscarPresupuestoDetallado(
           cliente: true,
           salon: true,
           distribucion: true,
-          // HU-11: los presupuestos del evento, para navegar entre ellos desde el detalle.
-          presupuestos: {
-            select: { id: true, estado: true, fechaEmision: true, total: true },
-            orderBy: [{ fechaEmision: 'asc' }, { id: 'asc' }],
-          },
         },
       },
       lineas: { include: { servicio: { select: { tercerizado: true } } }, orderBy: { id: 'asc' } },
@@ -201,22 +196,6 @@ export async function reemplazarLineas(
   });
 }
 
-// HU-12: al dar de baja una consulta, el evento se cancela solo si no le queda otro presupuesto
-// en curso o confirmado.
-export async function contarOtrosPresupuestosVigentes(
-  eventoId: number,
-  excluirId: number,
-  tx: Prisma.TransactionClient = prisma,
-) {
-  return tx.presupuesto.count({
-    where: {
-      eventoId,
-      id: { not: excluirId },
-      estado: { in: ['Estimado', 'Expirado', 'Confirmado'] },
-    },
-  });
-}
-
 export type PresupuestosRepositorio = {
   buscarClientePorCorreo: typeof buscarClientePorCorreo;
   crearCliente: typeof crearCliente;
@@ -232,5 +211,4 @@ export type PresupuestosRepositorio = {
   actualizarEvento: typeof actualizarEvento;
   actualizarPresupuesto: typeof actualizarPresupuesto;
   reemplazarLineas: typeof reemplazarLineas;
-  contarOtrosPresupuestosVigentes: typeof contarOtrosPresupuestosVigentes;
 };
