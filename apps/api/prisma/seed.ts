@@ -321,12 +321,25 @@ async function cargarServicios(): Promise<void> {
   }
 }
 
+// Los tres medios con los que hoy cobra el hotel (modelo-datos.md). El ABM es del Sprint 3
+// (HU-36 a HU-39); acá solo la precarga, sin la que no se puede registrar ningún pago.
+const MEDIOS_PAGO = ['Efectivo', 'Tarjeta', 'A la habitación'];
+
+async function cargarMediosPago(): Promise<void> {
+  for (const nombre of MEDIOS_PAGO) {
+    // Solo `create`: si el medio ya existe no se reactiva, porque pudo haberse dado de baja a
+    // propósito y el seed se corre varias veces sobre la misma base.
+    await prisma.medioPago.upsert({ where: { nombre }, create: { nombre }, update: {} });
+  }
+}
+
 try {
   await cargarSalones();
   await cargarServicios();
   await cargarUsuarios();
+  await cargarMediosPago();
   console.log(
-    `Seed completo: ${SALONES.length} salones, ${SERVICIOS.length} servicios y ${USUARIOS.length} usuarios de prueba (contraseña: "${CONTRASENA_DESARROLLO}").`,
+    `Seed completo: ${SALONES.length} salones, ${SERVICIOS.length} servicios, ${MEDIOS_PAGO.length} medios de pago y ${USUARIOS.length} usuarios de prueba (contraseña: "${CONTRASENA_DESARROLLO}").`,
   );
 } finally {
   await prisma.$disconnect();

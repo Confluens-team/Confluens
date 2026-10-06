@@ -63,7 +63,7 @@ Desde la raíz:
 
 | Comando | Qué hace |
 |---|---|
-| `npm run dev` | shared (watch), API en http://localhost:3000 (docs en `/api/docs`) y web en http://localhost:5173 |
+| `npm run dev` | shared (watch), API en http://localhost:3000 (docs en `/api/docs`, genera antes el cliente de Prisma) y web en http://localhost:5173 |
 | `npm run build` / `typecheck` / `lint` / `test` | Corren en todos los workspaces |
 | `npm run format` / `format:check` | Prettier |
 | `npm run db:up` / `db:down` | Levanta o baja PostgreSQL local (Docker) |
