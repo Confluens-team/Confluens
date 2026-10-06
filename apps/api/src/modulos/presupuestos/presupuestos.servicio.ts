@@ -215,6 +215,7 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
     fechaEmision: presupuesto.fechaEmision.toISOString(),
     venceEn: presupuesto.venceEn.toISOString(),
     total: presupuesto.total.toFixed(2),
+    requiereFactura: presupuesto.requiereFactura,
     tipoJornada: jornadaDeLineaSalon(lineaSalon?.descripcion),
     evento: {
       id: evento.id,
@@ -289,6 +290,7 @@ export async function obtenerConsulta(
  * - La línea del salón conserva su precio si no cambian el salón ni la jornada; si cambian, toma
  *   el vigente. `precioSalon` la ajusta a mano.
  * - Los adicionales escritos a mano entran con la descripción y el precio que se cargaron.
+ * - `requiereFactura` (RN-01) define si la base de cobro de la seña incluye el IVA.
  * - «Recalcular» un Expirado es esto mismo, con los precios vigentes que arma la pantalla: el
  *   presupuesto sigue siendo el mismo (decisión del PO, 05/10/2026).
  * - El total suma todas las líneas, tercerizados incluidos.
@@ -367,6 +369,7 @@ export async function modificarPresupuesto(
         estado: 'Estimado',
         venceEn: calcularVencimiento(new Date()),
         total: sumarLineas(lineas).toFixed(2),
+        requiereFactura: datos.requiereFactura,
       },
       tx,
     );

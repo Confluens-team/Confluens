@@ -19,6 +19,7 @@ export const esquemaConsultaDetallada = z.object({
   fechaEmision: esquemaFechaHora,
   venceEn: esquemaFechaHora,
   total: esquemaImporte,
+  requiereFactura: z.boolean(),
   tipoJornada: esquemaTipoJornada,
   evento: z.object({
     id: esquemaId,
@@ -66,6 +67,9 @@ export const esquemaModificarPresupuesto = z.object({
   cantidadPersonas: z.number().int().positive(),
   tipoJornada: esquemaTipoJornada,
   precioSalon: esquemaImporte.optional(),
+  // RN-01: si el cliente pide factura, la base de cobro de la seña y el saldo incluye el IVA. Sin
+  // el campo, se mantiene lo que estaba.
+  requiereFactura: z.boolean().optional(),
   servicios: z
     .array(esquemaServicioModificado)
     .default([])

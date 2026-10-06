@@ -1,5 +1,5 @@
 import { desglosarIva, type EstadoConsulta, type FiltrosPresupuestos } from '@confluens/shared';
-import { AlertTriangle, CheckCircle2, FileText, Search, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Search, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,8 @@ import { Label } from '@/components/ui/label';
 import { usePresupuestos } from '@/hooks/use-presupuestos';
 import { fechaLocal, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
+import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
+
 import { EditarConsulta } from './EditarConsulta';
 
 // Los Confirmado no aparecen: pasan a la agenda de eventos.
@@ -39,6 +41,7 @@ export function ListadoConsultas() {
   const [abierta, setAbierta] = useState<number | null>(null);
   // Lo que pasó con la última consulta que se cerró (guardada o dada de baja).
   const [aviso, setAviso] = useState<string | null>(null);
+  const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
 
   // La búsqueda por cliente espera a que se deje de escribir para no pedir una vez por tecla.
   useEffect(() => {
@@ -66,8 +69,22 @@ export function ListadoConsultas() {
   // al listado, arriba de todo, con el aviso de lo que pasó.
   function cerrar(mensaje: string | null) {
     setAbierta(null);
+    setEventoAbierto(null);
     setAviso(mensaje);
     window.scrollTo({ top: 0 });
+  }
+
+  // Agendar y cobrar viven en el detalle del evento (HU-13 y HU-14): se abre desde la consulta y
+  // se vuelve a ella.
+  if (abierta !== null && eventoAbierto !== null) {
+    return (
+      <div className="space-y-2">
+        <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
+          <ArrowLeft /> Volver a la consulta {abierta}
+        </Button>
+        <DetalleEvento eventoId={eventoAbierto} />
+      </div>
+    );
   }
 
   if (abierta !== null) {
@@ -82,6 +99,7 @@ export function ListadoConsultas() {
           )
         }
         onDadaDeBaja={(consulta) => cerrar(`Consulta ${consulta.id} dada de baja.`)}
+        onAbrirEvento={setEventoAbierto}
       />
     );
   }

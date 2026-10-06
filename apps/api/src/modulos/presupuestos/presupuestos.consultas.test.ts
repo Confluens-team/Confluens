@@ -75,6 +75,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
     fechaEmision: new Date('2026-09-20T15:00:00.000Z'),
     venceEn: new Date('2026-09-30T15:00:00.000Z'),
     total: D('222200'),
+    requiereFactura: false,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     evento: {
@@ -355,6 +356,15 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
     expect(respuesta.status).toBe(200);
     expect(datosDelPresupuesto()).toMatchObject({ estado: 'Estimado', total: '237300.00' });
     expect(reemplazarLineasMock.mock.calls[0]![0]).toBe(31);
+  });
+
+  it('marca si el cliente requiere factura, que define la base de cobro (RN-01)', async () => {
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, requiereFactura: true });
+
+    expect(datosDelPresupuesto()).toMatchObject({ requiereFactura: true });
   });
 
   it('un Expirado modificado vuelve a Estimado', async () => {

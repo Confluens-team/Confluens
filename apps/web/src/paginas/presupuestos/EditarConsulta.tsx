@@ -6,7 +6,7 @@ import {
   type Servicio,
   type TipoJornada,
 } from '@confluens/shared';
-import { AlertTriangle, ArrowLeft, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CalendarCheck, Plus, RefreshCw, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -65,11 +65,13 @@ export function EditarConsulta({
   onVolver,
   onGuardada,
   onDadaDeBaja,
+  onAbrirEvento,
 }: {
   id: number;
   onVolver: () => void;
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
+  onAbrirEvento: (eventoId: number) => void;
 }) {
   const consulta = useConsulta(id);
   const salones = useSalones();
@@ -95,6 +97,7 @@ export function EditarConsulta({
           catalogo={servicios.data}
           onGuardada={onGuardada}
           onDadaDeBaja={onDadaDeBaja}
+          onAbrirEvento={onAbrirEvento}
         />
       )}
     </div>
@@ -107,12 +110,14 @@ function Formulario({
   catalogo,
   onGuardada,
   onDadaDeBaja,
+  onAbrirEvento,
 }: {
   consulta: ConsultaDetallada;
   salones: SalonConDistribuciones[];
   catalogo: Servicio[];
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
+  onAbrirEvento: (eventoId: number) => void;
 }) {
   const modificar = useModificarConsulta(consulta.id);
   const darDeBaja = useDarDeBajaConsulta(consulta.id);
@@ -122,6 +127,7 @@ function Formulario({
   const [salonId, setSalonId] = useState(consulta.salon.id);
   const [jornada, setJornada] = useState<TipoJornada>(consulta.tipoJornada);
   const [personas, setPersonas] = useState(String(consulta.evento.cantidadPersonas));
+  const [requiereFactura, setRequiereFactura] = useState(consulta.requiereFactura);
   const [precioSalon, setPrecioSalon] = useState(lineaSalon?.precioUnitario ?? '0.00');
   const [lineas, setLineas] = useState<LineaEditable[]>(
     consulta.lineas
@@ -240,6 +246,7 @@ function Formulario({
         salonId,
         cantidadPersonas: Number(personas),
         tipoJornada: jornada,
+        requiereFactura,
         precioSalon: aImporte(precioSalon),
         servicios: lineas
           .filter((l) => l.servicioId !== null)
@@ -382,6 +389,17 @@ function Formulario({
               salón {salon.nombre} ({salon.capacidadMaxima}).
             </p>
           )}
+          <label className="mt-4 flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={requiereFactura}
+              onChange={(e) => setRequiereFactura(e.target.checked)}
+            />
+            El cliente requiere factura
+            <span className="text-xs text-muted-foreground">
+              (la seña y el saldo se calculan sobre el total con IVA, RN-01)
+            </span>
+          </label>
         </section>
 
         <section className="rounded-xl bg-card p-5 ring-1 ring-border">
@@ -614,6 +632,28 @@ function Formulario({
             </Button>
           </div>
         </div>
+      )}
+      {enCurso && (
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-card p-5 ring-1 ring-border">
+          <div className="max-w-xl">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <CalendarCheck className="size-4 text-dorado" /> Agendar y cobrar la seña
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              {expirado
+                ? 'La consulta está vencida: recalculala y guardá los cambios antes de cobrar la seña.'
+                : 'Cargá la distribución y el horario y registrá los pagos. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a Eventos (HU-13). Guardá antes los cambios de la consulta.'}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={expirado}
+            onClick={() => onAbrirEvento(consulta.evento.id)}
+          >
+            <CalendarCheck /> Agendar y registrar pagos
+          </Button>
+        </section>
       )}
       {modificar.isError && (
         <p className="text-right text-sm text-destructive">
