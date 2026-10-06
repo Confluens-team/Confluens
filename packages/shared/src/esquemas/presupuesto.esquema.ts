@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-import { esquemaFecha, esquemaFechaHora, esquemaId, esquemaImporte } from './comunes.esquema.js';
+import {
+  esquemaFecha,
+  esquemaFechaHora,
+  esquemaId,
+  esquemaImporte,
+  vacioComoAusente,
+} from './comunes.esquema.js';
 
 // Valores literales de la máquina de estados aprobada (docs/producto/dominio.md).
 export const esquemaEstadoPresupuesto = z.enum(['Estimado', 'Confirmado', 'Cancelado', 'Expirado']);
@@ -48,9 +54,6 @@ export type PresupuestoListado = z.infer<typeof esquemaPresupuestoListado>;
 // Filtros de GET /presupuestos (HU-10). Sin `estado` lista todos menos los Confirmado. `cliente`
 // busca por nombre, apellido o correo; `desde` y `hasta` acotan la fecha del evento, inclusive. Un
 // parámetro vacío (?cliente=) cuenta como ausente.
-const vacioComoAusente = (valor: unknown) =>
-  typeof valor === 'string' && valor.trim() === '' ? undefined : valor;
-
 export const esquemaFiltrosPresupuestos = z
   .object({
     estado: z.preprocess(vacioComoAusente, esquemaEstadoConsulta.optional()),

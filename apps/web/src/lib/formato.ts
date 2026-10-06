@@ -33,9 +33,14 @@ export function nombreCompleto(persona: { nombre: string; apellido?: string | nu
   return persona.apellido ? `${persona.nombre} ${persona.apellido}` : persona.nombre;
 }
 
+// Una fecha de calendario (YYYY-MM-DD) tomada en hora local, como la esperan los inputs date y los
+// filtros de la API: toISOString() la pasaría a UTC y en Argentina devolvería el día siguiente.
+export function fechaISO(fecha: Date): string {
+  const mes = String(fecha.getMonth() + 1).padStart(2, '0');
+  const dia = String(fecha.getDate()).padStart(2, '0');
+  return `${fecha.getFullYear()}-${mes}-${dia}`;
+}
+
 export function hoyISO(): string {
-  const hoy = new Date();
-  const mes = String(hoy.getMonth() + 1).padStart(2, '0');
-  const dia = String(hoy.getDate()).padStart(2, '0');
-  return `${hoy.getFullYear()}-${mes}-${dia}`;
+  return fechaISO(new Date());
 }

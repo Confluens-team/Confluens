@@ -153,6 +153,65 @@
     radial-gradient(circle at 80% 90%, rgb(176 141 87 / 0.08), transparent 45%);
 }
 
+/* Calendario de la agenda (HU-15). FullCalendar trae su propia hoja de estilos y se configura por
+   variables --fc-*: acá solo se las empalma con la paleta del proyecto, en vez de pelearle a sus
+   selectores. Los botones de la barra no son variables, así que esos sí se pisan. */
+.calendario-agenda {
+  --fc-border-color: var(--border);
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: var(--muted);
+  --fc-today-bg-color: rgb(176 141 87 / 0.1); /* dorado */
+  --fc-now-indicator-color: var(--color-bordo);
+  --fc-small-font-size: 0.75rem;
+}
+
+.calendario-agenda .fc .fc-toolbar-title {
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  color: var(--color-bordo);
+  text-transform: capitalize;
+}
+
+.calendario-agenda .fc .fc-button {
+  background-color: var(--card);
+  border-color: var(--border);
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.3rem 0.7rem;
+  box-shadow: none;
+}
+
+.calendario-agenda .fc .fc-button:hover {
+  background-color: var(--muted);
+}
+
+.calendario-agenda .fc .fc-button-primary:not(:disabled).fc-button-active,
+.calendario-agenda .fc .fc-button-primary:not(:disabled):active {
+  background-color: var(--color-bordo);
+  border-color: var(--color-bordo);
+  color: var(--color-crema);
+}
+
+.calendario-agenda .fc .fc-button:focus-visible {
+  outline: 2px solid var(--color-dorado);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+.calendario-agenda .fc .fc-col-header-cell-cushion {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  padding: 0.5rem 0;
+}
+
+.calendario-agenda .fc .fc-event {
+  cursor: pointer;
+}
+
 @media print {
   body {
     background: white;

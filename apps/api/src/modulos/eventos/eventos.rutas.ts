@@ -2,6 +2,7 @@ import {
   esquemaAgendarEvento,
   esquemaEventoAgenda,
   esquemaEventoDetallado,
+  esquemaFiltrosAgenda,
 } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -24,14 +25,19 @@ registroOpenApi.registerPath({
   method: 'get',
   path: '/eventos',
   tags: ['Eventos'],
-  summary: 'Agenda: eventos Reservado y Cobrado, por fecha (panel del Administrador del Sistema)',
+  summary:
+    'Agenda del personal interno (HU-15). Sin filtros devuelve los eventos que ocupan el salón ' +
+    '(Reservado y Cobrado): los Cancelado no se muestran por defecto. `salonId` y `estado` ' +
+    'aceptan varios valores separados por coma (?salonId=1,3)',
+  request: { query: esquemaFiltrosAgenda },
   responses: {
     200: {
-      description: 'Eventos que ocupan un salón',
+      description: 'Eventos de la agenda, por fecha y horario de inicio',
       content: { 'application/json': { schema: z.object({ data: z.array(esquemaEventoAgenda) }) } },
     },
+    400: { description: 'Un filtro no es válido (fecha, id de salón o estado inexistente)' },
     401: { description: 'Sin sesión' },
-    403: { description: 'El rol no es Administrador del Sistema' },
+    403: { description: 'La sesión no es del personal' },
   },
 });
 
@@ -95,7 +101,15 @@ registroOpenApi.registerPath({
 
 export const rutasEventos = Router();
 
-rutasEventos.get('/', autenticar, autorizar('ADMINISTRADOR_SISTEMA'), asincrono(listar));
+// HU-15: la agenda era solo del Administrador del Sistema; la historia es del Responsable de
+// Eventos, así que pasa a todo el personal interno. El Cliente sigue afuera (C6 de HU-48).
+rutasEventos.get(
+  '/',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ query: esquemaFiltrosAgenda }),
+  asincrono(listar),
+);
 // Detalle y acciones de estado: funciones del panel interno, solo el personal (C6 de HU-48).
 rutasEventos.get(
   '/:id',

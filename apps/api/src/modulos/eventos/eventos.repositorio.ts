@@ -1,3 +1,5 @@
+import { ESTADOS_QUE_OCUPAN_SALON, type FiltrosAgenda } from '@confluens/shared';
+
 import { prisma } from '../../lib/prisma.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 
@@ -18,12 +20,26 @@ export async function buscarDetallado(id: number, tx: Prisma.TransactionClient =
   });
 }
 
-// Agenda del panel del administrador: los eventos que ocupan el salón (Reservado y Cobrado; los
-// EnConsulta no bloquean y los Cancelado ya lo liberaron). Del presupuesto se trae solo el total
-// del Confirmado más reciente, que es el que quedó congelado al acreditarse la seña.
-export async function listarAgenda(tx: Prisma.TransactionClient = prisma) {
+// Agenda del personal interno (HU-15). Sin filtros devuelve los eventos que ocupan el salón
+// (ESTADOS_QUE_OCUPAN_SALON): los EnConsulta no bloquean y los Cancelado ya lo liberaron, así que
+// no se muestran salvo que se pidan explícitamente. `desde`/`hasta` acotan la fecha del evento,
+// inclusive, y son el rango visible del calendario. Del presupuesto se trae solo el total del
+// Confirmado más reciente, que es el que quedó congelado al acreditarse la seña.
+export async function listarAgenda(
+  filtros: FiltrosAgenda = {},
+  tx: Prisma.TransactionClient = prisma,
+) {
+  const { desde, hasta, salonId, estado } = filtros;
+
   return tx.evento.findMany({
-    where: { estado: { in: ['Reservado', 'Cobrado'] } },
+    where: {
+      estado: { in: estado ?? [...ESTADOS_QUE_OCUPAN_SALON] },
+      salonId: salonId ? { in: salonId } : undefined,
+      fecha: {
+        gte: desde ? new Date(desde) : undefined,
+        lte: hasta ? new Date(hasta) : undefined,
+      },
+    },
     orderBy: [{ fecha: 'asc' }, { inicio: 'asc' }],
     include: {
       cliente: {

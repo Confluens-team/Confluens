@@ -2,20 +2,34 @@ import type {
   AgendarEvento,
   EventoAgenda,
   EventoDetallado,
+  FiltrosAgenda,
   RespuestaExito,
 } from '@confluens/shared';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api';
 
-// Agenda del panel del administrador: eventos Reservado y Cobrado, ordenados por fecha.
-export function useAgenda() {
+// Agenda del personal interno (HU-15). Sin filtros la API devuelve los eventos que ocupan el salón
+// (Reservado y Cobrado): los Cancelado solo aparecen si se piden. `salonId` y `estado` viajan como
+// una lista separada por coma. Mientras llega la respuesta del mes nuevo se sigue mostrando la
+// anterior, para que el calendario no quede en blanco al pasar de mes.
+// `activa` en false evita el pedido sin rango que, si no, saldría en el primer render del
+// calendario —antes de que él avise qué mes quedó visible— y traería la agenda entera.
+export function useAgenda(filtros: FiltrosAgenda = {}, activa = true) {
   return useQuery({
-    queryKey: ['eventos', 'agenda'],
+    enabled: activa,
+    queryKey: ['eventos', 'agenda', filtros],
     queryFn: async () => {
-      const respuesta = await apiFetch<RespuestaExito<EventoAgenda[]>>('/eventos');
+      const parametros = new URLSearchParams();
+      if (filtros.desde) parametros.set('desde', filtros.desde);
+      if (filtros.hasta) parametros.set('hasta', filtros.hasta);
+      if (filtros.salonId?.length) parametros.set('salonId', filtros.salonId.join(','));
+      if (filtros.estado?.length) parametros.set('estado', filtros.estado.join(','));
+      const consulta = parametros.size > 0 ? `?${parametros}` : '';
+      const respuesta = await apiFetch<RespuestaExito<EventoAgenda[]>>(`/eventos${consulta}`);
       return respuesta.data;
     },
+    placeholderData: keepPreviousData,
   });
 }
 

@@ -1,32 +1,17 @@
-import type { EventoAgenda } from '@confluens/shared';
-import { ArrowLeft, CalendarDays, Clock, Users } from 'lucide-react';
-import { useState } from 'react';
+import { ESTADOS_QUE_OCUPAN_SALON, type EstadoEvento, type EventoAgenda } from '@confluens/shared';
+import { ArrowLeft, CalendarDays, Clock, List, Users } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useAgenda } from '@/hooks/use-eventos';
+import { useSalones } from '@/hooks/use-salones';
 import { fechaLocal, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
+import { CalendarioEventos } from './CalendarioEventos';
 import { DetalleEvento } from './DetalleEvento';
+import { ESTADOS, ESTADOS_DEL_FILTRO } from './estado-evento';
 
-type Filtro = 'todos' | 'reservado' | 'cobrado';
-
-// Ya no existe el caso "Reservado con la seña pendiente": la reserva la dispara el pago que cruza
-// el 20% de la base de cobro (HU-13), así que todo evento Reservado tiene la seña cobrada. Lo que
-// distingue la agenda es cuánto falta pagar: Reservado (al menos el 20%) o Cobrado (el 100%).
-function situacion(evento: EventoAgenda): Exclude<Filtro, 'todos'> {
-  return evento.estado === 'Cobrado' ? 'cobrado' : 'reservado';
-}
-
-const ETIQUETAS: Record<Exclude<Filtro, 'todos'>, { texto: string; clase: string }> = {
-  reservado: { texto: 'Reservado', clase: 'bg-emerald-100 text-emerald-900' },
-  cobrado: { texto: 'Cobrado', clase: 'bg-bordo/10 text-bordo' },
-};
-
-const FILTROS: { valor: Filtro; texto: string }[] = [
-  { valor: 'todos', texto: 'Todos' },
-  { valor: 'reservado', texto: 'Reservado' },
-  { valor: 'cobrado', texto: 'Cobrado' },
-];
+type Vista = 'calendario' | 'lista';
 
 const hora = (instante: string | null) =>
   instante
@@ -37,28 +22,43 @@ const hora = (instante: string | null) =>
       })
     : null;
 
-// Agenda del panel del administrador: los eventos que ocupan un salón (Reservado y Cobrado),
-// agrupados por mes. Al abrir uno se muestra su detalle (HU-15), desde donde se agenda el horario,
-// se registran los pagos o se cancela.
-export function Agenda() {
-  const agenda = useAgenda();
-  const [filtro, setFiltro] = useState<Filtro>('todos');
-  const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
+// Chip de filtro: se usa igual para los salones, los estados y el conmutador de vista.
+function Chip({
+  activo,
+  onClick,
+  title,
+  children,
+}: {
+  activo: boolean;
+  onClick: () => void;
+  title?: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={activo}
+      title={title}
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
+        activo ? 'border-bordo bg-bordo text-crema' : 'border-border bg-card hover:bg-muted/60',
+      )}
+    >
+      {children}
+    </button>
+  );
+}
 
-  if (eventoAbierto !== null) {
-    return (
-      <div>
-        <div className="mx-auto max-w-2xl px-6 pt-6">
-          <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
-            <ArrowLeft /> Volver a la agenda
-          </Button>
-        </div>
-        <DetalleEvento eventoId={eventoAbierto} />
-      </div>
-    );
-  }
-
-  const eventos = (agenda.data ?? []).filter((e) => filtro === 'todos' || situacion(e) === filtro);
+// La lista de siempre: los eventos agrupados por mes, con el detalle a un clic. Convive con el
+// calendario porque para "¿qué hay en noviembre?" se lee de un tirón, sin pasar de día en día.
+function ListaDeEventos({
+  eventos,
+  onAbrirEvento,
+}: {
+  eventos: EventoAgenda[];
+  onAbrirEvento: (id: number) => void;
+}) {
   const porMes = new Map<string, EventoAgenda[]>();
   for (const evento of eventos) {
     const mes = fechaLocal(evento.fecha).toLocaleDateString('es-AR', {
@@ -70,44 +70,6 @@ export function Agenda() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap gap-2">
-        {FILTROS.map(({ valor, texto }) => {
-          const cantidad =
-            valor === 'todos'
-              ? (agenda.data?.length ?? 0)
-              : (agenda.data ?? []).filter((e) => situacion(e) === valor).length;
-          return (
-            <button
-              key={valor}
-              type="button"
-              onClick={() => setFiltro(valor)}
-              className={cn(
-                'rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
-                filtro === valor ? 'border-bordo bg-bordo text-crema' : 'border-border bg-card',
-              )}
-            >
-              {texto} <span className="ml-1 opacity-70">{cantidad}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {agenda.isLoading && <p className="text-sm text-muted-foreground">Cargando la agenda…</p>}
-      {agenda.isError && (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          No se pudo cargar la agenda.
-        </p>
-      )}
-      {agenda.data && eventos.length === 0 && (
-        <div className="rounded-xl border border-dashed bg-card px-6 py-12 text-center">
-          <CalendarDays className="mx-auto size-8 text-dorado" />
-          <p className="mt-3 font-medium">No hay eventos para mostrar</p>
-          <p className="text-sm text-muted-foreground">
-            Los eventos aparecen acá cuando se reservan desde una consulta.
-          </p>
-        </div>
-      )}
-
       {[...porMes].map(([mes, delMes]) => (
         <section key={mes}>
           <h3 className="mb-3 text-xs font-semibold tracking-[0.2em] text-dorado uppercase first-letter:uppercase">
@@ -116,14 +78,14 @@ export function Agenda() {
           <ul className="divide-y overflow-hidden rounded-xl bg-card ring-1 ring-border">
             {delMes.map((evento) => {
               const fecha = fechaLocal(evento.fecha);
-              const etiqueta = ETIQUETAS[situacion(evento)];
+              const estado = ESTADOS[evento.estado];
               const desde = hora(evento.inicio);
               const hasta = hora(evento.fin);
               return (
                 <li key={evento.id}>
                   <button
                     type="button"
-                    onClick={() => setEventoAbierto(evento.id)}
+                    onClick={() => onAbrirEvento(evento.id)}
                     className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-muted/60"
                   >
                     <div className="w-12 shrink-0 text-center">
@@ -162,10 +124,10 @@ export function Agenda() {
                       <span
                         className={cn(
                           'inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold',
-                          etiqueta.clase,
+                          estado.clase,
                         )}
                       >
-                        {etiqueta.texto}
+                        {estado.etiqueta}
                       </span>
                       {evento.totalPresupuesto && (
                         <p className="mt-1 text-xs text-muted-foreground">
@@ -180,6 +142,166 @@ export function Agenda() {
           </ul>
         </section>
       ))}
+    </div>
+  );
+}
+
+// Agenda de eventos del personal interno (HU-15). El calendario (mensual, semanal y diaria) y la
+// lista por mes muestran los mismos eventos ya filtrados por la API; al abrir uno se llega a su
+// detalle, y desde ahí al presupuesto vigente, a los pagos y a la cancelación.
+//
+// Por defecto se ven los estados que ocupan el salón: así una franja sin eventos en un salón se
+// lee como disponible aunque haya consultas EnConsulta sobre ella (criterio 5), y los Cancelado
+// quedan afuera hasta que se los pida (criterio 2). Tres eventos el mismo día y horario en salones
+// distintos se ven los tres: el filtro de salón es opcional y acepta varios a la vez.
+export function Agenda() {
+  const [vista, setVista] = useState<Vista>('calendario');
+  const [salonId, setSalonId] = useState<number[]>([]);
+  const [estado, setEstado] = useState<EstadoEvento[]>([...ESTADOS_QUE_OCUPAN_SALON]);
+  // Ventana visible del calendario; la manda él mismo al cambiar de mes o de vista.
+  const [rango, setRango] = useState<{ desde: string; hasta: string } | null>(null);
+  const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
+
+  const salones = useSalones();
+  const enCalendario = vista === 'calendario';
+  // La lista no acota por fechas: muestra la agenda completa agrupada por mes. El calendario, en
+  // cambio, pide solo lo que entra en la ventana visible, y hasta saber cuál es no pide nada.
+  const agenda = useAgenda(
+    {
+      ...(enCalendario && rango ? rango : {}),
+      salonId: salonId.length > 0 ? salonId : undefined,
+      estado,
+    },
+    !enCalendario || rango !== null,
+  );
+
+  function alternarSalon(id: number) {
+    setSalonId((actuales) =>
+      actuales.includes(id) ? actuales.filter((otro) => otro !== id) : [...actuales, id],
+    );
+  }
+
+  // Sin ningún estado elegido la API devolvería igual los que ocupan el salón, y la pantalla
+  // quedaría mintiendo: se deja siempre al menos uno.
+  function alternarEstado(valor: EstadoEvento) {
+    setEstado((actuales) => {
+      const siguientes = actuales.includes(valor)
+        ? actuales.filter((otro) => otro !== valor)
+        : [...actuales, valor];
+      return siguientes.length > 0 ? siguientes : actuales;
+    });
+  }
+
+  if (eventoAbierto !== null) {
+    return (
+      <div>
+        <div className="mx-auto max-w-2xl px-6 pt-6">
+          <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
+            <ArrowLeft /> Volver a la agenda
+          </Button>
+        </div>
+        <DetalleEvento eventoId={eventoAbierto} />
+      </div>
+    );
+  }
+
+  const eventos = agenda.data ?? [];
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-lg bg-muted p-1">
+          {(
+            [
+              { valor: 'calendario', texto: 'Calendario', icono: CalendarDays },
+              { valor: 'lista', texto: 'Lista', icono: List },
+            ] as const
+          ).map(({ valor, texto, icono: Icono }) => (
+            <button
+              key={valor}
+              type="button"
+              onClick={() => setVista(valor)}
+              className={cn(
+                'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                vista === valor ? 'bg-card shadow-sm' : 'text-muted-foreground',
+              )}
+            >
+              <Icono className="size-4" /> {texto}
+            </button>
+          ))}
+        </div>
+        {agenda.isFetching && <span className="text-xs text-muted-foreground">Actualizando…</span>}
+      </div>
+
+      <div className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-border">
+        <div>
+          <p className="mb-2 text-xs font-semibold tracking-[0.15em] text-dorado uppercase">
+            Salones
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Chip activo={salonId.length === 0} onClick={() => setSalonId([])}>
+              Todos
+            </Chip>
+            {(salones.data ?? []).map((salon) => (
+              <Chip
+                key={salon.id}
+                activo={salonId.includes(salon.id)}
+                onClick={() => alternarSalon(salon.id)}
+              >
+                {salon.nombre}
+              </Chip>
+            ))}
+          </div>
+        </div>
+        <div>
+          <p className="mb-2 text-xs font-semibold tracking-[0.15em] text-dorado uppercase">
+            Estado
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {ESTADOS_DEL_FILTRO.map((valor) => (
+              <Chip
+                key={valor}
+                activo={estado.includes(valor)}
+                onClick={() => alternarEstado(valor)}
+                title={ESTADOS[valor].ayuda}
+              >
+                <span
+                  className="size-2 rounded-full"
+                  style={{ backgroundColor: ESTADOS[valor].color }}
+                />
+                {ESTADOS[valor].etiqueta}
+              </Chip>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {agenda.isError && (
+        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          No se pudo cargar la agenda.
+        </p>
+      )}
+
+      {vista === 'calendario' ? (
+        <CalendarioEventos
+          eventos={eventos}
+          onAbrirEvento={setEventoAbierto}
+          onRango={(desde, hasta) => setRango({ desde, hasta })}
+        />
+      ) : agenda.isLoading ? (
+        <p className="text-sm text-muted-foreground">Cargando la agenda…</p>
+      ) : eventos.length === 0 ? (
+        <div className="rounded-xl border border-dashed bg-card px-6 py-12 text-center">
+          <CalendarDays className="mx-auto size-8 text-dorado" />
+          <p className="mt-3 font-medium">No hay eventos para mostrar</p>
+          <p className="text-sm text-muted-foreground">
+            Probá con otros salones o estados. Los eventos aparecen acá cuando se reservan desde una
+            consulta.
+          </p>
+        </div>
+      ) : (
+        <ListaDeEventos eventos={eventos} onAbrirEvento={setEventoAbierto} />
+      )}
     </div>
   );
 }

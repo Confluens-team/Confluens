@@ -1,10 +1,21 @@
 import { z } from 'zod';
 
-import { esquemaFecha, esquemaFechaHora, esquemaId, esquemaImporte } from './comunes.esquema.js';
+import {
+  esquemaFecha,
+  esquemaFechaHora,
+  esquemaId,
+  esquemaImporte,
+  vacioComoAusente,
+} from './comunes.esquema.js';
 
 // Valores literales de la máquina de estados aprobada (docs/producto/dominio.md).
 export const esquemaEstadoEvento = z.enum(['EnConsulta', 'Reservado', 'Cobrado', 'Cancelado']);
 export type EstadoEvento = z.infer<typeof esquemaEstadoEvento>;
+
+// Los estados que ocupan el salón, y por eso lo que la agenda muestra cuando no se filtra nada:
+// un `EnConsulta` no bloquea el salón y un `Cancelado` ya lo liberó (dominio.md). Es también lo
+// que hace que una franja sin estos eventos se lea como disponible (criterio 5 de HU-15).
+export const ESTADOS_QUE_OCUPAN_SALON: readonly EstadoEvento[] = ['Reservado', 'Cobrado'];
 
 // distribucionId, inicio y fin pueden ser null en EnConsulta (y en Cancelado si viene de ahí).
 export const esquemaEvento = z.object({
@@ -45,3 +56,31 @@ export const esquemaEventoAgenda = esquemaEvento.extend({
   totalPresupuesto: esquemaImporte.nullable(),
 });
 export type EventoAgenda = z.infer<typeof esquemaEventoAgenda>;
+
+// `salonId` y `estado` admiten varios valores separados por coma (?salonId=1,3), que es lo que
+// pide el criterio 3 de HU-15 ("filtrar por uno o varios salones"). Llegan como un solo string
+// porque la web los arma con URLSearchParams.
+const comoLista = (valor: unknown) => {
+  if (typeof valor !== 'string') return valor;
+  const partes = valor
+    .split(',')
+    .map((parte) => parte.trim())
+    .filter(Boolean);
+  return partes.length > 0 ? partes : undefined;
+};
+
+// Filtros de GET /eventos (HU-15). `desde` y `hasta` acotan la fecha del evento, inclusive, y son
+// lo que manda el calendario cuando se cambia de mes o de vista. Sin `estado` se devuelven los
+// ESTADOS_QUE_OCUPAN_SALON: los Cancelado no se muestran por defecto (criterio 2).
+export const esquemaFiltrosAgenda = z
+  .object({
+    desde: z.preprocess(vacioComoAusente, esquemaFecha.optional()),
+    hasta: z.preprocess(vacioComoAusente, esquemaFecha.optional()),
+    salonId: z.preprocess(comoLista, z.array(z.coerce.number().int().positive()).optional()),
+    estado: z.preprocess(comoLista, z.array(esquemaEstadoEvento).optional()),
+  })
+  .refine((filtros) => !filtros.desde || !filtros.hasta || filtros.desde <= filtros.hasta, {
+    path: ['hasta'],
+    message: 'La fecha hasta no puede ser anterior a la fecha desde',
+  });
+export type FiltrosAgenda = z.infer<typeof esquemaFiltrosAgenda>;

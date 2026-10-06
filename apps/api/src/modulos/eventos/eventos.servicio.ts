@@ -1,4 +1,4 @@
-import type { AgendarEvento } from '@confluens/shared';
+import type { AgendarEvento, FiltrosAgenda } from '@confluens/shared';
 
 import { ErrorApi } from '../../lib/errores.js';
 import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
@@ -8,9 +8,12 @@ import type { EventosRepositorio } from './eventos.repositorio.js';
 const CUARENTA_Y_OCHO_HORAS_EN_MS = 48 * 60 * 60 * 1000;
 
 // Aplana el presupuesto Confirmado en totalPresupuesto (esquemaEventoAgenda): la agenda no necesita
-// la lista de presupuestos, solo el total tomado.
-export async function listarAgenda(repo: EventosRepositorio = eventosRepositorioReal) {
-  const eventos = await repo.listarAgenda();
+// la lista de presupuestos, solo el total tomado. El filtrado es parte de la consulta (repositorio).
+export async function listarAgenda(
+  filtros: FiltrosAgenda,
+  repo: EventosRepositorio = eventosRepositorioReal,
+) {
+  const eventos = await repo.listarAgenda(filtros);
   return eventos.map(({ presupuestos, ...evento }) => ({
     ...evento,
     totalPresupuesto: presupuestos[0]?.total ?? null,

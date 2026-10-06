@@ -1,3 +1,4 @@
+import type { Rol } from '@confluens/shared';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -382,11 +383,11 @@ describe('POST /api/eventos/:id/cancelar', () => {
   });
 });
 
-// Agenda del panel del Administrador del Sistema. Lo que tiene lógica es el permiso por rol y el
-// aplanado del presupuesto Confirmado en totalPresupuesto; el filtro por estado es parte de la
-// consulta del repositorio (mockeado, ADR 0003).
+// Agenda del personal interno (HU-15). Lo que tiene lógica acá es el permiso por rol, la validación
+// de los filtros y el aplanado del presupuesto Confirmado en totalPresupuesto; cómo se traducen los
+// filtros a la consulta se prueba en eventos.repositorio.test.ts (mockeado, ADR 0003).
 describe('GET /api/eventos', () => {
-  const cookieDe = (rol: 'ADMINISTRADOR_SISTEMA' | 'RESPONSABLE_EVENTOS') =>
+  const cookieDe = (rol: Rol) =>
     `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 9, email: 'admin@confluens.test', rol })}`;
 
   const eventoAgenda = {
@@ -443,13 +444,63 @@ describe('GET /api/eventos', () => {
     expect(listarAgendaMock).not.toHaveBeenCalled();
   });
 
-  it('con otro rol responde 403 FORBIDDEN', async () => {
+  // HU-15 es una historia del Responsable de Eventos: la agenda dejó de ser exclusiva del
+  // Administrador del Sistema y la ve todo el personal interno.
+  it.each([
+    'RESPONSABLE_EVENTOS',
+    'RESPONSABLE_FINANZAS',
+    'GERENTE_GENERAL',
+    'ADMINISTRADOR_SISTEMA',
+  ] as const)('el rol %s accede a la agenda', async (rol) => {
+    listarAgendaMock.mockResolvedValue([]);
+
     const respuesta = await request(app)
       .get('/api/eventos')
-      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+      .set('Cookie', [cookieDe(rol)]);
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('con sesión de Cliente responde 403 FORBIDDEN', async () => {
+    const respuesta = await request(app)
+      .get('/api/eventos')
+      .set('Cookie', [cookieDe('CLIENTE')]);
 
     expect(respuesta.status).toBe(403);
     expect(respuesta.body.error.code).toBe('FORBIDDEN');
+    expect(listarAgendaMock).not.toHaveBeenCalled();
+  });
+
+  it('le pasa al repositorio los filtros validados, con las listas ya partidas', async () => {
+    listarAgendaMock.mockResolvedValue([]);
+
+    const respuesta = await request(app)
+      .get('/api/eventos')
+      .query({ desde: '2026-11-01', hasta: '2026-11-30', salonId: '5,7', estado: 'Reservado' })
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(200);
+    expect(listarAgendaMock).toHaveBeenCalledWith({
+      desde: '2026-11-01',
+      hasta: '2026-11-30',
+      salonId: [5, 7],
+      estado: ['Reservado'],
+    });
+  });
+
+  it.each([
+    ['un estado que no existe', { estado: 'Confirmado' }],
+    ['una fecha inválida', { desde: '30-11-2026' }],
+    ['un id de salón que no es número', { salonId: 'Parana' }],
+    ['hasta anterior a desde', { desde: '2026-11-30', hasta: '2026-11-01' }],
+  ])('responde 400 VALIDATION_ERROR con %s', async (_caso, filtros) => {
+    const respuesta = await request(app)
+      .get('/api/eventos')
+      .query(filtros)
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
     expect(listarAgendaMock).not.toHaveBeenCalled();
   });
 });
