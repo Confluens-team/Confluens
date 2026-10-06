@@ -1,9 +1,9 @@
+import { DIAS_VIGENCIA_PRESUPUESTO, desglosarIva, PORCENTAJE_SENA } from '@confluens/shared';
 import { CheckCircle2, Home, Printer, RotateCcw } from 'lucide-react';
 
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { fechaLocal, formatearFecha, formatearPesos } from '@/lib/formato';
-import { DIAS_VIGENCIA_PRESUPUESTO, PORCENTAJE_SENA, desglosarIva } from '@/lib/importes';
 import { UBICACION } from '@/paginas/solicitudes/datos-institucionales';
 import type { ResultadoCotizacion } from './CotizarEvento';
 
@@ -150,8 +150,9 @@ export function PresupuestoEstimado({
                 reserva la fecha hasta que se confirme.
               </li>
               <li>
-                La seña del {PORCENTAJE_SENA}% del total se abona dentro de la vigencia del
-                presupuesto y congela sus precios.
+                La seña del {PORCENTAJE_SENA}% se abona dentro de la vigencia del presupuesto y
+                congela sus precios. Se calcula sobre el total con IVA si el evento se factura, y
+                sobre el subtotal si no (RN-01).
               </li>
               <li>
                 Vencidos los {DIAS_VIGENCIA_PRESUPUESTO} días sin seña, el presupuesto se recalcula

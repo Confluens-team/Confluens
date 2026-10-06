@@ -8,6 +8,7 @@ export * from './crear-presupuesto.esquema.js';
 export * from './distribucion.esquema.js';
 export * from './evento.esquema.js';
 export * from './linea-presupuesto.esquema.js';
+export * from './pago.esquema.js';
 export * from './presupuesto.esquema.js';
 export * from './salon.esquema.js';
 export * from './servicio.esquema.js';
