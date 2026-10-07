@@ -25,7 +25,7 @@ workspaces en `docs/tecnico/arquitectura.md`.
 | Área                  | Versiones                                                                                                                                                                 |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Runtime               | Node 20 LTS (≥ 20.19, `.nvmrc`), npm workspaces, typescript 5.9.3                                                                                                         |
-| Backend               | express 4.22.2, zod 4.6.4, @asteasolutions/zod-to-openapi 9.1.0, swagger-ui-express 5.0.1, tsx 4.23.13, bcrypt 6.0.0, jsonwebtoken 9.0.3, cookie-parser 1.4.7, cors 2.8.6 |
+| Backend               | express 4.22.3, zod 4.6.4, @asteasolutions/zod-to-openapi 9.1.0, swagger-ui-express 5.0.1, tsx 4.23.13, bcrypt 6.0.0, jsonwebtoken 9.0.3, cookie-parser 1.4.7, cors 2.8.6 |
 | Base de datos         | PostgreSQL 16 (`postgres:16.15-alpine` local, Neon en la nube) + `btree_gist`; prisma, @prisma/client y @prisma/adapter-pg 7.10.0                                         |
 | Frontend              | react y react-dom 18.3.1, react-router 7.18.4, vite 7.3.6, @vitejs/plugin-react 5.2.0, tailwindcss y @tailwindcss/vite 4.3.3, shadcn 4.21.0, radix-ui 1.6.7               |
 | Datos en la web       | @tanstack/react-query 5.102.8, react-hook-form 7.88.0, @hookform/resolvers 5.9.1                                                                                          |
