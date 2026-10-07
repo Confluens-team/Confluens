@@ -75,7 +75,7 @@ function ListaDeEventos({
     <div className="space-y-6">
       {[...porMes].map(([mes, delMes]) => (
         <section key={mes}>
-          <h3 className="mb-3 text-xs font-semibold tracking-[0.2em] text-dorado uppercase first-letter:uppercase">
+          <h3 className="mb-3 text-xs font-semibold tracking-[0.2em] text-dorado-texto uppercase first-letter:uppercase">
             {mes}
           </h3>
           <ul className="divide-y overflow-hidden rounded-xl bg-card ring-1 ring-border">
@@ -256,7 +256,7 @@ export function Agenda() {
 
       <div className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-border">
         <div>
-          <p className="mb-2 text-xs font-semibold tracking-[0.15em] text-dorado uppercase">
+          <p className="mb-2 text-xs font-semibold tracking-[0.15em] text-dorado-texto uppercase">
             Salones
           </p>
           <div className="flex flex-wrap gap-2">
@@ -275,7 +275,7 @@ export function Agenda() {
           </div>
         </div>
         <div>
-          <p className="mb-2 text-xs font-semibold tracking-[0.15em] text-dorado uppercase">
+          <p className="mb-2 text-xs font-semibold tracking-[0.15em] text-dorado-texto uppercase">
             Estado
           </p>
           <div className="flex flex-wrap gap-2">

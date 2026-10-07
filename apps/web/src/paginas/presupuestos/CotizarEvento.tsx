@@ -336,7 +336,7 @@ export function CotizarEvento({
         <img src={FOTOS.evento} alt="" className="absolute inset-0 -z-10 size-full object-cover" />
         <div className="absolute inset-0 -z-10 bg-gradient-to-r from-bordo-oscuro via-bordo-oscuro/85 to-bordo-oscuro/50" />
         <div className="mx-auto max-w-6xl px-4 py-14 text-crema sm:px-6">
-          <p className="text-xs font-semibold tracking-[0.3em] text-dorado uppercase">
+          <p className="text-xs font-semibold tracking-[0.3em] text-dorado-claro uppercase">
             Cotizador online
           </p>
           <h1 className="mt-3 text-3xl font-semibold sm:text-5xl">
@@ -469,7 +469,9 @@ export function CotizarEvento({
                         alt=""
                         className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-bordo-oscuro/85 via-bordo-oscuro/30 to-transparent" />
+                      {/* AC2 de la auditoría de accesibilidad: mismo criterio que las tarjetas
+                          de salones de la landing. */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-bordo-oscuro/95 via-bordo-oscuro/30 to-transparent" />
                       <span className="absolute bottom-3 left-4 inline-flex items-center gap-2 font-serif text-lg font-semibold text-crema">
                         <Icono className="size-5 text-dorado" /> {titulo}
                       </span>
@@ -739,7 +741,7 @@ export function CotizarEvento({
           ) : (
             <div className="overflow-hidden rounded-2xl bg-card shadow-lg ring-1 ring-border">
               <div className="bg-bordo px-6 py-5 text-crema">
-                <p className="text-xs font-semibold tracking-[0.25em] text-dorado uppercase">
+                <p className="text-xs font-semibold tracking-[0.25em] text-dorado-claro uppercase">
                   Tu presupuesto
                 </p>
                 <p className="mt-1 text-sm text-crema/75">
@@ -863,7 +865,9 @@ function ResumenConsultaSocial({
   return (
     <div className="overflow-hidden rounded-2xl bg-card shadow-lg ring-1 ring-border">
       <div className="bg-bordo px-6 py-5 text-crema">
-        <p className="text-xs font-semibold tracking-[0.25em] text-dorado uppercase">Tu consulta</p>
+        <p className="text-xs font-semibold tracking-[0.25em] text-dorado-claro uppercase">
+          Tu consulta
+        </p>
         <p className="mt-1 text-sm text-crema/75">Evento social</p>
       </div>
       <div className="p-6">

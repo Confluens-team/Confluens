@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ariaDeCampo, idDeError } from '@/lib/campo-accesible';
 import { ErrorApiCliente } from '@/lib/api';
 import { useIniciarSesion } from '@/hooks/use-sesion';
 
@@ -39,8 +40,19 @@ export function IniciarSesion() {
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="email">Email</Label>
-          <Input id="email" type="email" autoComplete="username" {...register('email')} />
-          {errors.email && <p className="text-sm text-destructive">{errors.email.message}</p>}
+          <Input
+            id="email"
+            type="email"
+            autoComplete="username"
+            {...ariaDeCampo('email', errors.email?.message)}
+            {...register('email')}
+          />
+          {/* AC4 de la auditoría de accesibilidad: el error queda asociado al input y se anuncia. */}
+          {errors.email && (
+            <p id={idDeError('email')} role="alert" className="text-sm text-destructive">
+              {errors.email.message}
+            </p>
+          )}
         </div>
 
         <div className="flex flex-col gap-1.5">
@@ -49,10 +61,13 @@ export function IniciarSesion() {
             id="contrasena"
             type="password"
             autoComplete="current-password"
+            {...ariaDeCampo('contrasena', errors.contrasena?.message)}
             {...register('contrasena')}
           />
           {errors.contrasena && (
-            <p className="text-sm text-destructive">{errors.contrasena.message}</p>
+            <p id={idDeError('contrasena')} role="alert" className="text-sm text-destructive">
+              {errors.contrasena.message}
+            </p>
           )}
         </div>
 

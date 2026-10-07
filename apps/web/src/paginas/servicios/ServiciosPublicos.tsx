@@ -62,7 +62,9 @@ export function ServiciosPublicos() {
       <ul className="mt-8 grid gap-x-10 gap-y-6 md:grid-cols-2">
         {delGrupo.map((servicio) => (
           <li key={servicio.id} className="border-b border-crema/10 pb-5">
-            <h4 className="font-display text-xl font-medium text-crema">{servicio.nombre}</h4>
+            {/* AC3 de la auditoría de accesibilidad (WCAG 1.3.1): era un h4 debajo del h2 de la
+                sección de gastronomía, y salteaba un nivel. */}
+            <h3 className="font-display text-xl font-medium text-crema">{servicio.nombre}</h3>
             <p className="mt-1 text-sm leading-relaxed text-crema/65">{servicio.descripcion}</p>
           </li>
         ))}

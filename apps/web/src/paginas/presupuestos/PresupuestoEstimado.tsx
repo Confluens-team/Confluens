@@ -54,7 +54,7 @@ export function PresupuestoEstimado({
               </p>
             </div>
             <div className="sm:text-right">
-              <p className="text-xs font-semibold tracking-[0.25em] text-dorado uppercase">
+              <p className="text-xs font-semibold tracking-[0.25em] text-dorado-texto uppercase">
                 Presupuesto estimado
               </p>
               <p className="mt-1 font-serif text-2xl font-semibold text-bordo">N° {numero}</p>
