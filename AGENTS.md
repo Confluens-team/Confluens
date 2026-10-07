@@ -89,6 +89,7 @@ Error: siempre por `ErrorApi` y el middleware `manejadorErrores`, nunca a mano.
 | 404    | `NOT_FOUND`               | El recurso o la ruta no existen                                   |
 | 409    | `CONFLICT`                | Choca con el estado actual (por ejemplo, solapamiento de eventos) |
 | 422    | `BUSINESS_RULE_VIOLATION` | Datos válidos que violan una regla RN-xx                          |
+| 429    | `RATE_LIMITED`            | Se pasó el límite de peticiones de la ruta                        |
 | 500    | `INTERNAL_ERROR`          | Error no previsto. Nunca expone detalles internos.                |
 
 `message` va en español y se puede mostrar al usuario; `code` es estable y la web decide con él.

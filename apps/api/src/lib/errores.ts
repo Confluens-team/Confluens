@@ -39,4 +39,10 @@ export class ErrorApi extends Error {
   static noAutorizado(mensaje = 'No tenés permiso para esta acción'): ErrorApi {
     return new ErrorApi(403, CODIGOS_ERROR.NO_AUTORIZADO, mensaje);
   }
+
+  // H2 de la auditoría de seguridad: lo lanzan los limitadores de peticiones de
+  // middlewares/limitadores.ts cuando una IP pasa el tope de su ventana.
+  static demasiadasPeticiones(mensaje: string): ErrorApi {
+    return new ErrorApi(429, CODIGOS_ERROR.LIMITE_PETICIONES, mensaje);
+  }
 }
