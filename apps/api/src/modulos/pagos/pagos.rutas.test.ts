@@ -137,7 +137,7 @@ function eventoFixtureBase() {
   return {
     id: 20,
     clienteId: clienteFixture.id,
-    salonId: salonFixture.id,
+    salonId: salonFixture.id as number | null,
     distribucionId: distribucionFixture.id as number | null,
     fecha: new Date('2026-11-15'),
     inicio: inicioFixture as Date | null,
@@ -146,6 +146,11 @@ function eventoFixtureBase() {
     estado: 'EnConsulta' as EstadoEventoFixture,
     senaVenceEn: null as Date | null,
     senaRegistradaEn: null as Date | null,
+    tipo: 'Corporativo' as 'Social' | 'Corporativo',
+    tipoSocial: null,
+    tipoSocialDetalle: null as string | null,
+    tipoJornada: null,
+    horaInicioEstimada: null as string | null,
     modalidadSalonRestaurante: false,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
@@ -421,6 +426,18 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
     expect(respuesta.status).toBe(422);
     expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
     expect(respuesta.body.error.message).toContain('agendar');
+    expect(crearMock).not.toHaveBeenCalled();
+  });
+
+  // ADR 0008: una consulta social puede llegar al pago sin salón cargado.
+  it('responde 422 si el pago cruza el 20% y el evento no tiene salón', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture({ salonId: null }));
+
+    const respuesta = await registrarPago(SENA_SIN_FACTURA);
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.message).toContain('agendar');
+    expect(buscarSolapamientoMock).not.toHaveBeenCalled();
     expect(crearMock).not.toHaveBeenCalled();
   });
 

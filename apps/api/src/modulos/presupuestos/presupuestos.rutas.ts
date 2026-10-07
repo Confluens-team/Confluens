@@ -1,5 +1,6 @@
 import {
   esquemaConsultaDetallada,
+  esquemaCrearConsultaSocial,
   esquemaCrearPresupuesto,
   esquemaFiltrosPresupuestos,
   esquemaModificarPresupuesto,
@@ -14,7 +15,14 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { crear, darDeBaja, listar, modificar, obtener } from './presupuestos.controlador.js';
+import {
+  crear,
+  crearSocial,
+  darDeBaja,
+  listar,
+  modificar,
+  obtener,
+} from './presupuestos.controlador.js';
 
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
 const respuestaConsulta = {
@@ -39,6 +47,26 @@ registroOpenApi.registerPath({
     400: { description: 'Datos inválidos' },
     404: { description: 'El salón o alguno de los servicios seleccionados no existe' },
     422: { description: 'Alguno de los servicios seleccionados no está activo' },
+  },
+});
+
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/presupuestos/social',
+  tags: ['Presupuestos'],
+  summary: 'Registra la consulta de un evento social, sin salón ni presupuesto armado (ADR 0008)',
+  request: { body: { content: { 'application/json': { schema: esquemaCrearConsultaSocial } } } },
+  responses: {
+    201: {
+      description:
+        'Evento social en consulta, sin salón, con su presupuesto Estimado sin armar (sin líneas ni vencimiento)',
+      content: { 'application/json': { schema: z.object({ data: esquemaPresupuestoDetallado }) } },
+    },
+    400: { description: 'Datos inválidos' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es de un cliente' },
+    404: { description: 'La sesión no tiene ficha de cliente, o no existe la solicitud' },
+    409: { description: 'La solicitud ya fue tomada' },
   },
 });
 
@@ -119,6 +147,14 @@ registroOpenApi.registerPath({
 export const rutasPresupuestos = Router();
 
 rutasPresupuestos.post('/', validar({ body: esquemaCrearPresupuesto }), asincrono(crear));
+// ADR 0008: la consulta social la manda el cliente desde su cuenta.
+rutasPresupuestos.post(
+  '/social',
+  autenticar,
+  autorizar('CLIENTE'),
+  validar({ body: esquemaCrearConsultaSocial }),
+  asincrono(crearSocial),
+);
 // Las consultas (HU-10 y HU-12) las gestiona el personal.
 // Provisorio (decisión del PO, 06/10/2026): todo el personal ve y hace todo hasta que se dividan
 // las funciones por rol.

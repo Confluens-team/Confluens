@@ -106,7 +106,7 @@ function eventoFixtureBase() {
   return {
     id: 20,
     clienteId: clienteFixture.id,
-    salonId: salonFixture.id,
+    salonId: salonFixture.id as number | null,
     distribucionId: null as number | null,
     fecha: new Date('2026-11-15'),
     inicio: null as Date | null,
@@ -115,6 +115,11 @@ function eventoFixtureBase() {
     estado: 'EnConsulta' as EstadoEventoFixture,
     senaVenceEn: null as Date | null,
     senaRegistradaEn: null as Date | null,
+    tipo: 'Corporativo' as 'Social' | 'Corporativo',
+    tipoSocial: null,
+    tipoSocialDetalle: null as string | null,
+    tipoJornada: null,
+    horaInicioEstimada: null as string | null,
     modalidadSalonRestaurante: false,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
@@ -177,6 +182,22 @@ describe('POST /api/eventos/:id/agendar', () => {
       inicio: new Date(inicioValido),
       fin: new Date(finValido),
     });
+  });
+
+  // ADR 0008: una consulta social llega sin salón; no hay contra qué validar la distribución.
+  it('responde 422 si el evento todavía no tiene salón, sin escribir nada', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture({ salonId: null }));
+
+    const respuesta = await request(app)
+      .post('/api/eventos/20/agendar')
+      .set('Cookie', [cookiePersonal])
+      .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.message).toBe(
+      'Cargá el salón en la consulta antes de agendar el evento',
+    );
+    expect(agendarMock).not.toHaveBeenCalled();
   });
 
   // La aserción central de HU-13: agendar fija el horario y NADA MÁS. El evento sigue EnConsulta y
@@ -403,6 +424,11 @@ describe('GET /api/eventos', () => {
     estado: 'Reservado',
     senaVenceEn: new Date('2026-10-09T00:00:00.000Z'),
     senaRegistradaEn: null,
+    tipo: 'Corporativo' as 'Social' | 'Corporativo',
+    tipoSocial: null,
+    tipoSocialDetalle: null as string | null,
+    tipoJornada: null,
+    horaInicioEstimada: null as string | null,
     modalidadSalonRestaurante: false,
     creadoEn: new Date('2026-09-29T00:00:00.000Z'),
     actualizadoEn: new Date('2026-09-29T00:00:00.000Z'),

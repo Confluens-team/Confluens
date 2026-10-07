@@ -1,6 +1,7 @@
 import {
   DIAS_VIGENCIA_PRESUPUESTO,
   type ConsultaDetallada,
+  type CrearConsultaSocial,
   type CrearPresupuesto,
   type FiltrosPresupuestos,
   type ModificarPresupuesto,
@@ -166,6 +167,9 @@ export async function generarPresupuesto(
         salonId: datos.salonId,
         fecha: new Date(datos.fecha),
         cantidadPersonas: datos.cantidadPersonas,
+        tipo: 'Corporativo',
+        tipoJornada: datos.tipoJornada,
+        horaInicioEstimada: datos.horaInicioEstimada ?? null,
       },
       tx,
     );
@@ -187,6 +191,60 @@ export async function generarPresupuesto(
   });
 }
 
+/**
+ * Registra la consulta de un evento social (ADR 0008). Los eventos sociales son tan variables que
+ * no pasan por el cotizador: el cliente cuenta fecha, personas, jornada, hora estimada y qué evento
+ * es, y el Responsable de Eventos arma el presupuesto después.
+ *
+ * - El cliente es el de la sesión; nunca se crea una ficha (dominio.md: solo por autorregistro).
+ * - Crea el evento EnConsulta, tipo Social y sin salón, y su único presupuesto (decisión del PO,
+ *   06/10/2026) en Estimado, sin líneas, en 0 y sin vencimiento: la vigencia de 10 días arranca
+ *   cuando el personal lo arma (decisión del PO, 07/10/2026).
+ * - Si viene `solicitudId`, la vincula igual que generarPresupuesto.
+ */
+export async function registrarConsultaSocial(
+  usuarioId: number,
+  datos: CrearConsultaSocial,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+) {
+  const cliente = await repo.buscarClientePorUsuarioId(usuarioId);
+  if (!cliente) throw ErrorApi.noEncontrado('La sesión no corresponde a un cliente');
+
+  if (datos.solicitudId !== undefined) {
+    const solicitud = await repo.buscarSolicitud(datos.solicitudId);
+    if (!solicitud) throw ErrorApi.noEncontrado(`No existe la solicitud ${datos.solicitudId}`);
+    if (solicitud.eventoId !== null) {
+      throw ErrorApi.conflicto(`La solicitud ${datos.solicitudId} ya fue tomada`);
+    }
+  }
+
+  return repo.crearEnTransaccion(async (tx) => {
+    const evento = await repo.crearEvento(
+      {
+        clienteId: cliente.id,
+        salonId: null,
+        fecha: new Date(datos.fecha),
+        cantidadPersonas: datos.cantidadPersonas,
+        tipo: 'Social',
+        tipoSocial: datos.tipoSocial,
+        tipoSocialDetalle: datos.tipoSocial === 'Otro' ? datos.tipoSocialDetalle : null,
+        tipoJornada: datos.tipoJornada,
+        horaInicioEstimada: datos.horaInicioEstimada ?? null,
+      },
+      tx,
+    );
+
+    if (datos.solicitudId !== undefined) {
+      await repo.vincularSolicitudAEvento(datos.solicitudId, evento.id, tx);
+    }
+
+    return repo.crearPresupuestoConLineas(
+      { eventoId: evento.id, fechaEmision: new Date(), venceEn: null, total: '0.00', lineas: [] },
+      tx,
+    );
+  });
+}
+
 // HU-10: listado del personal con sus filtros. Mapea a PresupuestoListado para que los tipos de
 // Prisma no lleguen a la web: importes como string y la fecha del evento como YYYY-MM-DD.
 export async function listarPresupuestos(
@@ -199,9 +257,12 @@ export async function listarPresupuestos(
     eventoId: presupuesto.eventoId,
     estado: presupuesto.estado,
     fechaEmision: presupuesto.fechaEmision.toISOString(),
-    venceEn: presupuesto.venceEn.toISOString(),
+    venceEn: presupuesto.venceEn?.toISOString() ?? null,
     total: presupuesto.total.toFixed(2),
     fechaEvento: evento.fecha.toISOString().slice(0, 10),
+    tipo: evento.tipo,
+    tipoSocial: evento.tipoSocial,
+    tipoSocialDetalle: evento.tipoSocialDetalle,
     cliente: evento.cliente,
     salon: evento.salon,
   }));
@@ -218,15 +279,20 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
     id: presupuesto.id,
     estado: presupuesto.estado,
     fechaEmision: presupuesto.fechaEmision.toISOString(),
-    venceEn: presupuesto.venceEn.toISOString(),
+    venceEn: presupuesto.venceEn?.toISOString() ?? null,
     total: presupuesto.total.toFixed(2),
     requiereFactura: presupuesto.requiereFactura,
-    tipoJornada: jornadaDeLineaSalon(lineaSalon?.descripcion),
+    // Los eventos anteriores a ADR 0008 no guardan la jornada: sale de la línea del salón.
+    tipoJornada: evento.tipoJornada ?? jornadaDeLineaSalon(lineaSalon?.descripcion),
     evento: {
       id: evento.id,
       estado: evento.estado,
       fecha: evento.fecha.toISOString().slice(0, 10),
       cantidadPersonas: evento.cantidadPersonas,
+      tipo: evento.tipo,
+      tipoSocial: evento.tipoSocial,
+      tipoSocialDetalle: evento.tipoSocialDetalle,
+      horaInicioEstimada: evento.horaInicioEstimada,
       distribucion: evento.distribucion
         ? { id: evento.distribucion.id, nombre: evento.distribucion.nombre }
         : null,
@@ -240,11 +306,13 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       correo: evento.cliente.correo,
       telefono: evento.cliente.telefono,
     },
-    salon: {
-      id: evento.salon.id,
-      nombre: evento.salon.nombre,
-      capacidadMaxima: evento.salon.capacidadMaxima,
-    },
+    salon: evento.salon
+      ? {
+          id: evento.salon.id,
+          nombre: evento.salon.nombre,
+          capacidadMaxima: evento.salon.capacidadMaxima,
+        }
+      : null,
     lineas: presupuesto.lineas.map(({ servicio, ...linea }) => ({
       id: linea.id,
       presupuestoId: linea.presupuestoId,
@@ -291,9 +359,35 @@ export async function obtenerConsulta(
   return mapearConsulta(await buscarOFallar(id, repo));
 }
 
+// ADR 0008: el tipo que queda después de modificar. Sin `tipo` en el pedido se mantiene el del
+// evento; lo mismo con el tipo social y su detalle. Un corporativo necesita salón y un social, su
+// tipo social ("Otro" con su detalle).
+function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoRepo['evento']) {
+  const tipo = datos.tipo ?? evento.tipo;
+  if (tipo === 'Corporativo') {
+    if (datos.salonId === null) {
+      throw ErrorApi.reglaNegocio('Un evento corporativo necesita salón');
+    }
+    return { tipo, tipoSocial: null, tipoSocialDetalle: null };
+  }
+  const tipoSocial = datos.tipoSocial !== undefined ? datos.tipoSocial : evento.tipoSocial;
+  if (!tipoSocial) throw ErrorApi.reglaNegocio('Elegí qué tipo de evento social es');
+  const tipoSocialDetalle =
+    tipoSocial === 'Otro'
+      ? datos.tipoSocialDetalle !== undefined
+        ? datos.tipoSocialDetalle
+        : evento.tipoSocialDetalle
+      : null;
+  if (tipoSocial === 'Otro' && !tipoSocialDetalle) {
+    throw ErrorApi.reglaNegocio('Contanos qué evento es');
+  }
+  return { tipo, tipoSocial, tipoSocialDetalle };
+}
+
 /**
  * Modifica una consulta después de hablar con el cliente (HU-12). Recibe el estado completo:
- * fecha, salón, personas, jornada y servicios.
+ * fecha, salón, personas, jornada y servicios, y también el tipo de evento y la hora estimada
+ * (ADR 0008).
  *
  * - Solo Estimado o Expirado, con el evento EnConsulta (409 si no).
  * - Un servicio que ya estaba conserva su precio congelado; uno nuevo toma el vigente y tiene que
@@ -308,6 +402,9 @@ export async function obtenerConsulta(
  * - El total suma todas las líneas, tercerizados incluidos.
  * - Queda Estimado y la vigencia vuelve a contar 10 días desde ahora (decisión del PO,
  *   05/10/2026), también si estaba Expirado.
+ * - Una consulta social puede seguir sin salón (no hay línea del salón). Si no queda ninguna línea,
+ *   el presupuesto sigue sin armar y sin vencimiento: los 10 días arrancan cuando el personal carga
+ *   la primera (decisión del PO, 07/10/2026).
  */
 export async function modificarPresupuesto(
   id: number,
@@ -316,9 +413,12 @@ export async function modificarPresupuesto(
 ): Promise<ConsultaDetallada> {
   const presupuesto = await buscarOFallar(id, repo);
   exigirConsultaEnCurso(presupuesto, 'modificar');
+  const tipo = resolverTipo(datos, presupuesto.evento);
 
-  const salon = await repo.buscarSalon(datos.salonId);
-  if (!salon) throw ErrorApi.noEncontrado(`No existe el salón ${datos.salonId}`);
+  const salon = datos.salonId === null ? null : await repo.buscarSalon(datos.salonId);
+  if (datos.salonId !== null && !salon) {
+    throw ErrorApi.noEncontrado(`No existe el salón ${datos.salonId}`);
+  }
 
   const lineasAnteriores = new Map(
     presupuesto.lineas
@@ -354,26 +454,32 @@ export async function modificarPresupuesto(
     !!salonAnterior &&
     presupuesto.evento.salonId === datos.salonId &&
     jornadaDeLineaSalon(salonAnterior.descripcion) === datos.tipoJornada;
-  const lineaSalon = calcularLinea(
-    null,
-    descripcionSalon(salon.nombre, datos.tipoJornada),
-    1,
-    datos.precioSalon ??
-      (mismoSalon ? salonAnterior.precioUnitario : precioDeSalon(salon, datos.tipoJornada)),
-  );
+  const lineaSalon = salon
+    ? calcularLinea(
+        null,
+        descripcionSalon(salon.nombre, datos.tipoJornada),
+        1,
+        datos.precioSalon ??
+          (mismoSalon ? salonAnterior.precioUnitario : precioDeSalon(salon, datos.tipoJornada)),
+      )
+    : undefined;
 
   const adicionales = datos.adicionales.map((adicional) =>
     calcularLinea(null, adicional.descripcion, adicional.cantidad, adicional.precioUnitario),
   );
 
-  const lineas = [lineaSalon, ...lineasServicios, ...adicionales];
+  const lineas = [...(lineaSalon ? [lineaSalon] : []), ...lineasServicios, ...adicionales];
   await repo.crearEnTransaccion(async (tx) => {
     await repo.actualizarEvento(
       presupuesto.eventoId,
       {
         fecha: new Date(datos.fecha),
-        salon: { connect: { id: datos.salonId } },
+        salon: datos.salonId === null ? { disconnect: true } : { connect: { id: datos.salonId } },
         cantidadPersonas: datos.cantidadPersonas,
+        ...tipo,
+        tipoJornada: datos.tipoJornada,
+        // Sin el campo se mantiene; null la borra.
+        horaInicioEstimada: datos.horaInicioEstimada,
       },
       tx,
     );
@@ -382,7 +488,7 @@ export async function modificarPresupuesto(
       id,
       {
         estado: 'Estimado',
-        venceEn: calcularVencimiento(new Date()),
+        venceEn: lineas.length > 0 ? calcularVencimiento(new Date()) : null,
         total: sumarLineas(lineas).toFixed(2),
         requiereFactura: datos.requiereFactura,
       },
