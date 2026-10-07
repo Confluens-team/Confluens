@@ -141,49 +141,57 @@ const bodyBase = {
   servicios: [{ servicioId: 1, cantidad: 10 }],
 };
 
-describe('POST /api/presupuestos', () => {
-  beforeEach(() => {
-    buscarClientePorCorreoMock.mockReset();
-    crearClienteMock.mockReset();
-    buscarSalonMock.mockReset();
-    buscarServiciosPorIdsMock.mockReset();
-    buscarSolicitudMock.mockReset();
-    vincularSolicitudAEventoMock.mockReset();
-    crearEventoMock.mockReset();
-    crearPresupuestoConLineasMock.mockReset();
-    crearEnTransaccionMock.mockClear();
+// Deja los mocks del repositorio listos para una creación que llega hasta el 201. La usan los
+// describes de creación y los de los controles de seguridad (H1, H3 y H5), que también
+// necesitan que el camino feliz funcione para distinguir un corte del guard de un 404 o un 422.
+function prepararMocksDeCreacion() {
+  buscarClientePorCorreoMock.mockReset();
+  crearClienteMock.mockReset();
+  buscarSalonMock.mockReset();
+  buscarServiciosPorIdsMock.mockReset();
+  buscarSolicitudMock.mockReset();
+  vincularSolicitudAEventoMock.mockReset();
+  crearEventoMock.mockReset();
+  crearPresupuestoConLineasMock.mockReset();
+  crearEnTransaccionMock.mockClear();
 
-    buscarSalonMock.mockResolvedValue(salonFixture);
-    buscarServiciosPorIdsMock.mockResolvedValue([servicioFixture()]);
-    crearEventoMock.mockResolvedValue(eventoFixture);
-    crearPresupuestoConLineasMock.mockImplementation((datos) =>
-      Promise.resolve({
-        id: 30,
-        eventoId: datos.eventoId,
-        estado: 'Estimado' as const,
-        fechaEmision: new Date(),
-        venceEn: new Date(),
-        total: new Prisma.Decimal(datos.total),
-        requiereFactura: false,
-        creadoEn: new Date(),
-        actualizadoEn: new Date(),
-        evento: eventoFixture,
-        lineas: datos.lineas.map((linea, indice) => ({
-          id: indice + 1,
-          presupuestoId: 30,
-          ...linea,
-          precioUnitario: new Prisma.Decimal(linea.precioUnitario),
-          subtotal: new Prisma.Decimal(linea.subtotal),
-        })),
-      }),
-    );
-  });
+  buscarSalonMock.mockResolvedValue(salonFixture);
+  buscarServiciosPorIdsMock.mockResolvedValue([servicioFixture()]);
+  crearEventoMock.mockResolvedValue(eventoFixture);
+  crearPresupuestoConLineasMock.mockImplementation((datos) =>
+    Promise.resolve({
+      id: 30,
+      eventoId: datos.eventoId,
+      estado: 'Estimado' as const,
+      fechaEmision: new Date(),
+      venceEn: new Date(),
+      total: new Prisma.Decimal(datos.total),
+      requiereFactura: false,
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+      evento: eventoFixture,
+      lineas: datos.lineas.map((linea, indice) => ({
+        id: indice + 1,
+        presupuestoId: 30,
+        ...linea,
+        precioUnitario: new Prisma.Decimal(linea.precioUnitario),
+        subtotal: new Prisma.Decimal(linea.subtotal),
+      })),
+    }),
+  );
+}
+
+describe('POST /api/presupuestos', () => {
+  beforeEach(prepararMocksDeCreacion);
 
   it('crea el presupuesto con un cliente nuevo cuando el correo no existe', async () => {
     buscarClientePorCorreoMock.mockResolvedValue(null);
     crearClienteMock.mockResolvedValue(clienteFixture);
 
-    const respuesta = await request(app).post('/api/presupuestos').send(bodyBase);
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(bodyBase);
 
     expect(respuesta.status).toBe(201);
     expect(respuesta.body.data.estado).toBe('Estimado');
@@ -197,7 +205,10 @@ describe('POST /api/presupuestos', () => {
   it('emite el presupuesto con vencimiento a los 10 días (HU-10, RN-08)', async () => {
     buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
 
-    await request(app).post('/api/presupuestos').send(bodyBase);
+    await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(bodyBase);
 
     const { fechaEmision, venceEn } = crearPresupuestoConLineasMock.mock.calls[0]![0];
     expect(venceEn!.getTime() - fechaEmision.getTime()).toBe(10 * 24 * 60 * 60 * 1000);
@@ -208,6 +219,7 @@ describe('POST /api/presupuestos', () => {
 
     await request(app)
       .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
       .send({ ...bodyBase, horaInicioEstimada: '19:30' });
 
     expect(crearEventoMock).toHaveBeenCalledWith(
@@ -223,6 +235,7 @@ describe('POST /api/presupuestos', () => {
   it('responde 400 con una hora estimada que no es HH:mm', async () => {
     const respuesta = await request(app)
       .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
       .send({ ...bodyBase, horaInicioEstimada: '25:00' });
 
     expect(respuesta.status).toBe(400);
@@ -232,7 +245,10 @@ describe('POST /api/presupuestos', () => {
   it('reutiliza el cliente existente cuando ya hay uno con ese correo', async () => {
     buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
 
-    const respuesta = await request(app).post('/api/presupuestos').send(bodyBase);
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(bodyBase);
 
     expect(respuesta.status).toBe(201);
     expect(crearClienteMock).not.toHaveBeenCalled();
@@ -256,6 +272,7 @@ describe('POST /api/presupuestos', () => {
 
     const respuesta = await request(app)
       .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
       .send({
         ...bodyBase,
         servicios: [
@@ -282,6 +299,7 @@ describe('POST /api/presupuestos', () => {
 
     const respuesta = await request(app)
       .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
       .send({ ...bodyBase, servicios: [{ servicioId: 4, cantidad: 1 }] });
 
     expect(respuesta.status).toBe(201);
@@ -303,6 +321,7 @@ describe('POST /api/presupuestos', () => {
 
     await request(app)
       .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
       .send({ ...bodyBase, cantidadPersonas: 80, servicios: [{ servicioId: 1, cantidad: 30 }] });
 
     const [datos] = crearPresupuestoConLineasMock.mock.calls[0]!;
@@ -314,7 +333,10 @@ describe('POST /api/presupuestos', () => {
   it('responde 404 si el salón no existe', async () => {
     buscarSalonMock.mockResolvedValue(null);
 
-    const respuesta = await request(app).post('/api/presupuestos').send(bodyBase);
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(bodyBase);
 
     expect(respuesta.status).toBe(404);
     expect(respuesta.body.error.code).toBe('NOT_FOUND');
@@ -324,7 +346,10 @@ describe('POST /api/presupuestos', () => {
   it('responde 404 si algún servicio seleccionado no existe', async () => {
     buscarServiciosPorIdsMock.mockResolvedValue([]);
 
-    const respuesta = await request(app).post('/api/presupuestos').send(bodyBase);
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(bodyBase);
 
     expect(respuesta.status).toBe(404);
     expect(respuesta.body.error.code).toBe('NOT_FOUND');
@@ -334,7 +359,10 @@ describe('POST /api/presupuestos', () => {
   it('responde 422 si algún servicio seleccionado no está activo', async () => {
     buscarServiciosPorIdsMock.mockResolvedValue([servicioFixture({ activo: false })]);
 
-    const respuesta = await request(app).post('/api/presupuestos').send(bodyBase);
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(bodyBase);
 
     expect(respuesta.status).toBe(422);
     expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
@@ -344,7 +372,10 @@ describe('POST /api/presupuestos', () => {
   it('responde 400 VALIDATION_ERROR si falta salonId', async () => {
     const { salonId: _salonId, ...sinSalon } = bodyBase;
 
-    const respuesta = await request(app).post('/api/presupuestos').send(sinSalon);
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(sinSalon);
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
@@ -354,7 +385,10 @@ describe('POST /api/presupuestos', () => {
   it('responde 400 VALIDATION_ERROR si falta tipoJornada', async () => {
     const { tipoJornada: _tipoJornada, ...sinJornada } = bodyBase;
 
-    const respuesta = await request(app).post('/api/presupuestos').send(sinJornada);
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(sinJornada);
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
@@ -371,6 +405,7 @@ describe('POST /api/presupuestos', () => {
 
     const respuesta = await request(app)
       .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
       .send({ ...bodyBase, solicitudId: solicitudFixture.id });
 
     expect(respuesta.status).toBe(201);
@@ -387,11 +422,106 @@ describe('POST /api/presupuestos', () => {
 
     const respuesta = await request(app)
       .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
       .send({ ...bodyBase, solicitudId: solicitudFixture.id });
 
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
     expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+});
+
+// H1 de la auditoría de seguridad: la ruta estaba montada sin autenticar ni autorizar.
+describe('POST /api/presupuestos — guard de sesión (H1)', () => {
+  beforeEach(prepararMocksDeCreacion);
+
+  it('sin sesión responde 401 y no escribe nada en la base', async () => {
+    const respuesta = await request(app).post('/api/presupuestos').send(bodyBase);
+
+    expect(respuesta.status).toBe(401);
+    expect(respuesta.body.error.code).toBe('UNAUTHENTICATED');
+    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+
+  it('también cotiza el personal, que carga el pedido de quien llama por teléfono', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')])
+      .send(bodyBase);
+
+    expect(respuesta.status).toBe(201);
+  });
+});
+
+// H3 de la auditoría de seguridad: el marcado en los campos de texto se rechaza en la entrada.
+describe('Rechazo de HTML en el cuerpo (H3)', () => {
+  beforeEach(prepararMocksDeCreacion);
+
+  it('responde 400 e indica el campo con marcado', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, nombre: '<img src=x onerror=alert(1)>' });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(respuesta.body.error.details).toEqual([
+      { campo: 'nombre', mensaje: 'No se admite HTML en este campo' },
+    ]);
+    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+
+  it('deja pasar un nombre normal, con tildes y apóstrofos', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, nombre: "Martín O'Connor & Asociados" });
+
+    expect(respuesta.status).toBe(201);
+  });
+});
+
+// H5 de la auditoría de seguridad: CSRF explícito por verificación de origen.
+describe('Verificación de origen en las escrituras (H5)', () => {
+  beforeEach(prepararMocksDeCreacion);
+
+  it('rechaza con 403 un POST que llega desde otro sitio con la cookie de la víctima', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .set('Origin', 'https://sitio-del-atacante.test')
+      .send(bodyBase);
+
+    expect(respuesta.status).toBe(403);
+    expect(respuesta.body.error.code).toBe('FORBIDDEN');
+    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+
+  it('deja pasar el POST que llega desde la web del proyecto', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .set('Origin', 'http://localhost:5173')
+      .send(bodyBase);
+
+    expect(respuesta.status).toBe(201);
+  });
+
+  it('no toca las lecturas: un GET desde otro origen sigue respondiendo normal', async () => {
+    obtenerPresupuestosMock.mockResolvedValue([]);
+
+    const respuesta = await request(app)
+      .get('/api/presupuestos')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')])
+      .set('Origin', 'https://sitio-del-atacante.test');
+
+    expect(respuesta.status).toBe(200);
   });
 });
 
