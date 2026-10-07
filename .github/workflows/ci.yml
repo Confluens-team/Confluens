@@ -111,3 +111,44 @@ jobs:
           key: node-modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
           fail-on-cache-miss: true
       - run: npm run test
+
+  # H8 de la auditoría de seguridad (OWASP A06): el pipeline corría typecheck, lint, build y
+  # tests, pero nada que mirara las dependencias. El job informa y no falla a propósito: el árbol
+  # arrastra avisos de transitivas de express y de las herramientas de dev, y subirlas rompe las
+  # versiones fijas de AGENTS.md §2. Dejarlo en rojo haría que ningún PR pueda cumplir el "CI en
+  # verde" de AGENTS.md §3 por un problema ajeno a la rama, así que el resultado va al resumen del
+  # run y se resuelve por rama propia. Cuando el árbol quede limpio, sacar los `|| true` y que el
+  # job bloquee de verdad.
+  #
+  # Acá termina el escaneo automático: por decisión del equipo (07/10/2026) no hay Dependabot. Las
+  # subidas de dependencias se deciden a mano leyendo este resumen, no por PRs automáticos.
+  audit:
+    name: Audit
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/cache/restore@v6
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
+          fail-on-cache-miss: true
+      - name: Dependencias de produccion
+        run: |
+          echo '## Auditoría de dependencias' >> "$GITHUB_STEP_SUMMARY"
+          echo '### Producción (lo que llega al servidor)' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          npm audit --omit=dev --audit-level=high >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - name: Arbol completo
+        run: |
+          echo '### Árbol completo, con las herramientas de desarrollo' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          npm audit --audit-level=critical >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

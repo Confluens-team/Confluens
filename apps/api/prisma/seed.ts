@@ -1,7 +1,8 @@
-// Seed de salones, distribuciones y catálogo de servicios.
+// Seed de salones, distribuciones, catálogo de servicios y usuarios de prueba.
 // Fuente única: docs/negocio/tarifario-2026.md. Todos los precios en pesos, sin IVA (RN-05).
-// Es idempotente: se puede correr varias veces (upsert por nombre).
+// Es idempotente: se puede correr varias veces (upsert por nombre/email).
 // Uso: npm run prisma:seed -w @confluens/api
+import { hashearContrasena } from '../src/lib/contrasena.js';
 import { prisma } from '../src/lib/prisma.js';
 
 interface SeedSalon {
@@ -127,7 +128,9 @@ const RECARGOS_COFFEE = [
 const VARIANTES_COFFEE: SeedServicio[] = COFFEE_BREAKS.flatMap((coffee) =>
   RECARGOS_COFFEE.map((recargo) => ({
     nombre: `${coffee.nombre} — ${recargo.sufijo}`,
-    descripcion: `${coffee.descripcion}. ${recargo.detalle}: ${recargo.porcentaje}% más por persona`,
+    // El porcentaje del recargo no va en la descripción: ya está aplicado en `precio`, y desde
+    // HU-07 la descripción viaja al canal público, que no publica ningún dato de precio.
+    descripcion: `${coffee.descripcion}. ${recargo.detalle}`,
     // Los precios base son enteros y los porcentajes, múltiplos de 10: el resultado es exacto.
     precio: (coffee.precio * (100 + recargo.porcentaje)) / 100,
     porPersona: true,
@@ -136,7 +139,9 @@ const VARIANTES_COFFEE: SeedServicio[] = COFFEE_BREAKS.flatMap((coffee) =>
 
 const DISPENSER: SeedServicio = {
   nombre: 'Dispenser con vasos descartables',
-  descripcion: 'Precio fijo, no por persona',
+  // "Precio fijo, no por persona" describía la forma de cobro, no el servicio: eso ya lo dice
+  // `porPersona: false` y no tiene sentido en la landing, donde no se muestran precios (HU-07).
+  descripcion: 'Dispenser de agua fría y caliente con vasos descartables',
   precio: 65250,
   porPersona: false,
 };
@@ -234,15 +239,51 @@ const ALMUERZO_CENA: SeedServicio[] = [
   },
 ];
 
-const SERVICIOS: SeedServicio[] = [
-  ...COFFEE_BREAKS,
-  ...VARIANTES_COFFEE,
-  DISPENSER,
-  ...DESAYUNOS,
-  ...DEGUSTACION,
-  ...LUNCH_COCKTAIL,
-  ...ALMUERZO_CENA,
+// La categoría es cómo el tarifario del cliente presenta el catálogo, y es también cómo la landing
+// lo agrupa (HU-07). Se deriva del grupo al que pertenece cada servicio en vez de repetirla en
+// cada literal: los grupos ya existen arriba y son la misma división.
+function conCategoria(servicios: SeedServicio[], categoria: string): SeedServicioCargable[] {
+  return servicios.map((servicio) => ({ ...servicio, categoria }));
+}
+
+type SeedServicioCargable = SeedServicio & { categoria: string };
+
+const SERVICIOS: SeedServicioCargable[] = [
+  ...conCategoria([...COFFEE_BREAKS, ...VARIANTES_COFFEE, DISPENSER], 'Coffee breaks'),
+  ...conCategoria(DESAYUNOS, 'Desayunos'),
+  ...conCategoria(DEGUSTACION, 'Degustación'),
+  ...conCategoria(LUNCH_COCKTAIL, 'Lunch y cocktail'),
+  ...conCategoria(ALMUERZO_CENA, 'Almuerzo y cena'),
 ];
+
+interface SeedUsuario {
+  email: string;
+  rol: 'RESPONSABLE_EVENTOS' | 'RESPONSABLE_FINANZAS' | 'GERENTE_GENERAL' | 'ADMINISTRADOR_SISTEMA';
+}
+
+// Un usuario de prueba por cada rol activo en Sprint 1 (CLIENTE se activa recién
+// en Sprint 2, ver modelo-datos.md). Contraseña única y a propósito débil: es SOLO
+// para desarrollo/QA local, nunca se usa en producción — no hay ningún flujo que
+// corra este seed contra la base de Render/Neon de producción.
+const CONTRASENA_DESARROLLO = 'confluens2026';
+
+const USUARIOS: SeedUsuario[] = [
+  { email: 're@confluens.test', rol: 'RESPONSABLE_EVENTOS' },
+  { email: 'rf@confluens.test', rol: 'RESPONSABLE_FINANZAS' },
+  { email: 'gg@confluens.test', rol: 'GERENTE_GENERAL' },
+  { email: 'admin@confluens.test', rol: 'ADMINISTRADOR_SISTEMA' },
+];
+
+async function cargarUsuarios(): Promise<void> {
+  const hashContrasena = await hashearContrasena(CONTRASENA_DESARROLLO);
+  for (const { email, rol } of USUARIOS) {
+    await prisma.usuario.upsert({
+      where: { email },
+      create: { email, rol, hashContrasena },
+      update: { rol, hashContrasena },
+    });
+  }
+}
 
 async function cargarSalones(): Promise<void> {
   for (const { distribuciones, ...datos } of SALONES) {
@@ -280,10 +321,26 @@ async function cargarServicios(): Promise<void> {
   }
 }
 
+// Los tres medios con los que hoy cobra el hotel (modelo-datos.md). El ABM es del Sprint 3
+// (HU-36 a HU-39); acá solo la precarga, sin la que no se puede registrar ningún pago.
+const MEDIOS_PAGO = ['Efectivo', 'Tarjeta', 'A la habitación'];
+
+async function cargarMediosPago(): Promise<void> {
+  for (const nombre of MEDIOS_PAGO) {
+    // Solo `create`: si el medio ya existe no se reactiva, porque pudo haberse dado de baja a
+    // propósito y el seed se corre varias veces sobre la misma base.
+    await prisma.medioPago.upsert({ where: { nombre }, create: { nombre }, update: {} });
+  }
+}
+
 try {
   await cargarSalones();
   await cargarServicios();
-  console.log(`Seed completo: ${SALONES.length} salones y ${SERVICIOS.length} servicios.`);
+  await cargarUsuarios();
+  await cargarMediosPago();
+  console.log(
+    `Seed completo: ${SALONES.length} salones, ${SERVICIOS.length} servicios, ${MEDIOS_PAGO.length} medios de pago y ${USUARIOS.length} usuarios de prueba (contraseña: "${CONTRASENA_DESARROLLO}").`,
+  );
 } finally {
   await prisma.$disconnect();
 }

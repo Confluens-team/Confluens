@@ -5,7 +5,7 @@
   "description": "API REST de Confluens (Express + Prisma)",
   "type": "module",
   "scripts": {
-    "dev": "tsx watch --conditions=development --env-file=../../.env src/servidor.ts",
+    "dev": "prisma generate && tsx watch --conditions=development --env-file=../../.env src/servidor.ts",
     "build": "prisma generate && tsc -p tsconfig.build.json",
     "start": "node dist/servidor.js",
     "typecheck": "prisma generate && tsc --noEmit",
@@ -15,19 +15,32 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "prisma db seed",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "usuario:crear": "tsx src/scripts/crear-usuario.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "9.1.0",
     "@confluens/shared": "0.0.0",
     "@prisma/adapter-pg": "7.10.0",
     "@prisma/client": "7.10.0",
-    "express": "4.22.2",
+    "bcrypt": "6.0.0",
+    "cookie-parser": "1.4.7",
+    "cors": "2.8.6",
+    "express": "4.22.3",
+    "express-rate-limit": "8.7.1",
+    "helmet": "8.3.0",
+    "jsonwebtoken": "9.0.3",
+    "node-cron": "4.6.0",
     "swagger-ui-express": "5.0.1",
     "zod": "4.6.4"
   },
   "devDependencies": {
+    "@types/bcrypt": "6.0.0",
+    "@types/cookie-parser": "1.4.10",
+    "@types/cors": "2.8.19",
     "@types/express": "4.17.25",
+    "@types/jsonwebtoken": "9.0.10",
+    "@types/node-cron": "3.0.11",
     "@types/supertest": "7.2.1",
     "@types/swagger-ui-express": "4.1.8",
     "prisma": "7.10.0",

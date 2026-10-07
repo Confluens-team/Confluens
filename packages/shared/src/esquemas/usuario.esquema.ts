@@ -7,6 +7,7 @@ export const esquemaRol = z.enum([
   'RESPONSABLE_EVENTOS',
   'RESPONSABLE_FINANZAS',
   'GERENTE_GENERAL',
+  'ADMINISTRADOR_SISTEMA',
   'CLIENTE',
 ]);
 export type Rol = z.infer<typeof esquemaRol>;

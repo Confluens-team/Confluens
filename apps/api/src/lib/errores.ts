@@ -28,4 +28,21 @@ export class ErrorApi extends Error {
   static reglaNegocio(mensaje: string, detalles?: DetalleError[]): ErrorApi {
     return new ErrorApi(422, CODIGOS_ERROR.REGLA_NEGOCIO, mensaje, detalles);
   }
+
+  // HU-27, criterio 2: el mensaje por defecto es deliberadamente genérico. Se usa
+  // tanto cuando el email no existe como cuando la contraseña no matchea, para no
+  // filtrar cuál de los dos datos falló.
+  static noAutenticado(mensaje = 'Credenciales inválidas'): ErrorApi {
+    return new ErrorApi(401, CODIGOS_ERROR.NO_AUTENTICADO, mensaje);
+  }
+
+  static noAutorizado(mensaje = 'No tenés permiso para esta acción'): ErrorApi {
+    return new ErrorApi(403, CODIGOS_ERROR.NO_AUTORIZADO, mensaje);
+  }
+
+  // H2 de la auditoría de seguridad: lo lanzan los limitadores de peticiones de
+  // middlewares/limitadores.ts cuando una IP pasa el tope de su ventana.
+  static demasiadasPeticiones(mensaje: string): ErrorApi {
+    return new ErrorApi(429, CODIGOS_ERROR.LIMITE_PETICIONES, mensaje);
+  }
 }

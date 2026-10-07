@@ -61,6 +61,20 @@ aunque se active en el Sprint 2.
 
 ## Tareas programadas
 
-`node-cron` en el proceso del backend, para el vencimiento de la seña (RN-06), la expiración de
-presupuestos (RN-08) y el incremento mensual de precios. Requiere que el proceso se mantenga
+`node-cron` en el proceso del backend, para dos tareas:
+
+- **Expiración de presupuestos** (RN-08, `trabajos/vigencia.trabajo.ts`): pasa a `Expirado` los
+  `Estimado` con `venceEn` vencido. Corre al levantar la API y después cada hora. No cancela
+  eventos ni borra nada.
+- **Incremento mensual de precios** (RN-10): aplica `porcentajeMensual` a los servicios propios y
+  a los salones, y registra un `AjustePrecio`. No toca tercerizados ni presupuestos emitidos.
+
+**No existe** una tarea de cancelación automática por falta de seña (se eliminó en la entrevista
+del 24/09/2026). Requiere que el proceso se mantenga
 activo: verificar el plan de Render antes de depender de esto en producción.
+
+## Correo saliente
+
+El proveedor es Resend, llamado por su API HTTP desde `apps/api/src/lib/correo.ts` (ADR 0006).
+Hoy envía el enlace para restablecer la contraseña; después, el correo de consulta recibida
+(HU-49). Sin `RESEND_API_KEY` en desarrollo, el correo se muestra en la consola de la API.

@@ -1,0 +1,41 @@
+# Blueprint de Render para la API (apps/api). La web va en Vercel (vercel.json) y la base en Neon.
+# Para aplicarlo: Render → New → Blueprint → elegir este repo. Render pide en el dashboard las
+# variables marcadas con `sync: false` (son secretos, no se commitean).
+services:
+  - type: web
+    name: confluens-api
+    runtime: node
+    plan: free
+    # Render no tiene región en Sudamérica. virginia es la más cercana al Neon de sa-east-1
+    # (São Paulo); cambiarla implica más latencia entre la API y la base en cada query.
+    region: virginia
+    # El repo es un monorepo npm workspaces: se construye desde la raíz, no desde apps/api.
+    # --include=dev es necesario porque Render fija NODE_ENV=production y npm omitiría las
+    # devDependencies, entre ellas el CLI de prisma y typescript, que el build necesita.
+    buildCommand: >-
+      npm ci --include=dev &&
+      npm run build -w @confluens/shared &&
+      npm run build -w @confluens/api &&
+      npm run prisma:deploy -w @confluens/api
+    startCommand: npm run start -w @confluens/api
+    # Health check de infraestructura (apps/api/src/modulos/salud/salud.rutas.ts).
+    healthCheckPath: /api/salud
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_EXPIRA_MINUTOS
+        value: 120
+      # Lo genera Render: nadie tiene que inventar ni guardar este secreto en el repo.
+      - key: JWT_SECRET
+        generateValue: true
+      # Connection string de Neon CON pooling (host con "-pooler"): la usa la API en runtime.
+      - key: DATABASE_URL
+        sync: false
+      # Connection string de Neon SIN pooling: la usa el CLI de Prisma para las migraciones.
+      - key: DIRECT_URL
+        sync: false
+      # URL pública del front en Vercel, sin barra final. CORS la exige exacta porque la cookie
+      # de sesión viaja con credentials:true, que no admite origin comodín.
+      - key: FRONTEND_URL
+        sync: false
+# PORT no se declara: Render lo inyecta y config/entorno.ts lo lee de process.env.

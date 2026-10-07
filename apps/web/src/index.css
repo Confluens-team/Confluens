@@ -4,8 +4,26 @@
 
 @custom-variant dark (&:is(.dark *));
 
+@theme {
+  --font-sans: 'Montserrat', ui-sans-serif, system-ui, sans-serif;
+  --font-serif: 'Cinzel', ui-serif, Georgia, serif;
+  --font-display: 'Cormorant Garamond', ui-serif, Georgia, serif;
+  --color-dorado: #b08d57;
+  /* AC1 de la auditoría de accesibilidad (WCAG 1.4.3): el dorado de los filetes da 2.75:1 sobre
+     crema, muy por debajo del 4.5:1 que pide el texto chico. Se mantiene para filetes, bordes e
+     iconos decorativos, y los rótulos en versalitas pasan a una de estas dos variantes según el
+     fondo: -texto sobre los fondos claros de la paleta (4.66:1 en el peor de ellos) y -claro
+     sobre bordó (5.07:1) y bordó oscuro (6.62:1). */
+  --color-dorado-texto: #7e5f26;
+  --color-dorado-claro: #c2a071;
+  --color-bordo: #5e1f1a;
+  --color-bordo-oscuro: #3b1411;
+  --color-crema: #f6f1ea;
+  --color-papel: #fffdf9;
+}
+
 @theme inline {
-  --font-heading: var(--font-sans);
+  --font-heading: var(--font-serif);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -47,38 +65,39 @@
 }
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
+  /* Paleta del tarifario de Los Abuelos: papel crema, bordó del logo y dorado de los filetes. */
+  --background: #f6f1ea;
+  --foreground: #2b1d19;
+  --card: #fffdf9;
+  --card-foreground: #2b1d19;
+  --popover: #fffdf9;
+  --popover-foreground: #2b1d19;
+  --primary: #5e1f1a;
+  --primary-foreground: #fbf6ef;
+  --secondary: #ede3d6;
+  --secondary-foreground: #4a2a22;
+  --muted: #efe7dc;
+  --muted-foreground: #74655d;
+  --accent: #efe4d3;
+  --accent-foreground: #4a2a22;
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --border: #e2d6c6;
+  --input: #d6c7b3;
+  --ring: #8a3a2f;
+  --chart-1: #5e1f1a;
+  --chart-2: #b08d57;
+  --chart-3: #8a3a2f;
+  --chart-4: #d6c7b3;
+  --chart-5: #2b1d19;
+  --radius: 0.5rem;
+  --sidebar: #fffdf9;
+  --sidebar-foreground: #2b1d19;
+  --sidebar-primary: #5e1f1a;
+  --sidebar-primary-foreground: #fbf6ef;
+  --sidebar-accent: #efe4d3;
+  --sidebar-accent-foreground: #4a2a22;
+  --sidebar-border: #e2d6c6;
+  --sidebar-ring: #8a3a2f;
 }
 
 .dark {
@@ -124,5 +143,87 @@
   }
   html {
     @apply font-sans;
+    scroll-behavior: smooth;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-serif;
+  }
+}
+
+/* Textura de papel sutil, como el fondo del PDF del tarifario. */
+.fondo-papel {
+  background-color: var(--background);
+  background-image:
+    radial-gradient(circle at 20% 10%, rgb(255 255 255 / 0.6), transparent 40%),
+    radial-gradient(circle at 80% 90%, rgb(176 141 87 / 0.08), transparent 45%);
+}
+
+/* Calendario de la agenda (HU-15). FullCalendar trae su propia hoja de estilos y se configura por
+   variables --fc-*: acá solo se las empalma con la paleta del proyecto, en vez de pelearle a sus
+   selectores. Los botones de la barra no son variables, así que esos sí se pisan. */
+.calendario-agenda {
+  --fc-border-color: var(--border);
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: var(--muted);
+  --fc-today-bg-color: rgb(176 141 87 / 0.1); /* dorado */
+  --fc-now-indicator-color: var(--color-bordo);
+  --fc-small-font-size: 0.75rem;
+}
+
+.calendario-agenda .fc .fc-toolbar-title {
+  font-family: var(--font-serif);
+  font-size: 1.125rem;
+  color: var(--color-bordo);
+  text-transform: capitalize;
+}
+
+.calendario-agenda .fc .fc-button {
+  background-color: var(--card);
+  border-color: var(--border);
+  color: var(--foreground);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.3rem 0.7rem;
+  box-shadow: none;
+}
+
+.calendario-agenda .fc .fc-button:hover {
+  background-color: var(--muted);
+}
+
+.calendario-agenda .fc .fc-button-primary:not(:disabled).fc-button-active,
+.calendario-agenda .fc .fc-button-primary:not(:disabled):active {
+  background-color: var(--color-bordo);
+  border-color: var(--color-bordo);
+  color: var(--color-crema);
+}
+
+/* AC5 de la auditoría de accesibilidad (WCAG 2.4.11): el indicador de foco tiene que llegar a
+   3:1 contra el fondo, y el dorado de los filetes da 2.75:1 sobre el crema de la página. --ring
+   es el color de foco del resto de los controles (6.85:1) y deja el indicador consistente. */
+.calendario-agenda .fc .fc-button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+  box-shadow: none;
+}
+
+.calendario-agenda .fc .fc-col-header-cell-cushion {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  padding: 0.5rem 0;
+}
+
+.calendario-agenda .fc .fc-event {
+  cursor: pointer;
+}
+
+@media print {
+  body {
+    background: white;
   }
 }
