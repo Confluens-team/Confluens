@@ -38,9 +38,25 @@ enum ModalidadServicio {
   EnMesa     // +30% sobre el precio base por persona
 }
 
+// Social o corporativo (ADR 0008). Antes "Empresarial".
 enum TipoEvento {
   Social
-  Empresarial
+  Corporativo
+}
+
+enum TipoEventoSocial {
+  Cumpleanos
+  Casamiento
+  FiestaDeQuince
+  Bautismo
+  FiestaCorporativa
+  Otro        // con su descripción en Evento.tipoSocialDetalle
+}
+
+// En minúscula para coincidir con esquemaTipoJornada de packages/shared.
+enum TipoJornada {
+  completa    // más de 4 horas
+  media       // hasta 4 horas inclusive
 }
 ```
 
@@ -58,8 +74,8 @@ enum TipoEvento {
 | `Servicio` | Nombre único, descripción, unidad de medida, precio sin IVA, si se cobra por persona, si es tercerizado, activo. `precio` **nullable**: `null` significa "a cotizar" (solo tercerizados). `tercerizado` = lo provee un tercero: **entra en el total** del presupuesto pero **no recibe el incremento mensual**. `admiteModalidad` (booleano, default `false`; `true` en los coffee breaks): habilita elegir continuo o en mesa (RN-11). Contenido de la landing: `categoria` (nullable) y `fotoUrl` (nullable). |
 | `Solicitud` | Consulta confirmada por el cliente en el canal público. `clienteId` nullable (las del Sprint 1 no tienen cliente; desde el Sprint 2 siempre lo tienen). Guarda los datos de contacto, fecha, horario (`inicio`/`fin`, nullable), cantidad de personas, `salonId` y `distribucionId` (nullable) y el subtotal estimado sin IVA que vio el cliente. Puede descartarse: `descartada` (booleano) y `eventoId` (nullable, 1-1) con el evento `EnConsulta` en que se convirtió. |
 | `LineaSolicitud` | Lo que eligió el cliente, con la misma forma que `LineaPresupuesto` (servicio, cantidad, modalidad, precio unitario mostrado). Al convertir la solicitud en evento, estas líneas se copian al presupuesto `Estimado`. |
-| `Evento` | Cliente, salón, distribución, fecha, horario desde/hasta (`inicio`/`fin`), cantidad de personas, estado, tipo de evento, modalidad salón-restaurante. El salón es obligatorio desde `EnConsulta`; la distribución y el horario pueden completarse después (ver restricciones). La jornada (media / completa) se deriva del horario: ≤ 4 h es media. |
-| `Presupuesto` | Pertenece a un evento. Estado, `emitidoEn`, `venceEn` (= emisión + 10 días, RN-08), `subtotal` sin IVA, `requiereFactura` (booleano, default `false`): si el evento se factura, la base de cobro de RN-01 incluye el IVA y la seña del 20% se calcula sobre ese total. IVA y total **no se guardan**: se calculan al mostrar (RN-05). **Cada evento tiene un solo presupuesto** (decisión del PO, 06/10/2026): la aplicación lo crea junto con el evento y recalcular o modificar editan ese mismo presupuesto. En el modelo la relación sigue siendo de uno a muchos. |
+| `Evento` | Cliente, salón, distribución, fecha, horario desde/hasta (`inicio`/`fin`), cantidad de personas, estado, modalidad salón-restaurante. Tipo de evento (ADR 0008): `tipo` (`TipoEvento`, default `Corporativo`), `tipoSocial` (`TipoEventoSocial`, solo en los sociales) y `tipoSocialDetalle` (texto, solo con `Otro`). `tipoJornada` (`TipoJornada`, nullable): la que eligió el cliente; en los eventos anteriores es `null` y la jornada sale de la línea del salón. `horaInicioEstimada` (texto `HH:mm`, nullable): solo de referencia, el horario real lo carga agendar (ADR 0007). El salón (`salonId`) es nullable: una consulta social llega sin salón, y es obligatorio para reservar; la distribución y el horario pueden completarse después (ver restricciones). Ya agendado, la jornada (media / completa) se deriva del horario: ≤ 4 h es media. |
+| `Presupuesto` | Pertenece a un evento. Estado, `emitidoEn`, `venceEn` (= emisión + 10 días, RN-08; `null` mientras el presupuesto de una consulta social está sin armar, sin líneas: arranca cuando se guarda la primera, ADR 0008), `subtotal` sin IVA, `requiereFactura` (booleano, default `false`): si el evento se factura, la base de cobro de RN-01 incluye el IVA y la seña del 20% se calcula sobre ese total. IVA y total **no se guardan**: se calculan al mostrar (RN-05). **Cada evento tiene un solo presupuesto** (decisión del PO, 06/10/2026): la aplicación lo crea junto con el evento y recalcular o modificar editan ese mismo presupuesto. En el modelo la relación sigue siendo de uno a muchos. |
 | `LineaPresupuesto` | Servicio, descripción, cantidad, `modalidad` (`ModalidadServicio`), precio base congelado, precio unitario congelado (base + recargo), subtotal. `aCotizar` (booleano): la línea no tiene importe y no suma. El precio del salón va como una línea más, con servicio `null`, y es siempre la **primera** línea del presupuesto. Las demás líneas con servicio `null` son adicionales que el personal escribió a mano, con su descripción y su precio (HU-12). |
 | `ConfiguracionPrecios` | Fila única. `porcentajeMensual` (Decimal) editable por el Responsable de Eventos (RN-10). |
 | `AjustePrecio` | Historial de aumentos: fecha, porcentaje, alcance (`Global` o un `servicioId`), si fue automático o manual, usuario. Sirve para auditar y para explicar por qué cambió un precio. |
@@ -104,6 +120,20 @@ sería infinito y bloquearía el salón para siempre:
 ```sql
 ALTER TABLE "Evento" ADD CONSTRAINT evento_horario_obligatorio
   CHECK (estado IN ('EnConsulta', 'Cancelado') OR ("inicio" IS NOT NULL AND "fin" IS NOT NULL));
+```
+
+Con el mismo criterio, desde ADR 0008 el salón también es obligatorio fuera de `EnConsulta` y
+`Cancelado` (una consulta social llega sin salón), y el tipo social va solo en los eventos sociales:
+
+```sql
+ALTER TABLE "Evento" ADD CONSTRAINT evento_salon_obligatorio
+  CHECK (estado IN ('EnConsulta', 'Cancelado') OR "salonId" IS NOT NULL);
+
+ALTER TABLE "Evento" ADD CONSTRAINT evento_tipo_social
+  CHECK (
+    (tipo = 'Social') = ("tipoSocial" IS NOT NULL)
+    AND ("tipoSocial" IS DISTINCT FROM 'Otro' OR "tipoSocialDetalle" IS NOT NULL)
+  );
 ```
 
 Prisma no genera restricciones de exclusión, así que va como SQL crudo dentro de una migración.

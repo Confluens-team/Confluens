@@ -39,7 +39,7 @@ docs/
 │   ├── arquitectura.md          Monorepo, capas y límites entre workspaces.
 │   ├── modelo-datos.md          Entidades, enums y la restricción de no solapamiento.
 │   ├── convenciones.md          Nombres, archivos, schemas compartidos y comandos.
-│   └── adr/                     Decisiones técnicas (0001 a 0006) + template.md.
+│   └── adr/                     Decisiones técnicas (0001 a 0008) + template.md.
 └── negocio/
     └── tarifario-2026.md        Salones, capacidades y precios reales. Base de los seeds.
 ```
