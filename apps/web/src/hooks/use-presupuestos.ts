@@ -1,5 +1,6 @@
 import type {
   ConsultaDetallada,
+  CrearConsultaSocial,
   CrearPresupuesto,
   CrearSolicitud,
   FiltrosPresupuestos,
@@ -38,6 +39,47 @@ export function useSolicitarPresupuesto() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...datos, solicitudId: creada.data.id }),
       });
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['solicitudes'] });
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+    },
+  });
+}
+
+// ADR 0008: la consulta de un evento social. Igual que el cotizador, registra primero la Solicitud
+// (sin salón) y después la consulta vinculada a ella. No hay presupuesto: lo arma el Responsable de
+// Eventos. El cliente lo toma la API de la sesión; los datos de contacto van solo en la Solicitud.
+export function useEnviarConsultaSocial() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      contacto,
+      consulta,
+    }: {
+      contacto: { nombre: string; telefono: string; correo: string };
+      consulta: Omit<CrearConsultaSocial, 'solicitudId'>;
+    }) => {
+      const solicitud: CrearSolicitud = {
+        ...contacto,
+        fechaDeseada: consulta.fecha,
+        cantidadPersonas: consulta.cantidadPersonas,
+        salonId: null,
+      };
+      const creada = await apiFetch<RespuestaExito<Solicitud>>('/solicitudes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(solicitud),
+      });
+      const respuesta = await apiFetch<RespuestaExito<PresupuestoDetallado>>(
+        '/presupuestos/social',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...consulta, solicitudId: creada.data.id }),
+        },
+      );
       return respuesta.data;
     },
     onSuccess: () => {

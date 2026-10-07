@@ -60,6 +60,11 @@ export async function agendarEvento(
     );
   }
 
+  // ADR 0008: una consulta social llega sin salón; se carga en la consulta antes de agendar.
+  if (evento.salonId === null) {
+    throw ErrorApi.reglaNegocio('Cargá el salón en la consulta antes de agendar el evento');
+  }
+
   const distribucion = await repo.buscarDistribucion(datos.distribucionId);
   if (!distribucion || distribucion.salonId !== evento.salonId) {
     throw ErrorApi.noEncontrado(

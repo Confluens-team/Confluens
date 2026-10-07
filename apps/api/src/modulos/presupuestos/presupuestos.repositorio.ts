@@ -1,4 +1,4 @@
-import type { FiltrosPresupuestos } from '@confluens/shared';
+import type { FiltrosPresupuestos, TipoEventoSocial, TipoJornada } from '@confluens/shared';
 
 import { prisma } from '../../lib/prisma.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -20,6 +20,15 @@ export async function crearCliente(
   tx: Prisma.TransactionClient = prisma,
 ) {
   return tx.cliente.create({ data: datos });
+}
+
+// ADR 0008: la consulta social toma el cliente de la sesión. Nunca crea una ficha: los clientes
+// solo se dan de alta registrándose (dominio.md).
+export async function buscarClientePorUsuarioId(
+  usuarioId: number,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.cliente.findUnique({ where: { usuarioId } });
 }
 
 export async function buscarSalon(salonId: number, tx: Prisma.TransactionClient = prisma) {
@@ -48,8 +57,19 @@ export async function vincularSolicitudAEvento(
   return tx.solicitud.update({ where: { id: solicitudId }, data: { eventoId } });
 }
 
+// Un evento corporativo llega con salón; uno social, sin salón y con su tipo social (ADR 0008).
 export async function crearEvento(
-  datos: { clienteId: number; salonId: number; fecha: Date; cantidadPersonas: number },
+  datos: {
+    clienteId: number;
+    salonId: number | null;
+    fecha: Date;
+    cantidadPersonas: number;
+    tipo: 'Social' | 'Corporativo';
+    tipoSocial?: TipoEventoSocial | null;
+    tipoSocialDetalle?: string | null;
+    tipoJornada: TipoJornada;
+    horaInicioEstimada?: string | null;
+  },
   tx: Prisma.TransactionClient = prisma,
 ) {
   // estado: EnConsulta es el default del schema, no hace falta pasarlo.
@@ -60,7 +80,7 @@ export async function crearPresupuestoConLineas(
   datos: {
     eventoId: number;
     fechaEmision: Date;
-    venceEn: Date;
+    venceEn: Date | null; // null: presupuesto sin armar de una consulta social (ADR 0008)
     total: string;
     lineas: {
       servicioId: number | null;
@@ -130,6 +150,9 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
       evento: {
         select: {
           fecha: true,
+          tipo: true,
+          tipoSocial: true,
+          tipoSocialDetalle: true,
           salon: { select: { id: true, nombre: true } },
           cliente: { select: { id: true, nombre: true, apellido: true, correo: true } },
         },
@@ -198,6 +221,7 @@ export async function reemplazarLineas(
 
 export type PresupuestosRepositorio = {
   buscarClientePorCorreo: typeof buscarClientePorCorreo;
+  buscarClientePorUsuarioId: typeof buscarClientePorUsuarioId;
   crearCliente: typeof crearCliente;
   buscarSalon: typeof buscarSalon;
   buscarServiciosPorIds: typeof buscarServiciosPorIds;

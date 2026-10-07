@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -78,6 +79,7 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
         <p className="text-sm text-muted-foreground">
           Estado: <span className="font-medium">{evento.estado}</span>
         </p>
+        <BadgeTipoEvento evento={evento} className="mt-2" />
       </div>
 
       <Card>
@@ -91,7 +93,7 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
           </p>
           <p>
             <span className="text-muted-foreground">Salón: </span>
-            {evento.salon.nombre} · {evento.cantidadPersonas} personas
+            {evento.salon?.nombre ?? 'A definir'} · {evento.cantidadPersonas} personas
           </p>
           {evento.solicitud && (
             <p className="text-muted-foreground">

@@ -7,6 +7,7 @@ import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 
 vi.mock('./presupuestos.repositorio.js', () => ({
   buscarClientePorCorreo: vi.fn(),
+  buscarClientePorUsuarioId: vi.fn(),
   crearCliente: vi.fn(),
   buscarSalon: vi.fn(),
   buscarServiciosPorIds: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock('./presupuestos.repositorio.js', () => ({
 
 const {
   buscarClientePorCorreo,
+  buscarClientePorUsuarioId,
   crearCliente,
   buscarSalon,
   buscarServiciosPorIds,
@@ -34,6 +36,7 @@ const {
 } = await import('./presupuestos.repositorio.js');
 
 const buscarClientePorCorreoMock = vi.mocked(buscarClientePorCorreo);
+const buscarClientePorUsuarioIdMock = vi.mocked(buscarClientePorUsuarioId);
 const crearClienteMock = vi.mocked(crearCliente);
 const buscarSalonMock = vi.mocked(buscarSalon);
 const buscarServiciosPorIdsMock = vi.mocked(buscarServiciosPorIds);
@@ -102,6 +105,11 @@ const eventoFixture = {
   estado: 'EnConsulta' as const,
   senaVenceEn: null,
   senaRegistradaEn: null,
+  tipo: 'Corporativo' as 'Social' | 'Corporativo',
+  tipoSocial: null,
+  tipoSocialDetalle: null as string | null,
+  tipoJornada: null,
+  horaInicioEstimada: null as string | null,
   modalidadSalonRestaurante: false,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
@@ -192,7 +200,33 @@ describe('POST /api/presupuestos', () => {
     await request(app).post('/api/presupuestos').send(bodyBase);
 
     const { fechaEmision, venceEn } = crearPresupuestoConLineasMock.mock.calls[0]![0];
-    expect(venceEn.getTime() - fechaEmision.getTime()).toBe(10 * 24 * 60 * 60 * 1000);
+    expect(venceEn!.getTime() - fechaEmision.getTime()).toBe(10 * 24 * 60 * 60 * 1000);
+  });
+
+  it('crea el evento como corporativo con la jornada y la hora estimada (ADR 0008)', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+
+    await request(app)
+      .post('/api/presupuestos')
+      .send({ ...bodyBase, horaInicioEstimada: '19:30' });
+
+    expect(crearEventoMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tipo: 'Corporativo',
+        tipoJornada: bodyBase.tipoJornada,
+        horaInicioEstimada: '19:30',
+      }),
+      undefined,
+    );
+  });
+
+  it('responde 400 con una hora estimada que no es HH:mm', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .send({ ...bodyBase, horaInicioEstimada: '25:00' });
+
+    expect(respuesta.status).toBe(400);
+    expect(crearEventoMock).not.toHaveBeenCalled();
   });
 
   it('reutiliza el cliente existente cuando ya hay uno con ese correo', async () => {
@@ -376,7 +410,10 @@ const presupuestoDelListado = {
   total: new Prisma.Decimal('229500'),
   evento: {
     fecha: new Date('2026-11-15T00:00:00.000Z'),
-    salon: { id: 5, nombre: 'Paraná' },
+    tipo: 'Corporativo' as 'Social' | 'Corporativo',
+    tipoSocial: null as 'Casamiento' | null,
+    tipoSocialDetalle: null,
+    salon: { id: 5, nombre: 'Paraná' } as { id: number; nombre: string } | null,
     cliente: { id: 10, nombre: 'Marina', apellido: 'Gómez', correo: 'marina@example.com' },
   },
 };
@@ -403,10 +440,43 @@ describe('GET /api/presupuestos (HU-10)', () => {
           venceEn: '2026-09-30T15:00:00.000Z',
           total: '229500.00',
           fechaEvento: '2026-11-15',
+          tipo: 'Corporativo',
+          tipoSocial: null,
+          tipoSocialDetalle: null,
           cliente: { id: 10, nombre: 'Marina', apellido: 'Gómez', correo: 'marina@example.com' },
           salon: { id: 5, nombre: 'Paraná' },
         },
       ],
+    });
+  });
+
+  it('una consulta social sin armar viene sin salón ni vencimiento, con su tipo (ADR 0008)', async () => {
+    obtenerPresupuestosMock.mockResolvedValue([
+      {
+        ...presupuestoDelListado,
+        estado: 'Estimado' as never,
+        venceEn: null as never,
+        total: new Prisma.Decimal('0'),
+        evento: {
+          ...presupuestoDelListado.evento,
+          tipo: 'Social',
+          tipoSocial: 'Casamiento',
+          salon: null,
+        },
+      },
+    ]);
+
+    const respuesta = await request(app)
+      .get('/api/presupuestos')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data[0]).toMatchObject({
+      venceEn: null,
+      total: '0.00',
+      tipo: 'Social',
+      tipoSocial: 'Casamiento',
+      salon: null,
     });
   });
 
@@ -510,5 +580,146 @@ describe('GET /api/presupuestos (HU-10)', () => {
 
     expect(respuesta.status).toBe(403);
     expect(respuesta.body.error.code).toBe('FORBIDDEN');
+  });
+});
+
+describe('POST /api/presupuestos/social (ADR 0008)', () => {
+  const bodySocial = {
+    fecha: '2026-12-05',
+    cantidadPersonas: 120,
+    tipoJornada: 'completa',
+    horaInicioEstimada: '21:00',
+    tipoSocial: 'Casamiento',
+  };
+  const clienteConCuenta = { ...clienteFixture, usuarioId: 1 };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    buscarClientePorUsuarioIdMock.mockResolvedValue(clienteConCuenta);
+    crearEventoMock.mockResolvedValue({ ...eventoFixture, tipo: 'Social' } as never);
+    crearPresupuestoConLineasMock.mockImplementation(
+      async (datos) =>
+        ({
+          id: 40,
+          eventoId: datos.eventoId,
+          estado: 'Estimado',
+          fechaEmision: datos.fechaEmision,
+          venceEn: datos.venceEn,
+          total: new Prisma.Decimal(datos.total),
+          requiereFactura: false,
+          creadoEn: new Date(),
+          actualizadoEn: new Date(),
+          evento: { ...eventoFixture, tipo: 'Social', salonId: null },
+          lineas: [],
+        }) as never,
+    );
+  });
+
+  it('crea el evento social sin salón, del cliente de la sesión, con el presupuesto sin armar', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(bodySocial);
+
+    expect(respuesta.status).toBe(201);
+    expect(buscarClientePorUsuarioIdMock).toHaveBeenCalledWith(1);
+    expect(crearClienteMock).not.toHaveBeenCalled();
+    expect(crearEventoMock).toHaveBeenCalledWith(
+      {
+        clienteId: clienteConCuenta.id,
+        salonId: null,
+        fecha: new Date('2026-12-05'),
+        cantidadPersonas: 120,
+        tipo: 'Social',
+        tipoSocial: 'Casamiento',
+        tipoSocialDetalle: null,
+        tipoJornada: 'completa',
+        horaInicioEstimada: '21:00',
+      },
+      undefined,
+    );
+    expect(crearPresupuestoConLineasMock).toHaveBeenCalledWith(
+      expect.objectContaining({ venceEn: null, total: '0.00', lineas: [] }),
+      undefined,
+    );
+    expect(respuesta.body.data).toMatchObject({ venceEn: null, total: '0', lineas: [] });
+  });
+
+  it('guarda el detalle cuando el tipo es Otro', async () => {
+    await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodySocial, tipoSocial: 'Otro', tipoSocialDetalle: 'Despedida de soltera' });
+
+    expect(crearEventoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ tipoSocial: 'Otro', tipoSocialDetalle: 'Despedida de soltera' }),
+      undefined,
+    );
+  });
+
+  it('vincula la solicitud del formulario al evento', async () => {
+    buscarSolicitudMock.mockResolvedValue(solicitudFixture);
+
+    await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodySocial, solicitudId: solicitudFixture.id });
+
+    expect(vincularSolicitudAEventoMock).toHaveBeenCalledWith(
+      solicitudFixture.id,
+      eventoFixture.id,
+      undefined,
+    );
+  });
+
+  it('responde 400 si el tipo es Otro y no cuenta qué evento es', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodySocial, tipoSocial: 'Otro' });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details).toEqual([
+      { campo: 'tipoSocialDetalle', mensaje: 'Contanos qué evento es' },
+    ]);
+    expect(crearEventoMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 400 sin tipo social o con una hora inválida', async () => {
+    const sinTipo = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodySocial, tipoSocial: undefined });
+    const horaInvalida = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodySocial, horaInicioEstimada: '9 pm' });
+
+    expect(sinTipo.status).toBe(400);
+    expect(horaInvalida.status).toBe(400);
+  });
+
+  it('responde 404 si la sesión no tiene ficha de cliente', async () => {
+    buscarClientePorUsuarioIdMock.mockResolvedValue(null);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(bodySocial);
+
+    expect(respuesta.status).toBe(404);
+    expect(crearEventoMock).not.toHaveBeenCalled();
+  });
+
+  it('sin sesión responde 401 y con sesión del personal 403', async () => {
+    const sinSesion = await request(app).post('/api/presupuestos/social').send(bodySocial);
+    const personal = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')])
+      .send(bodySocial);
+
+    expect(sinSesion.status).toBe(401);
+    expect(personal.status).toBe(403);
+    expect(crearEventoMock).not.toHaveBeenCalled();
   });
 });

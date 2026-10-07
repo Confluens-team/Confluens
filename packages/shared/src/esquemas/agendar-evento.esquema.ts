@@ -34,7 +34,7 @@ const esquemaPresupuestoConLineas = esquemaPresupuesto.extend({
 // pagos: el detalle completo que necesita la vista DetalleEvento en un solo pedido.
 export const esquemaEventoDetallado = esquemaEvento.extend({
   cliente: esquemaCliente,
-  salon: esquemaSalon,
+  salon: esquemaSalon.nullable(), // null: consulta social sin salón todavía (ADR 0008)
   distribucion: esquemaDistribucion.nullable(),
   presupuestos: z.array(esquemaPresupuestoConLineas),
   solicitud: esquemaSolicitud.nullable(),

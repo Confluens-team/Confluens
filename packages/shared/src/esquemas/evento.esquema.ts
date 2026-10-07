@@ -7,6 +7,12 @@ import {
   esquemaImporte,
   vacioComoAusente,
 } from './comunes.esquema.js';
+import {
+  esquemaHoraEstimada,
+  esquemaTipoEvento,
+  esquemaTipoEventoSocial,
+  esquemaTipoJornada,
+} from './tipo-evento.esquema.js';
 
 // Valores literales de la máquina de estados aprobada (docs/producto/dominio.md).
 export const esquemaEstadoEvento = z.enum(['EnConsulta', 'Reservado', 'Cobrado', 'Cancelado']);
@@ -17,17 +23,23 @@ export type EstadoEvento = z.infer<typeof esquemaEstadoEvento>;
 // que hace que una franja sin estos eventos se lea como disponible (criterio 5 de HU-15).
 export const ESTADOS_QUE_OCUPAN_SALON: readonly EstadoEvento[] = ['Reservado', 'Cobrado'];
 
-// distribucionId, inicio y fin pueden ser null en EnConsulta (y en Cancelado si viene de ahí).
+// distribucionId, inicio y fin pueden ser null en EnConsulta (y en Cancelado si viene de ahí). El
+// salón también, en una consulta social que todavía no lo tiene (ADR 0008).
 export const esquemaEvento = z.object({
   id: esquemaId,
   clienteId: esquemaId,
-  salonId: esquemaId,
+  salonId: esquemaId.nullable(),
   distribucionId: esquemaId.nullable(),
   fecha: esquemaFecha,
   inicio: esquemaFechaHora.nullable(),
   fin: esquemaFechaHora.nullable(),
   cantidadPersonas: z.number().int().positive(),
   estado: esquemaEstadoEvento,
+  tipo: esquemaTipoEvento,
+  tipoSocial: esquemaTipoEventoSocial.nullable(),
+  tipoSocialDetalle: z.string().nullable(),
+  tipoJornada: esquemaTipoJornada.nullable(),
+  horaInicioEstimada: esquemaHoraEstimada.nullable(),
   // Columna del Sprint 1 que quedó sin escribirse: la vigencia de los 10 días es del presupuesto,
   // no del evento (RN-06, RN-08).
   senaVenceEn: esquemaFechaHora.nullable(),
@@ -51,7 +63,7 @@ export const esquemaEventoAgenda = esquemaEvento.extend({
     telefono: z.string(),
     correo: z.string(),
   }),
-  salon: z.object({ id: esquemaId, nombre: z.string() }),
+  salon: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
   distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
   totalPresupuesto: esquemaImporte.nullable(),
 });

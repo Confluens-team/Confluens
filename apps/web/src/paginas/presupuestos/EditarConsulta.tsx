@@ -1,14 +1,27 @@
 import {
   DIAS_VIGENCIA_PRESUPUESTO,
   desglosarIva,
+  ETIQUETAS_TIPO_EVENTO_SOCIAL,
   type ConsultaDetallada,
   type SalonConDistribuciones,
   type Servicio,
+  type TipoEvento,
+  type TipoEventoSocial,
   type TipoJornada,
 } from '@confluens/shared';
-import { AlertTriangle, ArrowLeft, CalendarCheck, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CalendarCheck,
+  ClipboardList,
+  Plus,
+  RefreshCw,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { useState } from 'react';
 
+import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -67,11 +80,15 @@ const ESTADOS: Record<string, string> = {
 
 const claseSelect = 'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm';
 
+const TIPOS_SOCIALES = Object.entries(ETIQUETAS_TIPO_EVENTO_SOCIAL) as [TipoEventoSocial, string][];
+
 // HU-12: una consulta abierta desde el listado. Después de hablar con el cliente, el personal
 // corrige fecha, salón, personas, jornada, servicios (del catálogo o escritos a mano), cantidades y
 // precios. Al guardar queda Estimado, la vigencia vuelve a contar 10 días y se vuelve al listado.
 // En una Expirado, «Recalcular» trae los precios vigentes al formulario: al guardar, la misma
 // consulta vuelve a Estimado. Los datos del cliente son suyos: acá solo se muestran.
+// ADR 0008: también se corrigen el tipo de evento y la hora estimada. Una consulta social llega sin
+// salón ni servicios: el personal arma el presupuesto acá y la vigencia arranca al guardarlo.
 export function EditarConsulta({
   id,
   onVolver,
@@ -139,7 +156,14 @@ function Formulario({
 
   const lineaSalon = consulta.lineas.find((linea) => linea.tipo === 'salon');
   const [fecha, setFecha] = useState(consulta.evento.fecha);
-  const [salonId, setSalonId] = useState(consulta.salon.id);
+  // null: consulta social todavía sin salón (ADR 0008).
+  const [salonId, setSalonId] = useState<number | null>(consulta.salon?.id ?? null);
+  const [tipo, setTipo] = useState<TipoEvento>(consulta.evento.tipo);
+  const [tipoSocial, setTipoSocial] = useState<TipoEventoSocial | ''>(
+    consulta.evento.tipoSocial ?? '',
+  );
+  const [detalleOtro, setDetalleOtro] = useState(consulta.evento.tipoSocialDetalle ?? '');
+  const [horaEstimada, setHoraEstimada] = useState(consulta.evento.horaInicioEstimada ?? '');
   const [jornada, setJornada] = useState<TipoJornada>(consulta.tipoJornada);
   const [personas, setPersonas] = useState(String(consulta.evento.cantidadPersonas));
   const [requiereFactura, setRequiereFactura] = useState(consulta.requiereFactura);
@@ -168,10 +192,10 @@ function Formulario({
 
   // La línea del salón vuelve a su precio congelado si se vuelve al salón y la jornada originales;
   // si no, toma el precio vigente. Después se puede ajustar a mano.
-  function cambiarSalonOJornada(nuevoSalonId: number, nuevaJornada: TipoJornada) {
+  function cambiarSalonOJornada(nuevoSalonId: number | null, nuevaJornada: TipoJornada) {
     setSalonId(nuevoSalonId);
     setJornada(nuevaJornada);
-    const original = nuevoSalonId === consulta.salon.id && nuevaJornada === consulta.tipoJornada;
+    const original = nuevoSalonId === consulta.salon?.id && nuevaJornada === consulta.tipoJornada;
     const nuevoSalon = salones.find((s) => s.id === nuevoSalonId);
     if (original && lineaSalon && !recalculado) setPrecioSalon(lineaSalon.precioUnitario);
     else if (nuevoSalon) setPrecioSalon(precioDeSalon(nuevoSalon, nuevaJornada));
@@ -238,17 +262,25 @@ function Formulario({
     otro.descripcion.trim().length > 0 && esEntero(otro.cantidad) && esImporte(otro.precio);
   const puedeAgregar = agregar === OTRO ? otroValido : !!agregar;
 
+  // Un corporativo necesita salón; un social, su tipo ("Otro" con su detalle).
+  const tipoValido =
+    tipo === 'Corporativo'
+      ? salonId !== null
+      : !!tipoSocial && (tipoSocial !== 'Otro' || !!detalleOtro.trim());
   const valido =
     !!fecha &&
     esEntero(personas) &&
-    esImporte(precioSalon) &&
+    tipoValido &&
+    (salonId === null || esImporte(precioSalon)) &&
     lineas.every((l) => esEntero(l.cantidad) && precioValido(l) && l.descripcion.trim());
+  // Sin salón ni líneas, el presupuesto sigue sin armar y no arranca la vigencia (ADR 0008).
+  const quedaSinArmar = salonId === null && lineas.length === 0;
   const cantidadACotizar = lineas.filter(aCotizar).length;
   const { distribucion, inicio, fin } = consulta.evento;
 
   // RN-05: los importes se cargan sin IVA y el resumen muestra el desglose.
   const importes = desglosarIva(
-    (esImporte(precioSalon) ? Number(precioSalon) : 0) +
+    (salonId !== null && esImporte(precioSalon) ? Number(precioSalon) : 0) +
       lineas.reduce((suma, l) => suma + subtotal(l.cantidad, l.precio), 0),
   );
   const excedeCapacidad = !!salon && esEntero(personas) && Number(personas) > salon.capacidadMaxima;
@@ -264,8 +296,12 @@ function Formulario({
         salonId,
         cantidadPersonas: Number(personas),
         tipoJornada: jornada,
+        tipo,
+        tipoSocial: tipo === 'Social' && tipoSocial ? tipoSocial : null,
+        tipoSocialDetalle: tipo === 'Social' && tipoSocial === 'Otro' ? detalleOtro.trim() : null,
+        horaInicioEstimada: horaEstimada || null,
         requiereFactura,
-        precioSalon: aImporte(precioSalon),
+        precioSalon: salonId === null ? undefined : aImporte(precioSalon),
         servicios: lineas
           .filter((l) => l.servicioId !== null)
           .map((l) => ({
@@ -302,18 +338,23 @@ function Formulario({
             {consulta.estado === 'Confirmado' ? 'Presupuesto' : 'Consulta'} {consulta.id}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Emitida el {fechaCorta(new Date(consulta.fechaEmision))} · vence el{' '}
-            {fechaCorta(new Date(consulta.venceEn))}
+            Emitida el {fechaCorta(new Date(consulta.fechaEmision))} ·{' '}
+            {consulta.venceEn
+              ? `vence el ${fechaCorta(new Date(consulta.venceEn))}`
+              : 'presupuesto sin armar'}
           </p>
         </div>
-        <span
-          className={cn(
-            'rounded-full px-3 py-1 text-xs font-semibold',
-            ESTADOS[consulta.estado] ?? '',
-          )}
-        >
-          {consulta.estado}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <BadgeTipoEvento evento={consulta.evento} />
+          <span
+            className={cn(
+              'rounded-full px-3 py-1 text-xs font-semibold',
+              ESTADOS[consulta.estado] ?? '',
+            )}
+          >
+            {consulta.estado}
+          </span>
+        </div>
       </header>
 
       {expirado && enCurso && (
@@ -371,9 +412,13 @@ function Formulario({
               <select
                 id="consulta-salon"
                 className={claseSelect}
-                value={salonId}
-                onChange={(e) => cambiarSalonOJornada(Number(e.target.value), jornada)}
+                value={salonId ?? ''}
+                aria-invalid={tipo === 'Corporativo' && salonId === null}
+                onChange={(e) =>
+                  cambiarSalonOJornada(e.target.value ? Number(e.target.value) : null, jornada)
+                }
               >
+                {(tipo === 'Social' || salonId === null) && <option value="">A definir</option>}
                 {salones.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.nombre} (hasta {s.capacidadMaxima})
@@ -405,6 +450,67 @@ function Formulario({
               </select>
             </div>
           </div>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="consulta-tipo">Tipo de evento</Label>
+              <select
+                id="consulta-tipo"
+                className={claseSelect}
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value as TipoEvento)}
+              >
+                <option value="Corporativo">Corporativo</option>
+                <option value="Social">Social</option>
+              </select>
+            </div>
+            {tipo === 'Social' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="consulta-tipo-social">¿Qué evento?</Label>
+                <select
+                  id="consulta-tipo-social"
+                  className={claseSelect}
+                  value={tipoSocial}
+                  aria-invalid={!tipoSocial}
+                  onChange={(e) => setTipoSocial(e.target.value as TipoEventoSocial)}
+                >
+                  <option value="" disabled>
+                    Elegí…
+                  </option>
+                  {TIPOS_SOCIALES.map(([valor, etiqueta]) => (
+                    <option key={valor} value={valor}>
+                      {etiqueta}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {tipo === 'Social' && tipoSocial === 'Otro' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="consulta-detalle-otro">Detalle</Label>
+                <Input
+                  id="consulta-detalle-otro"
+                  maxLength={120}
+                  value={detalleOtro}
+                  aria-invalid={!detalleOtro.trim()}
+                  onChange={(e) => setDetalleOtro(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="consulta-hora">Hora de inicio estimada</Label>
+              <Input
+                id="consulta-hora"
+                type="time"
+                value={horaEstimada}
+                onChange={(e) => setHoraEstimada(e.target.value)}
+              />
+            </div>
+          </div>
+          {tipo === 'Corporativo' && salonId === null && (
+            <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-destructive">
+              <AlertTriangle className="size-3.5" /> Un evento corporativo necesita salón.
+            </p>
+          )}
           {excedeCapacidad && (
             <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-amber-900">
               <AlertTriangle className="size-3.5" /> {personas} personas superan la capacidad del
@@ -430,6 +536,19 @@ function Formulario({
           </label>
         </section>
 
+        {tipo === 'Social' && (
+          <section className="rounded-xl bg-card p-5 ring-1 ring-rose-200">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <ClipboardList className="size-4 text-rose-700" /> Detalle del evento social
+            </h3>
+            {/* Vacío a propósito: falta la plantilla de campos del evento social (pendientes.md). */}
+            <div className="mt-3 rounded-lg border border-dashed border-rose-200 px-4 py-8 text-center text-sm text-muted-foreground">
+              Todavía no hay plantilla para los eventos sociales. Acá van a ir los datos propios del
+              evento.
+            </div>
+          </section>
+        )}
+
         <section className="rounded-xl bg-card p-5 ring-1 ring-border">
           <h3 className="text-sm font-semibold">Detalle</h3>
           <p className="text-xs text-muted-foreground">
@@ -448,26 +567,35 @@ function Formulario({
                 </tr>
               </thead>
               <tbody className="divide-y">
-                <tr>
-                  <td className="py-2 pr-3">
-                    Salón {salon?.nombre} (
-                    {jornada === 'completa' ? 'jornada completa' : 'media jornada'})
-                  </td>
-                  <td className="py-2 pr-3 text-muted-foreground">1</td>
-                  <td className="py-2 pr-3">
-                    <Input
-                      aria-label="Precio del salón"
-                      inputMode="decimal"
-                      value={precioSalon}
-                      aria-invalid={!esImporte(precioSalon)}
-                      onChange={(e) => setPrecioSalon(e.target.value)}
-                    />
-                  </td>
-                  <td className="py-2 text-right whitespace-nowrap">
-                    {esImporte(precioSalon) ? formatearPesos(precioSalon) : '—'}
-                  </td>
-                  <td />
-                </tr>
+                {quedaSinArmar && (
+                  <tr>
+                    <td colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                      Presupuesto sin armar: elegí el salón y agregá los servicios.
+                    </td>
+                  </tr>
+                )}
+                {salonId !== null && (
+                  <tr>
+                    <td className="py-2 pr-3">
+                      Salón {salon?.nombre} (
+                      {jornada === 'completa' ? 'jornada completa' : 'media jornada'})
+                    </td>
+                    <td className="py-2 pr-3 text-muted-foreground">1</td>
+                    <td className="py-2 pr-3">
+                      <Input
+                        aria-label="Precio del salón"
+                        inputMode="decimal"
+                        value={precioSalon}
+                        aria-invalid={!esImporte(precioSalon)}
+                        onChange={(e) => setPrecioSalon(e.target.value)}
+                      />
+                    </td>
+                    <td className="py-2 text-right whitespace-nowrap">
+                      {esImporte(precioSalon) ? formatearPesos(precioSalon) : '—'}
+                    </td>
+                    <td />
+                  </tr>
+                )}
                 {lineas.map((linea) => (
                   <tr key={linea.clave}>
                     <td className="py-2 pr-3">
@@ -651,7 +779,9 @@ function Formulario({
           </p>
         )}
         <p className="mt-3 text-right text-xs text-muted-foreground">
-          Este presupuesto tiene una validez de {DIAS_VIGENCIA_PRESUPUESTO} días.
+          {quedaSinArmar
+            ? `La vigencia de ${DIAS_VIGENCIA_PRESUPUESTO} días empieza cuando guardes el presupuesto con el salón o algún servicio.`
+            : `Este presupuesto tiene una validez de ${DIAS_VIGENCIA_PRESUPUESTO} días.`}
         </p>
       </section>
 
@@ -668,7 +798,9 @@ function Formulario({
           </Button>
           <div className="flex flex-wrap items-center justify-end gap-3">
             <p className="text-xs text-muted-foreground">
-              Al guardar, la vigencia vuelve a contar {DIAS_VIGENCIA_PRESUPUESTO} días.
+              {quedaSinArmar
+                ? 'Sin salón ni servicios, el presupuesto sigue sin armar.'
+                : `Al guardar, la vigencia vuelve a contar ${DIAS_VIGENCIA_PRESUPUESTO} días.`}
             </p>
             <Button type="submit" disabled={!valido || modificar.isPending}>
               {modificar.isPending ? 'Guardando…' : 'Guardar cambios'}
@@ -685,13 +817,15 @@ function Formulario({
             <p className="text-xs text-muted-foreground">
               {expirado
                 ? 'La consulta está vencida: recalculala y guardá los cambios antes de cobrar la seña.'
-                : 'Cargá la distribución y el horario y registrá los pagos. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a Eventos (HU-13). Guardá antes los cambios de la consulta.'}
+                : !consulta.salon
+                  ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
+                  : 'Cargá la distribución y el horario y registrá los pagos. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a Eventos (HU-13). Guardá antes los cambios de la consulta.'}
             </p>
           </div>
           <Button
             type="button"
             variant="outline"
-            disabled={expirado}
+            disabled={expirado || !consulta.salon}
             onClick={() => onAbrirEvento(consulta.evento.id)}
           >
             <CalendarCheck /> Agendar y registrar pagos

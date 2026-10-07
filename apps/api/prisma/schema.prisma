@@ -3,7 +3,8 @@
 // La URL de conexión se configura en prisma.config.ts.
 //
 // Restricciones que Prisma no expresa y viven como SQL crudo en las migraciones:
-// - Evento: exclusión de solapamiento por salón (btree_gist) y CHECK de horario al reservar.
+// - Evento: exclusión de solapamiento por salón (btree_gist), CHECK de horario y de salón al
+//   reservar, y CHECK del tipo social (ADR 0008).
 
 generator client {
   provider = "prisma-client"
@@ -27,6 +28,29 @@ enum EstadoPresupuesto {
   Confirmado
   Cancelado
   Expirado
+}
+
+// Social o corporativo (ADR 0008). Las consultas sociales no pasan por el cotizador: llegan sin
+// salón ni servicios y el Responsable de Eventos arma el presupuesto.
+enum TipoEvento {
+  Social
+  Corporativo
+}
+
+enum TipoEventoSocial {
+  Cumpleanos
+  Casamiento
+  FiestaDeQuince
+  Bautismo
+  FiestaCorporativa
+  Otro // con detalle en Evento.tipoSocialDetalle
+}
+
+// En minúscula para coincidir con esquemaTipoJornada de @confluens/shared. Media: hasta 4 horas
+// inclusive; completa: más de 4 horas.
+enum TipoJornada {
+  completa
+  media
 }
 
 enum Rol {
@@ -148,30 +172,40 @@ model Solicitud {
 // En EnConsulta el salón es obligatorio; distribución e inicio/fin se completan después.
 // Fuera de EnConsulta y Cancelado, inicio y fin son obligatorios (CHECK en SQL crudo).
 model Evento {
-  id                        Int           @id @default(autoincrement())
+  id                        Int               @id @default(autoincrement())
   clienteId                 Int
-  cliente                   Cliente       @relation(fields: [clienteId], references: [id])
-  salonId                   Int
-  salon                     Salon         @relation(fields: [salonId], references: [id])
+  cliente                   Cliente           @relation(fields: [clienteId], references: [id])
+  // Obligatorio para reservar (CHECK evento_salon_obligatorio); una consulta social llega sin
+  // salón y lo carga el Responsable de Eventos (ADR 0008).
+  salonId                   Int?
+  salon                     Salon?            @relation(fields: [salonId], references: [id], onDelete: Restrict)
   distribucionId            Int?
-  distribucion              Distribucion? @relation(fields: [distribucionId], references: [id])
-  fecha                     DateTime      @db.Date
+  distribucion              Distribucion?     @relation(fields: [distribucionId], references: [id])
+  fecha                     DateTime          @db.Date
   inicio                    DateTime? // horario desde
   fin                       DateTime? // horario hasta
   cantidadPersonas          Int
-  estado                    EstadoEvento  @default(EnConsulta)
+  estado                    EstadoEvento      @default(EnConsulta)
+  tipo                      TipoEvento        @default(Corporativo)
+  tipoSocial                TipoEventoSocial?
+  tipoSocialDetalle         String? // qué evento es cuando tipoSocial = Otro
+  // Lo que eligió el cliente. Null en los eventos anteriores: ahí la jornada sale de la línea del
+  // salón del presupuesto.
+  tipoJornada               TipoJornada?
+  // "HH:mm", solo de referencia. El horario real (inicio/fin) se carga al agendar (ADR 0007).
+  horaInicioEstimada        String?
   // Columna del Sprint 1 que quedó sin escribirse: la vigencia de los 10 días es del presupuesto y
   // no del evento (RN-06, RN-08).
   senaVenceEn               DateTime?
   // Instante en que el acumulado de pagos cruzó el 20% de la base de cobro y el salón quedó
   // reservado (HU-13). Lo escribe el módulo de pagos, no una acción manual.
   senaRegistradaEn          DateTime?
-  modalidadSalonRestaurante Boolean       @default(false) // opción interna, no visible al cliente
+  modalidadSalonRestaurante Boolean           @default(false) // opción interna, no visible al cliente
   solicitud                 Solicitud?
   presupuestos              Presupuesto[]
   pagos                     Pago[]
-  creadoEn                  DateTime      @default(now())
-  actualizadoEn             DateTime      @updatedAt
+  creadoEn                  DateTime          @default(now())
+  actualizadoEn             DateTime          @updatedAt
 }
 
 // Cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026): lo garantiza la aplicación,
@@ -182,7 +216,9 @@ model Presupuesto {
   evento          Evento             @relation(fields: [eventoId], references: [id])
   estado          EstadoPresupuesto  @default(Estimado)
   fechaEmision    DateTime           @default(now())
-  venceEn         DateTime // 10 días desde la emisión o la última modificación (RN-08, HU-12)
+  // 10 días desde la emisión o la última modificación (RN-08, HU-12). Null: presupuesto sin armar,
+  // el de una consulta social que el Responsable de Eventos todavía no cargó (ADR 0008).
+  venceEn         DateTime?
   total           Decimal            @db.Decimal(12, 2) // sin IVA (RN-05)
   // Lo marca el Responsable de Eventos al recibir el presupuesto. Define la base de cobro de
   // RN-01: con factura, total + IVA; sin factura, total pelado. La base no se guarda, se calcula.

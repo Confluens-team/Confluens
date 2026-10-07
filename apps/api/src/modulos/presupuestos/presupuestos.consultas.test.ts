@@ -92,6 +92,11 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
       estado: 'EnConsulta',
       senaVenceEn: null,
       senaRegistradaEn: null,
+      tipo: 'Corporativo' as 'Social' | 'Corporativo',
+      tipoSocial: null,
+      tipoSocialDetalle: null as string | null,
+      tipoJornada: null,
+      horaInicioEstimada: null as string | null,
       modalidadSalonRestaurante: false,
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -299,6 +304,11 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
         fecha: new Date('2026-11-20'),
         salon: { connect: { id: 5 } },
         cantidadPersonas: 12,
+        tipo: 'Corporativo',
+        tipoSocial: null,
+        tipoSocialDetalle: null,
+        tipoJornada: 'completa',
+        horaInicioEstimada: undefined,
       },
       undefined,
     );
@@ -545,6 +555,167 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('Consultas sociales (ADR 0008)', () => {
+  const lineasGuardadas = () => reemplazarLineasMock.mock.calls[0]![1];
+  const datosDelPresupuesto = () =>
+    actualizarPresupuestoMock.mock.calls[0]![1] as { venceEn: Date | null; total: string };
+  const datosDelEvento = () => actualizarEventoMock.mock.calls[0]![1] as Record<string, unknown>;
+
+  // Consulta social recién llegada: sin salón, sin líneas y sin vencimiento.
+  const consultaSocial = (evento: Record<string, unknown> = {}) =>
+    consulta(
+      { venceEn: null, total: D('0'), lineas: [] },
+      {
+        salonId: null,
+        salon: null,
+        tipo: 'Social',
+        tipoSocial: 'Casamiento',
+        tipoJornada: 'media',
+        horaInicioEstimada: '21:00',
+        ...evento,
+      },
+    );
+  const bodySocial = {
+    fecha: '2026-11-20',
+    salonId: null,
+    cantidadPersonas: 120,
+    tipoJornada: 'media',
+    servicios: [],
+  };
+
+  beforeEach(() => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consultaSocial());
+  });
+
+  it('el detalle viene sin salón ni vencimiento, con el tipo, la jornada y la hora que eligió el cliente', async () => {
+    const respuesta = await request(app).get('/api/presupuestos/31').set('Cookie', [cookieRE]);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data).toMatchObject({
+      venceEn: null,
+      salon: null,
+      tipoJornada: 'media',
+      lineas: [],
+      evento: {
+        tipo: 'Social',
+        tipoSocial: 'Casamiento',
+        tipoSocialDetalle: null,
+        horaInicioEstimada: '21:00',
+      },
+    });
+  });
+
+  it('guardarla sin salón ni servicios la deja sin armar: no arranca la vigencia', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send(bodySocial);
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas()).toEqual([]);
+    expect(datosDelPresupuesto()).toMatchObject({ venceEn: null, total: '0.00' });
+    expect(datosDelEvento()).toMatchObject({
+      salon: { disconnect: true },
+      tipo: 'Social',
+      tipoSocial: 'Casamiento',
+    });
+    expect(buscarSalonMock).not.toHaveBeenCalled();
+  });
+
+  it('al cargarle el salón queda armada: línea del salón y 10 días de vigencia desde ahora', async () => {
+    const antes = Date.now();
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodySocial, salonId: 5, cantidadPersonas: 12 });
+
+    expect(lineasGuardadas()).toEqual([
+      expect.objectContaining({
+        descripcion: 'Salón Paraná (media jornada)',
+        subtotal: '110000.00',
+      }),
+    ]);
+    const { venceEn, total } = datosDelPresupuesto();
+    expect(total).toBe('110000.00');
+    expect(venceEn!.getTime()).toBeGreaterThanOrEqual(antes + DIEZ_DIAS);
+  });
+
+  it('con solo un adicional, sin salón, también arranca la vigencia', async () => {
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodySocial,
+        adicionales: [{ descripcion: 'Ambientación', cantidad: 1, precioUnitario: '50000' }],
+      });
+
+    expect(datosDelPresupuesto().venceEn).toBeInstanceOf(Date);
+    expect(datosDelPresupuesto().total).toBe('50000.00');
+  });
+
+  it('el personal puede cambiar el tipo social, su detalle y la hora estimada', async () => {
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodySocial,
+        tipo: 'Social',
+        tipoSocial: 'Otro',
+        tipoSocialDetalle: 'Aniversario',
+        horaInicioEstimada: null,
+      });
+
+    expect(datosDelEvento()).toMatchObject({
+      tipoSocial: 'Otro',
+      tipoSocialDetalle: 'Aniversario',
+      horaInicioEstimada: null,
+    });
+  });
+
+  it('pasarla a corporativo exige salón y limpia el tipo social', async () => {
+    const sinSalon = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodySocial, tipo: 'Corporativo' });
+    expect(sinSalon.status).toBe(400);
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodySocial, tipo: 'Corporativo', salonId: 5, cantidadPersonas: 12 });
+    expect(datosDelEvento()).toMatchObject({
+      tipo: 'Corporativo',
+      tipoSocial: null,
+      tipoSocialDetalle: null,
+    });
+  });
+
+  it('una consulta corporativa no puede quedar sin salón (422)', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta());
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send(bodySocial);
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.message).toBe('Un evento corporativo necesita salón');
+    expect(actualizarEventoMock).not.toHaveBeenCalled();
+  });
+
+  it('pasarla a social sin decir qué tipo es responde 400', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta());
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodySocial, tipo: 'Social' });
+
+    expect(respuesta.status).toBe(400);
   });
 });
 

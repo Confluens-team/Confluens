@@ -131,7 +131,8 @@ export async function registrarPago(
       // Sin franja horaria cargada no hay con qué evaluar RN-12, así que no se puede reservar. Se
       // rechaza el pago en vez de aceptarlo sin reservar (el cliente pagó y el salón quedaría
       // libre) o de reservar a ciegas (riesgo de vender dos veces la misma franja).
-      if (reservaElSalon && (!evento.inicio || !evento.fin)) {
+      // Lo mismo sin salón: una consulta social puede no tenerlo todavía (ADR 0008).
+      if (reservaElSalon && (!evento.salonId || !evento.inicio || !evento.fin)) {
         throw ErrorApi.reglaNegocio(
           'Hay que agendar la distribución y el horario del evento antes de cobrar la seña',
         );
@@ -139,7 +140,7 @@ export async function registrarPago(
 
       let consultasEnConflicto: Awaited<ReturnType<typeof repo.buscarConsultasSuperpuestas>> = [];
 
-      if (reservaElSalon && evento.inicio && evento.fin) {
+      if (reservaElSalon && evento.salonId && evento.inicio && evento.fin) {
         const franja = {
           salonId: evento.salonId,
           inicio: evento.inicio,
