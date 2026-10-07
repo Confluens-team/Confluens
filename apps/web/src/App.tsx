@@ -19,6 +19,7 @@ import { OlvideContrasena } from '@/paginas/auth/OlvideContrasena';
 import { RestablecerContrasena } from '@/paginas/auth/RestablecerContrasena';
 import { PanelInterno } from '@/paginas/panel/PanelInterno';
 import { CotizarEvento, type ResultadoCotizacion } from '@/paginas/presupuestos/CotizarEvento';
+import { ConsultaRecibida } from '@/paginas/presupuestos/ConsultaRecibida';
 import { PresupuestoEstimado } from '@/paginas/presupuestos/PresupuestoEstimado';
 import { Landing } from '@/paginas/solicitudes/Landing';
 
@@ -122,13 +123,23 @@ function RutaCotizar({ sesionCliente }: { sesionCliente: Sesion | null }) {
   );
 }
 
-// El presupuesto generado no se vuelve a pedir a la API: llega en el state de la navegación. Si se
-// entra directo (o se recarga), no hay nada que mostrar y se vuelve al cotizador.
+// El presupuesto generado (o la consulta social enviada, ADR 0008) no se vuelve a pedir a la API:
+// llega en el state de la navegación. Si se entra directo (o se recarga), no hay nada que mostrar y
+// se vuelve al cotizador.
 function RutaPresupuesto({ sesionCliente }: { sesionCliente: Sesion | null }) {
   const navigate = useNavigate();
   const resultado = useLocation().state as ResultadoCotizacion | null;
 
   if (!sesionCliente || !resultado) return <Navigate to="/cotizar" replace />;
+  if (resultado.tipo === 'Social') {
+    return (
+      <ConsultaRecibida
+        resultado={resultado}
+        onOtra={() => navigate('/cotizar')}
+        onInicio={() => navigate('/')}
+      />
+    );
+  }
   return (
     <PresupuestoEstimado
       resultado={resultado}

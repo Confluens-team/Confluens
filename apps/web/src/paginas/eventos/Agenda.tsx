@@ -2,6 +2,7 @@ import { ESTADOS_QUE_OCUPAN_SALON, type EstadoEvento, type EventoAgenda } from '
 import { ArrowLeft, CalendarDays, Clock, List, Users } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 
+import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
 import { useAgenda } from '@/hooks/use-eventos';
 import { useSalones } from '@/hooks/use-salones';
@@ -100,7 +101,7 @@ function ListaDeEventos({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">
-                        Salón {evento.salon.nombre}
+                        {evento.salon ? `Salón ${evento.salon.nombre}` : 'Salón a definir'}
                         {evento.distribucion && (
                           <span className="font-normal text-muted-foreground">
                             {' '}
@@ -111,6 +112,7 @@ function ListaDeEventos({
                       <p className="truncate text-sm text-muted-foreground">
                         {nombreCompleto(evento.cliente)}
                       </p>
+                      <BadgeTipoEvento evento={evento} className="mt-1" />
                       <p className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
                         {desde && hasta && (
                           <span className="inline-flex items-center gap-1">

@@ -2,11 +2,13 @@ import { desglosarIva, type EstadoConsulta, type FiltrosPresupuestos } from '@co
 import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Search, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { usePresupuestos } from '@/hooks/use-presupuestos';
 import { fechaLocal, formatearPesos, nombreCompleto } from '@/lib/formato';
+import { COLORES_TIPO_EVENTO } from '@/lib/tipo-evento';
 import { cn } from '@/lib/utils';
 import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
 
@@ -101,7 +103,9 @@ export function ListadoConsultas() {
         onVolver={() => cerrar(null)}
         onGuardada={(consulta) =>
           cerrar(
-            `Consulta ${consulta.id} guardada: queda Estimado hasta el ${fechaCorta(new Date(consulta.venceEn))}.`,
+            consulta.venceEn
+              ? `Consulta ${consulta.id} guardada: queda Estimado hasta el ${fechaCorta(new Date(consulta.venceEn))}.`
+              : `Consulta ${consulta.id} guardada: el presupuesto sigue sin armar.`,
           )
         }
         onDadaDeBaja={(consulta) => cerrar(`Consulta ${consulta.id} dada de baja.`)}
@@ -226,16 +230,27 @@ export function ListadoConsultas() {
 
       {lista.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs text-muted-foreground">
-            {lista.length} {lista.length === 1 ? 'consulta' : 'consultas'} · de la más reciente a la
-            más antigua
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+            <p>
+              {lista.length} {lista.length === 1 ? 'consulta' : 'consultas'} · de la más reciente a
+              la más antigua
+            </p>
+            <p className="flex items-center gap-3">
+              {(['Corporativo', 'Social'] as const).map((tipo) => (
+                <span key={tipo} className="inline-flex items-center gap-1.5">
+                  <span className={cn('size-2.5 rounded-full', COLORES_TIPO_EVENTO[tipo].punto)} />
+                  {tipo}
+                </span>
+              ))}
+            </p>
+          </div>
           <div className="overflow-x-auto rounded-xl bg-card ring-1 ring-border">
-            <table className="w-full min-w-[52rem] text-left text-sm">
+            <table className="w-full min-w-[60rem] text-left text-sm">
               <thead className="border-b text-xs text-muted-foreground">
                 <tr>
                   <th className="px-3 py-3 font-medium">Nº</th>
                   <th className="px-3 py-3 font-medium">Cliente</th>
+                  <th className="px-3 py-3 font-medium">Tipo</th>
                   <th className="px-3 py-3 font-medium">Salón</th>
                   <th className="px-3 py-3 font-medium">Evento</th>
                   <th className="px-3 py-3 font-medium">Vigencia</th>
@@ -248,6 +263,8 @@ export function ListadoConsultas() {
               <tbody className="divide-y">
                 {lista.map((presupuesto) => {
                   const expirado = presupuesto.estado === 'Expirado';
+                  // ADR 0008: consulta social que el personal todavía no armó.
+                  const sinArmar = presupuesto.venceEn === null;
                   const importes = desglosarIva(presupuesto.total);
                   return (
                     <tr
@@ -258,7 +275,12 @@ export function ListadoConsultas() {
                         expirado && 'bg-amber-50/70',
                       )}
                     >
-                      <td className="px-3 py-3">
+                      <td
+                        className={cn(
+                          'border-l-4 px-3 py-3',
+                          COLORES_TIPO_EVENTO[presupuesto.tipo].borde,
+                        )}
+                      >
                         <button
                           type="button"
                           className="font-medium text-bordo underline-offset-2 hover:underline"
@@ -275,7 +297,14 @@ export function ListadoConsultas() {
                           {presupuesto.cliente.correo}
                         </p>
                       </td>
-                      <td className="px-3 py-3">{presupuesto.salon.nombre}</td>
+                      <td className="max-w-[11rem] px-3 py-3">
+                        <BadgeTipoEvento evento={presupuesto} />
+                      </td>
+                      <td className="px-3 py-3">
+                        {presupuesto.salon?.nombre ?? (
+                          <span className="text-muted-foreground italic">A definir</span>
+                        )}
+                      </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         {fechaCorta(fechaLocal(presupuesto.fechaEvento))}
                       </td>
@@ -285,21 +314,38 @@ export function ListadoConsultas() {
                           {fechaCompacta(new Date(presupuesto.fechaEmision))}
                         </p>
                         <p>
-                          <span className="text-xs text-muted-foreground">Vence </span>
-                          {fechaCompacta(new Date(presupuesto.venceEn))}
+                          {presupuesto.venceEn ? (
+                            <>
+                              <span className="text-xs text-muted-foreground">Vence </span>
+                              {fechaCompacta(new Date(presupuesto.venceEn))}
+                            </>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">Sin armar</span>
+                          )}
                         </p>
                       </td>
-                      <td className="px-3 py-3 text-right whitespace-nowrap">
-                        {formatearPesos(importes.subtotal)}
-                        <p className="text-xs text-muted-foreground">sin IVA</p>
-                      </td>
-                      <td className="px-3 py-3 text-right whitespace-nowrap">
-                        {formatearPesos(importes.iva)}
-                      </td>
-                      <td className="px-3 py-3 text-right font-medium whitespace-nowrap">
-                        {formatearPesos(importes.total)}
-                        <p className="text-xs font-normal text-muted-foreground">con IVA</p>
-                      </td>
+                      {sinArmar ? (
+                        <td
+                          colSpan={3}
+                          className="px-3 py-3 text-center text-xs text-muted-foreground italic"
+                        >
+                          Presupuesto por armar
+                        </td>
+                      ) : (
+                        <>
+                          <td className="px-3 py-3 text-right whitespace-nowrap">
+                            {formatearPesos(importes.subtotal)}
+                            <p className="text-xs text-muted-foreground">sin IVA</p>
+                          </td>
+                          <td className="px-3 py-3 text-right whitespace-nowrap">
+                            {formatearPesos(importes.iva)}
+                          </td>
+                          <td className="px-3 py-3 text-right font-medium whitespace-nowrap">
+                            {formatearPesos(importes.total)}
+                            <p className="text-xs font-normal text-muted-foreground">con IVA</p>
+                          </td>
+                        </>
+                      )}
                       <td className="px-3 py-3">
                         <span
                           className={cn(

@@ -17,9 +17,10 @@ import { ESTADOS } from './estado-evento';
 // evento un día antes en Argentina: por eso pasa por fechaLocal().
 function comoEventoDelCalendario(evento: EventoAgenda): EventInput {
   const { color } = ESTADOS[evento.estado];
+  const salon = evento.salon ? `Salón ${evento.salon.nombre}` : 'Salón a definir';
   return {
     id: String(evento.id),
-    title: `Salón ${evento.salon.nombre}`,
+    title: salon,
     start: evento.inicio ?? fechaLocal(evento.fecha),
     end: evento.fin ?? undefined,
     allDay: !evento.inicio,
@@ -27,7 +28,7 @@ function comoEventoDelCalendario(evento: EventoAgenda): EventInput {
     borderColor: color,
     textColor: '#f6f1ea', // crema
     extendedProps: {
-      salon: `Salón ${evento.salon.nombre}`,
+      salon,
       cliente: nombreCompleto(evento.cliente),
       personas: evento.cantidadPersonas,
     },

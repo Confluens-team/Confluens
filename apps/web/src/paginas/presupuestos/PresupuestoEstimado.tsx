@@ -5,7 +5,7 @@ import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { fechaLocal, formatearFecha, formatearPesos } from '@/lib/formato';
 import { UBICACION } from '@/paginas/solicitudes/datos-institucionales';
-import type { ResultadoCotizacion } from './CotizarEvento';
+import type { PresupuestoGenerado } from './CotizarEvento';
 
 // Presupuesto Estimado recién generado, presentado como el documento que hoy el cliente recibe en
 // PDF por WhatsApp. "Imprimir" usa el diálogo del navegador, que permite guardarlo como PDF.
@@ -14,7 +14,7 @@ export function PresupuestoEstimado({
   onOtro,
   onInicio,
 }: {
-  resultado: ResultadoCotizacion;
+  resultado: PresupuestoGenerado;
   onOtro: () => void;
   onInicio: () => void;
 }) {
