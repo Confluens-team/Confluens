@@ -1,0 +1,25 @@
+# H8 de la auditoría de seguridad (OWASP A06). Las versiones del proyecto son exactas
+# (AGENTS.md §2, save-exact=true): Dependabot abre el PR con la subida y el equipo decide, en vez
+# de que una vulnerabilidad conocida quede esperando a que alguien corra npm audit a mano.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      # commitlint exige Conventional Commits con descripción en minúscula (AGENTS.md §3).
+      prefix: chore
+      prefix-development: chore
+      include: scope
+    groups:
+      seguridad:
+        applies-to: security-updates
+        patterns: ['*']
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: ci

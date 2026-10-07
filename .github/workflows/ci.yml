@@ -111,3 +111,33 @@ jobs:
           key: node-modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
           fail-on-cache-miss: true
       - run: npm run test
+
+  # H8 de la auditoría de seguridad (OWASP A06): el pipeline corría typecheck, lint, build y
+  # tests, pero nada que mirara las dependencias. El job informa y no bloquea a propósito: al
+  # agregarlo, el árbol ya tenía avisos arrastrados por transitivas de express y de las
+  # herramientas de dev, y subirlas rompe las versiones fijas de AGENTS.md §2. Se revisa en cada
+  # PR y se resuelve por rama propia, no frenando el merge de historias ajenas al problema.
+  audit:
+    name: Audit
+    needs: install
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/cache/restore@v6
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: node-modules-${{ runner.os }}-${{ hashFiles('.nvmrc', 'package-lock.json') }}
+          fail-on-cache-miss: true
+      # Lo que llega a producción primero, que es lo que de verdad importa.
+      - name: Dependencias de producción
+        run: npm audit --omit=dev --audit-level=high
+      - name: Árbol completo (informativo)
+        if: always()
+        run: npm audit --audit-level=critical
