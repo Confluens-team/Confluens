@@ -22,6 +22,7 @@ import { useIniciarSesion, useRegistrarCliente } from '@/hooks/use-sesion';
 import { ErrorApiCliente } from '@/lib/api';
 import { FOTOS } from '@/lib/fotos';
 import { OPCIONES_PAIS } from '@/lib/paises';
+import { ariaDeCampo, idDeError } from '@/lib/campo-accesible';
 import { cn } from '@/lib/utils';
 
 type Modo = 'registro' | 'ingreso';
@@ -41,7 +42,13 @@ function Campo({
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{etiqueta}</Label>
       {children}
-      {error && <p className="text-xs text-destructive">{error}</p>}
+      {/* AC4: el id lo referencia el aria-describedby del input y role="alert" hace que el
+          lector de pantalla lo anuncie al aparecer. */}
+      {error && (
+        <p id={idDeError(id)} role="alert" className="text-xs text-destructive">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
@@ -88,10 +95,15 @@ const SelectorPais = forwardRef<
       <span aria-hidden>{elegido?.bandera}</span>
       <span aria-hidden>+{elegido?.prefijo}</span>
       <ChevronDown aria-hidden className="size-3.5 text-muted-foreground" />
+      {/* AC5 de la auditoría de accesibilidad (WCAG 2.5.5): la caja visible mide 40 px de alto y
+          el objetivo táctil tiene que llegar a 44. El select es invisible y está encima, así que
+          se estira 4 px para arriba y 4 para abajo: el dedo tiene 46 px y nada se mueve de lugar
+          (los campos del formulario están separados por 16 px). Los 4 px se cuentan desde el
+          padding box, que mide 38 por los bordes de 1 px, no desde los 40 de la caja. */}
       <select
         ref={ref}
         aria-label="País del celular"
-        className="absolute inset-0 cursor-pointer opacity-0"
+        className="absolute inset-x-0 -inset-y-1 cursor-pointer opacity-0"
         {...props}
       >
         {OPCIONES_PAIS.map((opcion) => (
@@ -136,6 +148,7 @@ function FormularioRegistro({
             id="reg-nombre"
             autoComplete="given-name"
             className="h-10"
+            {...ariaDeCampo('reg-nombre', errors.nombre?.message)}
             {...register('nombre')}
           />
         </Campo>
@@ -144,6 +157,7 @@ function FormularioRegistro({
             id="reg-apellido"
             autoComplete="family-name"
             className="h-10"
+            {...ariaDeCampo('reg-apellido', errors.apellido?.message)}
             {...register('apellido')}
           />
         </Campo>
@@ -154,6 +168,7 @@ function FormularioRegistro({
           type="email"
           autoComplete="email"
           className="h-10"
+          {...ariaDeCampo('reg-email', errors.email?.message)}
           {...register('email')}
         />
       </Campo>
@@ -166,8 +181,8 @@ function FormularioRegistro({
             inputMode="tel"
             autoComplete="tel-national"
             placeholder={pais === 'AR' ? '3516167991' : 'Número de celular'}
-            aria-describedby="reg-telefono-ayuda"
             className="h-10"
+            {...ariaDeCampo('reg-telefono', errors.telefono?.message, 'reg-telefono-ayuda')}
             {...register('telefono')}
           />
         </div>
@@ -183,6 +198,7 @@ function FormularioRegistro({
           type="password"
           autoComplete="new-password"
           className="h-10"
+          {...ariaDeCampo('reg-contrasena', errors.contrasena?.message)}
           {...register('contrasena')}
         />
       </Campo>
@@ -231,6 +247,7 @@ function FormularioIngreso({
           type="email"
           autoComplete="username"
           className="h-10"
+          {...ariaDeCampo('ing-email', errors.email?.message)}
           {...register('email')}
         />
       </Campo>
@@ -240,6 +257,7 @@ function FormularioIngreso({
           type="password"
           autoComplete="current-password"
           className="h-10"
+          {...ariaDeCampo('ing-contrasena', errors.contrasena?.message)}
           {...register('contrasena')}
         />
       </Campo>
@@ -289,7 +307,7 @@ export function AccesoCliente({
             <img src={FOTOS.emplatado} alt="" className="absolute inset-0 size-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-bordo-oscuro via-bordo-oscuro/50 to-transparent" />
             <div className="absolute inset-x-0 bottom-0 p-8 text-crema">
-              <p className="text-xs font-semibold tracking-[0.3em] text-dorado uppercase">
+              <p className="text-xs font-semibold tracking-[0.3em] text-dorado-claro uppercase">
                 Cotizador online
               </p>
               <p className="mt-3 font-display text-2xl leading-snug italic">

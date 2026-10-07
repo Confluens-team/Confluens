@@ -9,6 +9,13 @@
   --font-serif: 'Cinzel', ui-serif, Georgia, serif;
   --font-display: 'Cormorant Garamond', ui-serif, Georgia, serif;
   --color-dorado: #b08d57;
+  /* AC1 de la auditoría de accesibilidad (WCAG 1.4.3): el dorado de los filetes da 2.75:1 sobre
+     crema, muy por debajo del 4.5:1 que pide el texto chico. Se mantiene para filetes, bordes e
+     iconos decorativos, y los rótulos en versalitas pasan a una de estas dos variantes según el
+     fondo: -texto sobre los fondos claros de la paleta (4.66:1 en el peor de ellos) y -claro
+     sobre bordó (5.07:1) y bordó oscuro (6.62:1). */
+  --color-dorado-texto: #7e5f26;
+  --color-dorado-claro: #c2a071;
   --color-bordo: #5e1f1a;
   --color-bordo-oscuro: #3b1411;
   --color-crema: #f6f1ea;
@@ -193,8 +200,11 @@
   color: var(--color-crema);
 }
 
+/* AC5 de la auditoría de accesibilidad (WCAG 2.4.11): el indicador de foco tiene que llegar a
+   3:1 contra el fondo, y el dorado de los filetes da 2.75:1 sobre el crema de la página. --ring
+   es el color de foco del resto de los controles (6.85:1) y deja el indicador consistente. */
 .calendario-agenda .fc .fc-button:focus-visible {
-  outline: 2px solid var(--color-dorado);
+  outline: 2px solid var(--ring);
   outline-offset: 1px;
   box-shadow: none;
 }

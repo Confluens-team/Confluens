@@ -61,10 +61,13 @@ export function SalonesPublicos({ onConsultar }: { onConsultar: (salon: SalonPub
                 alt={`Salón ${salon.nombre}`}
                 className="size-full object-cover transition-transform duration-700 group-hover:scale-105"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-bordo-oscuro/85 via-bordo-oscuro/10 to-transparent" />
+              {/* AC2 de la auditoría de accesibilidad: el nombre del salón y su rótulo van sobre
+                  la foto. El extremo inferior del degradado, que es donde se apoya el texto, pasa
+                  de 85 % a 95 %: contra una zona blanca de la foto el rótulo queda en 5.8:1. */}
+              <div className="absolute inset-0 bg-gradient-to-t from-bordo-oscuro/95 via-bordo-oscuro/10 to-transparent" />
               <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-5 text-crema">
                 <div>
-                  <p className="text-[0.65rem] font-medium tracking-[0.25em] text-dorado uppercase">
+                  <p className="text-[0.65rem] font-medium tracking-[0.25em] text-dorado-claro uppercase">
                     Salón
                   </p>
                   <h3 className="text-3xl font-semibold">{salon.nombre}</h3>

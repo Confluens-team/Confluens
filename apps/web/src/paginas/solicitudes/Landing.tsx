@@ -29,7 +29,14 @@ function TituloSeccion({
 }) {
   return (
     <div className="mx-auto max-w-2xl text-center">
-      <p className="text-xs font-semibold tracking-[0.3em] text-dorado uppercase">{antetitulo}</p>
+      {/* AC1: el mismo rótulo se usa sobre crema y sobre bordó; el tono del dorado acompaña. */}
+      <p
+        className={`text-xs font-semibold tracking-[0.3em] uppercase ${
+          claro ? 'text-dorado-claro' : 'text-dorado-texto'
+        }`}
+      >
+        {antetitulo}
+      </p>
       <h2
         className={`mt-3 text-3xl font-semibold sm:text-4xl ${claro ? 'text-crema' : 'text-bordo'}`}
       >
@@ -83,7 +90,7 @@ export function Landing({
 
         <div className="mx-auto w-full max-w-6xl px-4 pt-28 pb-10 sm:px-6">
           <div className="max-w-2xl">
-            <p className="text-xs font-semibold tracking-[0.3em] text-dorado uppercase">
+            <p className="text-xs font-semibold tracking-[0.3em] text-dorado-claro uppercase">
               Hotel Dr. César Carman · Córdoba
             </p>
             <h1 className="mt-5 text-4xl leading-[1.1] font-semibold text-crema sm:text-6xl">
@@ -118,10 +125,15 @@ export function Landing({
               { icono: ChefHat, valor: 'Gastronomía', detalle: 'propia, del coffee a la cena' },
               { icono: Car, valor: '100 autos', detalle: 'estacionamiento sin cargo' },
             ].map(({ icono: Icono, valor, detalle }) => (
-              <div key={valor} className="bg-bordo-oscuro/40 px-5 py-4 text-crema">
+              // AC2 de la auditoría de accesibilidad (WCAG 1.4.3): estas celdas se apoyan sobre
+              // la foto del hero, en la mitad donde el degradado ya casi no cubre, así que el
+              // contraste dependía de qué tan clara fuera la imagen. Con el velo al 80 % el peor
+              // caso posible (una zona blanca de la foto) da 7.8:1 para el dato y 6.2:1 para el
+              // detalle, que antes quedaba en 2.8:1.
+              <div key={valor} className="bg-bordo-oscuro/80 px-5 py-4 text-crema">
                 <Icono className="size-4 text-dorado" />
                 <dt className="mt-2 font-serif text-lg font-semibold">{valor}</dt>
-                <dd className="text-xs text-crema/70">{detalle}</dd>
+                <dd className="text-xs text-crema/85">{detalle}</dd>
               </div>
             ))}
           </dl>
@@ -131,7 +143,7 @@ export function Landing({
       {/* Presentación */}
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2">
         <div>
-          <p className="text-xs font-semibold tracking-[0.3em] text-dorado uppercase">
+          <p className="text-xs font-semibold tracking-[0.3em] text-dorado-texto uppercase">
             Los Abuelos Servicios Gastronómicos SRL
           </p>
           <h2 className="mt-3 text-3xl font-semibold text-bordo sm:text-4xl">
@@ -223,7 +235,7 @@ export function Landing({
               key={formato}
               className="rounded-xl bg-card p-6 text-center shadow-sm ring-1 ring-border"
             >
-              <span className="font-serif text-2xl text-dorado">{NUMERALES[indice]}</span>
+              <span className="font-serif text-2xl text-dorado-texto">{NUMERALES[indice]}</span>
               <p className="mt-2 font-medium text-bordo">{formato}</p>
             </li>
           ))}
@@ -276,9 +288,11 @@ export function Landing({
           alt=""
           className="absolute inset-0 -z-10 size-full object-cover"
         />
-        <div className="absolute inset-0 -z-10 bg-bordo-oscuro/85" />
+        {/* AC2: el rótulo en versalitas necesita 4.5:1 contra la zona más clara de la foto;
+            con el velo al 85 % quedaba en 4.25:1 y con el 92 % llega a 5.3:1. */}
+        <div className="absolute inset-0 -z-10 bg-bordo-oscuro/92" />
         <div className="mx-auto flex max-w-3xl flex-col items-center px-4 text-center text-crema sm:px-6">
-          <p className="text-xs font-semibold tracking-[0.3em] text-dorado uppercase">
+          <p className="text-xs font-semibold tracking-[0.3em] text-dorado-claro uppercase">
             Hagamos tu evento
           </p>
           <h2 className="mt-3 text-3xl font-semibold sm:text-5xl">Tu presupuesto, en minutos</h2>
