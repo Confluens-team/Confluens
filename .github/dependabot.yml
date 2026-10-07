@@ -13,6 +13,11 @@ updates:
       prefix: chore
       prefix-development: chore
       include: scope
+    # Las subidas mayores rompen la compatibilidad del stack (TypeScript 7 choca con el peer de
+    # typescript-eslint, PR #37): se migran a mano en una rama propia. No afecta a las de seguridad.
+    ignore:
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
     groups:
       seguridad:
         applies-to: security-updates
