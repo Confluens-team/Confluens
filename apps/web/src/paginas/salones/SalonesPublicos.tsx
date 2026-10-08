@@ -56,9 +56,12 @@ export function SalonesPublicos({ onConsultar }: { onConsultar: (salon: SalonPub
             )}
           >
             <div className={cn('relative overflow-hidden', destacado ? 'h-72' : 'h-56')}>
+              {/* Diferida: se descarga recién cuando el visitante llega a la sección de salones. */}
               <img
-                src={fotoDeSalon(salon)}
+                src={fotoDeSalon(salon, destacado ? 1200 : 800)}
                 alt={`Salón ${salon.nombre}`}
+                loading="lazy"
+                decoding="async"
                 className="size-full object-cover transition-transform duration-700 group-hover:scale-105"
               />
               {/* AC2 de la auditoría de accesibilidad: el nombre del salón y su rótulo van sobre
