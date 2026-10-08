@@ -1,5 +1,6 @@
 import type { ActualizarLandingSalon } from '@confluens/shared';
 
+import { borrarFotoReemplazada } from '../../lib/cloudinary.js';
 import { ErrorApi } from '../../lib/errores.js';
 import {
   actualizarLanding,
@@ -28,20 +29,20 @@ export async function listarSalonesPublicos(repo = { obtenerSalonesPublicos }) {
 
 // HU-08: publicar/despublicar un salón y asignarle la foto de la landing. Acá sí hay lógica más
 // allá del CRUD, y es la que justifica el test de servicio: se lee el estado anterior para poder
-// auditarlo, y se corta con 404 antes de escribir si el salón no existe.
+// auditarlo, y se corta con 404 antes de escribir si el salón no existe. Si la foto cambió, la
+// anterior se borra de Cloudinary después de guardar (ADR 0009).
 export async function actualizarLandingSalon(
   id: number,
   cambios: ActualizarLandingSalon,
   usuarioId: number,
   repo = { obtenerSalonPorId, actualizarLanding },
+  fotos = { borrarFotoReemplazada },
 ) {
   const salon = await repo.obtenerSalonPorId(id);
   if (!salon) throw ErrorApi.noEncontrado('No existe el salón indicado');
 
-  return repo.actualizarLanding(
-    id,
-    cambios,
-    { visibleEnLanding: salon.visibleEnLanding, fotoUrl: salon.fotoUrl },
-    usuarioId,
-  );
+  const anterior = { visibleEnLanding: salon.visibleEnLanding, fotoUrl: salon.fotoUrl };
+  const actualizado = await repo.actualizarLanding(id, cambios, anterior, usuarioId);
+  await fotos.borrarFotoReemplazada(anterior.fotoUrl, cambios.fotoUrl);
+  return actualizado;
 }
