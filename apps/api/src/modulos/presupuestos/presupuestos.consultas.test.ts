@@ -15,6 +15,8 @@ vi.mock('./presupuestos.repositorio.js', () => ({
   actualizarEvento: vi.fn(),
   actualizarPresupuesto: vi.fn(),
   reemplazarLineas: vi.fn(),
+  sumarPagos: vi.fn(),
+  buscarDistribucionPorNombre: vi.fn(),
 }));
 
 const repo = await import('./presupuestos.repositorio.js');
@@ -24,6 +26,8 @@ const buscarPresupuestoDetalladoMock = vi.mocked(repo.buscarPresupuestoDetallado
 const actualizarEventoMock = vi.mocked(repo.actualizarEvento);
 const actualizarPresupuestoMock = vi.mocked(repo.actualizarPresupuesto);
 const reemplazarLineasMock = vi.mocked(repo.reemplazarLineas);
+const sumarPagosMock = vi.mocked(repo.sumarPagos);
+const buscarDistribucionPorNombreMock = vi.mocked(repo.buscarDistribucionPorNombre);
 
 const app = crearApp();
 const D = (valor: string) => new Prisma.Decimal(valor);
@@ -555,6 +559,135 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+// RN-09: el Responsable de Eventos modifica en todo momento, también un evento ya confirmado
+// (decisión de Franco, 08/10/2026). El presupuesto sigue Confirmado y el estado del evento sale de
+// lo pagado contra el total nuevo.
+describe('PATCH /api/presupuestos/:id sobre un evento confirmado (RN-09)', () => {
+  const banquete = { id: 15, salonId: 5, nombre: 'Banquete', capacidad: 12 };
+  // Reservado el 15/11 de 21:00 a 05:00 (hora argentina), con la seña de 50.000 pagada.
+  const confirmada = (evento: Record<string, unknown> = {}) =>
+    consulta(
+      { estado: 'Confirmado' },
+      {
+        estado: 'Reservado',
+        distribucionId: 15,
+        distribucion: banquete,
+        inicio: new Date('2026-11-16T00:00:00.000Z'),
+        fin: new Date('2026-11-16T08:00:00.000Z'),
+        ...evento,
+      },
+    );
+  const datosDelEvento = () => actualizarEventoMock.mock.calls[0]![1] as Record<string, unknown>;
+  const datosDelPresupuesto = () =>
+    actualizarPresupuestoMock.mock.calls[0]![1] as Record<string, unknown>;
+
+  beforeEach(() => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(confirmada());
+    sumarPagosMock.mockResolvedValue(D('50000'));
+  });
+
+  it('se guarda sin volver a Estimado ni reiniciar la vigencia, y el evento sigue Reservado', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send(bodyBase);
+
+    expect(respuesta.status).toBe(200);
+    // Sin estado ni venceEn: sigue Confirmado. requiereFactura no viene, así que no se toca.
+    expect(datosDelPresupuesto()).toEqual({ total: '238200.00' });
+    expect(datosDelEvento().estado).toBe('Reservado');
+  });
+
+  it('si cambia la fecha, el horario se corre los mismos días y conserva las horas', async () => {
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, fecha: '2026-11-20' });
+
+    expect(datosDelEvento()).toMatchObject({
+      fecha: new Date('2026-11-20'),
+      inicio: new Date('2026-11-21T00:00:00.000Z'),
+      fin: new Date('2026-11-21T08:00:00.000Z'),
+    });
+  });
+
+  it('si lo pagado cubre el total nuevo, el evento pasa a Cobrado aunque el saldo quede negativo', async () => {
+    sumarPagosMock.mockResolvedValue(D('300000'));
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send(bodyBase);
+
+    expect(respuesta.status).toBe(200);
+    expect(datosDelEvento().estado).toBe('Cobrado');
+  });
+
+  it('un Cobrado al que se le suman servicios vuelve a Reservado para poder cobrar la diferencia', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(confirmada({ estado: 'Cobrado' }));
+    sumarPagosMock.mockResolvedValue(D('222200'));
+
+    await request(app).patch('/api/presupuestos/31').set('Cookie', [cookieRE]).send(bodyBase);
+
+    expect(datosDelEvento().estado).toBe('Reservado');
+  });
+
+  it('al cambiar de salón conserva la distribución del mismo nombre en el salón nuevo', async () => {
+    buscarSalonMock.mockResolvedValue({ ...salonParana, id: 2, nombre: 'Pucará' });
+    buscarDistribucionPorNombreMock.mockResolvedValue({ ...banquete, id: 6, salonId: 2 } as never);
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, salonId: 2 });
+
+    expect(buscarDistribucionPorNombreMock).toHaveBeenCalledWith(2, 'Banquete');
+    expect(datosDelEvento()).toMatchObject({ distribucion: { connect: { id: 6 } } });
+  });
+
+  it('responde 422 si se le saca el salón', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, salonId: null, tipo: 'Social', tipoSocial: 'Cumpleanos' });
+
+    expect(respuesta.status).toBe(422);
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 409 si la fecha o el salón nuevos pisan a otro evento reservado (RN-12)', async () => {
+    vi.mocked(repo.crearEnTransaccion).mockRejectedValueOnce(
+      new Prisma.PrismaClientKnownRequestError(
+        'conflicting key value violates exclusion constraint',
+        {
+          code: 'P2039',
+          clientVersion: 'test',
+          meta: { driverAdapterError: { cause: { code: '23P01' } } },
+        },
+      ),
+    );
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, fecha: '2026-11-20' });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+  });
+
+  it('un presupuesto Confirmado de un evento Cancelado no se modifica (409)', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(confirmada({ estado: 'Cancelado' }));
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send(bodyBase);
+
+    expect(respuesta.status).toBe(409);
   });
 });
 

@@ -31,7 +31,8 @@ export async function obtenerDetalle(
 
 /**
  * Agenda el evento: le fija distribución, franja horaria y modalidad. **No cambia el estado ni
- * toca el presupuesto**: el evento sigue EnConsulta y su presupuesto sigue Estimado.
+ * toca el presupuesto**: un evento EnConsulta sigue EnConsulta con su presupuesto Estimado, y uno
+ * Reservado o Cobrado se reagenda sin perder la reserva (RN-09). Solo se rechaza un Cancelado.
  *
  * Es el paso previo obligatorio a cobrar la seña. Un evento EnConsulta no bloquea el salón
  * (dominio.md), pero sin `inicio` y `fin` cargados el módulo de pagos no tiene con qué evaluar el
@@ -54,10 +55,11 @@ export async function agendarEvento(
 ) {
   const evento = await repo.buscarDetallado(id);
   if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${id}`);
-  if (evento.estado !== 'EnConsulta') {
-    throw ErrorApi.conflicto(
-      `El evento ${id} no está EnConsulta (estado actual: ${evento.estado})`,
-    );
+  // RN-09: el horario de un evento ya confirmado también se puede cambiar (decisión de Franco,
+  // 08/10/2026). Agendar no toca el estado, así que un Reservado sigue Reservado; lo que sí se
+  // vuelve a controlar es que la franja nueva no pise a otro evento (RN-12, más abajo).
+  if (evento.estado === 'Cancelado') {
+    throw ErrorApi.conflicto(`El evento ${id} está cancelado`);
   }
 
   // ADR 0008: una consulta social llega sin salón; se carga en la consulta antes de agendar.
