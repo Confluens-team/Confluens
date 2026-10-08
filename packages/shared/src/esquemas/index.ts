@@ -7,6 +7,7 @@ export * from './comunes.esquema.js';
 export * from './crear-presupuesto.esquema.js';
 export * from './distribucion.esquema.js';
 export * from './evento.esquema.js';
+export * from './foto.esquema.js';
 export * from './linea-presupuesto.esquema.js';
 export * from './modificar-presupuesto.esquema.js';
 export * from './pago.esquema.js';
