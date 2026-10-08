@@ -15,6 +15,7 @@ vi.mock('./presupuestos.repositorio.js', () => ({
   vincularSolicitudAEvento: vi.fn(),
   crearEvento: vi.fn(),
   crearPresupuestoConLineas: vi.fn(),
+  buscarEventoConPresupuestos: vi.fn(),
   // No hay transacción real en el test: se ejecuta el callback tal cual, cada función interna
   // que llama ya está mockeada arriba y no usa el `tx` que recibiría de una transacción real.
   crearEnTransaccion: vi.fn((ejecutar: (tx: undefined) => unknown) => ejecutar(undefined)),
@@ -31,6 +32,7 @@ const {
   vincularSolicitudAEvento,
   crearEvento,
   crearPresupuestoConLineas,
+  buscarEventoConPresupuestos,
   crearEnTransaccion,
   obtenerPresupuestos,
 } = await import('./presupuestos.repositorio.js');
@@ -44,6 +46,7 @@ const buscarSolicitudMock = vi.mocked(buscarSolicitud);
 const vincularSolicitudAEventoMock = vi.mocked(vincularSolicitudAEvento);
 const crearEventoMock = vi.mocked(crearEvento);
 const crearPresupuestoConLineasMock = vi.mocked(crearPresupuestoConLineas);
+const buscarEventoConPresupuestosMock = vi.mocked(buscarEventoConPresupuestos);
 const crearEnTransaccionMock = vi.mocked(crearEnTransaccion);
 const obtenerPresupuestosMock = vi.mocked(obtenerPresupuestos);
 
@@ -153,6 +156,7 @@ function prepararMocksDeCreacion() {
   vincularSolicitudAEventoMock.mockReset();
   crearEventoMock.mockReset();
   crearPresupuestoConLineasMock.mockReset();
+  buscarEventoConPresupuestosMock.mockReset();
   crearEnTransaccionMock.mockClear();
 
   buscarSalonMock.mockResolvedValue(salonFixture);
@@ -851,5 +855,99 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
     expect(sinSesion.status).toBe(401);
     expect(personal.status).toBe(403);
     expect(crearEventoMock).not.toHaveBeenCalled();
+  });
+});
+
+// El presupuesto vacío de un evento que ya existe: el equivalente a lo que la consulta social crea
+// junto con el evento, para los eventos que llegaron sin ninguno.
+describe('POST /api/presupuestos/para-evento/:eventoId', () => {
+  beforeEach(prepararMocksDeCreacion);
+
+  const url = '/api/presupuestos/para-evento/20';
+
+  it('crea el presupuesto sin armar: sin líneas, total 0 y sin vigencia', async () => {
+    buscarEventoConPresupuestosMock.mockResolvedValue({
+      id: 20,
+      estado: 'EnConsulta',
+      presupuestos: [],
+    });
+
+    const respuesta = await request(app)
+      .post(url)
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(201);
+    expect(crearPresupuestoConLineasMock.mock.calls[0]![0]).toMatchObject({
+      eventoId: 20,
+      venceEn: null,
+      total: '0.00',
+      lineas: [],
+    });
+  });
+
+  it('no cuenta los presupuestos dados de baja', async () => {
+    buscarEventoConPresupuestosMock.mockResolvedValue({
+      id: 20,
+      estado: 'EnConsulta',
+      presupuestos: [{ id: 9, estado: 'Cancelado' }],
+    });
+
+    const respuesta = await request(app)
+      .post(url)
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(201);
+  });
+
+  it('responde 404 si el evento no existe', async () => {
+    buscarEventoConPresupuestosMock.mockResolvedValue(null);
+
+    const respuesta = await request(app)
+      .post(url)
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body.error.code).toBe('NOT_FOUND');
+    expect(crearPresupuestoConLineasMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 409 si el evento ya tiene un presupuesto', async () => {
+    buscarEventoConPresupuestosMock.mockResolvedValue({
+      id: 20,
+      estado: 'EnConsulta',
+      presupuestos: [{ id: 9, estado: 'Estimado' }],
+    });
+
+    const respuesta = await request(app)
+      .post(url)
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+    expect(respuesta.status).toBe(409);
+    expect(crearPresupuestoConLineasMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['Reservado', 'Cobrado', 'Cancelado'] as const)(
+    'responde 409 si el evento está %s',
+    async (estado) => {
+      buscarEventoConPresupuestosMock.mockResolvedValue({ id: 20, estado, presupuestos: [] });
+
+      const respuesta = await request(app)
+        .post(url)
+        .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
+
+      expect(respuesta.status).toBe(409);
+      expect(crearPresupuestoConLineasMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('sin sesión responde 401 y con sesión de cliente 403', async () => {
+    const sinSesion = await request(app).post(url);
+    const cliente = await request(app)
+      .post(url)
+      .set('Cookie', [cookieDe('CLIENTE')]);
+
+    expect(sinSesion.status).toBe(401);
+    expect(cliente.status).toBe(403);
+    expect(buscarEventoConPresupuestosMock).not.toHaveBeenCalled();
   });
 });
