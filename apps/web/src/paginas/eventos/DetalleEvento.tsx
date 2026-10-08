@@ -1,7 +1,6 @@
 import type { EstadoEvento } from '@confluens/shared';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
-import { Link } from 'react-router';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
@@ -111,6 +110,12 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
 
   const estado = ESTADOS[evento.estado];
 
+  // Sin base de cobro contra la que medir nada: o el evento no tiene presupuesto, o tiene el vacío
+  // de una consulta social, que se reconoce por venceEn en null (ADR 0008, presupuesto.esquema.ts).
+  // En los dos casos la cuenta mostraría $0 y cualquier pago lo rechazaría la API por superar el
+  // total, así que en su lugar va el aviso.
+  const presupuestoSinArmar = presupuestoVigente?.venceEn === null;
+
   function manejarCancelacion() {
     if (!window.confirm('¿Cancelar este evento? Esta acción no se puede deshacer.')) return;
     cancelarEvento.mutate();
@@ -146,11 +151,10 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
         {/* Columna de la cuenta. Va primero en el DOM para quedar arriba en mobile; en lg pasa a la
             segunda columna. top-28: deja libre el encabezado fijo del panel. */}
         <div className="space-y-4 lg:sticky lg:top-28 lg:col-start-2 lg:row-start-1">
-          {/* HU-14: el saldo, el cobro y el historial. Sin presupuesto no hay base de cobro
-              contra la que medir nada, así que en su lugar va el aviso de abajo: la vista es la
-              misma se entre desde la agenda o desde la consulta, y el hueco se explica en vez de
-              desaparecer. */}
-          {presupuestoVigente ? (
+          {/* HU-14: el saldo, el cobro y el historial. Cuando no hay base de cobro va el aviso
+              en su lugar: la vista es la misma se entre desde la agenda o desde la consulta, y el
+              hueco se explica en vez de desaparecer. */}
+          {presupuestoVigente && !presupuestoSinArmar ? (
             <CuentaDelEvento
               evento={evento}
               admitePagos={evento.estado !== 'Cancelado' && evento.estado !== 'Cobrado'}
@@ -158,16 +162,25 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
           ) : (
             <Card>
               <CardHeader>
-                <CardTitle>Sin presupuesto</CardTitle>
+                <CardTitle>
+                  {presupuestoSinArmar ? 'Presupuesto sin armar' : 'Sin presupuesto'}
+                </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3 text-sm text-muted-foreground">
                 <p>
-                  El evento no tiene ningún presupuesto asociado al que calcularle una base de
-                  cobro.
+                  {presupuestoSinArmar
+                    ? 'El presupuesto todavía no tiene nada cargado, así que no hay base de cobro que calcular.'
+                    : 'El evento no tiene ningún presupuesto asociado al que calcularle una base de cobro.'}
                 </p>
-                <Button variant="outline" size="sm" asChild>
-                  <Link to="/admin/consultas">Ir a Consultas</Link>
-                </Button>
+                {presupuestoSinArmar && onVerPresupuesto && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => onVerPresupuesto(presupuestoVigente.id)}
+                  >
+                    Armar el presupuesto
+                  </Button>
+                )}
               </CardContent>
             </Card>
           )}
