@@ -1,3 +1,7 @@
+import type { EstadoEvento } from '@confluens/shared';
+import { Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState } from 'react';
+
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -7,11 +11,69 @@ import { cn } from '@/lib/utils';
 import { CuentaDelEvento } from './CuentaDelEvento';
 import { ESTADOS } from './estado-evento';
 
+// En 24 horas, como la agenda de la que se viene y como la tarjeta de resumen: "6:00 a. m." al
+// lado de "06:00" se lee como dos horarios distintos.
 const formateadorFecha = new Intl.DateTimeFormat('es-AR', {
   dateStyle: 'medium',
   timeStyle: 'short',
+  hourCycle: 'h23',
+});
+const formateadorHora = new Intl.DateTimeFormat('es-AR', {
+  timeStyle: 'short',
+  hourCycle: 'h23',
 });
 const formateadorMoneda = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
+
+// Cuántas líneas del presupuesto se ven sin desplegar. Un evento con todo el catálogo cotizado
+// tiene más de veinte, y sin este corte la cuenta y el cobro quedaban al fondo de un scroll largo.
+const LINEAS_VISIBLES = 5;
+
+// Recorrido del evento. Cancelado no tiene paso: sale del recorrido y se muestra solo el badge.
+const PASOS = ['Consulta', 'Seña', 'Confirmado', 'Cobrado'] as const;
+const PASOS_HECHOS: Partial<Record<EstadoEvento, number>> = {
+  EnConsulta: 1,
+  Reservado: 3,
+  Cobrado: 4,
+};
+
+function PasosDelEvento({ estado }: { estado: EstadoEvento }) {
+  const hechos = PASOS_HECHOS[estado];
+  if (hechos === undefined) return null;
+  return (
+    <ol className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs" aria-label="Avance">
+      {PASOS.map((paso, i) => {
+        const hecho = i < hechos;
+        const actual = i === hechos;
+        return (
+          <li key={paso} className="flex items-center gap-1.5">
+            {i > 0 && <span className="text-muted-foreground/50">›</span>}
+            <span
+              aria-current={actual ? 'step' : undefined}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5',
+                hecho && 'text-emerald-800',
+                actual && 'bg-bordo/10 font-medium text-bordo',
+                !hecho && !actual && 'text-muted-foreground',
+              )}
+            >
+              {hecho && <Check className="size-3" aria-hidden />}
+              {paso}
+            </span>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function Dato({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs text-muted-foreground">{etiqueta}</dt>
+      <dd className="mt-0.5 truncate">{children}</dd>
+    </div>
+  );
+}
 
 interface DetalleEventoProps {
   eventoId: number;
@@ -23,13 +85,18 @@ interface DetalleEventoProps {
 // un paso aparte para agendar: la distribución y el horario se cargan en el mismo formulario del
 // pago (CuentaDelEvento), que agenda y cobra de una vez. El evento sigue EnConsulta hasta que los
 // pagos cruzan el 20% de la base de cobro (HU-13).
+//
+// Dos columnas desde lg: a la izquierda lo que se lee (datos y presupuesto), a la derecha la cuenta,
+// fija al hacer scroll para que el saldo y el botón de cobro estén siempre a mano. En pantallas
+// angostas la cuenta va arriba del presupuesto, que es lo que se viene a hacer a esta vista.
 export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps) {
   const { data: evento, isLoading, isError } = useEvento(eventoId);
   const cancelarEvento = useCancelarEvento(eventoId);
+  const [presupuestoDesplegado, setPresupuestoDesplegado] = useState(false);
 
-  if (isLoading) return <p className="p-6 text-sm text-muted-foreground">Cargando…</p>;
+  if (isLoading) return <p className="py-6 text-sm text-muted-foreground">Cargando…</p>;
   if (isError || !evento) {
-    return <p className="p-6 text-sm text-destructive">No se pudo cargar el evento.</p>;
+    return <p className="py-6 text-sm text-destructive">No se pudo cargar el evento.</p>;
   }
 
   const presupuestoVigente =
@@ -37,6 +104,9 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
     evento.presupuestos.find((p) => p.estado === 'Estimado') ??
     evento.presupuestos[0];
   const total = presupuestoVigente ? Number(presupuestoVigente.total) : 0;
+  const lineas = presupuestoVigente?.lineas ?? [];
+  const lineasOcultas = Math.max(0, lineas.length - LINEAS_VISIBLES);
+  const lineasAMostrar = presupuestoDesplegado ? lineas : lineas.slice(0, LINEAS_VISIBLES);
 
   const estado = ESTADOS[evento.estado];
 
@@ -45,129 +115,181 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
     cancelarEvento.mutate();
   }
 
+  const horario =
+    evento.inicio && evento.fin
+      ? `${formateadorFecha.format(new Date(evento.inicio))} a ${formateadorHora.format(new Date(evento.fin))}`
+      : null;
+
   return (
-    <div className="mx-auto max-w-2xl space-y-4 p-6">
-      <div>
-        <h1 className="text-xl font-semibold">Evento #{evento.id}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Estado:{' '}
-          <span
-            title={estado.ayuda}
-            className={cn('rounded-full px-2 py-0.5 text-xs font-medium', estado.clase)}
-          >
-            {estado.etiqueta}
-          </span>
-        </p>
-        <BadgeTipoEvento evento={evento} className="mt-2" />
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-xl font-semibold">Evento #{evento.id}</h1>
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <span
+              title={estado.ayuda}
+              className={cn('rounded-full px-2 py-0.5 text-xs font-medium', estado.clase)}
+            >
+              {estado.etiqueta}
+            </span>
+            <BadgeTipoEvento evento={evento} />
+          </div>
+        </div>
+        <PasosDelEvento estado={evento.estado} />
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Cliente y salón</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-1 text-sm">
-          <p>
-            <span className="text-muted-foreground">Cliente: </span>
-            {evento.cliente.nombre} · {evento.cliente.telefono} · {evento.cliente.correo}
-          </p>
-          <p>
-            <span className="text-muted-foreground">Salón: </span>
-            {evento.salon?.nombre ?? 'A definir'} · {evento.cantidadPersonas} personas
-          </p>
-          {evento.solicitud && (
-            <p className="text-muted-foreground">
-              Consulta original enviada el{' '}
-              {formateadorFecha.format(new Date(evento.solicitud.creadoEn))}
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] lg:items-start">
+        {/* Columna de la cuenta. Va primero en el DOM para quedar arriba en mobile; en lg pasa a la
+            segunda columna. top-28: deja libre el encabezado fijo del panel. */}
+        <div className="space-y-4 lg:sticky lg:top-28 lg:col-start-2 lg:row-start-1">
+          {/* HU-14: el saldo, el cobro y el historial. Sin presupuesto no hay base de cobro contra
+              la que medir nada, así que no hay cuenta que mostrar. */}
+          {presupuestoVigente && (
+            <CuentaDelEvento
+              evento={evento}
+              admitePagos={evento.estado !== 'Cancelado' && evento.estado !== 'Cobrado'}
+            />
+          )}
+          {(evento.estado === 'Cancelado' || evento.estado === 'Cobrado') && (
+            <p className="text-sm text-muted-foreground">
+              Este evento está {evento.estado === 'Cancelado' ? 'cancelado' : 'cobrado'}, no admite
+              más acciones.
             </p>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
-      {presupuestoVigente && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Presupuesto ({presupuestoVigente.estado})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="divide-y text-sm">
-              {presupuestoVigente.lineas.map((linea) => (
-                <li key={linea.id} className="flex justify-between py-1.5">
-                  <span>
-                    {linea.descripcion} ×{linea.cantidad}
+        <div className="space-y-4 lg:col-start-1 lg:row-start-1">
+          <Card>
+            <CardContent>
+              <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+                <Dato etiqueta="Cliente">
+                  <span className="font-medium">{evento.cliente.nombre}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {evento.cliente.telefono} · {evento.cliente.correo}
                   </span>
-                  <span>
-                    {linea.aCotizar
-                      ? 'A cotizar'
-                      : formateadorMoneda.format(Number(linea.subtotal))}
-                  </span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-2 flex justify-between font-medium">
-              <span>Total (sin IVA)</span>
-              <span>{formateadorMoneda.format(total)}</span>
-            </p>
-            {onVerPresupuesto && (
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-3"
-                onClick={() => onVerPresupuesto(presupuestoVigente.id)}
-              >
-                Ver detalle del presupuesto
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                </Dato>
+                <Dato etiqueta="Salón">
+                  {evento.salon?.nombre ?? 'A definir'} · {evento.cantidadPersonas} personas
+                  {evento.distribucion && (
+                    <span className="block truncate text-xs text-muted-foreground">
+                      {evento.distribucion.nombre}
+                    </span>
+                  )}
+                </Dato>
+                <Dato etiqueta="Horario">
+                  {horario ?? <span className="text-muted-foreground">Sin agendar</span>}
+                </Dato>
+                {evento.solicitud && (
+                  <Dato etiqueta="Consulta original">
+                    {formateadorFecha.format(new Date(evento.solicitud.creadoEn))}
+                  </Dato>
+                )}
+              </dl>
+            </CardContent>
+          </Card>
 
-      {/* HU-14: el saldo, el formulario de cobro y el historial. Sin presupuesto no hay base de
-          cobro contra la que medir nada, así que no hay cuenta que mostrar. */}
-      {presupuestoVigente && (
-        <CuentaDelEvento
-          evento={evento}
-          admitePagos={evento.estado !== 'Cancelado' && evento.estado !== 'Cobrado'}
-        />
-      )}
+          {presupuestoVigente && (
+            <Card>
+              <CardHeader className="flex items-baseline justify-between gap-2">
+                <CardTitle>Presupuesto ({presupuestoVigente.estado})</CardTitle>
+                <span className="text-xs text-muted-foreground">
+                  {lineas.length} {lineas.length === 1 ? 'ítem' : 'ítems'}
+                </span>
+              </CardHeader>
+              <CardContent>
+                <ul className="divide-y text-sm">
+                  {lineasAMostrar.map((linea) => (
+                    <li key={linea.id} className="flex justify-between gap-4 py-1.5">
+                      <span className="min-w-0">
+                        {linea.descripcion}{' '}
+                        <span className="text-muted-foreground">×{linea.cantidad}</span>
+                      </span>
+                      <span className="shrink-0 tabular-nums">
+                        {linea.aCotizar
+                          ? 'A cotizar'
+                          : formateadorMoneda.format(Number(linea.subtotal))}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                {lineasOcultas > 0 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="mt-1 -ml-2.5 text-muted-foreground"
+                    aria-expanded={presupuestoDesplegado}
+                    onClick={() => setPresupuestoDesplegado((abierto) => !abierto)}
+                  >
+                    {presupuestoDesplegado ? (
+                      <>
+                        <ChevronUp /> Ver menos
+                      </>
+                    ) : (
+                      <>
+                        <ChevronDown /> Ver{' '}
+                        {lineasOcultas === 1
+                          ? 'el ítem restante'
+                          : `los ${lineasOcultas} restantes`}
+                      </>
+                    )}
+                  </Button>
+                )}
+                <div className="mt-2 flex items-center justify-between gap-3 border-t pt-3">
+                  {onVerPresupuesto ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => onVerPresupuesto(presupuestoVigente.id)}
+                    >
+                      Ver detalle del presupuesto
+                    </Button>
+                  ) : (
+                    <span />
+                  )}
+                  <p className="text-right">
+                    <span className="block text-xs text-muted-foreground">Total sin IVA</span>
+                    <span className="font-medium tabular-nums">
+                      {formateadorMoneda.format(total)}
+                    </span>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
-      {evento.estado === 'Reservado' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Reserva</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            {evento.senaRegistradaEn && (
-              <p className="text-muted-foreground">
-                El salón quedó reservado el{' '}
-                {formateadorFecha.format(new Date(evento.senaRegistradaEn))}, cuando los pagos
-                alcanzaron la seña.
-              </p>
-            )}
+          {evento.estado === 'Reservado' && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Reserva</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {evento.senaRegistradaEn && (
+                  <p className="text-muted-foreground">
+                    El salón quedó reservado el{' '}
+                    {formateadorFecha.format(new Date(evento.senaRegistradaEn))}, cuando los pagos
+                    alcanzaron la seña.
+                  </p>
+                )}
 
-            {cancelarEvento.isError && (
-              <p className="text-sm text-destructive">
-                {cancelarEvento.error instanceof ErrorApiCliente
-                  ? cancelarEvento.error.message
-                  : 'No se pudo cancelar el evento.'}
-              </p>
-            )}
-            <Button
-              variant="destructive"
-              disabled={cancelarEvento.isPending}
-              onClick={manejarCancelacion}
-            >
-              Cancelar evento
-            </Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {(evento.estado === 'Cancelado' || evento.estado === 'Cobrado') && (
-        <p className="text-sm text-muted-foreground">
-          Este evento está {evento.estado === 'Cancelado' ? 'cancelado' : 'cobrado'}, no admite más
-          acciones.
-        </p>
-      )}
+                {cancelarEvento.isError && (
+                  <p className="text-sm text-destructive">
+                    {cancelarEvento.error instanceof ErrorApiCliente
+                      ? cancelarEvento.error.message
+                      : 'No se pudo cancelar el evento.'}
+                  </p>
+                )}
+                <Button
+                  variant="destructive"
+                  disabled={cancelarEvento.isPending}
+                  onClick={manejarCancelacion}
+                >
+                  Cancelar evento
+                </Button>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
