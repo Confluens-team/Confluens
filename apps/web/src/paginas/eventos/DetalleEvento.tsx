@@ -122,10 +122,13 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
       : null;
 
   return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+    // Todo el evento vive en un solo panel: las tarjetas blancas sueltas sobre el crema de la
+    // página se leían como recortes sin relación. El panel va en el beige de la paleta, con un
+    // filete dorado, y adentro las tarjetas quedan como hojas apoyadas sobre él.
+    <div className="space-y-5 rounded-2xl bg-secondary/80 p-4 ring-1 ring-dorado/25 sm:p-6">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-dorado/25 pb-4">
         <div>
-          <h1 className="text-xl font-semibold">Evento #{evento.id}</h1>
+          <h1 className="text-xl font-semibold text-bordo">Evento #{evento.id}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <span
               title={estado.ayuda}
