@@ -6,6 +6,8 @@ import {
   type TipoJornada,
 } from '@confluens/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { Plus, X } from 'lucide-react';
+import { Dialog } from 'radix-ui';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router';
@@ -21,6 +23,7 @@ import { useMediosPago, usePagosDeEvento, useRegistrarPago } from '@/hooks/use-p
 import { useSalones } from '@/hooks/use-salones';
 import { ErrorApiCliente } from '@/lib/api';
 import { fechaLocal, nombreCompleto } from '@/lib/formato';
+import { cn } from '@/lib/utils';
 import { CLASES_SELECT } from './clases-select';
 
 // Los pagos sí llevan centavos: a diferencia de formatearPesos (que redondea a pesos enteros para
@@ -29,6 +32,13 @@ const formateadorMoneda = new Intl.NumberFormat('es-AR', { style: 'currency', cu
 const formateadorHorario = new Intl.DateTimeFormat('es-AR', {
   dateStyle: 'medium',
   timeStyle: 'short',
+  hourCycle: 'h23',
+});
+// Para el fin del evento: la fecha ya la dice el inicio y repetirla daba "10 de abr de 2027, 17:00
+// a 10 de abr de 2027, 23:00". Un evento que termina pasada la medianoche igual se entiende.
+const formateadorFin = new Intl.DateTimeFormat('es-AR', {
+  timeStyle: 'short',
+  hourCycle: 'h23',
 });
 
 interface CuentaDelEventoProps {
@@ -65,22 +75,16 @@ function sumarHoras(valor: string, horas: number): string {
   return comoFechaHoraLocal(fecha.toISOString());
 }
 
-function Fila({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
-  return (
-    <p className="flex justify-between">
-      <span className="text-muted-foreground">{etiqueta}</span>
-      <span className="font-medium">{children}</span>
-    </p>
-  );
-}
-
 /**
  * HU-14 completa: el estado de cuenta del evento (criterio 2) y el formulario de cobro. Registrar
  * un pago puede cambiarle el estado al evento como efecto, no como acción aparte: al cruzar el 20%
  * de la base de cobro se confirma el presupuesto y se reserva el salón (HU-13), y al 100% el evento
- * pasa a Cobrado. De ahí el aviso de abajo del formulario: el pago que reserva el salón es el único
+ * pasa a Cobrado. De ahí el aviso de abajo de la cuenta: el pago que reserva el salón es el único
  * momento en que hace falta contar las consultas que quedaron pisando la franja. El paso a Cobrado
- * se ve solo: `admitePagos` se apaga y la tarjeta de cobro desaparece.
+ * se ve solo: `admitePagos` se apaga y el botón de cobro desaparece.
+ *
+ * La cuenta se lee de un vistazo (saldo grande y una barra con la marca de la seña) y el formulario
+ * de cobro se abre en un diálogo: siempre visible ocupaba media pantalla aunque no se fuera a cobrar.
  */
 export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   const eventoId = evento.id;
@@ -89,6 +93,8 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   const registrarPago = useRegistrarPago(eventoId);
   const agendarEvento = useAgendarEvento(eventoId);
   const salones = useSalones();
+  const [dialogoAbierto, setDialogoAbierto] = useState(false);
+  const [editandoHorario, setEditandoHorario] = useState(false);
 
   // `fecha` viaja como medianoche UTC del día del evento: el día es la parte YYYY-MM-DD, sin pasar
   // por Date (que lo correría al día anterior en Argentina). Es la fecha que se propone para el
@@ -131,6 +137,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   });
 
   const enConsulta = evento.estado === 'EnConsulta';
+  const cobrado = evento.estado === 'Cobrado';
   const distribuciones =
     salones.data?.find((salon) => salon.id === evento.salonId)?.distribuciones ?? [];
   const distribucionElegida = distribuciones.find((d) => d.id === Number(distribucionId));
@@ -156,7 +163,17 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
 
   // Evento confirmado: agendar no le cambia el estado, solo mueve la franja (RN-12 la controla).
   function guardarHorario() {
-    agendarEvento.mutate(datosDelHorario());
+    agendarEvento.mutate(datosDelHorario(), { onSuccess: () => setEditandoHorario(false) });
+  }
+
+  // Al abrir el diálogo se limpian los errores del intento anterior (y el aviso de reserva, que ya
+  // se leyó). El formulario conserva lo que tenía, por si se cerró sin querer.
+  function abrirDialogo(abrir: boolean) {
+    if (abrir) {
+      registrarPago.reset();
+      agendarEvento.reset();
+    }
+    setDialogoAbierto(abrir);
   }
 
   async function registrar(datos: CrearPago) {
@@ -173,13 +190,15 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
       // El medio de pago queda elegido: lo habitual es cargar varias entregas por el mismo medio.
       // El resto de los campos se nombran de a uno (incluida la observación, que vale ''): reset()
       // solo limpia lo que recibe en el objeto.
-      onSuccess: () =>
+      onSuccess: () => {
         reset({
           fecha: fechaDelEvento,
           monto: '',
           observacion: '',
           medioPagoId: datos.medioPagoId,
-        }),
+        });
+        setDialogoAbierto(false);
+      },
     });
   }
 
@@ -203,6 +222,14 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   // Redondeado al centavo: la resta de dos number puede dejar 184058.00000000003.
   const faltaParaLaSena = Number((montoSena - Number(saldo.pagado)).toFixed(2));
   const resultado = registrarPago.data;
+  const porcentajeAbonado = Math.min(100, Math.max(0, Number(saldo.porcentajeAbonado)));
+  const saldoPendiente = Number(saldo.saldo);
+
+  const errorAgendar =
+    agendarEvento.isError &&
+    (agendarEvento.error instanceof ErrorApiCliente
+      ? agendarEvento.error.message
+      : 'No se pudo guardar el horario del evento.');
 
   // Distribución, inicio y fin. En consulta van dentro del formulario del pago (agenda y cobra de una
   // vez); con el evento confirmado van en su propia tarjeta, para cambiarlos sin registrar un pago
@@ -251,12 +278,12 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
             diaSugerido={inicio.slice(0, 10) || fechaDelEvento}
             diaMinimo={inicio.slice(0, 10) || undefined}
           />
-          <p className="text-xs text-muted-foreground">
-            {jornada === 'media' ? 'Media jornada' : 'Jornada completa'}: se calcula {horasJornada}{' '}
-            h después del inicio. Podés cambiarlo.
-          </p>
         </div>
       </div>
+      <p className="text-xs text-muted-foreground">
+        {jornada === 'media' ? 'Media jornada' : 'Jornada completa'}: el fin se calcula{' '}
+        {horasJornada} h después del inicio. Podés cambiarlo.
+      </p>
       {enConsulta && !horarioCompleto && faltaParaLaSena > 0 && (
         <p className="text-xs text-muted-foreground">
           Para que el pago que llega al {PORCENTAJE_SENA}% reserve el salón, completá distribución,
@@ -272,249 +299,372 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
         <CardHeader>
           <CardTitle>Cuenta del evento</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-1 text-sm">
-          <Fila etiqueta={`Base de cobro (${saldo.incluyeIva ? 'con IVA' : 'sin IVA'})`}>
-            {formateadorMoneda.format(base)}
-          </Fila>
-          <Fila etiqueta="Pagado">{formateadorMoneda.format(Number(saldo.pagado))}</Fila>
-          <Fila etiqueta="Saldo">{formateadorMoneda.format(Number(saldo.saldo))}</Fila>
-          <Fila etiqueta="Abonado">{saldo.porcentajeAbonado}%</Fila>
+        <CardContent className="space-y-4 text-sm">
+          {/* Un evento cobrado no tiene saldo que mirar: lo que importa es cuánto entró y que
+              ya está completo. Va en el verde con el que la agenda marca los eventos que ocupan el
+              salón, para que se lea de un vistazo sin tener que interpretar un $0 de saldo. */}
+          {cobrado ? (
+            <div className="rounded-xl bg-emerald-700 px-4 py-3 text-crema">
+              <p className="text-xs font-medium tracking-wide uppercase opacity-90">
+                Evento cobrado
+              </p>
+              <p className="text-2xl font-semibold tabular-nums">
+                {formateadorMoneda.format(base)}
+              </p>
+              <p className="text-xs opacity-90">
+                Total cobrado por completo ({saldo.incluyeIva ? 'con IVA' : 'sin IVA'})
+              </p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-2xl font-semibold tabular-nums">
+                {formateadorMoneda.format(saldoPendiente)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Saldo pendiente · base de cobro {formateadorMoneda.format(base)} (
+                {saldo.incluyeIva ? 'con IVA' : 'sin IVA'})
+              </p>
+            </div>
+          )}
+
+          {/* Barra de lo abonado. Mientras el evento está en consulta lleva la marca de la seña: es
+              el umbral que reserva el salón (HU-13). Con el evento cobrado no aporta: estaría
+              siempre al 100% debajo del cartel que ya lo dice. */}
+          <div className={cn('space-y-1.5', cobrado && 'hidden')}>
+            <div
+              className="relative h-2 rounded-full bg-muted"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={porcentajeAbonado}
+              aria-label="Porcentaje abonado"
+            >
+              <div
+                className="h-full rounded-full bg-bordo transition-[width]"
+                style={{ width: `${porcentajeAbonado}%` }}
+              />
+              {enConsulta && (
+                <div
+                  className="absolute -top-1 h-4 border-l-2 border-dorado"
+                  style={{ left: `${PORCENTAJE_SENA}%` }}
+                  aria-hidden
+                />
+              )}
+            </div>
+            <div className="flex justify-between gap-2 text-xs">
+              <span className="text-muted-foreground">
+                {porcentajeAbonado}% abonado · {formateadorMoneda.format(Number(saldo.pagado))}
+              </span>
+              {enConsulta && (
+                <span className="text-dorado-texto">
+                  Seña {PORCENTAJE_SENA}%: {formateadorMoneda.format(montoSena)}
+                </span>
+              )}
+            </div>
+          </div>
 
           {/* RN-01: la base incluye el IVA solo si el presupuesto se factura, así que la seña del
               20% cambia de monto según eso. Por eso se aclara sobre qué se calculó. */}
           {/* Una vez reservado, la seña ya se cobró aunque después suba el total (RN-09): no se
               vuelve a pedir el 20%, se cobra el saldo. */}
-          <p className="pt-2 text-xs text-muted-foreground">
+          <p className={cn('text-xs text-muted-foreground', cobrado && 'hidden')}>
             {enConsulta
-              ? `La seña del ${PORCENTAJE_SENA}% de esta base es ${formateadorMoneda.format(montoSena)}${
-                  faltaParaLaSena > 0
-                    ? `: faltan ${formateadorMoneda.format(faltaParaLaSena)} para reservar el salón.`
-                    : ': ya está cubierta.'
-                }`
-              : Number(saldo.saldo) < 0
+              ? faltaParaLaSena > 0
+                ? `Faltan ${formateadorMoneda.format(faltaParaLaSena)} para la seña y reservar el salón.`
+                : 'La seña ya está cubierta.'
+              : saldoPendiente < 0
                 ? 'Lo pagado supera el total: hay que resolver la diferencia con el cliente.'
                 : 'La seña ya se cobró y el salón está reservado.'}
           </p>
+
+          {resultado?.reservoElSalon && (
+            <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+              <p className="font-medium">
+                Con este pago se alcanzó la seña: el presupuesto quedó confirmado y el salón
+                reservado.{' '}
+                <Link to="/admin/agenda" className="underline underline-offset-2">
+                  Ver en la agenda
+                </Link>
+              </p>
+              {/* HU-13 C6: las consultas que pisan la franja NO se cancelan (Cancelado es
+                  siempre manual, dominio.md:30). Se avisan para que las gestione una persona. */}
+              {resultado.consultasEnConflicto.length > 0 && (
+                <div>
+                  <p>
+                    {resultado.consultasEnConflicto.length === 1
+                      ? 'Quedó 1 consulta pisando ese horario. No se canceló: hay que avisarle.'
+                      : `Quedaron ${resultado.consultasEnConflicto.length} consultas pisando ese horario. No se cancelaron: hay que avisarles.`}
+                  </p>
+                  <ul className="mt-1 list-disc pl-5">
+                    {resultado.consultasEnConflicto.map((consulta) => (
+                      <li key={consulta.id}>
+                        Evento #{consulta.id} · {nombreCompleto(consulta.cliente)}
+                        {consulta.inicio &&
+                          ` · ${formateadorHorario.format(new Date(consulta.inicio))}`}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+          {registrarPago.isSuccess && !resultado?.reservoElSalon && (
+            <p className="text-sm text-emerald-800">Pago registrado.</p>
+          )}
+
+          {admitePagos && (
+            <Button className="w-full" size="lg" onClick={() => abrirDialogo(true)}>
+              <Plus /> {enConsulta ? 'Agendar y registrar pago' : 'Registrar pago'}
+            </Button>
+          )}
+
+          <div className="border-t pt-3">
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Pagos</p>
+            {pagos.length === 0 ? (
+              <p className="text-xs text-muted-foreground">
+                Todavía no hay pagos.
+                {enConsulta && ' El que llegue a la seña confirma el evento.'}
+              </p>
+            ) : (
+              <ul className="divide-y">
+                {pagos.map((pago) => (
+                  <li key={pago.id} className="py-2">
+                    <div className="flex justify-between gap-3">
+                      <span>
+                        {fechaLocal(pago.fecha).toLocaleDateString('es-AR')} ·{' '}
+                        {pago.medioPago.nombre}
+                      </span>
+                      <span className="font-medium tabular-nums">
+                        {formateadorMoneda.format(Number(pago.monto))}
+                      </span>
+                    </div>
+                    {pago.observacion && (
+                      <p className="text-xs text-muted-foreground">{pago.observacion}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </CardContent>
       </Card>
 
       {!enConsulta && evento.estado !== 'Cancelado' && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex items-center justify-between gap-2">
             <CardTitle>Horario del evento</CardTitle>
+            {!editandoHorario && (
+              <Button variant="outline" size="sm" onClick={() => setEditandoHorario(true)}>
+                Cambiar
+              </Button>
+            )}
           </CardHeader>
-          <CardContent className="space-y-4">
-            {camposHorario}
-            {agendarEvento.isError && (
-              <p className="text-sm text-destructive">
-                {agendarEvento.error instanceof ErrorApiCliente
-                  ? agendarEvento.error.message
-                  : 'No se pudo guardar el horario del evento.'}
-              </p>
+          <CardContent className="space-y-4 text-sm">
+            {editandoHorario ? (
+              <>
+                {camposHorario}
+                {errorAgendar && <p className="text-sm text-destructive">{errorAgendar}</p>}
+                <div className="flex gap-2">
+                  <Button
+                    type="button"
+                    className="flex-1"
+                    disabled={!horarioCompleto || !horarioCambio || agendarEvento.isPending}
+                    onClick={guardarHorario}
+                  >
+                    {agendarEvento.isPending ? 'Guardando…' : 'Guardar horario'}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      agendarEvento.reset();
+                      setEditandoHorario(false);
+                    }}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p>
+                  {evento.inicio && evento.fin
+                    ? `${formateadorHorario.format(new Date(evento.inicio))} a ${formateadorFin.format(new Date(evento.fin))}`
+                    : 'Sin horario cargado.'}
+                </p>
+                {agendarEvento.isSuccess && (
+                  <p className="text-sm text-emerald-800">Horario guardado.</p>
+                )}
+              </>
             )}
-            {agendarEvento.isSuccess && !horarioCambio && (
-              <p className="text-sm text-emerald-800">Horario guardado.</p>
-            )}
-            <Button
-              type="button"
-              className="w-full"
-              disabled={!horarioCompleto || !horarioCambio || agendarEvento.isPending}
-              onClick={guardarHorario}
-            >
-              {agendarEvento.isPending ? 'Guardando…' : 'Guardar horario'}
-            </Button>
           </CardContent>
         </Card>
       )}
 
       {admitePagos && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Registrar pago</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit(registrar)} className="space-y-4">
-              {enConsulta && !evento.salonId && (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                  Para reservar el salón con la seña, primero elegí el salón desde la consulta y
-                  guardá los cambios.
-                </p>
-              )}
-              {enConsulta && evento.salonId && camposHorario}
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="space-y-1.5">
-                  <Label htmlFor="fecha">Fecha</Label>
-                  <Input id="fecha" type="date" {...register('fecha')} />
-                  {errors.fecha && (
-                    <p className="text-xs text-destructive">{errors.fecha.message}</p>
-                  )}
+        <Dialog.Root open={dialogoAbierto} onOpenChange={abrirDialogo}>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 z-50 bg-bordo-oscuro/50 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+            <Dialog.Content className="fixed top-1/2 left-1/2 z-50 max-h-[92vh] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl bg-papel p-6 shadow-2xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <Dialog.Title className="font-heading text-lg font-medium">
+                    {enConsulta ? 'Agendar y registrar pago' : 'Registrar pago'}
+                  </Dialog.Title>
+                  <Dialog.Description className="mt-1 text-sm text-muted-foreground">
+                    {enConsulta
+                      ? `Si el pago llega a la seña (${formateadorMoneda.format(montoSena)}), el presupuesto se confirma y el salón queda reservado.`
+                      : `Saldo pendiente: ${formateadorMoneda.format(saldoPendiente)}.`}
+                  </Dialog.Description>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="monto">Monto</Label>
-                  <Input
-                    id="monto"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    inputMode="decimal"
-                    placeholder="0.00"
-                    {...register('monto')}
-                  />
-                  {errors.monto && (
-                    <p className="text-xs text-destructive">{errors.monto.message}</p>
+                <Dialog.Close
+                  className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+                  aria-label="Cerrar"
+                >
+                  <X className="size-4" />
+                </Dialog.Close>
+              </div>
+
+              <form onSubmit={handleSubmit(registrar)} className="mt-5 space-y-5">
+                {enConsulta && !evento.salonId && (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    Para reservar el salón con la seña, primero elegí el salón desde la consulta y
+                    guardá los cambios.
+                  </p>
+                )}
+                {enConsulta && evento.salonId && (
+                  <fieldset className="space-y-3">
+                    <legend className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                      Horario
+                    </legend>
+                    {camposHorario}
+                  </fieldset>
+                )}
+
+                <fieldset className="space-y-4">
+                  {enConsulta && (
+                    <legend className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                      Pago
+                    </legend>
                   )}
-                  {enConsulta && faltaParaLaSena > 0 && (
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-xs"
-                      onClick={() =>
-                        setValue('monto', faltaParaLaSena.toFixed(2), { shouldValidate: true })
-                      }
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="monto">Monto</Label>
+                      <Input
+                        id="monto"
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        {...register('monto')}
+                      />
+                      {errors.monto && (
+                        <p className="text-xs text-destructive">{errors.monto.message}</p>
+                      )}
+                      {enConsulta && faltaParaLaSena > 0 && (
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-xs"
+                          onClick={() =>
+                            setValue('monto', faltaParaLaSena.toFixed(2), { shouldValidate: true })
+                          }
+                        >
+                          Cargar la seña ({formateadorMoneda.format(faltaParaLaSena)})
+                        </Button>
+                      )}
+                      {!enConsulta && saldoPendiente > 0 && (
+                        <Button
+                          type="button"
+                          variant="link"
+                          size="sm"
+                          className="h-auto p-0 text-xs"
+                          onClick={() =>
+                            setValue('monto', saldoPendiente.toFixed(2), { shouldValidate: true })
+                          }
+                        >
+                          Cargar el saldo ({formateadorMoneda.format(saldoPendiente)})
+                        </Button>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="fecha">Fecha</Label>
+                      <Input id="fecha" type="date" {...register('fecha')} />
+                      {errors.fecha && (
+                        <p className="text-xs text-destructive">{errors.fecha.message}</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="medioPagoId">Medio de pago</Label>
+                    <select
+                      id="medioPagoId"
+                      className={CLASES_SELECT}
+                      defaultValue=""
+                      // El <select> nativo siempre devuelve string; el contrato pide el id numérico.
+                      {...register('medioPagoId', { setValueAs: (valor) => Number(valor) })}
                     >
-                      Cargar el {PORCENTAJE_SENA}% de seña
-                    </Button>
-                  )}
-                  {!enConsulta && Number(saldo.saldo) > 0 && (
-                    <Button
-                      type="button"
-                      variant="link"
-                      size="sm"
-                      className="h-auto p-0 text-xs"
-                      onClick={() =>
-                        setValue('monto', Number(saldo.saldo).toFixed(2), { shouldValidate: true })
-                      }
-                    >
-                      Cargar el saldo
-                    </Button>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="medioPagoId">Medio de pago</Label>
-                  <select
-                    id="medioPagoId"
-                    className={CLASES_SELECT}
-                    defaultValue=""
-                    // El <select> nativo siempre devuelve string; el contrato pide el id numérico.
-                    {...register('medioPagoId', { setValueAs: (valor) => Number(valor) })}
-                  >
-                    <option value="" disabled>
-                      Elegir…
-                    </option>
-                    {(mediosPago.data ?? []).map((medio) => (
-                      <option key={medio.id} value={medio.id}>
-                        {medio.nombre}
+                      <option value="" disabled>
+                        Elegir…
                       </option>
-                    ))}
-                  </select>
-                  {errors.medioPagoId && (
-                    <p className="text-xs text-destructive">Elegí un medio de pago.</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <Label htmlFor="observacion">Observación (opcional)</Label>
-                <Textarea
-                  id="observacion"
-                  rows={2}
-                  // Un textarea vacío manda "": el campo es opcional, así que no viaja.
-                  {...register('observacion', {
-                    setValueAs: (valor: string) => valor.trim() || undefined,
-                  })}
-                />
-                {errors.observacion && (
-                  <p className="text-xs text-destructive">{errors.observacion.message}</p>
-                )}
-              </div>
-
-              {enConsulta && agendarEvento.isError && (
-                <p className="text-sm text-destructive">
-                  {agendarEvento.error instanceof ErrorApiCliente
-                    ? agendarEvento.error.message
-                    : 'No se pudo guardar el horario del evento.'}
-                </p>
-              )}
-              {registrarPago.isError && (
-                <p className="text-sm text-destructive">
-                  {registrarPago.error instanceof ErrorApiCliente
-                    ? registrarPago.error.message
-                    : 'No se pudo registrar el pago.'}
-                </p>
-              )}
-
-              <Button
-                type="submit"
-                disabled={registrarPago.isPending || agendarEvento.isPending}
-                className="w-full"
-              >
-                {registrarPago.isPending || agendarEvento.isPending
-                  ? 'Registrando…'
-                  : 'Registrar pago'}
-              </Button>
-            </form>
-
-            {resultado?.reservoElSalon && (
-              <div className="mt-4 space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
-                <p className="font-medium">
-                  Con este pago se alcanzó la seña: el presupuesto quedó confirmado y el salón
-                  reservado.{' '}
-                  <Link to="/admin/agenda" className="underline underline-offset-2">
-                    Ver en la agenda
-                  </Link>
-                </p>
-                {/* HU-13 C6: las consultas que pisan la franja NO se cancelan (Cancelado es
-                    siempre manual, dominio.md:30). Se avisan para que las gestione una persona. */}
-                {resultado.consultasEnConflicto.length > 0 && (
-                  <div>
-                    <p>
-                      {resultado.consultasEnConflicto.length === 1
-                        ? 'Quedó 1 consulta pisando ese horario. No se canceló: hay que avisarle.'
-                        : `Quedaron ${resultado.consultasEnConflicto.length} consultas pisando ese horario. No se cancelaron: hay que avisarles.`}
-                    </p>
-                    <ul className="mt-1 list-disc pl-5">
-                      {resultado.consultasEnConflicto.map((consulta) => (
-                        <li key={consulta.id}>
-                          Evento #{consulta.id} · {nombreCompleto(consulta.cliente)}
-                          {consulta.inicio &&
-                            ` · ${formateadorHorario.format(new Date(consulta.inicio))}`}
-                        </li>
+                      {(mediosPago.data ?? []).map((medio) => (
+                        <option key={medio.id} value={medio.id}>
+                          {medio.nombre}
+                        </option>
                       ))}
-                    </ul>
+                    </select>
+                    {errors.medioPagoId && (
+                      <p className="text-xs text-destructive">Elegí un medio de pago.</p>
+                    )}
                   </div>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      )}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="observacion">Observación (opcional)</Label>
+                    <Textarea
+                      id="observacion"
+                      rows={2}
+                      // Un textarea vacío manda "": el campo es opcional, así que no viaja.
+                      {...register('observacion', {
+                        setValueAs: (valor: string) => valor.trim() || undefined,
+                      })}
+                    />
+                    {errors.observacion && (
+                      <p className="text-xs text-destructive">{errors.observacion.message}</p>
+                    )}
+                  </div>
+                </fieldset>
 
-      {pagos.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Historial de pagos</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="divide-y text-sm">
-              {pagos.map((pago) => (
-                <li key={pago.id} className="py-2">
-                  <div className="flex justify-between">
-                    <span>
-                      {fechaLocal(pago.fecha).toLocaleDateString('es-AR')} · {pago.medioPago.nombre}
-                    </span>
-                    <span className="font-medium">
-                      {formateadorMoneda.format(Number(pago.monto))}
-                    </span>
-                  </div>
-                  {pago.observacion && (
-                    <p className="text-xs text-muted-foreground">{pago.observacion}</p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
+                {enConsulta && errorAgendar && (
+                  <p className="text-sm text-destructive">{errorAgendar}</p>
+                )}
+                {registrarPago.isError && (
+                  <p className="text-sm text-destructive">
+                    {registrarPago.error instanceof ErrorApiCliente
+                      ? registrarPago.error.message
+                      : 'No se pudo registrar el pago.'}
+                  </p>
+                )}
+
+                <div className="flex justify-end gap-2 border-t pt-4">
+                  <Dialog.Close asChild>
+                    <Button type="button" variant="ghost">
+                      Cancelar
+                    </Button>
+                  </Dialog.Close>
+                  <Button
+                    type="submit"
+                    disabled={registrarPago.isPending || agendarEvento.isPending}
+                  >
+                    {registrarPago.isPending || agendarEvento.isPending
+                      ? 'Registrando…'
+                      : 'Registrar pago'}
+                  </Button>
+                </div>
+              </form>
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
       )}
     </>
   );
