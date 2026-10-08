@@ -27,8 +27,9 @@ const valoresIniciales = {
   aCotizar: false,
 };
 
-// Estado del formulario con useState controlado en vez de React Hook Form, mismo criterio que
-// ConsultarSalones.tsx (HU-01). El motivo original era que los componentes ui/* de shadcn no
+// Estado del formulario con useState controlado en vez de React Hook Form. El criterio se
+// compartía con el filtro de ConsultarSalones.tsx, que ya no existe. El motivo original era que
+// los componentes ui/* de shadcn no
 // usaban React.forwardRef y RHF.register() no podía engancharles un ref; Input y Textarea ya lo
 // usan, así que migrar esto a RHF es posible, pero no hace falta para HU-13/HU-14. Acá además se
 // valida el body a mano con esquemaCrearServicio antes de enviarlo, para dar el mismo mensaje de
