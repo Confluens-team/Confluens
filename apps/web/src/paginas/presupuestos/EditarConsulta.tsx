@@ -521,7 +521,7 @@ function Formulario({
             <span className="text-muted-foreground">Distribución y horario: </span>
             {distribucion && inicio && fin
               ? `${distribucion.nombre} · de ${hora(inicio)} a ${hora(fin)}`
-              : 'sin agendar todavía (se cargan al agendar el evento)'}
+              : 'sin agendar todavía (se cargan al registrar el pago)'}
           </p>
           <label className="mt-4 flex items-center gap-2 text-sm">
             <input
@@ -812,14 +812,14 @@ function Formulario({
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-card p-5 ring-1 ring-border">
           <div className="max-w-xl">
             <h3 className="flex items-center gap-2 text-sm font-semibold">
-              <CalendarCheck className="size-4 text-dorado" /> Agendar y cobrar la seña
+              <CalendarCheck className="size-4 text-dorado" /> Cobrar la seña
             </h3>
             <p className="text-xs text-muted-foreground">
               {expirado
                 ? 'La consulta está vencida: recalculala y guardá los cambios antes de cobrar la seña.'
                 : !consulta.salon
                   ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
-                  : 'Cargá la distribución y el horario y registrá los pagos. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a Eventos (HU-13). Guardá antes los cambios de la consulta.'}
+                  : 'Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda (HU-13). Guardá antes los cambios de la consulta.'}
             </p>
           </div>
           <Button
@@ -828,7 +828,7 @@ function Formulario({
             disabled={expirado || !consulta.salon}
             onClick={() => onAbrirEvento(consulta.evento.id)}
           >
-            <CalendarCheck /> Agendar y registrar pagos
+            <CalendarCheck /> Registrar pagos
           </Button>
         </section>
       )}

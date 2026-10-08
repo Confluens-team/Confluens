@@ -25,7 +25,7 @@ export function usePagosDeEvento(eventoId: number) {
  * HU-14 + HU-13: registra una entrega de plata contra el evento. Puede cambiarle el estado como
  * efecto, no como pedido aparte: al cruzar el 20% de la base de cobro confirma el presupuesto y
  * reserva el salón, y al 100% lo pasa a Cobrado. Por eso invalida `['eventos']` entero (detalle y
- * agenda del administrador), no solo la cuenta.
+ * agenda) y las consultas, no solo la cuenta.
  */
 export function useRegistrarPago(eventoId: number) {
   const queryClient = useQueryClient();
@@ -43,6 +43,8 @@ export function useRegistrarPago(eventoId: number) {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['eventos'] });
+      // La consulta confirmada sale del listado de Consultas (HU-10): ya vive en la agenda.
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
     },
   });
 }
