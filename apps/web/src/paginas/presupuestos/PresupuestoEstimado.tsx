@@ -153,7 +153,7 @@ export function PresupuestoEstimado({
               <li>
                 La seña del {PORCENTAJE_SENA}% se abona dentro de la vigencia del presupuesto y
                 congela sus precios. Se calcula sobre el total con IVA si el evento se factura, y
-                sobre el subtotal si no (RN-01).
+                sobre el subtotal si no.
               </li>
               <li>
                 Vencidos los {DIAS_VIGENCIA_PRESUPUESTO} días sin seña, el presupuesto se recalcula
