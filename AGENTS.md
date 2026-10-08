@@ -57,8 +57,13 @@ docs/              Fuente de verdad del dominio y del producto.
   final. Un cambio lógico por commit.
 - Se integra a `develop` solo por pull request, con la plantilla, CI en verde y revisión de otro
   integrante. Nunca push directo a `develop`, `--force` ni `--no-verify`.
-- `main` es la rama de release: recibe solo merges de `develop`, por decisión del equipo. Ninguna
+- `main` es producción y `develop` la antesala: `main` recibe solo merges de `develop`. Ninguna
   rama de historia apunta a `main`.
+- GitHub lo hace cumplir con el ruleset "Flujo equipos: proteger develop y main", que sobre las
+  dos ramas exige pull request con **1 aprobación** de otro integrante y los cinco checks del CI
+  (Install, Typecheck, Lint, Build, Test) con la rama al día, permite **solo merge commit** (ni
+  squash ni rebase) y prohíbe borrarlas y el push forzado. Al mergear, GitHub borra la rama de la
+  historia: es temporal y no se reutiliza.
 
 ## 4. Formato de respuesta de la API
 
