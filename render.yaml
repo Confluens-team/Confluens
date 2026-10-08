@@ -38,4 +38,12 @@ services:
       # de sesión viaja con credentials:true, que no admite origin comodín.
       - key: FRONTEND_URL
         sync: false
+      # Correo saliente con Resend (ADR 0006). lib/correo.ts lanza error si falta en producción,
+      # así que sin esta variable el restablecimiento de contraseña responde 500.
+      - key: RESEND_API_KEY
+        sync: false
+      # Remitente con un dominio verificado en Resend. Si queda vacía se usa onboarding@resend.dev,
+      # que solo puede escribirle al dueño de la cuenta de Resend.
+      - key: CORREO_REMITENTE
+        sync: false
 # PORT no se declara: Render lo inyecta y config/entorno.ts lo lee de process.env.
