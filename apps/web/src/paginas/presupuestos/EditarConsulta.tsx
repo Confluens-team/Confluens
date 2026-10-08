@@ -548,7 +548,7 @@ function Formulario({
             />
             El cliente requiere factura
             <span className="text-xs text-muted-foreground">
-              (la seña y el saldo se calculan sobre el total con IVA, RN-01)
+              (la seña y el saldo se calculan sobre el total con IVA)
             </span>
           </label>
         </section>

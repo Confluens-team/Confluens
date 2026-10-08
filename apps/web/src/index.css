@@ -222,6 +222,14 @@
   cursor: pointer;
 }
 
+/* El evento con la tarjeta de resumen abierta. La tarjeta tapa parte de la grilla, así que el que
+   se está mirando queda marcado con el dorado de los filetes: es un filete, no texto, así que no
+   le aplica el 4.5:1 de AC1. */
+.calendario-agenda .fc .fc-event.evento-seleccionado {
+  outline: 2px solid var(--color-dorado);
+  outline-offset: 1px;
+}
+
 @media print {
   body {
     background: white;

@@ -1,18 +1,20 @@
 import { ESTADOS_QUE_OCUPAN_SALON, type EstadoEvento, type EventoAgenda } from '@confluens/shared';
 import { ArrowLeft, CalendarDays, Clock, List, Users } from 'lucide-react';
+import { Popover } from 'radix-ui';
 import { type ReactNode, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
 import { useAgenda } from '@/hooks/use-eventos';
 import { useSalones } from '@/hooks/use-salones';
-import { fechaLocal, formatearPesos, nombreCompleto } from '@/lib/formato';
+import { fechaLocal, formatearPesos, hoyISO, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { CalendarioEventos } from './CalendarioEventos';
 import { EditarConsulta } from '@/paginas/presupuestos/EditarConsulta';
 
 import { DetalleEvento } from './DetalleEvento';
 import { ESTADOS, ESTADOS_DEL_FILTRO } from './estado-evento';
+import { TarjetaResumenEvento } from './TarjetaResumenEvento';
 
 type Vista = 'calendario' | 'lista';
 
@@ -57,10 +59,12 @@ function Chip({
 // calendario porque para "¿qué hay en noviembre?" se lee de un tirón, sin pasar de día en día.
 function ListaDeEventos({
   eventos,
-  onAbrirEvento,
+  seleccionadoId,
+  onSeleccionar,
 }: {
   eventos: EventoAgenda[];
-  onAbrirEvento: (id: number) => void;
+  seleccionadoId: number | null;
+  onSeleccionar: (id: number, ancla: HTMLElement) => void;
 }) {
   const porMes = new Map<string, EventoAgenda[]>();
   for (const evento of eventos) {
@@ -88,8 +92,12 @@ function ListaDeEventos({
                 <li key={evento.id}>
                   <button
                     type="button"
-                    onClick={() => onAbrirEvento(evento.id)}
-                    className="flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-muted/60"
+                    onClick={(click) => onSeleccionar(evento.id, click.currentTarget)}
+                    aria-expanded={seleccionadoId === evento.id}
+                    className={cn(
+                      'flex w-full items-center gap-4 px-4 py-3 text-left transition-colors hover:bg-muted/60',
+                      seleccionadoId === evento.id && 'bg-muted/60',
+                    )}
                   >
                     <div className="w-12 shrink-0 text-center">
                       <p className="font-serif text-2xl leading-none font-semibold text-bordo">
@@ -151,8 +159,13 @@ function ListaDeEventos({
 }
 
 // Agenda de eventos del personal interno (HU-15). El calendario (mensual, semanal y diaria) y la
-// lista por mes muestran los mismos eventos ya filtrados por la API; al abrir uno se llega a su
-// detalle, y desde ahí al presupuesto vigente, a los pagos y a la cancelación.
+// lista por mes muestran los mismos eventos ya filtrados por la API; al tocar uno se abre su
+// resumen sobre la agenda, y desde ahí el detalle completo: el presupuesto vigente, los pagos y la
+// cancelación.
+//
+// El clic no cambia de pantalla a propósito: casi siempre se mira la agenda para ubicar un evento
+// entre varios, y perder el mes que se estaba recorriendo para leer cuatro datos obligaba a volver
+// y a buscarlo de nuevo.
 //
 // Por defecto se ven los estados que ocupan el salón: así una franja sin eventos en un salón se
 // lee como disponible aunque haya consultas EnConsulta sobre ella (criterio 5), y los Cancelado
@@ -165,6 +178,17 @@ export function Agenda() {
   // Ventana visible del calendario; la manda él mismo al cambiar de mes o de vista.
   const [rango, setRango] = useState<{ desde: string; hasta: string } | null>(null);
   const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
+  // El evento cuyo resumen está abierto, con el elemento al que se le ancla la tarjeta y de dónde
+  // salió (de eso depende de qué lado abrirla). Se guarda el id y no el evento: la agenda se
+  // refresca sola y así la tarjeta muestra siempre la última versión.
+  const [resumen, setResumen] = useState<{
+    id: number;
+    ancla: HTMLElement;
+    origen: Vista;
+  } | null>(null);
+  // Dónde quedó parado el calendario. FullCalendar se desmonta al abrir el detalle, así que sin
+  // esto volvería siempre al mes de hoy en la vista mensual.
+  const [posicion, setPosicion] = useState({ fecha: hoyISO(), vista: 'dayGridMonth' });
   // HU-15 → HU-11: desde el evento se abre el detalle de su presupuesto.
   const [presupuestoAbierto, setPresupuestoAbierto] = useState<number | null>(null);
 
@@ -181,7 +205,15 @@ export function Agenda() {
     !enCalendario || rango !== null,
   );
 
+  // El resumen está anclado a un elemento del calendario o de la lista: si cambia lo que se
+  // muestra, ese elemento puede desaparecer y la tarjeta quedaría flotando en cualquier lado.
+  function cambiarVista(valor: Vista) {
+    setResumen(null);
+    setVista(valor);
+  }
+
   function alternarSalon(id: number) {
+    setResumen(null);
     setSalonId((actuales) =>
       actuales.includes(id) ? actuales.filter((otro) => otro !== id) : [...actuales, id],
     );
@@ -190,6 +222,7 @@ export function Agenda() {
   // Sin ningún estado elegido la API devolvería igual los que ocupan el salón, y la pantalla
   // quedaría mintiendo: se deja siempre al menos uno.
   function alternarEstado(valor: EstadoEvento) {
+    setResumen(null);
     setEstado((actuales) => {
       const siguientes = actuales.includes(valor)
         ? actuales.filter((otro) => otro !== valor)
@@ -215,18 +248,22 @@ export function Agenda() {
 
   if (eventoAbierto !== null) {
     return (
-      <div>
-        <div className="mx-auto max-w-2xl px-6 pt-6">
-          <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
-            <ArrowLeft /> Volver a la agenda
-          </Button>
-        </div>
+      <div className="space-y-2">
+        <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
+          <ArrowLeft /> Volver a la agenda
+        </Button>
         <DetalleEvento eventoId={eventoAbierto} onVerPresupuesto={setPresupuestoAbierto} />
       </div>
     );
   }
 
   const eventos = agenda.data ?? [];
+  const eventoDelResumen = resumen ? (eventos.find(({ id }) => id === resumen.id) ?? null) : null;
+
+  function verEventoCompleto(id: number) {
+    setResumen(null);
+    setEventoAbierto(id);
+  }
 
   return (
     <div className="space-y-5">
@@ -241,7 +278,7 @@ export function Agenda() {
             <button
               key={valor}
               type="button"
-              onClick={() => setVista(valor)}
+              onClick={() => cambiarVista(valor)}
               className={cn(
                 'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
                 vista === valor ? 'bg-card shadow-sm' : 'text-muted-foreground',
@@ -306,8 +343,12 @@ export function Agenda() {
       {vista === 'calendario' ? (
         <CalendarioEventos
           eventos={eventos}
-          onAbrirEvento={setEventoAbierto}
+          seleccionadoId={eventoDelResumen?.id ?? null}
+          fechaVisible={posicion.fecha}
+          vistaVisible={posicion.vista}
+          onSeleccionar={(id, ancla) => setResumen({ id, ancla, origen: 'calendario' })}
           onRango={(desde, hasta) => setRango({ desde, hasta })}
+          onPosicion={(fecha, vista) => setPosicion({ fecha, vista })}
         />
       ) : agenda.isLoading ? (
         <p className="text-sm text-muted-foreground">Cargando la agenda…</p>
@@ -321,8 +362,43 @@ export function Agenda() {
           </p>
         </div>
       ) : (
-        <ListaDeEventos eventos={eventos} onAbrirEvento={setEventoAbierto} />
+        <ListaDeEventos
+          eventos={eventos}
+          seleccionadoId={eventoDelResumen?.id ?? null}
+          onSeleccionar={(id, ancla) => setResumen({ id, ancla, origen: 'lista' })}
+        />
       )}
+
+      {/* El resumen del evento, anclado al evento que se tocó. El Popover de radix ya trae cerrar
+          con Esc y con un clic afuera, y el foco vuelve solo. virtualRef apunta al elemento tal
+          cual, así la tarjeta lo sigue si la página scrollea. */}
+      <Popover.Root
+        open={eventoDelResumen !== null}
+        onOpenChange={(abierto) => {
+          if (!abierto) setResumen(null);
+        }}
+      >
+        {resumen && <Popover.Anchor virtualRef={{ current: resumen.ancla }} />}
+        <Popover.Portal>
+          {/* Al costado del evento en el calendario, que es angosto y deja lugar; debajo y a la
+              derecha de la fila de la lista, que ocupa todo el ancho y no deja ninguno. */}
+          <Popover.Content
+            side={resumen?.origen === 'lista' ? 'bottom' : 'right'}
+            align={resumen?.origen === 'lista' ? 'end' : 'start'}
+            sideOffset={8}
+            collisionPadding={16}
+            className="z-50 w-[380px] max-w-[calc(100vw-2rem)] rounded-xl bg-popover p-4 text-popover-foreground shadow-lg ring-1 ring-border"
+          >
+            {eventoDelResumen && (
+              <TarjetaResumenEvento
+                evento={eventoDelResumen}
+                onCerrar={() => setResumen(null)}
+                onVerEvento={() => verEventoCompleto(eventoDelResumen.id)}
+              />
+            )}
+          </Popover.Content>
+        </Popover.Portal>
+      </Popover.Root>
     </div>
   );
 }

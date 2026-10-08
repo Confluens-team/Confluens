@@ -798,7 +798,7 @@ export function CotizarEvento({
                   <p className="mt-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
                     Validez de {DIAS_VIGENCIA_PRESUPUESTO} días. Para reservar el salón se abona una
                     seña del {PORCENTAJE_SENA}% dentro de ese plazo, calculada sobre el total con
-                    IVA si el evento se factura y sobre el subtotal si no (RN-01).
+                    IVA.
                   </p>
                 )}
 

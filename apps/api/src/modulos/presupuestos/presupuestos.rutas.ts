@@ -18,6 +18,7 @@ import { limitadorEscrituras } from '../../middlewares/limitadores.js';
 import { validar } from '../../middlewares/validar.js';
 import {
   crear,
+  crearDeEvento,
   crearSocial,
   darDeBaja,
   listar,
@@ -26,6 +27,7 @@ import {
 } from './presupuestos.controlador.js';
 
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
+const esquemaEventoIdParam = z.object({ eventoId: z.coerce.number().int().positive() });
 const respuestaConsulta = {
   'application/json': { schema: z.object({ data: esquemaConsultaDetallada }) },
 };
@@ -72,6 +74,24 @@ registroOpenApi.registerPath({
     404: { description: 'La sesión no tiene ficha de cliente, o no existe la solicitud' },
     409: { description: 'La solicitud ya fue tomada' },
     429: { description: 'Se pasó el límite de consultas por ventana' },
+  },
+});
+
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/presupuestos/para-evento/{eventoId}',
+  tags: ['Presupuestos'],
+  summary: 'Arma el presupuesto vacío de un evento que todavía no tiene ninguno',
+  request: { params: esquemaEventoIdParam },
+  responses: {
+    201: {
+      description: 'Presupuesto sin armar creado (sin líneas, total 0 y sin vigencia)',
+      content: { 'application/json': { schema: z.object({ data: esquemaPresupuestoDetallado }) } },
+    },
+    ...erroresDeSesion,
+    404: { description: 'No existe el evento' },
+    409: { description: 'El evento está cancelado o ya tiene un presupuesto' },
+    429: { description: 'Se pasó el límite de escrituras por ventana' },
   },
 });
 
@@ -182,6 +202,13 @@ rutasPresupuestos.post(
 // las funciones por rol.
 const personalDeConsultas = [autenticar, autorizar(...ROLES_PERSONAL)] as const;
 
+rutasPresupuestos.post(
+  '/para-evento/:eventoId',
+  ...personalDeConsultas,
+  limitadorEscrituras,
+  validar({ params: esquemaEventoIdParam }),
+  asincrono(crearDeEvento),
+);
 rutasPresupuestos.get(
   '/',
   ...personalDeConsultas,

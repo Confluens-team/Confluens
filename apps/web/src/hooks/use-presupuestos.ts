@@ -152,3 +152,23 @@ export function useDarDeBajaConsulta(id: number) {
     return respuesta.data;
   });
 }
+
+// Arma el presupuesto vacío de un evento que no tiene ninguno (el equivalente a lo que la consulta
+// social crea junto con el evento). Deja la consulta lista para cargarle salón y servicios, así que
+// invalida el listado y el evento, que pasa a tener base de cobro.
+export function useArmarPresupuestoDeEvento(eventoId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const respuesta = await apiFetch<RespuestaExito<PresupuestoDetallado>>(
+        `/presupuestos/para-evento/${eventoId}`,
+        { method: 'POST' },
+      );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
+    },
+  });
+}

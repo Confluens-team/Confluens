@@ -105,6 +105,18 @@ export async function crearPresupuestoConLineas(
   });
 }
 
+// El evento con el estado de sus presupuestos: alcanza para saber si ya tiene uno antes de
+// armarle el vacío. No trae las líneas, que acá no se miran.
+export async function buscarEventoConPresupuestos(
+  eventoId: number,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.evento.findUnique({
+    where: { id: eventoId },
+    select: { id: true, estado: true, presupuestos: { select: { id: true, estado: true } } },
+  });
+}
+
 // Orquesta la transacción completa: el servicio arma el callback y le pasa el mismo `tx` a cada
 // función interna, logrando atomicidad real (todo o nada) entre Cliente, Evento, Presupuesto y
 // sus líneas.
@@ -246,6 +258,7 @@ export type PresupuestosRepositorio = {
   vincularSolicitudAEvento: typeof vincularSolicitudAEvento;
   crearEvento: typeof crearEvento;
   crearPresupuestoConLineas: typeof crearPresupuestoConLineas;
+  buscarEventoConPresupuestos: typeof buscarEventoConPresupuestos;
   crearEnTransaccion: typeof crearEnTransaccion;
   obtenerPresupuestos: typeof obtenerPresupuestos;
   buscarPresupuestoDetallado: typeof buscarPresupuestoDetallado;

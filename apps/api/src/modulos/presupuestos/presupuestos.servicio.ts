@@ -247,6 +247,43 @@ export async function registrarConsultaSocial(
   });
 }
 
+/**
+ * El presupuesto vacío de un evento que no tiene ninguno. Es lo mismo que la consulta social crea
+ * junto con el evento (ADR 0008), pero para un evento que ya existe: sin él no hay nada que abrir
+ * en el detalle de la consulta ni base de cobro contra la que registrar pagos.
+ *
+ * Nace sin líneas, con total 0 y `venceEn` en null —«sin armar»—: los 10 días de RN-08 empiezan a
+ * contar recién cuando el personal lo guarda con algo adentro.
+ */
+export async function crearPresupuestoDeEvento(
+  eventoId: number,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+) {
+  const evento = await repo.buscarEventoConPresupuestos(eventoId);
+  if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${eventoId}`);
+
+  // Solo un evento EnConsulta: el presupuesto nace Estimado, y un Estimado sobre un evento ya
+  // reservado o cobrado es un estado que la máquina de dominio.md no contempla (y que la consulta
+  // ni siquiera dejaría editar). Un Cancelado tampoco: liberó el salón y no vuelve atrás.
+  if (evento.estado !== 'EnConsulta') {
+    throw ErrorApi.conflicto(
+      `El evento ${eventoId} no está en consulta: no se le puede armar un presupuesto`,
+    );
+  }
+  // Los Cancelado no cuentan: un presupuesto dado de baja no es el presupuesto del evento.
+  if (evento.presupuestos.some((presupuesto) => presupuesto.estado !== 'Cancelado')) {
+    throw ErrorApi.conflicto(`El evento ${eventoId} ya tiene un presupuesto`);
+  }
+
+  return repo.crearPresupuestoConLineas({
+    eventoId,
+    fechaEmision: new Date(),
+    venceEn: null,
+    total: '0.00',
+    lineas: [],
+  });
+}
+
 // HU-10: listado del personal con sus filtros. Mapea a PresupuestoListado para que los tipos de
 // Prisma no lleguen a la web: importes como string y la fecha del evento como YYYY-MM-DD.
 export async function listarPresupuestos(
