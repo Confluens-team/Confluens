@@ -567,8 +567,10 @@ export function CotizarEvento({
                       )}
                     >
                       <img
-                        src={fotoDeSalon(salon)}
+                        src={fotoDeSalon(salon, 200)}
                         alt=""
+                        loading="lazy"
+                        decoding="async"
                         className="size-20 shrink-0 rounded-lg object-cover"
                       />
                       <div className="min-w-0 flex-1">
