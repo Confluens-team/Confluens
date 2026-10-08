@@ -1,13 +1,11 @@
-import { useState } from 'react';
-
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { useAgendarEvento, useCancelarEvento, useEvento } from '@/hooks/use-eventos';
+import { useCancelarEvento, useEvento } from '@/hooks/use-eventos';
 import { ErrorApiCliente } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import { CuentaDelEvento } from './CuentaDelEvento';
+import { ESTADOS } from './estado-evento';
 
 const formateadorFecha = new Intl.DateTimeFormat('es-AR', {
   dateStyle: 'medium',
@@ -21,20 +19,13 @@ interface DetalleEventoProps {
   onVerPresupuesto?: (presupuestoId: number) => void;
 }
 
-// Vista central de HU-15: agendar el evento (distribución, horario y modalidad) y cancelarlo
-// (criterio 5 / RN-07). Agendar NO reserva: el evento sigue EnConsulta hasta que un pago cruce el
-// 20% de la base de cobro (HU-13), y eso pasa en la tarjeta de cuenta (CuentaDelEvento, HU-14).
-// No existe un catálogo de distribuciones navegable todavía, así que distribucionId se carga por
-// id numérico.
+// Vista central del evento: datos, presupuesto, cuenta y cancelación (criterio 5 / RN-07). No hay
+// un paso aparte para agendar: la distribución y el horario se cargan en el mismo formulario del
+// pago (CuentaDelEvento), que agenda y cobra de una vez. El evento sigue EnConsulta hasta que los
+// pagos cruzan el 20% de la base de cobro (HU-13).
 export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps) {
   const { data: evento, isLoading, isError } = useEvento(eventoId);
-  const agendarEvento = useAgendarEvento(eventoId);
   const cancelarEvento = useCancelarEvento(eventoId);
-
-  const [distribucionId, setDistribucionId] = useState('');
-  const [inicio, setInicio] = useState('');
-  const [fin, setFin] = useState('');
-  const [modalidadSalonRestaurante, setModalidadSalonRestaurante] = useState(false);
 
   if (isLoading) return <p className="p-6 text-sm text-muted-foreground">Cargando…</p>;
   if (isError || !evento) {
@@ -47,25 +38,7 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
     evento.presupuestos[0];
   const total = presupuestoVigente ? Number(presupuestoVigente.total) : 0;
 
-  const capacidadExcedida =
-    agendarEvento.isError &&
-    agendarEvento.error instanceof ErrorApiCliente &&
-    agendarEvento.error.code === 'BUSINESS_RULE_VIOLATION';
-
-  function enviarAgenda(confirmarCapacidadExcedida: boolean) {
-    agendarEvento.mutate({
-      distribucionId: Number(distribucionId),
-      inicio: new Date(inicio).toISOString(),
-      fin: new Date(fin).toISOString(),
-      modalidadSalonRestaurante,
-      confirmarCapacidadExcedida,
-    });
-  }
-
-  function manejarEnvioAgenda(eventoFormulario: React.FormEvent) {
-    eventoFormulario.preventDefault();
-    enviarAgenda(false);
-  }
+  const estado = ESTADOS[evento.estado];
 
   function manejarCancelacion() {
     if (!window.confirm('¿Cancelar este evento? Esta acción no se puede deshacer.')) return;
@@ -76,8 +49,14 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
     <div className="mx-auto max-w-2xl space-y-4 p-6">
       <div>
         <h1 className="text-xl font-semibold">Evento #{evento.id}</h1>
-        <p className="text-sm text-muted-foreground">
-          Estado: <span className="font-medium">{evento.estado}</span>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Estado:{' '}
+          <span
+            title={estado.ayuda}
+            className={cn('rounded-full px-2 py-0.5 text-xs font-medium', estado.clase)}
+          >
+            {estado.etiqueta}
+          </span>
         </p>
         <BadgeTipoEvento evento={evento} className="mt-2" />
       </div>
@@ -142,89 +121,11 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
         </Card>
       )}
 
-      {evento.estado === 'EnConsulta' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Agendar evento</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={manejarEnvioAgenda} className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="distribucionId">Distribución (id)</Label>
-                  <Input
-                    id="distribucionId"
-                    type="number"
-                    min={1}
-                    value={distribucionId}
-                    onChange={(e) => setDistribucionId(e.target.value)}
-                  />
-                </div>
-                <div className="flex items-end gap-2 pb-1.5">
-                  <input
-                    id="modalidadSalonRestaurante"
-                    type="checkbox"
-                    checked={modalidadSalonRestaurante}
-                    onChange={(e) => setModalidadSalonRestaurante(e.target.checked)}
-                  />
-                  <Label htmlFor="modalidadSalonRestaurante">Modalidad salón-restaurante</Label>
-                </div>
-              </div>
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label htmlFor="inicio">Inicio</Label>
-                  <Input
-                    id="inicio"
-                    type="datetime-local"
-                    value={inicio}
-                    onChange={(e) => setInicio(e.target.value)}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="fin">Fin</Label>
-                  <Input
-                    id="fin"
-                    type="datetime-local"
-                    value={fin}
-                    onChange={(e) => setFin(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              {agendarEvento.isError && (
-                <p className="text-sm text-destructive">
-                  {agendarEvento.error instanceof ErrorApiCliente
-                    ? agendarEvento.error.message
-                    : 'No se pudo agendar el evento.'}
-                </p>
-              )}
-
-              {capacidadExcedida ? (
-                <Button
-                  type="button"
-                  variant="destructive"
-                  className="w-full"
-                  disabled={agendarEvento.isPending}
-                  onClick={() => enviarAgenda(true)}
-                >
-                  Confirmar igual
-                </Button>
-              ) : (
-                <Button type="submit" disabled={agendarEvento.isPending} className="w-full">
-                  {agendarEvento.isPending ? 'Agendando…' : 'Agendar evento'}
-                </Button>
-              )}
-            </form>
-          </CardContent>
-        </Card>
-      )}
-
       {/* HU-14: el saldo, el formulario de cobro y el historial. Sin presupuesto no hay base de
           cobro contra la que medir nada, así que no hay cuenta que mostrar. */}
       {presupuestoVigente && (
         <CuentaDelEvento
-          eventoId={evento.id}
+          evento={evento}
           admitePagos={evento.estado !== 'Cancelado' && evento.estado !== 'Cobrado'}
         />
       )}

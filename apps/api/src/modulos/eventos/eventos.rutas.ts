@@ -60,18 +60,18 @@ registroOpenApi.registerPath({
   path: '/eventos/{id}/agendar',
   tags: ['Eventos'],
   summary:
-    'Fija distribución, horario y modalidad del evento. NO lo reserva: eso lo hace el pago del 20% (HU-13)',
+    'Fija o cambia distribución, horario y modalidad del evento. No cambia su estado: la reserva la hace el pago del 20% (HU-13)',
   request: {
     params: esquemaIdParam,
     body: { content: { 'application/json': { schema: esquemaAgendarEvento } } },
   },
   responses: {
-    200: { description: 'Evento agendado; sigue EnConsulta', content: respuestaEvento },
+    200: { description: 'Evento agendado, en el mismo estado que tenía', content: respuestaEvento },
     400: { description: 'Datos inválidos' },
     404: { description: 'No existe el evento o la distribución indicada' },
     409: {
       description:
-        'El evento no está EnConsulta, o el salón ya está ocupado en ese horario por otro evento Reservado o Cobrado (RN-12)',
+        'El evento está Cancelado, o el salón ya está ocupado en ese horario por otro evento Reservado o Cobrado (RN-12)',
     },
     422: {
       description:

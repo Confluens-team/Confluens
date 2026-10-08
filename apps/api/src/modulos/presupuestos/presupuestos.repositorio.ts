@@ -219,6 +219,23 @@ export async function reemplazarLineas(
   });
 }
 
+// HU-12 sobre un evento confirmado: con el total nuevo, lo pagado decide si el evento queda
+// Reservado o Cobrado.
+export async function sumarPagos(eventoId: number, tx: Prisma.TransactionClient = prisma) {
+  const resultado = await tx.pago.aggregate({ where: { eventoId }, _sum: { monto: true } });
+  return resultado._sum.monto;
+}
+
+// Al mover de salón un evento ya agendado se conserva la distribución del mismo nombre en el salón
+// nuevo (todos tienen Conferencia, Mesas de trabajo y Banquete). Si no la tiene, queda sin elegir.
+export async function buscarDistribucionPorNombre(
+  salonId: number,
+  nombre: string,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.distribucion.findFirst({ where: { salonId, nombre } });
+}
+
 export type PresupuestosRepositorio = {
   buscarClientePorCorreo: typeof buscarClientePorCorreo;
   buscarClientePorUsuarioId: typeof buscarClientePorUsuarioId;
@@ -235,4 +252,6 @@ export type PresupuestosRepositorio = {
   actualizarEvento: typeof actualizarEvento;
   actualizarPresupuesto: typeof actualizarPresupuesto;
   reemplazarLineas: typeof reemplazarLineas;
+  sumarPagos: typeof sumarPagos;
+  buscarDistribucionPorNombre: typeof buscarDistribucionPorNombre;
 };

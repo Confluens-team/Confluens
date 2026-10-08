@@ -10,7 +10,9 @@ import {
 } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
+import { alcanza, calcularBaseDeCobro, PORCENTAJE_TOTAL } from '../../lib/base-de-cobro.js';
 import { ErrorApi } from '../../lib/errores.js';
+import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
 import * as presupuestosRepositorioReal from './presupuestos.repositorio.js';
 import type { PresupuestosRepositorio } from './presupuestos.repositorio.js';
 
@@ -352,6 +354,46 @@ function exigirConsultaEnCurso(presupuesto: PresupuestoDetalladoRepo, accion: st
   }
 }
 
+// RN-09: el Responsable de Eventos puede modificar en todo momento, también un evento ya
+// confirmado (decisión de Franco, 08/10/2026). Es el presupuesto Confirmado de un evento que sigue
+// ocupando el salón; uno Cancelado ya no se toca.
+function esConfirmadoVigente(presupuesto: PresupuestoDetalladoRepo): boolean {
+  return (
+    presupuesto.estado === 'Confirmado' &&
+    (presupuesto.evento.estado === 'Reservado' || presupuesto.evento.estado === 'Cobrado')
+  );
+}
+
+/**
+ * Un evento confirmado ya tiene horario (inicio y fin) y distribución. Si cambia la fecha, el
+ * horario se corre los mismos días y conserva las horas; si cambia el salón, se busca la
+ * distribución del mismo nombre en el salón nuevo. Que la franja nueva esté libre lo controla la
+ * restricción EXCLUDE al guardar (RN-12).
+ */
+async function reubicarHorario(
+  evento: PresupuestoDetalladoRepo['evento'],
+  datos: ModificarPresupuesto,
+  repo: PresupuestosRepositorio,
+): Promise<Prisma.EventoUpdateInput> {
+  const corrimiento = new Date(datos.fecha).getTime() - evento.fecha.getTime();
+  const horario =
+    corrimiento !== 0 && evento.inicio && evento.fin
+      ? {
+          inicio: new Date(evento.inicio.getTime() + corrimiento),
+          fin: new Date(evento.fin.getTime() + corrimiento),
+        }
+      : {};
+  if (datos.salonId === null || datos.salonId === evento.salonId) return horario;
+
+  const distribucion = evento.distribucion
+    ? await repo.buscarDistribucionPorNombre(datos.salonId, evento.distribucion.nombre)
+    : null;
+  return {
+    ...horario,
+    distribucion: distribucion ? { connect: { id: distribucion.id } } : { disconnect: true },
+  };
+}
+
 export async function obtenerConsulta(
   id: number,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
@@ -389,7 +431,8 @@ function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoR
  * fecha, salón, personas, jornada y servicios, y también el tipo de evento y la hora estimada
  * (ADR 0008).
  *
- * - Solo Estimado o Expirado, con el evento EnConsulta (409 si no).
+ * - Estimado o Expirado con el evento EnConsulta, o Confirmado con el evento Reservado o Cobrado
+ *   (RN-09). Cualquier otro caso, 409.
  * - Un servicio que ya estaba conserva su precio congelado; uno nuevo toma el vigente y tiene que
  *   estar activo. Un `precioUnitario` explícito es un ajuste comercial (RN-03) y manda.
  * - La línea del salón conserva su precio si no cambian el salón ni la jornada; si cambian, toma
@@ -405,6 +448,10 @@ function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoR
  * - Una consulta social puede seguir sin salón (no hay línea del salón). Si no queda ninguna línea,
  *   el presupuesto sigue sin armar y sin vencimiento: los 10 días arrancan cuando el personal carga
  *   la primera (decisión del PO, 07/10/2026).
+ * - Un Confirmado sigue Confirmado y no vuelve a contar vigencia: ya se cobró la seña. Necesita
+ *   salón, se le corre el horario si cambia la fecha (ver `reubicarHorario`) y su evento queda
+ *   Cobrado si lo pagado cubre el total nuevo, o Reservado si no. Si el total queda por debajo de
+ *   lo pagado, se guarda igual y el saldo queda negativo (decisión de Franco, 08/10/2026).
  */
 export async function modificarPresupuesto(
   id: number,
@@ -412,7 +459,11 @@ export async function modificarPresupuesto(
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
 ): Promise<ConsultaDetallada> {
   const presupuesto = await buscarOFallar(id, repo);
-  exigirConsultaEnCurso(presupuesto, 'modificar');
+  const confirmado = esConfirmadoVigente(presupuesto);
+  if (!confirmado) exigirConsultaEnCurso(presupuesto, 'modificar');
+  if (confirmado && datos.salonId === null) {
+    throw ErrorApi.reglaNegocio('Un evento confirmado necesita salón');
+  }
   const tipo = resolverTipo(datos, presupuesto.evento);
 
   const salon = datos.salonId === null ? null : await repo.buscarSalon(datos.salonId);
@@ -469,32 +520,62 @@ export async function modificarPresupuesto(
   );
 
   const lineas = [...(lineaSalon ? [lineaSalon] : []), ...lineasServicios, ...adicionales];
-  await repo.crearEnTransaccion(async (tx) => {
-    await repo.actualizarEvento(
-      presupuesto.eventoId,
-      {
-        fecha: new Date(datos.fecha),
-        salon: datos.salonId === null ? { disconnect: true } : { connect: { id: datos.salonId } },
-        cantidadPersonas: datos.cantidadPersonas,
-        ...tipo,
-        tipoJornada: datos.tipoJornada,
-        // Sin el campo se mantiene; null la borra.
-        horaInicioEstimada: datos.horaInicioEstimada,
-      },
-      tx,
-    );
-    await repo.reemplazarLineas(id, lineas, tx);
-    await repo.actualizarPresupuesto(
-      id,
-      {
-        estado: 'Estimado',
-        venceEn: lineas.length > 0 ? calcularVencimiento(new Date()) : null,
-        total: sumarLineas(lineas).toFixed(2),
-        requiereFactura: datos.requiereFactura,
-      },
-      tx,
-    );
-  });
+  const total = sumarLineas(lineas);
+  const horario = confirmado ? await reubicarHorario(presupuesto.evento, datos, repo) : {};
+
+  try {
+    await repo.crearEnTransaccion(async (tx) => {
+      // Dentro de la transacción, como en los pagos: el acumulado con el que se decide el estado
+      // tiene que ser el del momento de escribir.
+      let estadoEvento: Prisma.EventoUpdateInput['estado'];
+      if (confirmado) {
+        const pagado = (await repo.sumarPagos(presupuesto.eventoId, tx)) ?? new Prisma.Decimal(0);
+        const base = calcularBaseDeCobro({
+          ...presupuesto,
+          total: new Prisma.Decimal(total),
+          requiereFactura: datos.requiereFactura ?? presupuesto.requiereFactura,
+        });
+        estadoEvento = alcanza(new Prisma.Decimal(pagado), base, PORCENTAJE_TOTAL)
+          ? 'Cobrado'
+          : 'Reservado';
+      }
+
+      await repo.actualizarEvento(
+        presupuesto.eventoId,
+        {
+          fecha: new Date(datos.fecha),
+          salon: datos.salonId === null ? { disconnect: true } : { connect: { id: datos.salonId } },
+          cantidadPersonas: datos.cantidadPersonas,
+          ...tipo,
+          tipoJornada: datos.tipoJornada,
+          // Sin el campo se mantiene; null la borra.
+          horaInicioEstimada: datos.horaInicioEstimada,
+          ...horario,
+          ...(estadoEvento && { estado: estadoEvento }),
+        },
+        tx,
+      );
+      await repo.reemplazarLineas(id, lineas, tx);
+      await repo.actualizarPresupuesto(
+        id,
+        confirmado
+          ? { total: total.toFixed(2), requiereFactura: datos.requiereFactura }
+          : {
+              estado: 'Estimado',
+              venceEn: lineas.length > 0 ? calcularVencimiento(new Date()) : null,
+              total: total.toFixed(2),
+              requiereFactura: datos.requiereFactura,
+            },
+        tx,
+      );
+    });
+  } catch (error) {
+    // RN-12: la fecha o el salón nuevos de un evento confirmado pisan a otro reservado.
+    if (esViolacionDeSolapamiento(error)) {
+      throw ErrorApi.conflicto('El salón ya está reservado en ese horario por otro evento');
+    }
+    throw error;
+  }
   return obtenerConsulta(id, repo);
 }
 

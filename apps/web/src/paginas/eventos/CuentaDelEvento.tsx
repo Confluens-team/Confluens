@@ -1,15 +1,27 @@
-import { type CrearPago, esquemaCrearPago, PORCENTAJE_SENA } from '@confluens/shared';
+import {
+  type CrearPago,
+  esquemaCrearPago,
+  type EventoDetallado,
+  PORCENTAJE_SENA,
+  type TipoJornada,
+} from '@confluens/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
+import { Link } from 'react-router';
 
+import { SelectorFechaHora } from '@/components/SelectorFechaHora';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { useAgendarEvento } from '@/hooks/use-eventos';
 import { useMediosPago, usePagosDeEvento, useRegistrarPago } from '@/hooks/use-pagos';
+import { useSalones } from '@/hooks/use-salones';
 import { ErrorApiCliente } from '@/lib/api';
-import { fechaLocal, hoyISO, nombreCompleto } from '@/lib/formato';
+import { fechaLocal, nombreCompleto } from '@/lib/formato';
+import { CLASES_SELECT } from './clases-select';
 
 // Los pagos sí llevan centavos: a diferencia de formatearPesos (que redondea a pesos enteros para
 // la landing), acá el importe es plata que entró y tiene que cuadrar hasta el último centavo.
@@ -19,17 +31,38 @@ const formateadorHorario = new Intl.DateTimeFormat('es-AR', {
   timeStyle: 'short',
 });
 
-// Clases del <input> de components/ui: no hay un <Select> en el proyecto (shadcn trae uno con
-// radix, pero el catálogo son 3 opciones y el nativo ya da teclado, lector de pantalla y el
-// selector del celular, igual que el de países en AccesoCliente.tsx).
-const CLASES_SELECT =
-  'h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30';
-
 interface CuentaDelEventoProps {
-  eventoId: number;
+  evento: EventoDetallado;
   // Un evento Cancelado o Cobrado no admite más pagos (el servicio los rechaza con 409): se muestra
   // la cuenta de solo lectura.
   admitePagos: boolean;
+}
+
+// Un instante ISO como valor de <input type="datetime-local">, en la hora de quien lo mira.
+function comoFechaHoraLocal(iso: string): string {
+  const fecha = new Date(iso);
+  return new Date(fecha.getTime() - fecha.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+}
+
+// Duración con la que se propone el fin a partir del inicio. Media jornada: 4 h, el máximo que
+// admite (dominio.md: "hasta 4 horas inclusive"). Jornada completa: dominio.md solo dice "más de
+// 4 horas"; se proponen 8 h por decisión de Franco (08/10/2026). Es una sugerencia: el fin se
+// puede cambiar a mano.
+const HORAS_POR_JORNADA: Record<TipoJornada, number> = { media: 4, completa: 8 };
+
+// La jornada que eligió el cliente. Los eventos anteriores a tipoJornada no la tienen guardada:
+// sale de la línea del salón del presupuesto, que es la primera ("Salón X (media jornada)").
+function jornadaDelEvento(evento: EventoDetallado): TipoJornada {
+  if (evento.tipoJornada) return evento.tipoJornada;
+  const presupuesto = evento.presupuestos.find((p) => p.estado !== 'Cancelado');
+  return presupuesto?.lineas[0]?.descripcion.endsWith('(media jornada)') ? 'media' : 'completa';
+}
+
+// "YYYY-MM-DDTHH:mm" + horas, en la hora local (puede pasar al día siguiente).
+function sumarHoras(valor: string, horas: number): string {
+  const fecha = new Date(valor);
+  fecha.setHours(fecha.getHours() + horas);
+  return comoFechaHoraLocal(fecha.toISOString());
 }
 
 function Fila({ etiqueta, children }: { etiqueta: string; children: React.ReactNode }) {
@@ -49,29 +82,100 @@ function Fila({ etiqueta, children }: { etiqueta: string; children: React.ReactN
  * momento en que hace falta contar las consultas que quedaron pisando la franja. El paso a Cobrado
  * se ve solo: `admitePagos` se apaga y la tarjeta de cobro desaparece.
  */
-export function CuentaDelEvento({ eventoId, admitePagos }: CuentaDelEventoProps) {
+export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
+  const eventoId = evento.id;
   const cuenta = usePagosDeEvento(eventoId);
   const mediosPago = useMediosPago();
   const registrarPago = useRegistrarPago(eventoId);
+  const agendarEvento = useAgendarEvento(eventoId);
+  const salones = useSalones();
+
+  // `fecha` viaja como medianoche UTC del día del evento: el día es la parte YYYY-MM-DD, sin pasar
+  // por Date (que lo correría al día anterior en Argentina). Es la fecha que se propone para el
+  // pago, a pedido del Responsable de Eventos.
+  const fechaDelEvento = evento.fecha.slice(0, 10);
+
+  // Agendar va en el mismo formulario del pago (ADR 0007: sin distribución y horario no se puede
+  // reservar el salón). Se precargan con lo ya agendado o, si no, el inicio con la hora estimada
+  // de la consulta y el fin calculado según la jornada.
+  const jornada = jornadaDelEvento(evento);
+  const horasJornada = HORAS_POR_JORNADA[jornada];
+  const [distribucionId, setDistribucionId] = useState(evento.distribucionId?.toString() ?? '');
+  const [inicio, setInicio] = useState(
+    evento.inicio
+      ? comoFechaHoraLocal(evento.inicio)
+      : evento.horaInicioEstimada
+        ? `${fechaDelEvento}T${evento.horaInicioEstimada}`
+        : '',
+  );
+  const [fin, setFin] = useState(
+    evento.fin ? comoFechaHoraLocal(evento.fin) : inicio ? sumarHoras(inicio, horasJornada) : '',
+  );
+
+  // Cada vez que se elige el inicio, el fin se recalcula con la duración de la jornada. Después se
+  // puede cambiar a mano; si se vuelve a tocar el inicio, se recalcula de nuevo.
+  function elegirInicio(valor: string) {
+    setInicio(valor);
+    setFin(sumarHoras(valor, horasJornada));
+  }
 
   const {
     register,
     handleSubmit,
     reset,
+    setValue,
     formState: { errors },
   } = useForm<CrearPago>({
     resolver: zodResolver(esquemaCrearPago),
-    defaultValues: { fecha: hoyISO(), monto: '' },
+    defaultValues: { fecha: fechaDelEvento, monto: '' },
   });
 
-  function registrar(datos: CrearPago) {
+  const enConsulta = evento.estado === 'EnConsulta';
+  const distribuciones =
+    salones.data?.find((salon) => salon.id === evento.salonId)?.distribuciones ?? [];
+  const distribucionElegida = distribuciones.find((d) => d.id === Number(distribucionId));
+  const superaCapacidad =
+    distribucionElegida !== undefined && evento.cantidadPersonas > distribucionElegida.capacidad;
+  const horarioCompleto = distribucionId !== '' && inicio !== '' && fin !== '';
+  const horarioCambio =
+    distribucionId !== (evento.distribucionId?.toString() ?? '') ||
+    inicio !== (evento.inicio ? comoFechaHoraLocal(evento.inicio) : '') ||
+    fin !== (evento.fin ? comoFechaHoraLocal(evento.fin) : '');
+
+  function datosDelHorario() {
+    return {
+      distribucionId: Number(distribucionId),
+      inicio: new Date(inicio).toISOString(),
+      fin: new Date(fin).toISOString(),
+      modalidadSalonRestaurante: evento.modalidadSalonRestaurante,
+      // La pantalla ya avisa al lado de la distribución que no alcanza: elegirla igual es la
+      // confirmación que pide la API.
+      confirmarCapacidadExcedida: superaCapacidad,
+    };
+  }
+
+  // Evento confirmado: agendar no le cambia el estado, solo mueve la franja (RN-12 la controla).
+  function guardarHorario() {
+    agendarEvento.mutate(datosDelHorario());
+  }
+
+  async function registrar(datos: CrearPago) {
+    // Primero se agenda (si hay algo nuevo que agendar) y después se cobra: el pago que cruza la
+    // seña necesita el horario ya guardado para evaluar RN-12. Si agendar falla, no se cobra.
+    if (enConsulta && horarioCompleto && horarioCambio) {
+      try {
+        await agendarEvento.mutateAsync(datosDelHorario());
+      } catch {
+        return;
+      }
+    }
     registrarPago.mutate(datos, {
       // El medio de pago queda elegido: lo habitual es cargar varias entregas por el mismo medio.
       // El resto de los campos se nombran de a uno (incluida la observación, que vale ''): reset()
       // solo limpia lo que recibe en el objeto.
       onSuccess: () =>
         reset({
-          fecha: hoyISO(),
+          fecha: fechaDelEvento,
           monto: '',
           observacion: '',
           medioPagoId: datos.medioPagoId,
@@ -96,8 +200,71 @@ export function CuentaDelEvento({ eventoId, admitePagos }: CuentaDelEventoProps)
   // abajo haría que la pantalla diga "ya está cubierta" con un pago que la API todavía considera
   // por debajo del umbral, y el salón no quedaría reservado.
   const montoSena = Math.ceil(base * PORCENTAJE_SENA) / 100;
-  const faltaParaLaSena = montoSena - Number(saldo.pagado);
+  // Redondeado al centavo: la resta de dos number puede dejar 184058.00000000003.
+  const faltaParaLaSena = Number((montoSena - Number(saldo.pagado)).toFixed(2));
   const resultado = registrarPago.data;
+
+  // Distribución, inicio y fin. En consulta van dentro del formulario del pago (agenda y cobra de una
+  // vez); con el evento confirmado van en su propia tarjeta, para cambiarlos sin registrar un pago
+  // (RN-09: el Responsable de Eventos modifica en todo momento).
+  const camposHorario = (
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="distribucionId">Distribución</Label>
+        <select
+          id="distribucionId"
+          className={CLASES_SELECT}
+          value={distribucionId}
+          onChange={(e) => setDistribucionId(e.target.value)}
+        >
+          <option value="">{salones.isLoading ? 'Cargando…' : 'Elegir…'}</option>
+          {distribuciones.map((distribucion) => (
+            <option key={distribucion.id} value={distribucion.id}>
+              {distribucion.nombre} · hasta {distribucion.capacidad} personas
+            </option>
+          ))}
+        </select>
+        {superaCapacidad && (
+          <p className="text-xs text-amber-800">
+            El evento es de {evento.cantidadPersonas} personas y esta distribución admite{' '}
+            {distribucionElegida.capacidad}. Si la dejás, se agenda igual.
+          </p>
+        )}
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="inicio">Hora de inicio</Label>
+          <SelectorFechaHora
+            id="inicio"
+            value={inicio}
+            onChange={elegirInicio}
+            diaSugerido={fechaDelEvento}
+            horaSugerida={evento.horaInicioEstimada ?? undefined}
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="fin">Hora de fin</Label>
+          <SelectorFechaHora
+            id="fin"
+            value={fin}
+            onChange={setFin}
+            diaSugerido={inicio.slice(0, 10) || fechaDelEvento}
+            diaMinimo={inicio.slice(0, 10) || undefined}
+          />
+          <p className="text-xs text-muted-foreground">
+            {jornada === 'media' ? 'Media jornada' : 'Jornada completa'}: se calcula {horasJornada}{' '}
+            h después del inicio. Podés cambiarlo.
+          </p>
+        </div>
+      </div>
+      {enConsulta && !horarioCompleto && faltaParaLaSena > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Para que el pago que llega al {PORCENTAJE_SENA}% reserve el salón, completá distribución,
+          hora de inicio y hora de fin.
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -115,14 +282,50 @@ export function CuentaDelEvento({ eventoId, admitePagos }: CuentaDelEventoProps)
 
           {/* RN-01: la base incluye el IVA solo si el presupuesto se factura, así que la seña del
               20% cambia de monto según eso. Por eso se aclara sobre qué se calculó. */}
+          {/* Una vez reservado, la seña ya se cobró aunque después suba el total (RN-09): no se
+              vuelve a pedir el 20%, se cobra el saldo. */}
           <p className="pt-2 text-xs text-muted-foreground">
-            La seña del {PORCENTAJE_SENA}% de esta base es {formateadorMoneda.format(montoSena)}
-            {faltaParaLaSena > 0
-              ? `: faltan ${formateadorMoneda.format(faltaParaLaSena)} para reservar el salón.`
-              : ': ya está cubierta.'}
+            {enConsulta
+              ? `La seña del ${PORCENTAJE_SENA}% de esta base es ${formateadorMoneda.format(montoSena)}${
+                  faltaParaLaSena > 0
+                    ? `: faltan ${formateadorMoneda.format(faltaParaLaSena)} para reservar el salón.`
+                    : ': ya está cubierta.'
+                }`
+              : Number(saldo.saldo) < 0
+                ? 'Lo pagado supera el total: hay que resolver la diferencia con el cliente.'
+                : 'La seña ya se cobró y el salón está reservado.'}
           </p>
         </CardContent>
       </Card>
+
+      {!enConsulta && evento.estado !== 'Cancelado' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Horario del evento</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {camposHorario}
+            {agendarEvento.isError && (
+              <p className="text-sm text-destructive">
+                {agendarEvento.error instanceof ErrorApiCliente
+                  ? agendarEvento.error.message
+                  : 'No se pudo guardar el horario del evento.'}
+              </p>
+            )}
+            {agendarEvento.isSuccess && !horarioCambio && (
+              <p className="text-sm text-emerald-800">Horario guardado.</p>
+            )}
+            <Button
+              type="button"
+              className="w-full"
+              disabled={!horarioCompleto || !horarioCambio || agendarEvento.isPending}
+              onClick={guardarHorario}
+            >
+              {agendarEvento.isPending ? 'Guardando…' : 'Guardar horario'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {admitePagos && (
         <Card>
@@ -131,6 +334,13 @@ export function CuentaDelEvento({ eventoId, admitePagos }: CuentaDelEventoProps)
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(registrar)} className="space-y-4">
+              {enConsulta && !evento.salonId && (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  Para reservar el salón con la seña, primero elegí el salón desde la consulta y
+                  guardá los cambios.
+                </p>
+              )}
+              {enConsulta && evento.salonId && camposHorario}
               <div className="grid gap-4 sm:grid-cols-3">
                 <div className="space-y-1.5">
                   <Label htmlFor="fecha">Fecha</Label>
@@ -152,6 +362,32 @@ export function CuentaDelEvento({ eventoId, admitePagos }: CuentaDelEventoProps)
                   />
                   {errors.monto && (
                     <p className="text-xs text-destructive">{errors.monto.message}</p>
+                  )}
+                  {enConsulta && faltaParaLaSena > 0 && (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() =>
+                        setValue('monto', faltaParaLaSena.toFixed(2), { shouldValidate: true })
+                      }
+                    >
+                      Cargar el {PORCENTAJE_SENA}% de seña
+                    </Button>
+                  )}
+                  {!enConsulta && Number(saldo.saldo) > 0 && (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() =>
+                        setValue('monto', Number(saldo.saldo).toFixed(2), { shouldValidate: true })
+                      }
+                    >
+                      Cargar el saldo
+                    </Button>
                   )}
                 </div>
                 <div className="space-y-1.5">
@@ -193,6 +429,13 @@ export function CuentaDelEvento({ eventoId, admitePagos }: CuentaDelEventoProps)
                 )}
               </div>
 
+              {enConsulta && agendarEvento.isError && (
+                <p className="text-sm text-destructive">
+                  {agendarEvento.error instanceof ErrorApiCliente
+                    ? agendarEvento.error.message
+                    : 'No se pudo guardar el horario del evento.'}
+                </p>
+              )}
               {registrarPago.isError && (
                 <p className="text-sm text-destructive">
                   {registrarPago.error instanceof ErrorApiCliente
@@ -201,8 +444,14 @@ export function CuentaDelEvento({ eventoId, admitePagos }: CuentaDelEventoProps)
                 </p>
               )}
 
-              <Button type="submit" disabled={registrarPago.isPending} className="w-full">
-                {registrarPago.isPending ? 'Registrando…' : 'Registrar pago'}
+              <Button
+                type="submit"
+                disabled={registrarPago.isPending || agendarEvento.isPending}
+                className="w-full"
+              >
+                {registrarPago.isPending || agendarEvento.isPending
+                  ? 'Registrando…'
+                  : 'Registrar pago'}
               </Button>
             </form>
 
@@ -210,7 +459,10 @@ export function CuentaDelEvento({ eventoId, admitePagos }: CuentaDelEventoProps)
               <div className="mt-4 space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
                 <p className="font-medium">
                   Con este pago se alcanzó la seña: el presupuesto quedó confirmado y el salón
-                  reservado.
+                  reservado.{' '}
+                  <Link to="/admin/agenda" className="underline underline-offset-2">
+                    Ver en la agenda
+                  </Link>
                 </p>
                 {/* HU-13 C6: las consultas que pisan la franja NO se cancelan (Cancelado es
                     siempre manual, dominio.md:30). Se avisan para que las gestione una persona. */}
