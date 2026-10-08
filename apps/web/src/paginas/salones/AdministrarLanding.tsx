@@ -9,6 +9,7 @@ import { TAMANO_MAXIMO_FOTO, useSubirFoto } from '@/hooks/use-fotos';
 import { useActualizarLandingSalon, useSalones } from '@/hooks/use-salones';
 import { useActualizarLandingServicio, useServicios } from '@/hooks/use-servicios';
 import { ErrorApiCliente } from '@/lib/api';
+import { fotoOptimizada } from '@/lib/fotos';
 
 function mensajeDeError(error: unknown, alternativa: string): string {
   return error instanceof ErrorApiCliente || error instanceof Error ? error.message : alternativa;
@@ -67,7 +68,7 @@ function EditorDeFoto({
     <div className="flex items-center gap-3">
       {fotoUrl && !imagenRota ? (
         <img
-          src={fotoUrl}
+          src={fotoOptimizada(fotoUrl, 200)}
           alt=""
           className="size-20 shrink-0 rounded-md object-cover"
           onError={() => setImagenRota(true)}

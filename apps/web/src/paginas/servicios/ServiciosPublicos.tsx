@@ -3,11 +3,13 @@ import { useState } from 'react';
 
 import { useServiciosPublicos } from '@/hooks/use-servicios';
 import { agruparPorCategoria } from '@/lib/catalogo';
+import { fotoOptimizada } from '@/lib/fotos';
 import { cn } from '@/lib/utils';
 
 // Oferta gastronómica del canal público (HU-07). Son los servicios reales del catálogo, no un
 // resumen escrito a mano: si se da de alta un servicio nuevo, aparece acá sin tocar código.
-// Sin precios — el endpoint no los devuelve. Pensado para ir sobre el fondo bordó de la landing.
+// Sin precios — el endpoint no los devuelve. Pensado para ir sobre el fondo bordó de la landing. Si
+// el servicio tiene foto (se sube desde el panel, ADR 0009), se muestra al lado; si no, solo el texto.
 export function ServiciosPublicos() {
   const { data: servicios, isLoading, isError } = useServiciosPublicos();
   const [categoriaElegida, setCategoriaElegida] = useState<string | null>(null);
@@ -61,11 +63,22 @@ export function ServiciosPublicos() {
 
       <ul className="mt-8 grid gap-x-10 gap-y-6 md:grid-cols-2">
         {delGrupo.map((servicio) => (
-          <li key={servicio.id} className="border-b border-crema/10 pb-5">
-            {/* AC3 de la auditoría de accesibilidad (WCAG 1.3.1): era un h4 debajo del h2 de la
-                sección de gastronomía, y salteaba un nivel. */}
-            <h3 className="font-display text-xl font-medium text-crema">{servicio.nombre}</h3>
-            <p className="mt-1 text-sm leading-relaxed text-crema/65">{servicio.descripcion}</p>
+          <li key={servicio.id} className="flex gap-4 border-b border-crema/10 pb-5">
+            {servicio.fotoUrl && (
+              <img
+                src={fotoOptimizada(servicio.fotoUrl, 240)}
+                alt={servicio.nombre}
+                loading="lazy"
+                decoding="async"
+                className="size-24 shrink-0 rounded-lg object-cover ring-1 ring-crema/15"
+              />
+            )}
+            <div className="min-w-0">
+              {/* AC3 de la auditoría de accesibilidad (WCAG 1.3.1): era un h4 debajo del h2 de la
+                  sección de gastronomía, y salteaba un nivel. */}
+              <h3 className="font-display text-xl font-medium text-crema">{servicio.nombre}</h3>
+              <p className="mt-1 text-sm leading-relaxed text-crema/65">{servicio.descripcion}</p>
+            </div>
           </li>
         ))}
       </ul>
