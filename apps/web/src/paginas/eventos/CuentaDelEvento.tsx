@@ -23,6 +23,7 @@ import { useMediosPago, usePagosDeEvento, useRegistrarPago } from '@/hooks/use-p
 import { useSalones } from '@/hooks/use-salones';
 import { ErrorApiCliente } from '@/lib/api';
 import { fechaLocal, nombreCompleto } from '@/lib/formato';
+import { cn } from '@/lib/utils';
 import { CLASES_SELECT } from './clases-select';
 
 // Los pagos sí llevan centavos: a diferencia de formatearPesos (que redondea a pesos enteros para
@@ -136,6 +137,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   });
 
   const enConsulta = evento.estado === 'EnConsulta';
+  const cobrado = evento.estado === 'Cobrado';
   const distribuciones =
     salones.data?.find((salon) => salon.id === evento.salonId)?.distribuciones ?? [];
   const distribucionElegida = distribuciones.find((d) => d.id === Number(distribucionId));
@@ -298,19 +300,37 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
           <CardTitle>Cuenta del evento</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
-          <div>
-            <p className="text-2xl font-semibold tabular-nums">
-              {formateadorMoneda.format(saldoPendiente)}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              Saldo pendiente · base de cobro {formateadorMoneda.format(base)} (
-              {saldo.incluyeIva ? 'con IVA' : 'sin IVA'})
-            </p>
-          </div>
+          {/* Un evento cobrado no tiene saldo que mirar: lo que importa es cuánto entró y que
+              ya está completo. Va en el verde con el que la agenda marca los eventos que ocupan el
+              salón, para que se lea de un vistazo sin tener que interpretar un $0 de saldo. */}
+          {cobrado ? (
+            <div className="rounded-xl bg-emerald-700 px-4 py-3 text-crema">
+              <p className="text-xs font-medium tracking-wide uppercase opacity-90">
+                Evento cobrado
+              </p>
+              <p className="text-2xl font-semibold tabular-nums">
+                {formateadorMoneda.format(base)}
+              </p>
+              <p className="text-xs opacity-90">
+                Total cobrado por completo ({saldo.incluyeIva ? 'con IVA' : 'sin IVA'})
+              </p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-2xl font-semibold tabular-nums">
+                {formateadorMoneda.format(saldoPendiente)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                Saldo pendiente · base de cobro {formateadorMoneda.format(base)} (
+                {saldo.incluyeIva ? 'con IVA' : 'sin IVA'})
+              </p>
+            </div>
+          )}
 
           {/* Barra de lo abonado. Mientras el evento está en consulta lleva la marca de la seña: es
-              el umbral que reserva el salón (HU-13). */}
-          <div className="space-y-1.5">
+              el umbral que reserva el salón (HU-13). Con el evento cobrado no aporta: estaría
+              siempre al 100% debajo del cartel que ya lo dice. */}
+          <div className={cn('space-y-1.5', cobrado && 'hidden')}>
             <div
               className="relative h-2 rounded-full bg-muted"
               role="progressbar"
@@ -347,7 +367,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
               20% cambia de monto según eso. Por eso se aclara sobre qué se calculó. */}
           {/* Una vez reservado, la seña ya se cobró aunque después suba el total (RN-09): no se
               vuelve a pedir el 20%, se cobra el saldo. */}
-          <p className="text-xs text-muted-foreground">
+          <p className={cn('text-xs text-muted-foreground', cobrado && 'hidden')}>
             {enConsulta
               ? faltaParaLaSena > 0
                 ? `Faltan ${formateadorMoneda.format(faltaParaLaSena)} para la seña y reservar el salón.`
