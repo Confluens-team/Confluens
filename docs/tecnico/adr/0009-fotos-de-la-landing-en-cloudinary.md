@@ -30,6 +30,12 @@ guardando solo `fotoUrl`, ahora con la URL que devuelve Cloudinary.
    Cloudinary, igual que con Resend (ADR 0006). Las credenciales son `CLOUDINARY_CLOUD_NAME`,
    `CLOUDINARY_API_KEY` y `CLOUDINARY_API_SECRET`, leídas de `process.env` (ADR 0003).
 
+5. Para mostrarlas, la web pide a Cloudinary una versión del ancho en pantalla, con formato y
+   calidad automáticos (`f_auto,q_auto,c_limit,w_<ancho>`), y las carga en diferido
+   (`loading="lazy"`). Lo que más consume el plan gratis es la descarga, no el espacio, y así cada
+   visita baja varias veces menos. Las fotos de servicios también se muestran en la sección de
+   gastronomía de la landing.
+
 ## Consecuencias
 
 **A favor.** Las fotos no pasan por la API ni por la base: no hay middleware de uploads, ni límite
