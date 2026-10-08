@@ -226,8 +226,22 @@ describe('POST /api/eventos/:id/agendar', () => {
     expect(respuesta.body.data.presupuestos[0].estado).toBe('Estimado');
   });
 
-  it('responde 409 si el evento no está EnConsulta', async () => {
+  // RN-09: un evento ya confirmado se puede reagendar sin perder la reserva.
+  it('reagenda un evento Reservado sin cambiarle el estado', async () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Reservado' }));
+
+    const respuesta = await request(app)
+      .post('/api/eventos/20/agendar')
+      .set('Cookie', [cookiePersonal])
+      .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
+
+    expect(respuesta.status).toBe(200);
+    expect(agendarMock).toHaveBeenCalled();
+    expect(agendarMock.mock.calls[0]![0]).not.toHaveProperty('estado');
+  });
+
+  it('responde 409 si el evento está Cancelado', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Cancelado' }));
 
     const respuesta = await request(app)
       .post('/api/eventos/20/agendar')

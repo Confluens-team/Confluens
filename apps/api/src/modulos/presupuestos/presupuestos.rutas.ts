@@ -18,6 +18,7 @@ import { limitadorEscrituras } from '../../middlewares/limitadores.js';
 import { validar } from '../../middlewares/validar.js';
 import {
   crear,
+  crearDeEvento,
   crearSocial,
   darDeBaja,
   listar,
@@ -26,6 +27,7 @@ import {
 } from './presupuestos.controlador.js';
 
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
+const esquemaEventoIdParam = z.object({ eventoId: z.coerce.number().int().positive() });
 const respuestaConsulta = {
   'application/json': { schema: z.object({ data: esquemaConsultaDetallada }) },
 };
@@ -76,6 +78,24 @@ registroOpenApi.registerPath({
 });
 
 registroOpenApi.registerPath({
+  method: 'post',
+  path: '/presupuestos/para-evento/{eventoId}',
+  tags: ['Presupuestos'],
+  summary: 'Arma el presupuesto vacío de un evento que todavía no tiene ninguno',
+  request: { params: esquemaEventoIdParam },
+  responses: {
+    201: {
+      description: 'Presupuesto sin armar creado (sin líneas, total 0 y sin vigencia)',
+      content: { 'application/json': { schema: z.object({ data: esquemaPresupuestoDetallado }) } },
+    },
+    ...erroresDeSesion,
+    404: { description: 'No existe el evento' },
+    409: { description: 'El evento está cancelado o ya tiene un presupuesto' },
+    429: { description: 'Se pasó el límite de escrituras por ventana' },
+  },
+});
+
+registroOpenApi.registerPath({
   method: 'get',
   path: '/presupuestos',
   tags: ['Presupuestos'],
@@ -114,23 +134,28 @@ registroOpenApi.registerPath({
   method: 'patch',
   path: '/presupuestos/{id}',
   tags: ['Presupuestos'],
-  summary: 'Modifica o recalcula una consulta Estimado o Expirado y reinicia su vigencia (HU-12)',
+  summary:
+    'Modifica una consulta (Estimado o Expirado, reinicia su vigencia) o el presupuesto de un evento confirmado (HU-12, RN-09)',
   request: {
     params: esquemaIdParam,
     body: { content: { 'application/json': { schema: esquemaModificarPresupuesto } } },
   },
   responses: {
     200: {
-      description: 'Consulta modificada, en Estimado y con 10 días de vigencia',
+      description:
+        'Consulta modificada: en Estimado con 10 días de vigencia, o Confirmado con el estado del evento según lo pagado',
       content: respuestaConsulta,
     },
     400: { description: 'Datos inválidos' },
     404: { description: 'No existe el presupuesto, el salón o un servicio' },
     409: {
       description:
-        'El presupuesto no está Estimado ni Expirado, o el evento ya no está en consulta',
+        'El presupuesto está Cancelado o su evento no está en un estado que se pueda modificar, o la fecha o el salón nuevos pisan a otro evento reservado (RN-12)',
     },
-    422: { description: 'Se agregó un servicio que no está activo' },
+    422: {
+      description:
+        'Se agregó un servicio que no está activo, o a un evento confirmado se le sacó el salón',
+    },
     ...erroresDeSesion,
   },
 });
@@ -177,6 +202,13 @@ rutasPresupuestos.post(
 // las funciones por rol.
 const personalDeConsultas = [autenticar, autorizar(...ROLES_PERSONAL)] as const;
 
+rutasPresupuestos.post(
+  '/para-evento/:eventoId',
+  ...personalDeConsultas,
+  limitadorEscrituras,
+  validar({ params: esquemaEventoIdParam }),
+  asincrono(crearDeEvento),
+);
 rutasPresupuestos.get(
   '/',
   ...personalDeConsultas,

@@ -187,6 +187,13 @@ function Formulario({
   const enCurso =
     (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
     consulta.evento.estado === 'EnConsulta';
+  // RN-09: el Responsable de Eventos modifica en todo momento, también un evento ya confirmado
+  // (decisión de Franco, 08/10/2026). Sigue Confirmado: ni vigencia ni baja, y el estado del evento
+  // (Reservado o Cobrado) lo recalcula la API con lo pagado contra el total nuevo.
+  const confirmado =
+    consulta.estado === 'Confirmado' &&
+    (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');
+  const editable = enCurso || confirmado;
   const expirado = consulta.estado === 'Expirado';
   const salon = salones.find((s) => s.id === salonId);
 
@@ -272,6 +279,8 @@ function Formulario({
     esEntero(personas) &&
     tipoValido &&
     (salonId === null || esImporte(precioSalon)) &&
+    // Un evento confirmado ocupa un salón: no puede quedar «a definir».
+    (!confirmado || salonId !== null) &&
     lineas.every((l) => esEntero(l.cantidad) && precioValido(l) && l.descripcion.trim());
   // Sin salón ni líneas, el presupuesto sigue sin armar y no arranca la vigencia (ADR 0008).
   const quedaSinArmar = salonId === null && lineas.length === 0;
@@ -372,7 +381,13 @@ function Formulario({
           )}
         </div>
       )}
-      {!enCurso && (
+      {confirmado && (
+        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
+          Evento confirmado: podés modificar todo y sigue confirmado. Si cambia el total, cambia el
+          saldo a cobrar; si cambiás la fecha, el horario se corre al mismo día.
+        </p>
+      )}
+      {!editable && (
         <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
           {consulta.estado === 'Cancelado'
             ? 'Esta consulta se dio de baja'
@@ -394,7 +409,7 @@ function Formulario({
         </p>
       </section>
 
-      <fieldset disabled={!enCurso} className="space-y-6">
+      <fieldset disabled={!editable} className="space-y-6">
         <section className="rounded-xl bg-card p-5 ring-1 ring-border">
           <h3 className="text-sm font-semibold">Evento</h3>
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -418,7 +433,9 @@ function Formulario({
                   cambiarSalonOJornada(e.target.value ? Number(e.target.value) : null, jornada)
                 }
               >
-                {(tipo === 'Social' || salonId === null) && <option value="">A definir</option>}
+                {(tipo === 'Social' || salonId === null) && !confirmado && (
+                  <option value="">A definir</option>
+                )}
                 {salones.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.nombre} (hasta {s.capacidadMaxima})
@@ -521,7 +538,7 @@ function Formulario({
             <span className="text-muted-foreground">Distribución y horario: </span>
             {distribucion && inicio && fin
               ? `${distribucion.nombre} · de ${hora(inicio)} a ${hora(fin)}`
-              : 'sin agendar todavía (se cargan al agendar el evento)'}
+              : 'sin agendar todavía (se cargan al registrar el pago)'}
           </p>
           <label className="mt-4 flex items-center gap-2 text-sm">
             <input
@@ -531,7 +548,7 @@ function Formulario({
             />
             El cliente requiere factura
             <span className="text-xs text-muted-foreground">
-              (la seña y el saldo se calculan sobre el total con IVA, RN-01)
+              (la seña y el saldo se calculan sobre el total con IVA)
             </span>
           </label>
         </section>
@@ -785,22 +802,29 @@ function Formulario({
         </p>
       </section>
 
-      {enCurso && (
+      {editable && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            className="text-destructive"
-            disabled={darDeBaja.isPending}
-            onClick={confirmarBaja}
-          >
-            <Trash2 /> Dar de baja
-          </Button>
+          {/* Un evento confirmado no se da de baja desde acá: se cancela desde el evento (RN-07). */}
+          {enCurso ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-destructive"
+              disabled={darDeBaja.isPending}
+              onClick={confirmarBaja}
+            >
+              <Trash2 /> Dar de baja
+            </Button>
+          ) : (
+            <span />
+          )}
           <div className="flex flex-wrap items-center justify-end gap-3">
             <p className="text-xs text-muted-foreground">
-              {quedaSinArmar
-                ? 'Sin salón ni servicios, el presupuesto sigue sin armar.'
-                : `Al guardar, la vigencia vuelve a contar ${DIAS_VIGENCIA_PRESUPUESTO} días.`}
+              {confirmado
+                ? 'Al guardar, el evento sigue confirmado y el saldo se recalcula con el total nuevo.'
+                : quedaSinArmar
+                  ? 'Sin salón ni servicios, el presupuesto sigue sin armar.'
+                  : `Al guardar, la vigencia vuelve a contar ${DIAS_VIGENCIA_PRESUPUESTO} días.`}
             </p>
             <Button type="submit" disabled={!valido || modificar.isPending}>
               {modificar.isPending ? 'Guardando…' : 'Guardar cambios'}
@@ -812,14 +836,14 @@ function Formulario({
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-card p-5 ring-1 ring-border">
           <div className="max-w-xl">
             <h3 className="flex items-center gap-2 text-sm font-semibold">
-              <CalendarCheck className="size-4 text-dorado" /> Agendar y cobrar la seña
+              <CalendarCheck className="size-4 text-dorado" /> Cobrar la seña
             </h3>
             <p className="text-xs text-muted-foreground">
               {expirado
                 ? 'La consulta está vencida: recalculala y guardá los cambios antes de cobrar la seña.'
                 : !consulta.salon
                   ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
-                  : 'Cargá la distribución y el horario y registrá los pagos. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a Eventos (HU-13). Guardá antes los cambios de la consulta.'}
+                  : 'Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda (HU-13). Guardá antes los cambios de la consulta.'}
             </p>
           </div>
           <Button
@@ -828,7 +852,7 @@ function Formulario({
             disabled={expirado || !consulta.salon}
             onClick={() => onAbrirEvento(consulta.evento.id)}
           >
-            <CalendarCheck /> Agendar y registrar pagos
+            <CalendarCheck /> Registrar pagos
           </Button>
         </section>
       )}

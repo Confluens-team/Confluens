@@ -11,6 +11,7 @@ import type {
 import type { Request, Response } from 'express';
 
 import {
+  crearPresupuestoDeEvento,
   darDeBajaPresupuesto,
   generarPresupuesto,
   listarPresupuestos,
@@ -35,6 +36,16 @@ export async function crearSocial(req: Request, res: Response): Promise<void> {
     req.usuario!.id,
     req.body as CrearConsultaSocial,
   );
+  const cuerpo: RespuestaExito<PresupuestoDetallado> = {
+    data: presupuesto as unknown as PresupuestoDetallado,
+  };
+  res.status(201).json(cuerpo);
+}
+
+// El presupuesto vacío de un evento que todavía no tiene ninguno; el personal lo arma después
+// desde la consulta. req.params ya validado en presupuestos.rutas.ts.
+export async function crearDeEvento(req: Request, res: Response): Promise<void> {
+  const presupuesto = await crearPresupuestoDeEvento(Number(req.params.eventoId));
   const cuerpo: RespuestaExito<PresupuestoDetallado> = {
     data: presupuesto as unknown as PresupuestoDetallado,
   };
