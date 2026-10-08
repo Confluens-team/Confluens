@@ -323,8 +323,15 @@ export function Agenda() {
                 onClick={() => alternarEstado(valor)}
                 title={ESTADOS[valor].ayuda}
               >
+                {/* El aro no es decorativo: el color de Cobrado es el mismo bordo que pinta el chip
+                    activo, así que sin él el punto desaparece justo cuando el filtro está puesto.
+                    Va en crema y no en negro porque el negro sobre el bordo da 1.57:1 y no se
+                    despega; el crema da cerca de 12:1. Sobre el chip inactivo el aro queda
+                    invisible contra la tarjeta, que es lo que se busca: ahí el punto ya se ve.
+                    Es `ring` y no `border` porque el borde le comería 2px al color dentro de un
+                    punto de 8px. */}
                 <span
-                  className="size-2 rounded-full"
+                  className="size-2 rounded-full ring-1 ring-crema"
                   style={{ backgroundColor: ESTADOS[valor].color }}
                 />
                 {ESTADOS[valor].etiqueta}

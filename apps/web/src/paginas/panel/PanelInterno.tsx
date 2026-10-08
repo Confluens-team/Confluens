@@ -172,7 +172,7 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
   return (
     <div className="fondo-papel min-h-screen text-foreground">
       <header className="sticky top-0 z-40 border-b border-border/70 bg-papel/90 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
+        <div className="mx-auto flex h-16 max-w-[90rem] items-center justify-between gap-4 px-4 sm:px-6">
           <Logo compacto />
           <div className="flex items-center gap-2 text-sm">
             <span className="hidden text-muted-foreground sm:inline">{sesion.email}</span>
@@ -188,7 +188,7 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
             barra y aparecía una barra de scroll vertical. En pantallas angostas se sigue pudiendo
             deslizar de costado, sin mostrar la barra. */}
         <nav
-          className="mx-auto flex max-w-6xl gap-1 overflow-x-auto overflow-y-hidden px-4 [scrollbar-width:none] sm:px-6 [&::-webkit-scrollbar]:hidden"
+          className="mx-auto flex max-w-[90rem] gap-1 overflow-x-auto overflow-y-hidden px-4 [scrollbar-width:none] sm:px-6 [&::-webkit-scrollbar]:hidden"
           role="tablist"
         >
           {PESTANIAS.map(({ valor, texto, icono: Icono }) => (
@@ -211,7 +211,11 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
         </nav>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
+      {/* 90rem y no el max-w-6xl del sitio público: la tabla de consultas tiene diez columnas y
+          necesita cerca de 1100px para entrar sin scroll horizontal, que es justo lo que dejaban
+          libre los 72rem de antes. El encabezado y las pestañas usan el mismo ancho para que el
+          borde inferior de la pestaña activa siga alineado con el contenido. */}
+      <main className="mx-auto max-w-[90rem] px-4 py-8 sm:px-6">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold text-bordo">{activa.texto}</h1>
           <p className="text-sm text-muted-foreground">{activa.bajada}</p>
