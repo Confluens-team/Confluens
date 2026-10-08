@@ -6,6 +6,7 @@ import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useCancelarEvento, useEvento } from '@/hooks/use-eventos';
+import { useArmarPresupuestoDeEvento } from '@/hooks/use-presupuestos';
 import { ErrorApiCliente } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { CuentaDelEvento } from './CuentaDelEvento';
@@ -92,6 +93,7 @@ interface DetalleEventoProps {
 export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps) {
   const { data: evento, isLoading, isError } = useEvento(eventoId);
   const cancelarEvento = useCancelarEvento(eventoId);
+  const armarPresupuesto = useArmarPresupuestoDeEvento(eventoId);
   const [presupuestoDesplegado, setPresupuestoDesplegado] = useState(false);
 
   if (isLoading) return <p className="py-6 text-sm text-muted-foreground">Cargando…</p>;
@@ -115,6 +117,19 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
   // En los dos casos la cuenta mostraría $0 y cualquier pago lo rechazaría la API por superar el
   // total, así que en su lugar va el aviso.
   const presupuestoSinArmar = presupuestoVigente?.venceEn === null;
+
+  // Un evento sin presupuesto no tiene consulta que abrir: primero se le crea el vacío y recién
+  // ahí se puede ir a cargarle salón y servicios. Si ya lo tiene (una consulta social), se abre
+  // directo.
+  function armarElPresupuesto() {
+    if (presupuestoVigente) {
+      onVerPresupuesto?.(presupuestoVigente.id);
+      return;
+    }
+    armarPresupuesto.mutate(undefined, {
+      onSuccess: (nuevo) => onVerPresupuesto?.(nuevo.id),
+    });
+  }
 
   function manejarCancelacion() {
     if (!window.confirm('¿Cancelar este evento? Esta acción no se puede deshacer.')) return;
@@ -172,13 +187,24 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
                     ? 'El presupuesto todavía no tiene nada cargado, así que no hay base de cobro que calcular.'
                     : 'El evento no tiene ningún presupuesto asociado al que calcularle una base de cobro.'}
                 </p>
-                {presupuestoSinArmar && onVerPresupuesto && (
+                {armarPresupuesto.isError && (
+                  <p className="text-destructive">
+                    {armarPresupuesto.error instanceof ErrorApiCliente
+                      ? armarPresupuesto.error.message
+                      : 'No se pudo armar el presupuesto.'}
+                  </p>
+                )}
+                {/* Armar el presupuesto solo tiene sentido con el evento en consulta: el que se
+                    crea nace Estimado y la API rechaza un Estimado sobre un evento ya reservado,
+                    cobrado o cancelado. El sin armar ya existe, así que solo se abre. */}
+                {(presupuestoSinArmar || evento.estado === 'EnConsulta') && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => onVerPresupuesto(presupuestoVigente.id)}
+                    disabled={armarPresupuesto.isPending}
+                    onClick={armarElPresupuesto}
                   >
-                    Armar el presupuesto
+                    {armarPresupuesto.isPending ? 'Armando…' : 'Armar el presupuesto'}
                   </Button>
                 )}
               </CardContent>
