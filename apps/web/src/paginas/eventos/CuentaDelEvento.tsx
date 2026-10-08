@@ -154,6 +154,11 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
     };
   }
 
+  // Evento confirmado: agendar no le cambia el estado, solo mueve la franja (RN-12 la controla).
+  function guardarHorario() {
+    agendarEvento.mutate(datosDelHorario());
+  }
+
   async function registrar(datos: CrearPago) {
     // Primero se agenda (si hay algo nuevo que agendar) y después se cobra: el pago que cruza la
     // seña necesita el horario ya guardado para evaluar RN-12. Si agendar falla, no se cobra.
@@ -199,7 +204,9 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   const faltaParaLaSena = Number((montoSena - Number(saldo.pagado)).toFixed(2));
   const resultado = registrarPago.data;
 
-  // Distribución, inicio y fin: van dentro del formulario del pago, que agenda y cobra de una vez.
+  // Distribución, inicio y fin. En consulta van dentro del formulario del pago (agenda y cobra de una
+  // vez); con el evento confirmado van en su propia tarjeta, para cambiarlos sin registrar un pago
+  // (RN-09: el Responsable de Eventos modifica en todo momento).
   const camposHorario = (
     <div className="space-y-4">
       <div className="space-y-1.5">
@@ -275,14 +282,50 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
 
           {/* RN-01: la base incluye el IVA solo si el presupuesto se factura, así que la seña del
               20% cambia de monto según eso. Por eso se aclara sobre qué se calculó. */}
+          {/* Una vez reservado, la seña ya se cobró aunque después suba el total (RN-09): no se
+              vuelve a pedir el 20%, se cobra el saldo. */}
           <p className="pt-2 text-xs text-muted-foreground">
-            La seña del {PORCENTAJE_SENA}% de esta base es {formateadorMoneda.format(montoSena)}
-            {faltaParaLaSena > 0
-              ? `: faltan ${formateadorMoneda.format(faltaParaLaSena)} para reservar el salón.`
-              : ': ya está cubierta.'}
+            {enConsulta
+              ? `La seña del ${PORCENTAJE_SENA}% de esta base es ${formateadorMoneda.format(montoSena)}${
+                  faltaParaLaSena > 0
+                    ? `: faltan ${formateadorMoneda.format(faltaParaLaSena)} para reservar el salón.`
+                    : ': ya está cubierta.'
+                }`
+              : Number(saldo.saldo) < 0
+                ? 'Lo pagado supera el total: hay que resolver la diferencia con el cliente.'
+                : 'La seña ya se cobró y el salón está reservado.'}
           </p>
         </CardContent>
       </Card>
+
+      {!enConsulta && evento.estado !== 'Cancelado' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Horario del evento</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {camposHorario}
+            {agendarEvento.isError && (
+              <p className="text-sm text-destructive">
+                {agendarEvento.error instanceof ErrorApiCliente
+                  ? agendarEvento.error.message
+                  : 'No se pudo guardar el horario del evento.'}
+              </p>
+            )}
+            {agendarEvento.isSuccess && !horarioCambio && (
+              <p className="text-sm text-emerald-800">Horario guardado.</p>
+            )}
+            <Button
+              type="button"
+              className="w-full"
+              disabled={!horarioCompleto || !horarioCambio || agendarEvento.isPending}
+              onClick={guardarHorario}
+            >
+              {agendarEvento.isPending ? 'Guardando…' : 'Guardar horario'}
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {admitePagos && (
         <Card>
@@ -320,7 +363,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                   {errors.monto && (
                     <p className="text-xs text-destructive">{errors.monto.message}</p>
                   )}
-                  {faltaParaLaSena > 0 && (
+                  {enConsulta && faltaParaLaSena > 0 && (
                     <Button
                       type="button"
                       variant="link"
@@ -331,6 +374,19 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                       }
                     >
                       Cargar el {PORCENTAJE_SENA}% de seña
+                    </Button>
+                  )}
+                  {!enConsulta && Number(saldo.saldo) > 0 && (
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
+                      className="h-auto p-0 text-xs"
+                      onClick={() =>
+                        setValue('monto', Number(saldo.saldo).toFixed(2), { shouldValidate: true })
+                      }
+                    >
+                      Cargar el saldo
                     </Button>
                   )}
                 </div>
