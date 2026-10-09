@@ -117,6 +117,19 @@ export async function agendar(
   });
 }
 
+// Notas de la comanda de cocina. Cadena vacía se guarda como null: "sin observaciones" es un
+// solo valor en la base, no dos.
+export async function guardarObservacionesComanda(
+  id: number,
+  observaciones: string,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.evento.update({
+    where: { id },
+    data: { observacionesComanda: observaciones === '' ? null : observaciones },
+  });
+}
+
 // Cancelar el evento también cancela su(s) presupuesto(s) activos: un evento Cancelado no puede
 // dejar un Presupuesto Estimado/Confirmado huérfano.
 export async function cancelar(id: number, tx: Prisma.TransactionClient = prisma) {
@@ -140,6 +153,7 @@ export type EventosRepositorio = {
   buscarPresupuestoEstimado: typeof buscarPresupuestoEstimado;
   buscarSolapamiento: typeof buscarSolapamiento;
   agendar: typeof agendar;
+  guardarObservacionesComanda: typeof guardarObservacionesComanda;
   cancelar: typeof cancelar;
   crearEnTransaccion: typeof crearEnTransaccion;
 };

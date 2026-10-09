@@ -1,9 +1,10 @@
 import type { ConsultaDetallada } from '@confluens/shared';
-import { ArrowLeft, Printer } from 'lucide-react';
+import { ArrowLeft, Printer, Save } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { useGuardarObservacionesComanda } from '@/hooks/use-eventos';
 import { useConsulta } from '@/hooks/use-presupuestos';
 import { fechaLocal, formatearFecha, nombreCompleto } from '@/lib/formato';
 
@@ -50,10 +51,12 @@ function Dato({ rotulo, valor }: { rotulo: string; valor: string }) {
 }
 
 function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
-  // Lo que se escribe acá se imprime, pero todavía no se guarda: al salir de la pantalla se
-  // pierde. Guardarlo necesita una columna nueva en Evento y su migración (AGENTS.md §6).
-  const [observaciones, setObservaciones] = useState('');
   const { evento } = consulta;
+  // Se guardan en Evento.observacionesComanda. El borrador vive acá mientras se escribe y se
+  // manda con «Guardar»: guardar en cada tecla pegaría a la API en cada letra.
+  const [observaciones, setObservaciones] = useState(evento.observacionesComanda ?? '');
+  const guardar = useGuardarObservacionesComanda(evento.id);
+  const sinGuardar = observaciones.trim() !== (evento.observacionesComanda ?? '');
   const gastronomia = porHora(
     consulta.lineas.filter((l) => l.tipo === 'servicio' && !l.tercerizado),
   );
@@ -141,16 +144,36 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
       )}
 
       {/* Estas hojas siempre terminan con algo anotado: menús especiales, alergias, a quién
-          buscar. Se puede escribir acá antes de imprimir, o dejarlo vacío y anotar a mano sobre el
-          papel. En el papel va el texto tipeado, no el campo: un textarea con alto fijo recortaría
-          lo que no entra, y encima imprimiría el borde del control. */}
+          buscar. Se escribe acá y queda guardado en el evento, o se deja vacío y se anota a mano
+          sobre el papel. En el papel va el texto tipeado, no el campo: un textarea con alto fijo
+          recortaría lo que no entra, y encima imprimiría el borde del control. */}
       <section className="mt-8 break-inside-avoid">
-        <label
-          htmlFor="comanda-observaciones"
-          className="text-[0.65rem] font-semibold tracking-[0.2em] text-muted-foreground uppercase"
-        >
-          Observaciones
-        </label>
+        <div className="flex items-center justify-between gap-3">
+          <label
+            htmlFor="comanda-observaciones"
+            className="text-[0.65rem] font-semibold tracking-[0.2em] text-muted-foreground uppercase"
+          >
+            Observaciones
+          </label>
+          <div className="flex items-center gap-2 print:hidden">
+            {guardar.isError && (
+              <span className="text-xs text-destructive">No se pudieron guardar</span>
+            )}
+            {sinGuardar ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={guardar.isPending}
+                onClick={() => guardar.mutate(observaciones.trim())}
+              >
+                <Save /> {guardar.isPending ? 'Guardando…' : 'Guardar'}
+              </Button>
+            ) : (
+              <span className="text-xs text-muted-foreground">Guardadas</span>
+            )}
+          </div>
+        </div>
         <Textarea
           id="comanda-observaciones"
           value={observaciones}

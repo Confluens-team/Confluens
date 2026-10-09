@@ -68,6 +68,29 @@ export function useAgendarEvento(id: number) {
 }
 
 // RN-07: solo se admite hasta 48 horas antes del inicio. Siempre manual (dominio.md).
+// Notas al pie de la comanda de cocina. Se invalidan los presupuestos además de los eventos
+// porque la comanda las lee del detalle de la consulta (GET /presupuestos/:id).
+export function useGuardarObservacionesComanda(eventoId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (observacionesComanda: string) => {
+      const respuesta = await apiFetch<RespuestaExito<EventoDetallado>>(
+        `/eventos/${eventoId}/observaciones-comanda`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ observacionesComanda }),
+        },
+      );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+    },
+  });
+}
+
 export function useCancelarEvento(id: number) {
   const queryClient = useQueryClient();
   return useMutation({

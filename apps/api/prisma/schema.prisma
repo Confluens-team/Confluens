@@ -201,6 +201,9 @@ model Evento {
   // reservado (HU-13). Lo escribe el módulo de pagos, no una acción manual.
   senaRegistradaEn          DateTime?
   modalidadSalonRestaurante Boolean           @default(false) // opción interna, no visible al cliente
+  // Notas al pie de la comanda de cocina: menús especiales, alergias, a quién buscar en el salón.
+  // Las escribe el personal y solo salen en esa hoja; el cliente nunca las ve.
+  observacionesComanda      String?
   solicitud                 Solicitud?
   presupuestos              Presupuesto[]
   pagos                     Pago[]

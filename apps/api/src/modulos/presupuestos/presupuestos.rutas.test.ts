@@ -114,6 +114,7 @@ const eventoFixture = {
   tipoJornada: null,
   horaInicioEstimada: null as string | null,
   modalidadSalonRestaurante: false,
+  observacionesComanda: null as string | null,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
 };

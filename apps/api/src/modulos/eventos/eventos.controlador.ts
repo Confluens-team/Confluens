@@ -3,11 +3,18 @@ import type {
   EventoAgenda,
   EventoDetallado,
   FiltrosAgenda,
+  GuardarObservacionesComanda,
   RespuestaExito,
 } from '@confluens/shared';
 import type { Request, Response } from 'express';
 
-import { agendarEvento, cancelarEvento, listarAgenda, obtenerDetalle } from './eventos.servicio.js';
+import {
+  agendarEvento,
+  cancelarEvento,
+  guardarObservacionesDeComanda,
+  listarAgenda,
+  obtenerDetalle,
+} from './eventos.servicio.js';
 
 // req.query ya validado por validar({ query: esquemaFiltrosAgenda }) en eventos.rutas.ts.
 export async function listar(req: Request, res: Response): Promise<void> {
@@ -28,6 +35,15 @@ export async function obtener(req: Request, res: Response): Promise<void> {
 export async function agendar(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
   const evento = await agendarEvento(id, req.body as AgendarEvento);
+  const cuerpo: RespuestaExito<EventoDetallado> = { data: evento as unknown as EventoDetallado };
+  res.status(200).json(cuerpo);
+}
+
+// req.body ya validado por validar({ body: esquemaGuardarObservacionesComanda }).
+export async function guardarObservacionesComanda(req: Request, res: Response): Promise<void> {
+  const id = Number(req.params.id);
+  const { observacionesComanda } = req.body as GuardarObservacionesComanda;
+  const evento = await guardarObservacionesDeComanda(id, observacionesComanda);
   const cuerpo: RespuestaExito<EventoDetallado> = { data: evento as unknown as EventoDetallado };
   res.status(200).json(cuerpo);
 }

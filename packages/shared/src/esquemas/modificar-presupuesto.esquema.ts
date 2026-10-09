@@ -39,6 +39,8 @@ export const esquemaConsultaDetallada = z.object({
     tipoSocial: esquemaTipoEventoSocial.nullable(),
     tipoSocialDetalle: z.string().nullable(),
     horaInicioEstimada: esquemaHoraEstimada.nullable(),
+    // Notas de la comanda de cocina: la pantalla de la comanda las muestra y las edita.
+    observacionesComanda: z.string().nullable(),
     // HU-11: se completan al agendar el evento; hasta entonces son null.
     distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
     inicio: esquemaFechaHora.nullable(),

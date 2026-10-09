@@ -13,6 +13,7 @@ vi.mock('./eventos.repositorio.js', () => ({
   buscarPresupuestoEstimado: vi.fn(),
   buscarSolapamiento: vi.fn(),
   agendar: vi.fn(),
+  guardarObservacionesComanda: vi.fn(),
   cancelar: vi.fn(),
   // No hay transacción real en el test: se ejecuta el callback tal cual, `agendar` ya está
   // mockeada arriba y no usa el `tx` que recibiría de una transacción real.
@@ -25,6 +26,7 @@ const {
   buscarDistribucion,
   buscarSolapamiento,
   agendar,
+  guardarObservacionesComanda,
   cancelar,
   crearEnTransaccion,
 } = await import('./eventos.repositorio.js');
@@ -34,6 +36,7 @@ const listarAgendaMock = vi.mocked(listarAgenda);
 const buscarDistribucionMock = vi.mocked(buscarDistribucion);
 const buscarSolapamientoMock = vi.mocked(buscarSolapamiento);
 const agendarMock = vi.mocked(agendar);
+const guardarObservacionesComandaMock = vi.mocked(guardarObservacionesComanda);
 const cancelarMock = vi.mocked(cancelar);
 const crearEnTransaccionMock = vi.mocked(crearEnTransaccion);
 
@@ -122,6 +125,7 @@ function eventoFixtureBase() {
     tipoJornada: null,
     horaInicioEstimada: null as string | null,
     modalidadSalonRestaurante: false,
+    observacionesComanda: null,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     cliente: clienteFixture,
@@ -445,6 +449,7 @@ describe('GET /api/eventos', () => {
     tipoJornada: null,
     horaInicioEstimada: null as string | null,
     modalidadSalonRestaurante: false,
+    observacionesComanda: null,
     creadoEn: new Date('2026-09-29T00:00:00.000Z'),
     actualizadoEn: new Date('2026-09-29T00:00:00.000Z'),
     cliente: { id: 1, nombre: 'Ana Pérez', telefono: '3515551234', correo: 'ana@empresa.com' },
@@ -561,6 +566,7 @@ describe('eventos: permisos (HU-48)', () => {
     ['get', '/api/eventos/20'],
     ['post', '/api/eventos/20/agendar'],
     ['post', '/api/eventos/20/cancelar'],
+    ['patch', '/api/eventos/20/observaciones-comanda'],
   ] as const)('%s %s sin sesión responde 401', async (metodo, ruta) => {
     const respuesta = await request(app)[metodo](ruta);
 
@@ -572,10 +578,83 @@ describe('eventos: permisos (HU-48)', () => {
     ['get', '/api/eventos/20'],
     ['post', '/api/eventos/20/agendar'],
     ['post', '/api/eventos/20/cancelar'],
+    ['patch', '/api/eventos/20/observaciones-comanda'],
   ] as const)('%s %s con sesión de Cliente responde 403', async (metodo, ruta) => {
     const respuesta = await request(app)[metodo](ruta).set('Cookie', [cookieCliente]);
 
     expect(respuesta.status).toBe(403);
     expect(buscarDetalladoMock).not.toHaveBeenCalled();
+  });
+});
+
+// Notas al pie de la comanda de cocina. Es texto libre del personal: no toca ninguna regla de
+// negocio, el único control es que el evento exista y no esté cancelado.
+describe('PATCH /api/eventos/:id/observaciones-comanda', () => {
+  const notas = '2 menús veganos y 1 sin TACC.';
+
+  beforeEach(() => {
+    buscarDetalladoMock.mockReset();
+    guardarObservacionesComandaMock.mockReset();
+  });
+
+  it('guarda las observaciones y devuelve el evento', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture());
+
+    const respuesta = await request(app)
+      .patch('/api/eventos/20/observaciones-comanda')
+      .set('Cookie', [cookiePersonal])
+      .send({ observacionesComanda: notas });
+
+    expect(respuesta.status).toBe(200);
+    expect(guardarObservacionesComandaMock).toHaveBeenCalledWith(20, notas);
+  });
+
+  it('un texto vacío borra las observaciones', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture());
+
+    const respuesta = await request(app)
+      .patch('/api/eventos/20/observaciones-comanda')
+      .set('Cookie', [cookiePersonal])
+      .send({ observacionesComanda: '' });
+
+    expect(respuesta.status).toBe(200);
+    expect(guardarObservacionesComandaMock).toHaveBeenCalledWith(20, '');
+  });
+
+  it('responde 404 si el evento no existe', async () => {
+    buscarDetalladoMock.mockResolvedValue(null);
+
+    const respuesta = await request(app)
+      .patch('/api/eventos/999/observaciones-comanda')
+      .set('Cookie', [cookiePersonal])
+      .send({ observacionesComanda: notas });
+
+    expect(respuesta.status).toBe(404);
+    expect(guardarObservacionesComandaMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 409 si el evento está cancelado: no tiene comanda', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Cancelado' }));
+
+    const respuesta = await request(app)
+      .patch('/api/eventos/20/observaciones-comanda')
+      .set('Cookie', [cookiePersonal])
+      .send({ observacionesComanda: notas });
+
+    expect(respuesta.status).toBe(409);
+    expect(guardarObservacionesComandaMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 400 si el texto supera los 2000 caracteres', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture());
+
+    const respuesta = await request(app)
+      .patch('/api/eventos/20/observaciones-comanda')
+      .set('Cookie', [cookiePersonal])
+      .send({ observacionesComanda: 'x'.repeat(2001) });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(guardarObservacionesComandaMock).not.toHaveBeenCalled();
   });
 });

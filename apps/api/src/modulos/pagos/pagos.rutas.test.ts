@@ -153,6 +153,7 @@ function eventoFixtureBase() {
     tipoJornada: null,
     horaInicioEstimada: null as string | null,
     modalidadSalonRestaurante: false,
+    observacionesComanda: null,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     cliente: clienteFixture,

@@ -130,6 +130,25 @@ export async function agendarEvento(
  * horario de inicio del evento. Solo aplica una vez Reservado (tiene inicio fijado); un evento
  * todavía EnConsulta no es un compromiso formal y se puede descartar sin esa restricción.
  */
+/**
+ * Guarda las notas al pie de la comanda de cocina (menús especiales, alergias, a quién buscar).
+ * Es texto libre del personal y no toca ninguna regla de negocio, así que el único control es que
+ * el evento exista y no esté cancelado: una comanda de un evento dado de baja no se imprime.
+ */
+export async function guardarObservacionesDeComanda(
+  id: number,
+  observaciones: string,
+  repo: EventosRepositorio = eventosRepositorioReal,
+) {
+  const evento = await repo.buscarDetallado(id);
+  if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${id}`);
+  if (evento.estado === 'Cancelado') {
+    throw ErrorApi.conflicto(`El evento ${id} está cancelado: no tiene comanda`);
+  }
+  await repo.guardarObservacionesComanda(id, observaciones);
+  return repo.buscarDetallado(id);
+}
+
 export async function cancelarEvento(
   id: number,
   repo: EventosRepositorio = eventosRepositorioReal,

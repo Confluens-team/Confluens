@@ -386,6 +386,7 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       tipoSocial: evento.tipoSocial,
       tipoSocialDetalle: evento.tipoSocialDetalle,
       horaInicioEstimada: evento.horaInicioEstimada,
+      observacionesComanda: evento.observacionesComanda,
       distribucion: evento.distribucion
         ? { id: evento.distribucion.id, nombre: evento.distribucion.nombre }
         : null,
