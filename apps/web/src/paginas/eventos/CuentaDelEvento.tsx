@@ -106,7 +106,16 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   // de la consulta y el fin calculado según la jornada.
   const jornada = jornadaDelEvento(evento);
   const horasJornada = HORAS_POR_JORNADA[jornada];
-  const [distribucionId, setDistribucionId] = useState(evento.distribucionId?.toString() ?? '');
+  // La distribución de cada salón del evento (ADR 0011): salonId → id de la distribución, '' si
+  // todavía no se eligió. Se precarga con la que cada salón ya tiene armada.
+  const distribucionesIniciales = new Map(
+    evento.salones.map((salon) => [salon.id, salon.distribucionId?.toString() ?? '']),
+  );
+  const [distribucionPorSalon, setDistribucionPorSalon] = useState(distribucionesIniciales);
+
+  function elegirDistribucion(salonId: number, distribucionId: string) {
+    setDistribucionPorSalon((anteriores) => new Map(anteriores).set(salonId, distribucionId));
+  }
   const [inicio, setInicio] = useState(
     evento.inicio
       ? comoFechaHoraLocal(evento.inicio)
@@ -138,24 +147,39 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
 
   const enConsulta = evento.estado === 'EnConsulta';
   const cobrado = evento.estado === 'Cobrado';
-  const distribuciones =
-    salones.data?.find((salon) => salon.id === evento.salonId)?.distribuciones ?? [];
-  const distribucionElegida = distribuciones.find((d) => d.id === Number(distribucionId));
-  const superaCapacidad =
-    distribucionElegida !== undefined && evento.cantidadPersonas > distribucionElegida.capacidad;
-  const horarioCompleto = distribucionId !== '' && inicio !== '' && fin !== '';
+  // Las distribuciones posibles de cada salón del evento, con la elegida.
+  const porSalon = evento.salones.map((salonDelEvento) => {
+    const opciones =
+      salones.data?.find((salon) => salon.id === salonDelEvento.id)?.distribuciones ?? [];
+    const elegidaId = distribucionPorSalon.get(salonDelEvento.id) ?? '';
+    return {
+      salon: salonDelEvento,
+      opciones,
+      elegidaId,
+      elegida: opciones.find((d) => d.id === Number(elegidaId)),
+    };
+  });
+  // Con varios salones la gente se reparte: se compara contra la capacidad sumada. Es un aviso,
+  // no un tope (ADR 0011).
+  const todasElegidas = porSalon.length > 0 && porSalon.every((s) => s.elegida !== undefined);
+  const capacidadElegida = porSalon.reduce((suma, s) => suma + (s.elegida?.capacidad ?? 0), 0);
+  const superaCapacidad = todasElegidas && evento.cantidadPersonas > capacidadElegida;
+  const horarioCompleto = todasElegidas && inicio !== '' && fin !== '';
   const horarioCambio =
-    distribucionId !== (evento.distribucionId?.toString() ?? '') ||
+    porSalon.some((s) => s.elegidaId !== (distribucionesIniciales.get(s.salon.id) ?? '')) ||
     inicio !== (evento.inicio ? comoFechaHoraLocal(evento.inicio) : '') ||
     fin !== (evento.fin ? comoFechaHoraLocal(evento.fin) : '');
 
   function datosDelHorario() {
     return {
-      distribucionId: Number(distribucionId),
+      distribuciones: porSalon.map((s) => ({
+        salonId: s.salon.id,
+        distribucionId: Number(s.elegidaId),
+      })),
       inicio: new Date(inicio).toISOString(),
       fin: new Date(fin).toISOString(),
       modalidadSalonRestaurante: evento.modalidadSalonRestaurante,
-      // La pantalla ya avisa al lado de la distribución que no alcanza: elegirla igual es la
+      // La pantalla ya avisa debajo de las distribuciones que no alcanzan: elegirlas igual es la
       // confirmación que pide la API.
       confirmarCapacidadExcedida: superaCapacidad,
     };
@@ -236,25 +260,35 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   // (RN-09: el Responsable de Eventos modifica en todo momento).
   const camposHorario = (
     <div className="space-y-4">
-      <div className="space-y-1.5">
-        <Label htmlFor="distribucionId">Distribución</Label>
-        <select
-          id="distribucionId"
-          className={CLASES_SELECT}
-          value={distribucionId}
-          onChange={(e) => setDistribucionId(e.target.value)}
-        >
-          <option value="">{salones.isLoading ? 'Cargando…' : 'Elegir…'}</option>
-          {distribuciones.map((distribucion) => (
-            <option key={distribucion.id} value={distribucion.id}>
-              {distribucion.nombre} · hasta {distribucion.capacidad} personas
-            </option>
-          ))}
-        </select>
+      {/* Una distribución por cada salón: un evento puede ocupar varios a la vez (ADR 0011). */}
+      <div className="space-y-3">
+        {porSalon.map(({ salon, opciones, elegidaId }) => (
+          <div key={salon.id} className="space-y-1.5">
+            <Label htmlFor={`distribucion-${salon.id}`}>
+              {porSalon.length === 1 ? 'Distribución' : `Distribución de ${salon.nombre}`}
+            </Label>
+            <select
+              id={`distribucion-${salon.id}`}
+              className={CLASES_SELECT}
+              value={elegidaId}
+              onChange={(e) => elegirDistribucion(salon.id, e.target.value)}
+            >
+              <option value="">{salones.isLoading ? 'Cargando…' : 'Elegir…'}</option>
+              {opciones.map((distribucion) => (
+                <option key={distribucion.id} value={distribucion.id}>
+                  {distribucion.nombre} · hasta {distribucion.capacidad} personas
+                </option>
+              ))}
+            </select>
+          </div>
+        ))}
         {superaCapacidad && (
           <p className="text-xs text-amber-800">
-            El evento es de {evento.cantidadPersonas} personas y esta distribución admite{' '}
-            {distribucionElegida.capacidad}. Si la dejás, se agenda igual.
+            El evento es de {evento.cantidadPersonas} personas y{' '}
+            {porSalon.length === 1
+              ? `esta distribución admite ${capacidadElegida}`
+              : `estas distribuciones admiten ${capacidadElegida} entre todas`}
+            . Si las dejás, se agenda igual.
           </p>
         )}
       </div>

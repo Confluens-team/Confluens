@@ -9,7 +9,7 @@ import {
   type PresupuestoDeBase,
 } from '../../lib/base-de-cobro.js';
 import { ErrorApi } from '../../lib/errores.js';
-import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
+import { esViolacionDeSolapamiento, mensajeDeSolapamiento } from '../../lib/prisma-errores.js';
 import * as pagosRepositorioReal from './pagos.repositorio.js';
 import type { PagosRepositorio } from './pagos.repositorio.js';
 
@@ -108,7 +108,9 @@ export async function registrarPago(
       // rechaza el pago en vez de aceptarlo sin reservar (el cliente pagó y el salón quedaría
       // libre) o de reservar a ciegas (riesgo de vender dos veces la misma franja).
       // Lo mismo sin salón: una consulta social puede no tenerlo todavía (ADR 0008).
-      if (reservaElSalon && (!evento.salonId || !evento.inicio || !evento.fin)) {
+      // Los salones que ocupa el evento: varios a la vez (ADR 0011).
+      const salonIds = evento.salones.map((s) => s.salonId);
+      if (reservaElSalon && (salonIds.length === 0 || !evento.inicio || !evento.fin)) {
         throw ErrorApi.reglaNegocio(
           'Hay que agendar la distribución y el horario del evento antes de cobrar la seña',
         );
@@ -116,9 +118,9 @@ export async function registrarPago(
 
       let consultasEnConflicto: Awaited<ReturnType<typeof repo.buscarConsultasSuperpuestas>> = [];
 
-      if (reservaElSalon && evento.salonId && evento.inicio && evento.fin) {
+      if (reservaElSalon && salonIds.length > 0 && evento.inicio && evento.fin) {
         const franja = {
-          salonId: evento.salonId,
+          salonIds,
           inicio: evento.inicio,
           fin: evento.fin,
           excluirEventoId: eventoId,
@@ -127,9 +129,7 @@ export async function registrarPago(
         // constraint EXCLUDE de Postgres no dice.
         const solapado = await repo.buscarSolapamiento(franja, tx);
         if (solapado) {
-          throw ErrorApi.conflicto(
-            `El salón ya está reservado en ese horario por el evento #${solapado.id}`,
-          );
+          throw ErrorApi.conflicto(mensajeDeSolapamiento(solapado, salonIds));
         }
         consultasEnConflicto = await repo.buscarConsultasSuperpuestas(franja, tx);
       }

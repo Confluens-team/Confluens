@@ -13,13 +13,28 @@ import { esquemaSolicitud } from './solicitud.esquema.js';
 // SIN cambiar su estado: queda EnConsulta. La reserva la dispara el pago que cruza el 20% de la
 // base de cobro (HU-13 / HU-14), no esta llamada. Agendar es el paso previo obligatorio: sin
 // inicio y fin cargados no se puede evaluar el solapamiento de RN-12 al momento de reservar.
-export const esquemaAgendarEvento = z.object({
+// La distribución (el armado) de cada salón del evento: una distribución pertenece a un salón, y
+// un evento puede ocupar varios a la vez (ADR 0011). Tiene que venir una por cada salón.
+export const esquemaDistribucionDeSalon = z.object({
+  salonId: esquemaId,
   distribucionId: esquemaId,
+});
+export type DistribucionDeSalon = z.infer<typeof esquemaDistribucionDeSalon>;
+
+export const esquemaAgendarEvento = z.object({
+  distribuciones: z
+    .array(esquemaDistribucionDeSalon)
+    .min(1, 'Elegí la distribución de cada salón')
+    .refine(
+      (lista) => new Set(lista.map((d) => d.salonId)).size === lista.length,
+      'Un salón no puede tener dos distribuciones',
+    ),
   inicio: esquemaFechaHora,
   fin: esquemaFechaHora,
   modalidadSalonRestaurante: z.boolean().default(false),
-  // Si cantidadPersonas > distribucion.capacidad, el primer intento sin este flag devuelve 422; el
-  // RE reintenta con confirmarCapacidadExcedida: true tras el aviso en UI.
+  // Si las personas superan la capacidad sumada de las distribuciones, el primer intento sin este
+  // flag devuelve 422; el RE reintenta con confirmarCapacidadExcedida: true tras el aviso en UI.
+  // Es un aviso y no un tope: la capacidad no bloquea (ADR 0011).
   confirmarCapacidadExcedida: z.boolean().default(false),
 });
 export type AgendarEvento = z.infer<typeof esquemaAgendarEvento>;
@@ -34,9 +49,10 @@ const esquemaPresupuestoConLineas = esquemaPresupuesto.extend({
 // pagos: el detalle completo que necesita la vista DetalleEvento en un solo pedido.
 export const esquemaEventoDetallado = esquemaEvento.extend({
   cliente: esquemaCliente,
-  // Los salones que ocupa el evento: varios a la vez (ADR 0011). Vacío en una consulta social que
+  // Los salones que ocupa el evento: varios a la vez (ADR 0011), cada uno con la distribución que
+  // tiene armada en este evento (null hasta que se agenda). Vacío en una consulta social que
   // todavía no tiene salón (ADR 0008).
-  salones: z.array(esquemaSalon),
+  salones: z.array(esquemaSalon.extend({ distribucionId: esquemaId.nullable() })),
   distribucion: esquemaDistribucion.nullable(),
   presupuestos: z.array(esquemaPresupuestoConLineas),
   solicitud: esquemaSolicitud.nullable(),

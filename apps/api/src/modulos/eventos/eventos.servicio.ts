@@ -1,7 +1,7 @@
 import type { AgendarEvento, FiltrosAgenda } from '@confluens/shared';
 
 import { ErrorApi } from '../../lib/errores.js';
-import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
+import { esViolacionDeSolapamiento, mensajeDeSolapamiento } from '../../lib/prisma-errores.js';
 import * as eventosRepositorioReal from './eventos.repositorio.js';
 import type { EventosRepositorio } from './eventos.repositorio.js';
 
@@ -19,6 +19,24 @@ function conSalones<S, T extends { salones: { salon: S }[] }>(
   return { ...evento, salones: evento.salones.map((vinculo) => vinculo.salon) };
 }
 
+// El detalle de un evento, como lo espera EventoDetallado: cada salón con la distribución que
+// tiene armada en este evento. Lo devuelven la consulta y todas las acciones sobre el evento.
+function detalleDe<S, T extends { salones: { salon: S; distribucionId: number | null }[] }>(
+  evento: T,
+): Omit<T, 'salones'> & { salones: (S & { distribucionId: number | null })[] } {
+  return {
+    ...evento,
+    salones: evento.salones.map(({ salon, distribucionId }) => ({ ...salon, distribucionId })),
+  };
+}
+
+// Relee el evento después de escribirlo, para devolver el estado que quedó.
+async function releerDetalle(id: number, repo: EventosRepositorio) {
+  const evento = await repo.buscarDetallado(id);
+  if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${id}`);
+  return detalleDe(evento);
+}
+
 export async function listarAgenda(
   filtros: FiltrosAgenda,
   repo: EventosRepositorio = eventosRepositorioReal,
@@ -34,9 +52,7 @@ export async function obtenerDetalle(
   id: number,
   repo: EventosRepositorio = eventosRepositorioReal,
 ) {
-  const evento = await repo.buscarDetallado(id);
-  if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${id}`);
-  return conSalones(evento);
+  return releerDetalle(id, repo);
 }
 
 /**
@@ -49,12 +65,13 @@ export async function obtenerDetalle(
  * solapamiento de RN-12 en el momento en que el 20% lo pasa a Reservado (HU-13).
  *
  * Reglas aplicadas:
- * - La distribución tiene que pertenecer al salón del evento.
- * - Si cantidadPersonas supera la capacidad de la distribución elegida, se exige
- *   `confirmarCapacidadExcedida: true` explícito para continuar.
- * - RN-12: no se agenda sobre una franja que otro evento ya ocupa (Reservado o Cobrado). Se
- *   valida en la aplicación (buscarSolapamiento, informa con qué evento choca) y además queda
- *   protegido por la constraint EXCLUDE de Postgres (btree_gist).
+ * - Cada salón del evento lleva su distribución, y cada distribución tiene que pertenecer a su
+ *   salón. Un evento puede ocupar varios salones a la vez (ADR 0011).
+ * - Si cantidadPersonas supera la capacidad sumada de las distribuciones, se exige
+ *   `confirmarCapacidadExcedida: true` explícito para continuar. Es un aviso, no un tope.
+ * - RN-12: no se agenda sobre una franja que otro evento ya ocupa (Reservado o Cobrado) en
+ *   cualquiera de sus salones. Se valida en la aplicación (buscarSolapamiento, informa con qué
+ *   evento y en qué salón choca) y además queda protegido por la constraint EXCLUDE de Postgres.
  * - `modalidadSalonRestaurante` se persiste tal cual llega, es una opción interna sin ninguna
  *   regla asociada en este sprint.
  */
@@ -73,21 +90,47 @@ export async function agendarEvento(
   }
 
   // ADR 0008: una consulta social llega sin salón; se carga en la consulta antes de agendar.
-  if (evento.salonId === null) {
+  const salonIds = evento.salones.map((s) => s.salonId);
+  if (salonIds.length === 0) {
     throw ErrorApi.reglaNegocio('Cargá el salón en la consulta antes de agendar el evento');
   }
 
-  const distribucion = await repo.buscarDistribucion(datos.distribucionId);
-  if (!distribucion || distribucion.salonId !== evento.salonId) {
-    throw ErrorApi.noEncontrado(
-      `No existe la distribución ${datos.distribucionId} para este salón`,
+  // Una distribución por cada salón del evento, ni más ni menos (ADR 0011).
+  const pedidas = new Map(datos.distribuciones.map((d) => [d.salonId, d.distribucionId]));
+  const faltan = evento.salones.filter((s) => !pedidas.has(s.salonId));
+  if (faltan.length > 0) {
+    throw ErrorApi.reglaNegocio(
+      `Falta la distribución de ${faltan.map((s) => s.salon.nombre).join(', ')}`,
     );
   }
+  const ajeno = datos.distribuciones.find((d) => !salonIds.includes(d.salonId));
+  if (ajeno) {
+    throw ErrorApi.reglaNegocio(`El salón ${ajeno.salonId} no es de este evento`);
+  }
 
-  if (evento.cantidadPersonas > distribucion.capacidad && !datos.confirmarCapacidadExcedida) {
+  const distribuciones = await repo.buscarDistribuciones(
+    datos.distribuciones.map((d) => d.distribucionId),
+  );
+  const porId = new Map(distribuciones.map((d) => [d.id, d]));
+  for (const { salonId, distribucionId } of datos.distribuciones) {
+    const distribucion = porId.get(distribucionId);
+    if (!distribucion || distribucion.salonId !== salonId) {
+      throw ErrorApi.noEncontrado(
+        `No existe la distribución ${distribucionId} para el salón ${salonId}`,
+      );
+    }
+  }
+
+  // Con varios salones la gente se reparte: cuenta la capacidad sumada. Es un aviso, no un tope.
+  const capacidad = datos.distribuciones.reduce(
+    (suma, d) => suma + porId.get(d.distribucionId)!.capacidad,
+    0,
+  );
+  if (evento.cantidadPersonas > capacidad && !datos.confirmarCapacidadExcedida) {
+    const nombres = datos.distribuciones.map((d) => `"${porId.get(d.distribucionId)!.nombre}"`);
     throw ErrorApi.reglaNegocio(
-      `${evento.cantidadPersonas} personas supera la capacidad de "${distribucion.nombre}" ` +
-        `(${distribucion.capacidad}). Confirmá para continuar igualmente.`,
+      `${evento.cantidadPersonas} personas supera la capacidad de ${nombres.join(' + ')} ` +
+        `(${capacidad}). Confirmá para continuar igualmente.`,
     );
   }
 
@@ -98,24 +141,21 @@ export async function agendarEvento(
   }
 
   // RN-12 (parte "aplicación")
-  const solapado = await repo.buscarSolapamiento({
-    salonId: evento.salonId,
-    inicio,
-    fin,
-    excluirEventoId: id,
-  });
+  const solapado = await repo.buscarSolapamiento({ salonIds, inicio, fin, excluirEventoId: id });
   if (solapado) {
-    throw ErrorApi.conflicto(
-      `El salón ya está reservado en ese horario por el evento #${solapado.id}`,
-    );
+    throw ErrorApi.conflicto(mensajeDeSolapamiento(solapado, salonIds));
   }
 
   try {
     await repo.crearEnTransaccion((tx) =>
-      repo.agendar(
+      repo.agendarConDistribuciones(
         {
           eventoId: id,
-          distribucionId: datos.distribucionId,
+          // En el orden de los salones del evento: la primera es la del primer salón.
+          distribuciones: salonIds.map((salonId) => ({
+            salonId,
+            distribucionId: pedidas.get(salonId)!,
+          })),
           inicio,
           fin,
           modalidadSalonRestaurante: datos.modalidadSalonRestaurante,
@@ -132,7 +172,7 @@ export async function agendarEvento(
     throw error;
   }
 
-  return repo.buscarDetallado(id);
+  return releerDetalle(id, repo);
 }
 
 /**
@@ -156,7 +196,7 @@ export async function guardarObservacionesDeComanda(
     throw ErrorApi.conflicto(`El evento ${id} está cancelado: no tiene comanda`);
   }
   await repo.guardarObservacionesComanda(id, observaciones);
-  return repo.buscarDetallado(id);
+  return releerDetalle(id, repo);
 }
 
 export async function cancelarEvento(
@@ -179,5 +219,5 @@ export async function cancelarEvento(
     }
   }
   await repo.cancelar(id);
-  return repo.buscarDetallado(id);
+  return releerDetalle(id, repo);
 }

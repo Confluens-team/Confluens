@@ -9,10 +9,10 @@ import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 vi.mock('./eventos.repositorio.js', () => ({
   buscarDetallado: vi.fn(),
   listarAgenda: vi.fn(),
-  buscarDistribucion: vi.fn(),
   buscarPresupuestoEstimado: vi.fn(),
   buscarSolapamiento: vi.fn(),
-  agendar: vi.fn(),
+  agendarConDistribuciones: vi.fn(),
+  buscarDistribuciones: vi.fn(),
   guardarObservacionesComanda: vi.fn(),
   cancelar: vi.fn(),
   // No hay transacción real en el test: se ejecuta el callback tal cual, `agendar` ya está
@@ -23,9 +23,9 @@ vi.mock('./eventos.repositorio.js', () => ({
 const {
   buscarDetallado,
   listarAgenda,
-  buscarDistribucion,
   buscarSolapamiento,
-  agendar,
+  agendarConDistribuciones,
+  buscarDistribuciones,
   guardarObservacionesComanda,
   cancelar,
   crearEnTransaccion,
@@ -33,9 +33,9 @@ const {
 
 const buscarDetalladoMock = vi.mocked(buscarDetallado);
 const listarAgendaMock = vi.mocked(listarAgenda);
-const buscarDistribucionMock = vi.mocked(buscarDistribucion);
 const buscarSolapamientoMock = vi.mocked(buscarSolapamiento);
-const agendarMock = vi.mocked(agendar);
+const agendarConDistribucionesMock = vi.mocked(agendarConDistribuciones);
+const buscarDistribucionesMock = vi.mocked(buscarDistribuciones);
 const guardarObservacionesComandaMock = vi.mocked(guardarObservacionesComanda);
 const cancelarMock = vi.mocked(cancelar);
 const crearEnTransaccionMock = vi.mocked(crearEnTransaccion);
@@ -173,6 +173,26 @@ describe('GET /api/eventos/:id', () => {
     expect(respuesta.body.data.id).toBe(20);
   });
 
+  // ADR 0011: cada salón viene con la distribución que tiene armada en este evento, no como la
+  // fila cruda de EventoSalon. La pantalla de cobro la necesita para precargar cada selector.
+  it('devuelve cada salón con su distribución, ya aplanado', async () => {
+    const base = eventoFixture();
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ salones: [{ ...base.salones[0]!, distribucionId: distribucionFixture.id }] }),
+    );
+
+    const respuesta = await request(app).get('/api/eventos/20').set('Cookie', [cookiePersonal]);
+
+    expect(respuesta.body.data.salones).toEqual([
+      expect.objectContaining({
+        id: salonFixture.id,
+        nombre: salonFixture.nombre,
+        distribucionId: distribucionFixture.id,
+      }),
+    ]);
+    expect(respuesta.body.data.salones[0]).not.toHaveProperty('salon');
+  });
+
   it('responde 404 si el evento no existe', async () => {
     buscarDetalladoMock.mockResolvedValue(null);
 
@@ -184,58 +204,83 @@ describe('GET /api/eventos/:id', () => {
 });
 
 describe('POST /api/eventos/:id/agendar', () => {
+  // Un evento puede ocupar varios salones (ADR 0011): se manda la distribución de cada uno.
+  const pucara = { ...salonFixture, id: 9, nombre: 'Pucará', capacidadMaxima: 90 };
+  const banquetePucara = {
+    ...distribucionFixture,
+    id: 12,
+    salonId: pucara.id,
+    nombre: 'Banquete',
+    capacidad: 60,
+  };
+  const vinculo = (salon: typeof salonFixture) => ({
+    eventoId: 20,
+    salonId: salon.id,
+    distribucionId: null as number | null,
+    inicio: null as Date | null,
+    fin: null as Date | null,
+    estado: 'EnConsulta' as EstadoEventoFixture,
+    creadoEn: new Date(),
+    salon,
+  });
+  const enDosSalones = (datos: Partial<ReturnType<typeof eventoFixtureBase>> = {}) =>
+    eventoFixture({ salones: [vinculo(salonFixture), vinculo(pucara)], ...datos });
+
+  const cuerpo = (extra: Record<string, unknown> = {}) => ({
+    distribuciones: [{ salonId: salonFixture.id, distribucionId: distribucionFixture.id }],
+    inicio: inicioValido,
+    fin: finValido,
+    ...extra,
+  });
+  const cuerpoDosSalones = (extra: Record<string, unknown> = {}) =>
+    cuerpo({
+      distribuciones: [
+        { salonId: salonFixture.id, distribucionId: distribucionFixture.id },
+        { salonId: pucara.id, distribucionId: banquetePucara.id },
+      ],
+      ...extra,
+    });
+
+  const agendar = (body: Record<string, unknown>) =>
+    request(app).post('/api/eventos/20/agendar').set('Cookie', [cookiePersonal]).send(body);
+
   beforeEach(() => {
     buscarDetalladoMock.mockReset();
-    buscarDistribucionMock.mockReset();
+    buscarDistribucionesMock.mockReset();
     buscarSolapamientoMock.mockReset();
-    agendarMock.mockReset();
+    agendarConDistribucionesMock.mockReset();
     crearEnTransaccionMock.mockClear();
 
     buscarDetalladoMock.mockResolvedValue(eventoFixture());
-    buscarDistribucionMock.mockResolvedValue(distribucionFixture);
+    buscarDistribucionesMock.mockResolvedValue([distribucionFixture, banquetePucara]);
     buscarSolapamientoMock.mockResolvedValue(null);
-    agendarMock.mockResolvedValue({
-      ...eventoFixtureBase(),
-      distribucionId: distribucionFixture.id,
-      inicio: new Date(inicioValido),
-      fin: new Date(finValido),
-    });
+    agendarConDistribucionesMock.mockResolvedValue(undefined);
   });
 
   // ADR 0008: una consulta social llega sin salón; no hay contra qué validar la distribución.
   it('responde 422 si el evento todavía no tiene salón, sin escribir nada', async () => {
-    buscarDetalladoMock.mockResolvedValue(eventoFixture({ salonId: null }));
+    buscarDetalladoMock.mockResolvedValue(eventoFixture({ salonId: null, salones: [] }));
 
-    const respuesta = await request(app)
-      .post('/api/eventos/20/agendar')
-      .set('Cookie', [cookiePersonal])
-      .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
+    const respuesta = await agendar(cuerpo());
 
     expect(respuesta.status).toBe(422);
     expect(respuesta.body.error.message).toBe(
       'Cargá el salón en la consulta antes de agendar el evento',
     );
-    expect(agendarMock).not.toHaveBeenCalled();
+    expect(agendarConDistribucionesMock).not.toHaveBeenCalled();
   });
 
   // La aserción central de HU-13: agendar fija el horario y NADA MÁS. El evento sigue EnConsulta y
   // el presupuesto sigue Estimado; la reserva la dispara el pago que cruza el 20% (módulo pagos).
   it('fija distribución y horario sin reservar: el evento sigue EnConsulta y el presupuesto Estimado', async () => {
-    const respuesta = await request(app)
-      .post('/api/eventos/20/agendar')
-      .set('Cookie', [cookiePersonal])
-      .send({
-        distribucionId: distribucionFixture.id,
-        inicio: inicioValido,
-        fin: finValido,
-      });
+    const respuesta = await agendar(cuerpo());
 
     expect(respuesta.status).toBe(200);
     expect(crearEnTransaccionMock).toHaveBeenCalledTimes(1);
-    const [datosAgenda] = agendarMock.mock.calls[0]!;
+    const [datosAgenda] = agendarConDistribucionesMock.mock.calls[0]!;
     expect(datosAgenda).toEqual({
       eventoId: 20,
-      distribucionId: distribucionFixture.id,
+      distribuciones: [{ salonId: salonFixture.id, distribucionId: distribucionFixture.id }],
       inicio: new Date(inicioValido),
       fin: new Date(finValido),
       modalidadSalonRestaurante: false,
@@ -248,23 +293,17 @@ describe('POST /api/eventos/:id/agendar', () => {
   it('reagenda un evento Reservado sin cambiarle el estado', async () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Reservado' }));
 
-    const respuesta = await request(app)
-      .post('/api/eventos/20/agendar')
-      .set('Cookie', [cookiePersonal])
-      .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
+    const respuesta = await agendar(cuerpo());
 
     expect(respuesta.status).toBe(200);
-    expect(agendarMock).toHaveBeenCalled();
-    expect(agendarMock.mock.calls[0]![0]).not.toHaveProperty('estado');
+    expect(agendarConDistribucionesMock).toHaveBeenCalled();
+    expect(agendarConDistribucionesMock.mock.calls[0]![0]).not.toHaveProperty('estado');
   });
 
   it('responde 409 si el evento está Cancelado', async () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Cancelado' }));
 
-    const respuesta = await request(app)
-      .post('/api/eventos/20/agendar')
-      .set('Cookie', [cookiePersonal])
-      .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
+    const respuesta = await agendar(cuerpo());
 
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
@@ -272,12 +311,11 @@ describe('POST /api/eventos/:id/agendar', () => {
   });
 
   it('responde 404 si la distribución no existe', async () => {
-    buscarDistribucionMock.mockResolvedValue(null);
+    buscarDistribucionesMock.mockResolvedValue([]);
 
-    const respuesta = await request(app)
-      .post('/api/eventos/20/agendar')
-      .set('Cookie', [cookiePersonal])
-      .send({ distribucionId: 999, inicio: inicioValido, fin: finValido });
+    const respuesta = await agendar(
+      cuerpo({ distribuciones: [{ salonId: salonFixture.id, distribucionId: 999 }] }),
+    );
 
     expect(respuesta.status).toBe(404);
     expect(respuesta.body.error.code).toBe('NOT_FOUND');
@@ -285,12 +323,9 @@ describe('POST /api/eventos/:id/agendar', () => {
   });
 
   it('responde 404 si la distribución pertenece a otro salón', async () => {
-    buscarDistribucionMock.mockResolvedValue({ ...distribucionFixture, salonId: 999 });
+    buscarDistribucionesMock.mockResolvedValue([{ ...distribucionFixture, salonId: 999 }]);
 
-    const respuesta = await request(app)
-      .post('/api/eventos/20/agendar')
-      .set('Cookie', [cookiePersonal])
-      .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
+    const respuesta = await agendar(cuerpo());
 
     expect(respuesta.status).toBe(404);
     expect(respuesta.body.error.code).toBe('NOT_FOUND');
@@ -300,10 +335,7 @@ describe('POST /api/eventos/:id/agendar', () => {
   it('responde 422 si cantidadPersonas supera la capacidad y no se confirma (criterio 3)', async () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ cantidadPersonas: 300 }));
 
-    const respuesta = await request(app)
-      .post('/api/eventos/20/agendar')
-      .set('Cookie', [cookiePersonal])
-      .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
+    const respuesta = await agendar(cuerpo());
 
     expect(respuesta.status).toBe(422);
     expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
@@ -313,15 +345,7 @@ describe('POST /api/eventos/:id/agendar', () => {
   it('agenda igual si cantidadPersonas supera la capacidad y confirmarCapacidadExcedida es true', async () => {
     buscarDetalladoMock.mockResolvedValue(eventoFixture({ cantidadPersonas: 300 }));
 
-    const respuesta = await request(app)
-      .post('/api/eventos/20/agendar')
-      .set('Cookie', [cookiePersonal])
-      .send({
-        distribucionId: distribucionFixture.id,
-        inicio: inicioValido,
-        fin: finValido,
-        confirmarCapacidadExcedida: true,
-      });
+    const respuesta = await agendar(cuerpo({ confirmarCapacidadExcedida: true }));
 
     expect(respuesta.status).toBe(200);
     expect(crearEnTransaccionMock).toHaveBeenCalledTimes(1);
@@ -330,26 +354,18 @@ describe('POST /api/eventos/:id/agendar', () => {
   it('responde 409 si el salón ya está reservado en ese horario (criterio 2), informando el evento en conflicto', async () => {
     buscarSolapamientoMock.mockResolvedValue(eventoFixture({ id: 55 }));
 
-    const respuesta = await request(app)
-      .post('/api/eventos/20/agendar')
-      .set('Cookie', [cookiePersonal])
-      .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
+    const respuesta = await agendar(cuerpo());
 
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
-    expect(respuesta.body.error.message).toContain('#55');
+    expect(respuesta.body.error.message).toBe(
+      `El salón ${salonFixture.nombre} ya está reservado en ese horario por el evento #55`,
+    );
     expect(crearEnTransaccionMock).not.toHaveBeenCalled();
   });
 
   it('responde 422 si fin no es posterior a inicio', async () => {
-    const respuesta = await request(app)
-      .post('/api/eventos/20/agendar')
-      .set('Cookie', [cookiePersonal])
-      .send({
-        distribucionId: distribucionFixture.id,
-        inicio: finValido,
-        fin: inicioValido,
-      });
+    const respuesta = await agendar(cuerpo({ inicio: finValido, fin: inicioValido }));
 
     expect(respuesta.status).toBe(422);
     expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
@@ -371,13 +387,92 @@ describe('POST /api/eventos/:id/agendar', () => {
       ),
     );
 
-    const respuesta = await request(app)
-      .post('/api/eventos/20/agendar')
-      .set('Cookie', [cookiePersonal])
-      .send({ distribucionId: distribucionFixture.id, inicio: inicioValido, fin: finValido });
+    const respuesta = await agendar(cuerpo());
 
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
+  });
+
+  // --- Varios salones (ADR 0011) ------------------------------------------------
+
+  it('guarda la distribución de cada salón, en el orden de los salones del evento', async () => {
+    buscarDetalladoMock.mockResolvedValue(enDosSalones({ cantidadPersonas: 100 }));
+
+    // Llegan en otro orden: se reordenan según los salones del evento.
+    const respuesta = await agendar(
+      cuerpo({
+        distribuciones: [
+          { salonId: pucara.id, distribucionId: banquetePucara.id },
+          { salonId: salonFixture.id, distribucionId: distribucionFixture.id },
+        ],
+      }),
+    );
+
+    expect(respuesta.status).toBe(200);
+    const [datosAgenda] = agendarConDistribucionesMock.mock.calls[0]!;
+    expect(datosAgenda.distribuciones).toEqual([
+      { salonId: salonFixture.id, distribucionId: distribucionFixture.id },
+      { salonId: pucara.id, distribucionId: banquetePucara.id },
+    ]);
+  });
+
+  it('responde 422 si falta la distribución de alguno de los salones', async () => {
+    buscarDetalladoMock.mockResolvedValue(enDosSalones());
+
+    const respuesta = await agendar(cuerpo());
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.message).toBe('Falta la distribución de Pucará');
+    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 422 si viene la distribución de un salón que no es del evento', async () => {
+    const respuesta = await agendar(cuerpoDosSalones());
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.message).toBe(`El salón ${pucara.id} no es de este evento`);
+  });
+
+  // Con varios salones la gente se reparte: lo que cuenta es la capacidad sumada.
+  it('no pide confirmar la capacidad si la suma de las distribuciones alcanza', async () => {
+    // 280 de Conferencia + 60 de Banquete = 340: entran 300 sin confirmar nada.
+    buscarDetalladoMock.mockResolvedValue(enDosSalones({ cantidadPersonas: 300 }));
+
+    const respuesta = await agendar(cuerpoDosSalones());
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('pide confirmar si la gente supera incluso la capacidad sumada', async () => {
+    buscarDetalladoMock.mockResolvedValue(enDosSalones({ cantidadPersonas: 400 }));
+
+    const respuesta = await agendar(cuerpoDosSalones());
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.message).toContain('(340)');
+  });
+
+  it('busca solapamientos en todos los salones del evento, no solo en el primero', async () => {
+    buscarDetalladoMock.mockResolvedValue(enDosSalones({ cantidadPersonas: 100 }));
+
+    await agendar(cuerpoDosSalones());
+
+    expect(buscarSolapamientoMock.mock.calls[0]![0]).toMatchObject({
+      salonIds: [salonFixture.id, pucara.id],
+    });
+  });
+
+  it('el 409 dice en qué salón choca', async () => {
+    buscarDetalladoMock.mockResolvedValue(enDosSalones({ cantidadPersonas: 100 }));
+    // El otro evento ocupa solo Pucará: el choque es ahí, no en el primer salón.
+    buscarSolapamientoMock.mockResolvedValue(eventoFixture({ id: 77, salones: [vinculo(pucara)] }));
+
+    const respuesta = await agendar(cuerpoDosSalones());
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.message).toBe(
+      'El salón Pucará ya está reservado en ese horario por el evento #77',
+    );
   });
 });
 
