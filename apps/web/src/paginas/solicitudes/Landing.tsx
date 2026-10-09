@@ -15,6 +15,26 @@ import {
 
 const NUMERALES = ['I', 'II', 'III', 'IV', 'V'];
 
+// AC3 de la auditoría de accesibilidad: los llamados a la acción de la landing (consultar, cotizar
+// e iniciar sesión) son la puerta de entrada del cliente, así que se agrandan para que se vean de
+// lejos y con visión reducida: 56 px de alto —WCAG 2.5.5 pide 44—, texto de 18 px (el umbral de
+// "texto grande" de WCAG 1.4.3) y relleno amplio. `whitespace-normal` saca el `whitespace-nowrap`
+// del botón base: con la tipografía del navegador agrandada el texto pasa a dos renglones en vez
+// de desbordar (WCAG 1.4.4). El botón de la barra superior no entra acá: ahí el alto es fijo.
+const CTA_BASE =
+  'h-auto min-h-14 gap-2.5 px-6 py-3 text-base font-semibold tracking-wide whitespace-normal shadow-md sm:px-8 sm:text-lg';
+
+// Sobre las secciones oscuras (portada y cierre): dorado macizo con texto bordó, 5.7:1.
+const CTA_DORADO = `${CTA_BASE} bg-dorado text-bordo-oscuro hover:bg-dorado/90`;
+
+// Sobre el papel crema: bordó macizo, 11:1. Acá el dorado no sirve de fondo: contra el papel da
+// 2.8:1 y no llega al 3:1 que WCAG 1.4.11 pide para el contorno de un control.
+const CTA_BORDO = `${CTA_BASE} bg-bordo text-crema hover:bg-bordo-oscuro`;
+
+// Secundario de la portada, apoyado sobre la foto: el contorno pasa de 1 px al 40 % (3.4:1) a
+// 2 px al 70 % y suma un velo bordó, para que se lea como botón y no como texto suelto.
+const CTA_CLARO = `${CTA_BASE} border-2 border-crema/70 bg-bordo-oscuro/30 text-crema backdrop-blur-sm hover:bg-crema/15 hover:text-crema`;
+
 // Encabezado de sección con el filete dorado del tarifario.
 function TituloSeccion({
   antetitulo,
@@ -99,20 +119,11 @@ export function Landing({
             <p className="mt-6 font-display text-2xl text-crema/85 italic">
               Cinco salones, gastronomía propia y un equipo que se ocupa de cada detalle.
             </p>
-            <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <Button
-                size="lg"
-                className="h-12 bg-dorado px-7 text-sm tracking-wide text-bordo-oscuro hover:bg-dorado/90"
-                onClick={() => onCotizar()}
-              >
-                Consultá para hacer tu evento <ArrowRight />
+            <div className="mt-10 flex flex-col gap-4 sm:flex-row">
+              <Button size="lg" className={CTA_DORADO} onClick={() => onCotizar()}>
+                Consultá para hacer tu evento <ArrowRight className="size-5" />
               </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="h-12 border-crema/40 bg-transparent px-7 text-sm text-crema hover:bg-crema/10 hover:text-crema"
-                asChild
-              >
+              <Button size="lg" variant="outline" className={CTA_CLARO} asChild>
                 <a href="#salones">Conocé los salones</a>
               </Button>
             </div>
@@ -157,8 +168,8 @@ export function Landing({
           <p className="mt-6 font-display text-xl text-bordo italic">
             “Le agradecemos que se haya contactado con nosotros.”
           </p>
-          <Button size="lg" className="mt-8 h-11 px-6" onClick={() => onCotizar()}>
-            Armá tu presupuesto online <ArrowRight />
+          <Button size="lg" className={`mt-8 ${CTA_BORDO}`} onClick={() => onCotizar()}>
+            Armá tu presupuesto online <ArrowRight className="size-5" />
           </Button>
         </div>
         <div className="grid grid-cols-2 gap-4">
@@ -312,12 +323,8 @@ export function Landing({
               </li>
             ))}
           </ul>
-          <Button
-            size="lg"
-            className="mt-10 h-12 bg-dorado px-7 text-sm text-bordo-oscuro hover:bg-dorado/90"
-            onClick={() => onCotizar()}
-          >
-            Iniciá sesión para cotizar tu evento <ArrowRight />
+          <Button size="lg" className={`mt-10 ${CTA_DORADO}`} onClick={() => onCotizar()}>
+            Iniciá sesión para cotizar tu evento <ArrowRight className="size-5" />
           </Button>
           <p className="mt-3 text-xs text-crema/60">
             Los precios solo se muestran a clientes registrados.
