@@ -243,6 +243,12 @@ model LineaPresupuesto {
   // HU-11: tercerizado sin precio todavía. Va con precio y subtotal en 0, así no suma al total;
   // deja de estar a cotizar cuando el personal completa el precio.
   aCotizar       Boolean     @default(false)
+  // "HH:mm", opcional: a qué hora del evento se espera este servicio (un coffee a las 10:30). La
+  // elige el cliente en el cotizador o el personal al armar el presupuesto. Solo la llevan los
+  // servicios y los adicionales; la línea del salón no, su horario es el del evento. Mismo
+  // formato que Evento.horaInicioEstimada. Si el evento ya está agendado, el servicio valida que
+  // caiga entre inicio y fin; mientras está EnConsulta sin horario no hay contra qué validar.
+  horaEstimada   String?
 }
 
 // Catálogo de medios de pago (Efectivo, Tarjeta, A la habitación). Baja lógica con `activo`: no se

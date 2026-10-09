@@ -40,6 +40,9 @@ interface LineaEditable {
   servicioId: number | null;
   descripcion: string;
   cantidad: string;
+  // "HH:mm" o '': a qué hora del evento se espera el servicio. Es opcional, y si el evento ya está
+  // agendado la API rechaza con 422 una hora fuera de su horario.
+  hora: string;
   precio: string;
   tercerizado: boolean;
 }
@@ -176,6 +179,7 @@ function Formulario({
         servicioId: linea.servicioId,
         descripcion: linea.descripcion,
         cantidad: String(linea.cantidad),
+        hora: linea.horaEstimada ?? '',
         precio: linea.aCotizar ? '' : linea.precioUnitario,
         tercerizado: linea.tercerizado,
       })),
@@ -239,6 +243,7 @@ function Formulario({
           servicioId: null,
           descripcion: otro.descripcion.trim(),
           cantidad: otro.cantidad,
+          hora: '',
           precio: otro.precio,
           tercerizado: false,
         },
@@ -254,6 +259,7 @@ function Formulario({
           servicioId: servicio.id,
           descripcion: servicio.nombre,
           cantidad: servicio.porPersona && esEntero(personas) ? personas : '1',
+          hora: '',
           precio: servicio.precio ?? '',
           tercerizado: servicio.tercerizado,
         },
@@ -316,6 +322,7 @@ function Formulario({
           .map((l) => ({
             servicioId: l.servicioId!,
             cantidad: Number(l.cantidad),
+            horaEstimada: l.hora || undefined,
             // Sin precio, el tercerizado queda a cotizar (HU-11).
             precioUnitario: aCotizar(l) ? undefined : aImporte(l.precio),
           })),
@@ -324,6 +331,7 @@ function Formulario({
           .map((l) => ({
             descripcion: l.descripcion.trim(),
             cantidad: Number(l.cantidad),
+            horaEstimada: l.hora || undefined,
             precioUnitario: aImporte(l.precio),
           })),
       },
@@ -578,6 +586,9 @@ function Formulario({
                 <tr>
                   <th className="pb-2 font-medium">Concepto</th>
                   <th className="w-24 pb-2 font-medium">Cantidad</th>
+                  {/* Opcional: a qué hora del evento se espera cada servicio. El salón no lleva,
+                      su horario es el del evento. */}
+                  <th className="w-28 pb-2 font-medium">Hora</th>
                   <th className="w-36 pb-2 font-medium">Precio unitario</th>
                   <th className="w-32 pb-2 text-right font-medium">Subtotal</th>
                   <th className="w-10 pb-2" />
@@ -586,7 +597,7 @@ function Formulario({
               <tbody className="divide-y">
                 {quedaSinArmar && (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-sm text-muted-foreground">
+                    <td colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
                       Presupuesto sin armar: elegí el salón y agregá los servicios.
                     </td>
                   </tr>
@@ -598,6 +609,7 @@ function Formulario({
                       {jornada === 'completa' ? 'jornada completa' : 'media jornada'})
                     </td>
                     <td className="py-2 pr-3 text-muted-foreground">1</td>
+                    <td className="py-2 pr-3 text-muted-foreground">—</td>
                     <td className="py-2 pr-3">
                       <Input
                         aria-label="Precio del salón"
@@ -644,6 +656,14 @@ function Formulario({
                         value={linea.cantidad}
                         aria-invalid={!esEntero(linea.cantidad)}
                         onChange={(e) => actualizarLinea(linea.clave, { cantidad: e.target.value })}
+                      />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <Input
+                        aria-label={`Hora de ${linea.descripcion} (opcional)`}
+                        type="time"
+                        value={linea.hora}
+                        onChange={(e) => actualizarLinea(linea.clave, { hora: e.target.value })}
                       />
                     </td>
                     <td className="py-2 pr-3">

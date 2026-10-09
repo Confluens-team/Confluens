@@ -36,15 +36,18 @@ interface LineaCalculada {
   precioUnitario: string;
   subtotal: string;
   aCotizar: boolean;
+  horaEstimada: string | null;
 }
 
 // Sin precio (null) la línea queda "a cotizar" (HU-11): va en 0, así no suma al total, hasta que el
-// personal complete el precio.
+// personal complete el precio. `horaEstimada` ("HH:mm") es a qué hora del evento se espera el
+// servicio; la línea del salón no la lleva, por eso el default es null.
 function calcularLinea(
   servicioId: number | null,
   descripcion: string,
   cantidad: number,
   precioUnitario: Prisma.Decimal | string | null,
+  horaEstimada: string | null = null,
 ): LineaCalculada {
   const precio = new Prisma.Decimal(precioUnitario ?? 0);
   return {
@@ -54,7 +57,52 @@ function calcularLinea(
     precioUnitario: precio.toFixed(2),
     subtotal: precio.times(cantidad).toFixed(2),
     aCotizar: precioUnitario === null,
+    horaEstimada,
   };
+}
+
+// El negocio está en Córdoba y los horarios se cargan y se leen en hora argentina, pero la API
+// puede correr en UTC (Render). Se fija la zona para que la comparación con la hora del servicio dé
+// lo mismo esté donde esté el servidor; Argentina no tiene horario de verano.
+const ZONA_HORARIA = 'America/Argentina/Cordoba';
+const horaLocal = new Intl.DateTimeFormat('es-AR', {
+  timeZone: ZONA_HORARIA,
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+// "HH:mm" → minutos desde la medianoche, para comparar horas sin pelear con fechas.
+function enMinutos(hora: string): number {
+  const [h = 0, m = 0] = hora.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/**
+ * Cada hora pedida para un servicio tiene que caer dentro del horario del evento. Solo se puede
+ * controlar cuando el evento ya está agendado: mientras está EnConsulta, `inicio` y `fin` son null
+ * (el cliente eligió jornada y una hora de inicio estimada, nada más) y no hay contra qué validar,
+ * así que se acepta cualquier HH:mm. Un evento que cruza la medianoche se deja pasar: el rango
+ * daría vuelta y no vale la pena el caso.
+ */
+function exigirHorasDentroDelEvento(
+  lineas: LineaCalculada[],
+  inicio: Date | null,
+  fin: Date | null,
+): void {
+  if (!inicio || !fin) return;
+  const desde = enMinutos(horaLocal.format(inicio));
+  const hasta = enMinutos(horaLocal.format(fin));
+  if (desde >= hasta) return;
+  for (const linea of lineas) {
+    if (!linea.horaEstimada) continue;
+    const minutos = enMinutos(linea.horaEstimada);
+    if (minutos < desde || minutos > hasta) {
+      throw ErrorApi.reglaNegocio(
+        `La hora de "${linea.descripcion}" (${linea.horaEstimada}) queda fuera del horario del evento, que va de ${horaLocal.format(inicio)} a ${horaLocal.format(fin)}`,
+      );
+    }
+  }
 }
 
 // La línea del salón no tiene servicio: se identifica por esta descripción, y de ella sale la
@@ -146,7 +194,13 @@ export async function generarPresupuesto(
   const lineasServicios = datos.servicios.map((seleccionado) => {
     // El bucle de validación de arriba ya garantizó que existe.
     const servicio = serviciosPorId.get(seleccionado.servicioId)!;
-    return calcularLinea(servicio.id, servicio.nombre, seleccionado.cantidad, servicio.precio);
+    return calcularLinea(
+      servicio.id,
+      servicio.nombre,
+      seleccionado.cantidad,
+      servicio.precio,
+      seleccionado.horaEstimada ?? null,
+    );
   });
 
   const todasLasLineas = [lineaSalon, ...lineasServicios];
@@ -361,6 +415,7 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       precioUnitario: linea.precioUnitario.toFixed(2),
       subtotal: linea.subtotal.toFixed(2),
       aCotizar: linea.aCotizar,
+      horaEstimada: linea.horaEstimada,
       tipo:
         linea.id === lineaSalon?.id
           ? 'salon'
@@ -534,6 +589,7 @@ export async function modificarPresupuesto(
       anterior?.descripcion ?? servicio.nombre,
       elegido.cantidad,
       precio,
+      elegido.horaEstimada ?? null,
     );
   });
 
@@ -553,12 +609,25 @@ export async function modificarPresupuesto(
     : undefined;
 
   const adicionales = datos.adicionales.map((adicional) =>
-    calcularLinea(null, adicional.descripcion, adicional.cantidad, adicional.precioUnitario),
+    calcularLinea(
+      null,
+      adicional.descripcion,
+      adicional.cantidad,
+      adicional.precioUnitario,
+      adicional.horaEstimada ?? null,
+    ),
   );
 
   const lineas = [...(lineaSalon ? [lineaSalon] : []), ...lineasServicios, ...adicionales];
   const total = sumarLineas(lineas);
   const horario = confirmado ? await reubicarHorario(presupuesto.evento, datos, repo) : {};
+  // Contra el horario que va a quedar: si cambió la fecha de un evento confirmado, reubicarHorario
+  // ya corrió inicio y fin los mismos días.
+  exigirHorasDentroDelEvento(
+    lineas,
+    horario.inicio instanceof Date ? horario.inicio : presupuesto.evento.inicio,
+    horario.fin instanceof Date ? horario.fin : presupuesto.evento.fin,
+  );
 
   try {
     await repo.crearEnTransaccion(async (tx) => {

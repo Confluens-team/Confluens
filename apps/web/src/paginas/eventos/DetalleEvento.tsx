@@ -262,7 +262,11 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
                     <li key={linea.id} className="flex justify-between gap-4 py-1.5">
                       <span className="min-w-0">
                         {linea.descripcion}{' '}
-                        <span className="text-muted-foreground">×{linea.cantidad}</span>
+                        <span className="text-muted-foreground">
+                          ×{linea.cantidad}
+                          {/* La hora a la que se espera el servicio, si se pidió una. */}
+                          {linea.horaEstimada && ` · ${linea.horaEstimada}`}
+                        </span>
                       </span>
                       <span className="shrink-0 tabular-nums">
                         {linea.aCotizar

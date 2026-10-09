@@ -315,6 +315,7 @@ describe('POST /api/presupuestos', () => {
       precioUnitario: '0.00',
       subtotal: '0.00',
       aCotizar: true,
+      horaEstimada: null,
     });
     expect(datos.total).toBe('142200.00'); // solo el salón
   });
@@ -332,6 +333,33 @@ describe('POST /api/presupuestos', () => {
     const lineaServicio = datos.lineas.find((l) => l.servicioId === 1)!;
     expect(lineaServicio.cantidad).toBe(30);
     expect(lineaServicio.subtotal).toBe('261900.00'); // 8730 * 30
+  });
+
+  // El cliente puede decir a qué hora del evento espera cada servicio. El evento recién creado está
+  // EnConsulta y todavía no tiene horario, así que acá no hay contra qué validar la hora.
+  it('guarda la hora esperada de cada servicio y deja la del salón en null', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+    buscarServiciosPorIdsMock.mockResolvedValue([servicioFixture()]);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 10, horaEstimada: '10:30' }] });
+
+    expect(respuesta.status).toBe(201);
+    const [datos] = crearPresupuestoConLineasMock.mock.calls[0]!;
+    expect(datos.lineas[0]).toMatchObject({ servicioId: null, horaEstimada: null });
+    expect(datos.lineas[1]).toMatchObject({ servicioId: 1, horaEstimada: '10:30' });
+  });
+
+  it('responde 400 si la hora de un servicio no tiene formato HH:mm', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 10, horaEstimada: '10.30' }] });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
   });
 
   it('responde 404 si el salón no existe', async () => {

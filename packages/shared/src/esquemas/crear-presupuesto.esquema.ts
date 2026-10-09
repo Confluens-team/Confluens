@@ -13,9 +13,12 @@ import {
 } from './tipo-evento.esquema.js';
 
 // RN-04: un servicio puede contratarse para menos personas que el total del evento.
+// `horaEstimada` es opcional: a qué hora del evento se espera ese servicio. Si el evento ya está
+// agendado, la API valida que caiga dentro de su horario.
 export const esquemaServicioSeleccionado = z.object({
   servicioId: esquemaId,
   cantidad: z.number().int().positive(),
+  horaEstimada: esquemaHoraEstimada.optional(),
 });
 export type ServicioSeleccionado = z.infer<typeof esquemaServicioSeleccionado>;
 

@@ -125,6 +125,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         precioUnitario: D('142200'),
         subtotal: D('142200'),
         aCotizar: false,
+        horaEstimada: null,
         servicio: null,
       },
       {
@@ -136,6 +137,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         precioUnitario: D('8000'),
         subtotal: D('80000'),
         aCotizar: false,
+        horaEstimada: '10:30',
         servicio: { tercerizado: false },
       },
     ],
@@ -184,6 +186,7 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       precioUnitario: '8000.00',
       subtotal: '80000.00',
       aCotizar: false,
+      horaEstimada: '10:30',
       tipo: 'servicio',
       tercerizado: false,
     });
@@ -284,6 +287,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
         precioUnitario: '142200.00',
         subtotal: '142200.00',
         aCotizar: false,
+        horaEstimada: null,
       },
       {
         servicioId: 1,
@@ -292,6 +296,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
         precioUnitario: '8000.00',
         subtotal: '96000.00',
         aCotizar: false,
+        horaEstimada: null,
       },
     ]);
     const { estado, total, venceEn } = datosDelPresupuesto() as {
@@ -345,6 +350,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       precioUnitario: '0.00',
       subtotal: '0.00',
       aCotizar: true,
+      horaEstimada: null,
     });
     expect((datosDelPresupuesto() as { total: string }).total).toBe('238200.00');
   });
@@ -437,6 +443,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       precioUnitario: '12500.00',
       subtotal: '25000.00',
       aCotizar: false,
+      horaEstimada: null,
     });
     // 142200 + 12 × 8000 + 2 × 12500
     expect((datosDelPresupuesto() as { total: string }).total).toBe('263200.00');
@@ -871,5 +878,102 @@ describe('POST /api/presupuestos/:id/dar-de-baja (HU-12)', () => {
       .set('Cookie', [cookieRE]);
 
     expect(respuesta.status).toBe(409);
+  });
+});
+
+// Hora esperada de cada servicio dentro del horario del evento. Es opcional: la elige el cliente en
+// el cotizador o el personal al armar el presupuesto, y solo se puede controlar contra el horario
+// cuando el evento ya está agendado (mientras está EnConsulta, inicio y fin son null).
+describe('PATCH /api/presupuestos/:id — hora esperada de cada servicio', () => {
+  const lineasGuardadas = () => reemplazarLineasMock.mock.calls[0]![1];
+  // 12:00 a 18:00 en Córdoba (UTC-3), para que el control no dependa de la zona del servidor.
+  const agendado = {
+    inicio: new Date('2026-11-15T15:00:00.000Z'),
+    fin: new Date('2026-11-15T21:00:00.000Z'),
+  };
+
+  it('guarda la hora del servicio y la del adicional', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        servicios: [{ servicioId: 1, cantidad: 12, horaEstimada: '16:30' }],
+        adicionales: [
+          {
+            descripcion: 'Barra de tragos',
+            cantidad: 1,
+            precioUnitario: '40000',
+            horaEstimada: '21:00',
+          },
+        ],
+      });
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas()[1]).toMatchObject({ servicioId: 1, horaEstimada: '16:30' });
+    expect(lineasGuardadas()[2]).toMatchObject({
+      descripcion: 'Barra de tragos',
+      horaEstimada: '21:00',
+    });
+  });
+
+  it('la línea del salón nunca lleva hora', async () => {
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, horaEstimada: '16:30' }] });
+
+    expect(lineasGuardadas()[0]).toMatchObject({ servicioId: null, horaEstimada: null });
+  });
+
+  it('sin hora la línea queda sin hora, aunque antes tuviera una', async () => {
+    await request(app).patch('/api/presupuestos/31').set('Cookie', [cookieRE]).send(bodyBase);
+
+    expect(lineasGuardadas()[1]).toMatchObject({ servicioId: 1, horaEstimada: null });
+  });
+
+  it('acepta cualquier hora mientras el evento no esté agendado', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, horaEstimada: '23:45' }] });
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas()[1]).toMatchObject({ horaEstimada: '23:45' });
+  });
+
+  it('acepta una hora dentro del horario del evento agendado', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({}, agendado));
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, horaEstimada: '14:00' }] });
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('responde 422 si la hora cae fuera del horario del evento agendado', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({}, agendado));
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, horaEstimada: '10:30' }] });
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+    expect(respuesta.body.error.message).toContain('12:00');
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 400 si la hora no tiene formato HH:mm', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, horaEstimada: '25:99' }] });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
   });
 });

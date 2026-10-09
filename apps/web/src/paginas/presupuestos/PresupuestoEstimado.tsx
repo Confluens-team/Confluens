@@ -108,7 +108,15 @@ export function PresupuestoEstimado({
             <tbody className="divide-y divide-border">
               {presupuesto.lineas.map((linea) => (
                 <tr key={linea.id}>
-                  <td className="py-3 pr-3">{linea.descripcion}</td>
+                  <td className="py-3 pr-3">
+                    {linea.descripcion}
+                    {/* La hora a la que se espera el servicio, si se pidió una. */}
+                    {linea.horaEstimada && (
+                      <span className="ml-2 text-xs whitespace-nowrap text-muted-foreground">
+                        a las {linea.horaEstimada}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-3 text-right tabular-nums">{linea.cantidad}</td>
                   <td className="hidden py-3 text-right tabular-nums sm:table-cell">
                     {linea.aCotizar ? '—' : formatearPesos(linea.precioUnitario)}

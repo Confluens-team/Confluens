@@ -64,10 +64,13 @@ export type ConsultaDetallada = z.infer<typeof esquemaConsultaDetallada>;
 // Un servicio del presupuesto modificado. Sin `precioUnitario` conserva el precio congelado si ya
 // estaba en el presupuesto, o toma el vigente si es nuevo; con él es un ajuste comercial (RN-03).
 // Un tercerizado a cotizar sin `precioUnitario` sigue a cotizar; con él, queda con ese precio.
+// Como el PATCH manda el estado completo de la consulta, `horaEstimada` ausente borra la hora que
+// tuviera la línea.
 export const esquemaServicioModificado = z.object({
   servicioId: esquemaId,
   cantidad: z.number().int().positive(),
   precioUnitario: esquemaImporte.optional(),
+  horaEstimada: esquemaHoraEstimada.optional(),
 });
 export type ServicioModificado = z.infer<typeof esquemaServicioModificado>;
 
@@ -76,6 +79,7 @@ export const esquemaAdicional = z.object({
   descripcion: z.string().trim().min(1).max(120),
   cantidad: z.number().int().positive(),
   precioUnitario: esquemaImporte,
+  horaEstimada: esquemaHoraEstimada.optional(),
 });
 export type Adicional = z.infer<typeof esquemaAdicional>;
 

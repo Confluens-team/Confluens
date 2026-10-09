@@ -158,6 +158,9 @@ export function CotizarEvento({
   // null = "para todas las personas del evento": sigue a la cantidad total si el cliente la cambia.
   // Un número es una cantidad parcial elegida a mano (RN-04).
   const [elegidos, setElegidos] = useState<Map<number, number | null>>(new Map());
+  // Hora "HH:mm" a la que el cliente espera cada servicio dentro del evento (un coffee a las
+  // 10:30). Va aparte de `elegidos` porque es opcional: la mayoría de los servicios no la lleva.
+  const [horas, setHoras] = useState<Map<number, string>>(new Map());
   const [categoria, setCategoria] = useState<string | null>(null);
   const [errores, setErrores] = useState<Record<string, string>>({});
 
@@ -198,12 +201,13 @@ export function CotizarEvento({
       .filter((s) => elegidos.has(s.id))
       .map((s) => {
         const cantidad = cantidadDe(s.id, s.porPersona);
+        const aLas = horas.get(s.id) ? ` · a las ${horas.get(s.id)}` : '';
         // HU-11: un tercerizado sin precio fijo entra "a cotizar": sin importe y sin sumar.
         if (s.precio === null) {
           return {
             clave: `servicio-${s.id}`,
             descripcion: s.nombre,
-            detalle: 'A cotizar: el precio lo confirma el equipo',
+            detalle: `A cotizar: el precio lo confirma el equipo${aLas}`,
             subtotal: 0,
             aCotizar: true,
           };
@@ -211,9 +215,10 @@ export function CotizarEvento({
         return {
           clave: `servicio-${s.id}`,
           descripcion: s.nombre,
-          detalle: s.porPersona
-            ? `${cantidad} × ${formatearPesos(s.precio)}`
-            : `Precio fijo · ${formatearPesos(s.precio)}`,
+          detalle:
+            (s.porPersona
+              ? `${cantidad} × ${formatearPesos(s.precio)}`
+              : `Precio fijo · ${formatearPesos(s.precio)}`) + aLas,
           subtotal: Number(s.precio) * cantidad,
           aCotizar: false,
         };
@@ -229,6 +234,21 @@ export function CotizarEvento({
       const siguientes = new Map(anteriores);
       if (siguientes.has(servicioId)) siguientes.delete(servicioId);
       else siguientes.set(servicioId, null);
+      return siguientes;
+    });
+    // Un servicio que se destilda se lleva su hora: si vuelve a elegirse, arranca sin hora.
+    setHoras((anteriores) => {
+      const siguientes = new Map(anteriores);
+      siguientes.delete(servicioId);
+      return siguientes;
+    });
+  }
+
+  function cambiarHora(servicioId: number, valor: string) {
+    setHoras((anteriores) => {
+      const siguientes = new Map(anteriores);
+      if (valor) siguientes.set(servicioId, valor);
+      else siguientes.delete(servicioId);
       return siguientes;
     });
   }
@@ -313,7 +333,11 @@ export function CotizarEvento({
         horaInicioEstimada: hora || undefined,
         servicios: catalogo
           .filter((s) => elegidos.has(s.id))
-          .map((s) => ({ servicioId: s.id, cantidad: cantidadDe(s.id, s.porPersona) })),
+          .map((s) => ({
+            servicioId: s.id,
+            cantidad: cantidadDe(s.id, s.porPersona),
+            horaEstimada: horas.get(s.id) || undefined,
+          })),
       },
       {
         onSuccess: (presupuesto) =>
@@ -685,21 +709,42 @@ export function CotizarEvento({
                             </p>
                           </div>
                         </div>
-                        {marcado && servicio.porPersona && (
-                          <div className="mt-3 ml-7 flex items-center gap-2 text-xs text-muted-foreground">
-                            Para
+                        {marcado && (
+                          <div className="mt-3 ml-7 flex flex-wrap items-center gap-x-2 gap-y-3 text-xs text-muted-foreground">
+                            {servicio.porPersona && (
+                              <>
+                                Para
+                                <Input
+                                  type="number"
+                                  min={1}
+                                  max={cantidadPersonas || undefined}
+                                  value={cantidadManual ?? (cantidadPersonas || '')}
+                                  onChange={(e) => cambiarCantidad(servicio.id, e.target.value)}
+                                  className={cn(
+                                    'h-8 w-20',
+                                    errores[`servicio-${servicio.id}`] && 'border-destructive',
+                                  )}
+                                />
+                                personas
+                              </>
+                            )}
+                            {/* Opcional: a qué hora del evento se espera el servicio. El horario
+                                real lo carga el equipo al agendar, así que acá no hay contra qué
+                                validarla: es la preferencia del cliente. */}
+                            <label
+                              htmlFor={`hora-${servicio.id}`}
+                              className={servicio.porPersona ? 'ml-2' : undefined}
+                            >
+                              A las
+                            </label>
                             <Input
-                              type="number"
-                              min={1}
-                              max={cantidadPersonas || undefined}
-                              value={cantidadManual ?? (cantidadPersonas || '')}
-                              onChange={(e) => cambiarCantidad(servicio.id, e.target.value)}
-                              className={cn(
-                                'h-8 w-20',
-                                errores[`servicio-${servicio.id}`] && 'border-destructive',
-                              )}
+                              id={`hora-${servicio.id}`}
+                              type="time"
+                              value={horas.get(servicio.id) ?? ''}
+                              onChange={(e) => cambiarHora(servicio.id, e.target.value)}
+                              className="h-8 w-28"
                             />
-                            personas
+                            <span>(opcional)</span>
                             {cantidadPersonas > 0 && servicio.precio !== null && (
                               <span className="ml-auto font-medium text-foreground">
                                 {formatearPesos(

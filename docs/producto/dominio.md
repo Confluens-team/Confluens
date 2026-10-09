@@ -172,6 +172,15 @@ el total del presupuesto** como cualquier otro servicio. Diferencias con un serv
 elige la modalidad de cada uno: normal, **continuo en salón (+20%)** o **en mesas con mozo
 (+30%)**. Ver RN-11.
 
+**Hora esperada del servicio.** Cada servicio del presupuesto puede llevar **una hora opcional**
+(`HH:mm`) que dice en qué momento del evento se lo espera: el coffee a las 10:30, el almuerzo a las
+13:00. La carga el cliente en el cotizador, al elegir cada servicio, o el Responsable de Eventos al
+armar o modificar el presupuesto, y también la pueden llevar los adicionales escritos a mano. El
+salón no: su horario es el del evento. **Es una preferencia, no una obligación**: un servicio sin
+hora es válido y no cambia nada del cálculo. Mientras el evento está `EnConsulta` todavía no tiene
+horario cargado, así que se acepta cualquier hora; una vez **agendado** (con `inicio` y `fin`), una
+hora fuera de esa franja se rechaza. Decisión del equipo, 08/10/2026.
+
 **Presupuesto.** Valorización del evento, detallada línea por línea. Guarda los importes **sin
 IVA** y se presenta con **subtotal sin IVA, IVA 21% y total**. Al emitirse congela los precios de
 sus líneas, aunque después cambie el catálogo. Lleva la leyenda **"Este presupuesto tiene una

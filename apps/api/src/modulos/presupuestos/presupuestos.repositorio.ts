@@ -89,6 +89,7 @@ export async function crearPresupuestoConLineas(
       precioUnitario: string;
       subtotal: string;
       aCotizar: boolean;
+      horaEstimada: string | null;
     }[];
   },
   tx: Prisma.TransactionClient = prisma,
@@ -222,6 +223,7 @@ export async function reemplazarLineas(
     precioUnitario: string;
     subtotal: string;
     aCotizar: boolean;
+    horaEstimada: string | null;
   }[],
   tx: Prisma.TransactionClient = prisma,
 ) {
