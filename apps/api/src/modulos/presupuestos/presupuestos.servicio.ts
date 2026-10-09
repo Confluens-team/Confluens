@@ -218,9 +218,6 @@ export async function generarPresupuesto(
     const evento = await repo.crearEvento(
       {
         clienteId: cliente.id,
-        // salonId queda como el primero mientras dure la migración a varios salones: la fuente
-        // de verdad es EventoSalon y la columna se borra en la parte 4.
-        salonId: datos.salonIds[0]!,
         fecha: new Date(datos.fecha),
         cantidadPersonas: datos.cantidadPersonas,
         tipo: 'Corporativo',
@@ -280,7 +277,6 @@ export async function registrarConsultaSocial(
     const evento = await repo.crearEvento(
       {
         clienteId: cliente.id,
-        salonId: null,
         fecha: new Date(datos.fecha),
         cantidadPersonas: datos.cantidadPersonas,
         tipo: 'Social',
@@ -359,7 +355,7 @@ export async function listarPresupuestos(
     tipoSocial: evento.tipoSocial,
     tipoSocialDetalle: evento.tipoSocialDetalle,
     cliente: evento.cliente,
-    salon: evento.salon,
+    salones: evento.salones.map(({ salon }) => salon),
   }));
 }
 
@@ -389,9 +385,6 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       tipoSocialDetalle: evento.tipoSocialDetalle,
       horaInicioEstimada: evento.horaInicioEstimada,
       observacionesComanda: evento.observacionesComanda,
-      distribucion: evento.distribucion
-        ? { id: evento.distribucion.id, nombre: evento.distribucion.nombre }
-        : null,
       inicio: evento.inicio?.toISOString() ?? null,
       fin: evento.fin?.toISOString() ?? null,
     },
@@ -402,10 +395,12 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       correo: evento.cliente.correo,
       telefono: evento.cliente.telefono,
     },
-    salones: evento.salones.map(({ salon }) => ({
+    // Cada salón con la distribución que tiene armada en este evento (ADR 0011).
+    salones: evento.salones.map(({ salon, distribucion }) => ({
       id: salon.id,
       nombre: salon.nombre,
       capacidadMaxima: salon.capacidadMaxima,
+      distribucion: distribucion ? { id: distribucion.id, nombre: distribucion.nombre } : null,
     })),
     lineas: presupuesto.lineas.map(({ servicio, ...linea }) => ({
       id: linea.id,
@@ -454,36 +449,45 @@ function esConfirmadoVigente(presupuesto: PresupuestoDetalladoRepo): boolean {
 }
 
 /**
- * Un evento confirmado ya tiene horario (inicio y fin) y distribución. Si cambia la fecha, el
- * horario se corre los mismos días y conserva las horas; si cambia el salón, se busca la
- * distribución del mismo nombre en el salón nuevo. Que la franja nueva esté libre lo controla la
- * restricción EXCLUDE al guardar (RN-12).
+ * Un evento confirmado ya tiene horario (inicio y fin). Si cambia la fecha, el horario se corre
+ * los mismos días y conserva las horas. Que la franja nueva esté libre lo controla la restricción
+ * EXCLUDE al guardar (RN-12). La distribución de cada salón no se toca acá: ver
+ * \`armadosHeredados\`.
  */
-async function reubicarHorario(
+function reubicarHorario(
   evento: PresupuestoDetalladoRepo['evento'],
   datos: ModificarPresupuesto,
-  repo: PresupuestosRepositorio,
-): Promise<Prisma.EventoUpdateInput> {
+): Prisma.EventoUpdateInput {
   const corrimiento = new Date(datos.fecha).getTime() - evento.fecha.getTime();
-  const horario =
-    corrimiento !== 0 && evento.inicio && evento.fin
-      ? {
-          inicio: new Date(evento.inicio.getTime() + corrimiento),
-          fin: new Date(evento.fin.getTime() + corrimiento),
-        }
-      : {};
-  // La distribución del evento es la del primer salón mientras dure la migración (la parte 2c la
-  // pasa a ser una por salón). Si ese salón no cambió, se conserva.
-  const primerSalon = datos.salones[0]?.salonId ?? null;
-  if (primerSalon === null || primerSalon === evento.salonId) return horario;
+  return corrimiento !== 0 && evento.inicio && evento.fin
+    ? {
+        inicio: new Date(evento.inicio.getTime() + corrimiento),
+        fin: new Date(evento.fin.getTime() + corrimiento),
+      }
+    : {};
+}
 
-  const distribucion = evento.distribucion
-    ? await repo.buscarDistribucionPorNombre(primerSalon, evento.distribucion.nombre)
-    : null;
-  return {
-    ...horario,
-    distribucion: distribucion ? { connect: { id: distribucion.id } } : { disconnect: true },
-  };
+/**
+ * Un salón que entra a un evento ya armado hereda el armado del mismo nombre, si lo tiene:
+ * cambiar Paraná por Pucará en un evento con Banquete deja a Pucará también en Banquete. Sin esto
+ * un evento confirmado quedaría con un salón sin distribución. Se toma el armado del primer salón
+ * que tenga uno. Los salones que ya estaban conservan el suyo (los mantiene el repositorio).
+ */
+async function armadosHeredados(
+  evento: PresupuestoDetalladoRepo['evento'],
+  salonIds: number[],
+  repo: PresupuestosRepositorio,
+): Promise<Map<number, number>> {
+  const heredados = new Map<number, number>();
+  const nombreDelArmado = evento.salones.find((s) => s.distribucion)?.distribucion?.nombre;
+  if (!nombreDelArmado) return heredados;
+
+  const yaEstaban = new Set(evento.salones.map((s) => s.salonId));
+  for (const salonId of salonIds.filter((id) => !yaEstaban.has(id))) {
+    const distribucion = await repo.buscarDistribucionPorNombre(salonId, nombreDelArmado);
+    if (distribucion) heredados.set(salonId, distribucion.id);
+  }
+  return heredados;
 }
 
 export async function obtenerConsulta(
@@ -628,7 +632,8 @@ export async function modificarPresupuesto(
 
   const lineas = [...lineasSalones, ...lineasServicios, ...adicionales];
   const total = sumarLineas(lineas);
-  const horario = confirmado ? await reubicarHorario(presupuesto.evento, datos, repo) : {};
+  const horario = confirmado ? reubicarHorario(presupuesto.evento, datos) : {};
+  const heredados = await armadosHeredados(presupuesto.evento, salonIds, repo);
   // Contra el horario que va a quedar: si cambió la fecha de un evento confirmado, reubicarHorario
   // ya corrió inicio y fin los mismos días.
   exigirHorasDentroDelEvento(
@@ -658,9 +663,6 @@ export async function modificarPresupuesto(
         presupuesto.eventoId,
         {
           fecha: new Date(datos.fecha),
-          // salonId sigue el primero mientras dure la migración; la fuente de verdad es
-          // EventoSalon, que se reemplaza abajo. La columna se borra en la parte 4.
-          salon: salonIds.length === 0 ? { disconnect: true } : { connect: { id: salonIds[0]! } },
           cantidadPersonas: datos.cantidadPersonas,
           ...tipo,
           tipoJornada: datos.tipoJornada,
@@ -671,7 +673,7 @@ export async function modificarPresupuesto(
         },
         tx,
       );
-      await repo.reemplazarSalonesDelEvento(presupuesto.eventoId, salonIds, tx);
+      await repo.reemplazarSalonesDelEvento(presupuesto.eventoId, salonIds, tx, heredados);
       await repo.reemplazarLineas(id, lineas, tx);
       await repo.actualizarPresupuesto(
         id,

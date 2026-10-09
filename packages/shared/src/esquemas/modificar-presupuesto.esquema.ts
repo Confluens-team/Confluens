@@ -41,8 +41,8 @@ export const esquemaConsultaDetallada = z.object({
     horaInicioEstimada: esquemaHoraEstimada.nullable(),
     // Notas de la comanda de cocina: la pantalla de la comanda las muestra y las edita.
     observacionesComanda: z.string().nullable(),
-    // HU-11: se completan al agendar el evento; hasta entonces son null.
-    distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
+    // HU-11: se completan al agendar el evento; hasta entonces son null. La distribución va en
+    // cada salón: un evento puede ocupar varios (ADR 0011).
     inicio: esquemaFechaHora.nullable(),
     fin: esquemaFechaHora.nullable(),
   }),
@@ -56,7 +56,13 @@ export const esquemaConsultaDetallada = z.object({
   }),
   // Vacío en una consulta social que todavía no tiene salón (ADR 0008).
   salones: z.array(
-    z.object({ id: esquemaId, nombre: z.string(), capacidadMaxima: z.number().int() }),
+    z.object({
+      id: esquemaId,
+      nombre: z.string(),
+      capacidadMaxima: z.number().int(),
+      // La que tiene armada en este evento; null hasta que se agenda.
+      distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
+    }),
   ),
   lineas: z.array(
     esquemaLineaPresupuesto.extend({ tipo: esquemaTipoLinea, tercerizado: z.boolean() }),

@@ -104,7 +104,6 @@ model Salon {
   visibleEnLanding      Boolean            @default(true)
   fotoUrl               String?
   distribuciones        Distribucion[]
-  eventos               Evento[]
   eventoSalones         EventoSalon[]
   lineasPresupuesto     LineaPresupuesto[]
   solicitudes           Solicitud[]
@@ -119,7 +118,6 @@ model Distribucion {
   salon         Salon         @relation(fields: [salonId], references: [id])
   nombre        String
   capacidad     Int
-  eventos       Evento[]
   eventoSalones EventoSalon[]
   creadoEn      DateTime      @default(now())
   actualizadoEn DateTime      @updatedAt
@@ -178,12 +176,6 @@ model Evento {
   id                        Int               @id @default(autoincrement())
   clienteId                 Int
   cliente                   Cliente           @relation(fields: [clienteId], references: [id])
-  // Obligatorio para reservar (CHECK evento_salon_obligatorio); una consulta social llega sin
-  // salón y lo carga el Responsable de Eventos (ADR 0008).
-  salonId                   Int?
-  salon                     Salon?            @relation(fields: [salonId], references: [id], onDelete: Restrict)
-  distribucionId            Int?
-  distribucion              Distribucion?     @relation(fields: [distribucionId], references: [id])
   fecha                     DateTime          @db.Date
   inicio                    DateTime? // horario desde
   fin                       DateTime? // horario hasta
@@ -204,8 +196,9 @@ model Evento {
   // reservado (HU-13). Lo escribe el módulo de pagos, no una acción manual.
   senaRegistradaEn          DateTime?
   modalidadSalonRestaurante Boolean           @default(false) // opción interna, no visible al cliente
-  // Los salones del evento (decisión del equipo, 09/10/2026). Mientras dura la migración convive
-  // con salonId/distribucionId, que son el salón principal; la parte 4 los saca.
+  // Los salones que ocupa el evento, cada uno con su distribución: varios a la vez, en el mismo
+  // horario (ADR 0011). Un evento Reservado o Cobrado tiene al menos uno (constraint trigger
+  // evento_reservado_con_salon). Una consulta social puede no tener ninguno todavía (ADR 0008).
   salones                   EventoSalon[]
   // Notas al pie de la comanda de cocina: menús especiales, alergias, a quién buscar en el salón.
   // Las escribe el personal y solo salen en esa hoja; el cliente nunca las ve.

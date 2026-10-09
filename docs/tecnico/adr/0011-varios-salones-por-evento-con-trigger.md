@@ -32,6 +32,13 @@ columnas las mantienen **dos triggers**, nunca la aplicación:
 - `evento_salon_copia_horario`, en `EventoSalon` antes de insertar o actualizar, las toma del
   evento, descartando lo que venga en el `INSERT`.
 
+El cambio se hizo en dos pasos (*expand / contract*): primero se creó `EventoSalon` copiando el
+salón de cada evento y la aplicación pasó a leerla; después se borraron `Evento.salonId` y
+`Evento.distribucionId`. El CHECK `evento_salon_obligatorio` (ADR 0008) miraba `Evento.salonId`,
+así que lo reemplazan dos *constraint triggers* diferidos (`evento_reservado_con_salon`): un evento
+fuera de `EnConsulta` y `Cancelado` tiene que tener al menos un renglón en `EventoSalon` al cerrar
+la transacción.
+
 ## Consecuencias
 
 **A favor.**

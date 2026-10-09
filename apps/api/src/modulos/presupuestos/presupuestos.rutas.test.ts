@@ -105,8 +105,6 @@ const clienteFixture = {
 const eventoFixture = {
   id: 20,
   clienteId: clienteFixture.id,
-  salonId: salonFixture.id,
-  distribucionId: null,
   fecha: new Date('2026-11-15'),
   inicio: null,
   fin: null,
@@ -585,7 +583,9 @@ const presupuestoDelListado = {
     tipo: 'Corporativo' as 'Social' | 'Corporativo',
     tipoSocial: null as 'Casamiento' | null,
     tipoSocialDetalle: null,
-    salon: { id: 5, nombre: 'Paraná' } as { id: number; nombre: string } | null,
+    salones: [{ salon: { id: 5, nombre: 'Paraná' } }] as {
+      salon: { id: number; nombre: string };
+    }[],
     cliente: { id: 10, nombre: 'Marina', apellido: 'Gómez', correo: 'marina@example.com' },
   },
 };
@@ -616,7 +616,7 @@ describe('GET /api/presupuestos (HU-10)', () => {
           tipoSocial: null,
           tipoSocialDetalle: null,
           cliente: { id: 10, nombre: 'Marina', apellido: 'Gómez', correo: 'marina@example.com' },
-          salon: { id: 5, nombre: 'Paraná' },
+          salones: [{ id: 5, nombre: 'Paraná' }],
         },
       ],
     });
@@ -633,7 +633,7 @@ describe('GET /api/presupuestos (HU-10)', () => {
           ...presupuestoDelListado.evento,
           tipo: 'Social',
           tipoSocial: 'Casamiento',
-          salon: null,
+          salones: [],
         },
       },
     ]);
@@ -648,7 +648,7 @@ describe('GET /api/presupuestos (HU-10)', () => {
       total: '0.00',
       tipo: 'Social',
       tipoSocial: 'Casamiento',
-      salon: null,
+      salones: [],
     });
   });
 
@@ -799,7 +799,6 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
     expect(crearEventoMock).toHaveBeenCalledWith(
       {
         clienteId: clienteConCuenta.id,
-        salonId: null,
         fecha: new Date('2026-12-05'),
         cantidadPersonas: 120,
         tipo: 'Social',

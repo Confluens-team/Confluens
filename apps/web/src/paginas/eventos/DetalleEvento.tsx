@@ -2,7 +2,7 @@ import type { EstadoEvento } from '@confluens/shared';
 import { Check, ChevronDown, ChevronUp, Printer } from 'lucide-react';
 import { useState } from 'react';
 
-import { nombresDeSalones } from '@/lib/formato';
+import { armadoDeSalones, nombresDeSalones } from '@/lib/formato';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -237,9 +237,9 @@ export function DetalleEvento({
                 </Dato>
                 <Dato etiqueta="Salón">
                   {nombresDeSalones(evento.salones)} · {evento.cantidadPersonas} personas
-                  {evento.distribucion && (
+                  {armadoDeSalones(evento.salones) && (
                     <span className="block truncate text-xs text-muted-foreground">
-                      {evento.distribucion.nombre}
+                      {armadoDeSalones(evento.salones)}
                     </span>
                   )}
                 </Dato>

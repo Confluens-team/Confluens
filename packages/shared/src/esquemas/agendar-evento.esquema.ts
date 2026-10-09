@@ -52,8 +52,7 @@ export const esquemaEventoDetallado = esquemaEvento.extend({
   // Los salones que ocupa el evento: varios a la vez (ADR 0011), cada uno con la distribución que
   // tiene armada en este evento (null hasta que se agenda). Vacío en una consulta social que
   // todavía no tiene salón (ADR 0008).
-  salones: z.array(esquemaSalon.extend({ distribucionId: esquemaId.nullable() })),
-  distribucion: esquemaDistribucion.nullable(),
+  salones: z.array(esquemaSalon.extend({ distribucion: esquemaDistribucion.nullable() })),
   presupuestos: z.array(esquemaPresupuestoConLineas),
   solicitud: esquemaSolicitud.nullable(),
 });

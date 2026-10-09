@@ -43,7 +43,8 @@ export async function buscarSalonesPorIds(ids: number[], tx: Prisma.TransactionC
 
 /**
  * Deja al evento con exactamente estos salones. Los renglones que ya estaban y siguen se
- * conservan, para no perder la distribución que tengan cargada.
+ * conservan, para no perder la distribución que tengan cargada; los nuevos entran con la que diga
+ * `distribuciones` (el armado que heredan, ver modificarPresupuesto) o sin ninguna.
  *
  * inicio, fin y estado no se escriben acá a propósito: los pone el trigger a partir del evento
  * (ADR 0011).
@@ -52,6 +53,7 @@ export async function reemplazarSalonesDelEvento(
   eventoId: number,
   salonIds: number[],
   tx: Prisma.TransactionClient = prisma,
+  distribuciones: Map<number, number> = new Map(),
 ) {
   await tx.eventoSalon.deleteMany({ where: { eventoId, salonId: { notIn: salonIds } } });
   const actuales = await tx.eventoSalon.findMany({
@@ -64,7 +66,9 @@ export async function reemplazarSalonesDelEvento(
     // createMany no dispara el trigger BEFORE INSERT fila por fila en todos los casos; create sí,
     // y son a lo sumo cinco salones.
     for (const salonId of nuevos) {
-      await tx.eventoSalon.create({ data: { eventoId, salonId } });
+      await tx.eventoSalon.create({
+        data: { eventoId, salonId, distribucionId: distribuciones.get(salonId) ?? null },
+      });
     }
   }
 }
@@ -95,7 +99,6 @@ export async function vincularSolicitudAEvento(
 export async function crearEvento(
   datos: {
     clienteId: number;
-    salonId: number | null;
     fecha: Date;
     cantidadPersonas: number;
     tipo: 'Social' | 'Corporativo';
@@ -201,7 +204,10 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
           tipo: true,
           tipoSocial: true,
           tipoSocialDetalle: true,
-          salon: { select: { id: true, nombre: true } },
+          salones: {
+            select: { salon: { select: { id: true, nombre: true } } },
+            orderBy: { salonId: 'asc' },
+          },
           cliente: { select: { id: true, nombre: true, apellido: true, correo: true } },
         },
       },
@@ -222,9 +228,8 @@ export async function buscarPresupuestoDetallado(
       evento: {
         include: {
           cliente: true,
-          salon: true,
-          salones: { include: { salon: true }, orderBy: { salonId: 'asc' } },
-          distribucion: true,
+          // Cada salón con la distribución que tiene armada en este evento (ADR 0011).
+          salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
         },
       },
       lineas: { include: { servicio: { select: { tercerizado: true } } }, orderBy: { id: 'asc' } },

@@ -111,8 +111,6 @@ function eventoFixtureBase() {
   return {
     id: 20,
     clienteId: clienteFixture.id,
-    salonId: salonFixture.id as number | null,
-    distribucionId: null as number | null,
     fecha: new Date('2026-11-15'),
     inicio: null as Date | null,
     fin: null as Date | null,
@@ -130,7 +128,6 @@ function eventoFixtureBase() {
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     cliente: clienteFixture,
-    salon: salonFixture,
     salones: [
       {
         eventoId: 20,
@@ -141,9 +138,9 @@ function eventoFixtureBase() {
         estado: 'EnConsulta' as EstadoEventoFixture,
         creadoEn: new Date(),
         salon: salonFixture,
+        distribucion: null as typeof distribucionFixture | null,
       },
     ],
-    distribucion: null as typeof distribucionFixture | null,
     solicitud: null,
     presupuestos: [{ ...presupuestoEstimadoFixture, lineas: [lineaFixture] }],
   };
@@ -178,7 +175,15 @@ describe('GET /api/eventos/:id', () => {
   it('devuelve cada salón con su distribución, ya aplanado', async () => {
     const base = eventoFixture();
     buscarDetalladoMock.mockResolvedValue(
-      eventoFixture({ salones: [{ ...base.salones[0]!, distribucionId: distribucionFixture.id }] }),
+      eventoFixture({
+        salones: [
+          {
+            ...base.salones[0]!,
+            distribucionId: distribucionFixture.id,
+            distribucion: distribucionFixture,
+          },
+        ],
+      }),
     );
 
     const respuesta = await request(app).get('/api/eventos/20').set('Cookie', [cookiePersonal]);
@@ -187,7 +192,7 @@ describe('GET /api/eventos/:id', () => {
       expect.objectContaining({
         id: salonFixture.id,
         nombre: salonFixture.nombre,
-        distribucionId: distribucionFixture.id,
+        distribucion: expect.objectContaining({ id: distribucionFixture.id }),
       }),
     ]);
     expect(respuesta.body.data.salones[0]).not.toHaveProperty('salon');
@@ -222,6 +227,7 @@ describe('POST /api/eventos/:id/agendar', () => {
     estado: 'EnConsulta' as EstadoEventoFixture,
     creadoEn: new Date(),
     salon,
+    distribucion: null as typeof distribucionFixture | null,
   });
   const enDosSalones = (datos: Partial<ReturnType<typeof eventoFixtureBase>> = {}) =>
     eventoFixture({ salones: [vinculo(salonFixture), vinculo(pucara)], ...datos });
@@ -259,7 +265,7 @@ describe('POST /api/eventos/:id/agendar', () => {
 
   // ADR 0008: una consulta social llega sin salón; no hay contra qué validar la distribución.
   it('responde 422 si el evento todavía no tiene salón, sin escribir nada', async () => {
-    buscarDetalladoMock.mockResolvedValue(eventoFixture({ salonId: null, salones: [] }));
+    buscarDetalladoMock.mockResolvedValue(eventoFixture({ salones: [] }));
 
     const respuesta = await agendar(cuerpo());
 
@@ -561,8 +567,7 @@ describe('GET /api/eventos', () => {
     creadoEn: new Date('2026-09-29T00:00:00.000Z'),
     actualizadoEn: new Date('2026-09-29T00:00:00.000Z'),
     cliente: { id: 1, nombre: 'Ana Pérez', telefono: '3515551234', correo: 'ana@empresa.com' },
-    salones: [{ salon: { id: 5, nombre: 'Paraná' } }],
-    distribucion: { id: 2, nombre: 'Banquete' },
+    salones: [{ salon: { id: 5, nombre: 'Paraná' }, distribucion: { id: 2, nombre: 'Banquete' } }],
   };
 
   beforeEach(() => {

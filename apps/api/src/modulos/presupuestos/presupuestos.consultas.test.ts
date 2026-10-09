@@ -91,8 +91,6 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
     evento: {
       id: 20,
       clienteId: 10,
-      salonId: 5,
-      distribucionId: null,
       fecha: new Date('2026-11-15T00:00:00.000Z'),
       inicio: null,
       fin: null,
@@ -116,7 +114,6 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         telefono: '+5493515551234',
         correo: 'marina@example.com',
       },
-      salon: salonParana,
       salones: [
         {
           eventoId: 20,
@@ -127,9 +124,14 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
           estado: 'EnConsulta' as const,
           creadoEn: new Date(),
           salon: salonParana,
+          distribucion: null as {
+            id: number;
+            salonId: number;
+            nombre: string;
+            capacidad: number;
+          } | null,
         },
       ],
-      distribucion: null,
       ...evento,
     },
     lineas: [
@@ -289,8 +291,19 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       consulta(
         {},
         {
-          distribucionId: 2,
-          distribucion: { id: 2, nombre: 'Banquete' },
+          salones: [
+            {
+              eventoId: 20,
+              salonId: salonParana.id,
+              distribucionId: 2,
+              inicio: null,
+              fin: null,
+              estado: 'EnConsulta' as const,
+              creadoEn: new Date(),
+              salon: salonParana,
+              distribucion: { id: 2, salonId: salonParana.id, nombre: 'Banquete', capacidad: 12 },
+            },
+          ],
           inicio: new Date('2026-11-15T23:00:00.000Z'),
           fin: new Date('2026-11-16T05:00:00.000Z'),
         },
@@ -300,10 +313,11 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
     const respuesta = await request(app).get('/api/presupuestos/31').set('Cookie', [cookieRE]);
 
     expect(respuesta.body.data.evento).toMatchObject({
-      distribucion: { id: 2, nombre: 'Banquete' },
       inicio: '2026-11-15T23:00:00.000Z',
       fin: '2026-11-16T05:00:00.000Z',
     });
+    // ADR 0011: la distribución es de cada salón, no del evento.
+    expect(respuesta.body.data.salones[0].distribucion).toEqual({ id: 2, nombre: 'Banquete' });
   });
 
   it('responde 404 si el presupuesto no existe', async () => {
@@ -374,7 +388,6 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       20,
       {
         fecha: new Date('2026-11-20'),
-        salon: { connect: { id: 5 } },
         cantidadPersonas: 12,
         tipo: 'Corporativo',
         tipoSocial: null,
@@ -645,8 +658,19 @@ describe('PATCH /api/presupuestos/:id sobre un evento confirmado (RN-09)', () =>
       { estado: 'Confirmado' },
       {
         estado: 'Reservado',
-        distribucionId: 15,
-        distribucion: banquete,
+        salones: [
+          {
+            eventoId: 20,
+            salonId: 5,
+            distribucionId: 15,
+            inicio: null,
+            fin: null,
+            estado: 'Reservado' as const,
+            creadoEn: new Date(),
+            salon: salonParana,
+            distribucion: banquete,
+          },
+        ],
         inicio: new Date('2026-11-16T00:00:00.000Z'),
         fin: new Date('2026-11-16T08:00:00.000Z'),
         ...evento,
@@ -707,6 +731,40 @@ describe('PATCH /api/presupuestos/:id sobre un evento confirmado (RN-09)', () =>
     expect(datosDelEvento().estado).toBe('Reservado');
   });
 
+  // ADR 0011: con varios salones, el que entra hereda el armado y los que ya estaban no se tocan
+  // (no se los busca ni se los manda: el repositorio conserva su renglón con su distribución).
+  it('al sumar un salón a un evento armado, solo el nuevo hereda el armado', async () => {
+    const pucara = { ...salonParana, id: 2, nombre: 'Pucará' };
+    buscarSalonesPorIdsMock.mockResolvedValue([salonParana, pucara]);
+    buscarDistribucionPorNombreMock.mockResolvedValue({ ...banquete, id: 6, salonId: 2 } as never);
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, salones: [{ salonId: 5 }, { salonId: 2 }] });
+
+    expect(buscarDistribucionPorNombreMock).toHaveBeenCalledTimes(1);
+    expect(buscarDistribucionPorNombreMock).toHaveBeenCalledWith(2, 'Banquete');
+    expect(reemplazarSalonesDelEventoMock).toHaveBeenCalledWith(
+      20,
+      [5, 2],
+      undefined,
+      new Map([[2, 6]]),
+    );
+  });
+
+  it('si el salón nuevo no tiene un armado con ese nombre, entra sin distribución', async () => {
+    buscarSalonesPorIdsMock.mockResolvedValue([{ ...salonParana, id: 2, nombre: 'Pucará' }]);
+    buscarDistribucionPorNombreMock.mockResolvedValue(null);
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, salones: [{ salonId: 2 }] });
+
+    expect(reemplazarSalonesDelEventoMock).toHaveBeenCalledWith(20, [2], undefined, new Map());
+  });
+
   it('al cambiar de salón conserva la distribución del mismo nombre en el salón nuevo', async () => {
     buscarSalonesPorIdsMock.mockResolvedValue([{ ...salonParana, id: 2, nombre: 'Pucará' }]);
     buscarDistribucionPorNombreMock.mockResolvedValue({ ...banquete, id: 6, salonId: 2 } as never);
@@ -717,7 +775,12 @@ describe('PATCH /api/presupuestos/:id sobre un evento confirmado (RN-09)', () =>
       .send({ ...bodyBase, salones: [{ salonId: 2 }] });
 
     expect(buscarDistribucionPorNombreMock).toHaveBeenCalledWith(2, 'Banquete');
-    expect(datosDelEvento()).toMatchObject({ distribucion: { connect: { id: 6 } } });
+    expect(reemplazarSalonesDelEventoMock).toHaveBeenCalledWith(
+      20,
+      [2],
+      undefined,
+      new Map([[2, 6]]),
+    );
   });
 
   it('responde 422 si se le saca el salón', async () => {
@@ -774,8 +837,6 @@ describe('Consultas sociales (ADR 0008)', () => {
     consulta(
       { venceEn: null, total: D('0'), lineas: [] },
       {
-        salonId: null,
-        salon: null,
         salones: [],
         tipo: 'Social',
         tipoSocial: 'Casamiento',
@@ -824,7 +885,6 @@ describe('Consultas sociales (ADR 0008)', () => {
     expect(lineasGuardadas()).toEqual([]);
     expect(datosDelPresupuesto()).toMatchObject({ venceEn: null, total: '0.00' });
     expect(datosDelEvento()).toMatchObject({
-      salon: { disconnect: true },
       tipo: 'Social',
       tipoSocial: 'Casamiento',
     });

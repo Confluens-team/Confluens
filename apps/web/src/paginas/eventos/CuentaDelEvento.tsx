@@ -109,7 +109,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   // La distribución de cada salón del evento (ADR 0011): salonId → id de la distribución, '' si
   // todavía no se eligió. Se precarga con la que cada salón ya tiene armada.
   const distribucionesIniciales = new Map(
-    evento.salones.map((salon) => [salon.id, salon.distribucionId?.toString() ?? '']),
+    evento.salones.map((salon) => [salon.id, salon.distribucion?.id.toString() ?? '']),
   );
   const [distribucionPorSalon, setDistribucionPorSalon] = useState(distribucionesIniciales);
 
@@ -560,13 +560,13 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
               </div>
 
               <form onSubmit={handleSubmit(registrar)} className="mt-5 space-y-5">
-                {enConsulta && !evento.salonId && (
+                {enConsulta && evento.salones.length === 0 && (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                     Para reservar el salón con la seña, primero elegí el salón desde la consulta y
                     guardá los cambios.
                   </p>
                 )}
-                {enConsulta && evento.salonId && (
+                {enConsulta && evento.salones.length > 0 && (
                   <fieldset className="space-y-3">
                     <legend className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
                       Horario

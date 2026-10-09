@@ -12,9 +12,8 @@ export async function buscarDetallado(id: number, tx: Prisma.TransactionClient =
     where: { id },
     include: {
       cliente: true,
-      salon: true,
-      salones: { include: { salon: true }, orderBy: { salonId: 'asc' } },
-      distribucion: true,
+      // Cada salón con la distribución que tiene armada en este evento (ADR 0011).
+      salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
       solicitud: true,
       presupuestos: { include: { lineas: true } },
     },
@@ -48,10 +47,12 @@ export async function listarAgenda(
         select: { id: true, nombre: true, apellido: true, telefono: true, correo: true },
       },
       salones: {
-        select: { salon: { select: { id: true, nombre: true } } },
+        select: {
+          salon: { select: { id: true, nombre: true } },
+          distribucion: { select: { id: true, nombre: true } },
+        },
         orderBy: { salonId: 'asc' },
       },
-      distribucion: { select: { id: true, nombre: true } },
       presupuestos: {
         where: { estado: 'Confirmado' },
         orderBy: { creadoEn: 'desc' },
@@ -121,8 +122,6 @@ export async function agendarConDistribuciones(
   await tx.evento.update({
     where: { id: datos.eventoId },
     data: {
-      // La del primer salón, mientras dure la migración; la columna se borra en la parte 4.
-      distribucionId: datos.distribuciones[0]?.distribucionId ?? null,
       inicio: datos.inicio,
       fin: datos.fin,
       modalidadSalonRestaurante: datos.modalidadSalonRestaurante,

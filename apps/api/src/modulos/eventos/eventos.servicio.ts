@@ -7,36 +7,27 @@ import type { EventosRepositorio } from './eventos.repositorio.js';
 
 const CUARENTA_Y_OCHO_HORAS_EN_MS = 48 * 60 * 60 * 1000;
 
-// Aplana el presupuesto Confirmado en totalPresupuesto (esquemaEventoAgenda): la agenda no necesita
-// la lista de presupuestos, solo el total tomado. El filtrado es parte de la consulta (repositorio).
-// EventoSalon es la fila de la relación; afuera lo que interesa es el salón. Los contratos de
-// shared esperan la lista de salones, no la de vínculos.
-function conSalones<S, T extends { salones: { salon: S }[] }>(
+// EventoSalon es la fila de la relación; afuera interesa el salón, con la distribución que tiene
+// armada en este evento (ADR 0011). Es la forma que esperan la agenda y el detalle del evento.
+function conSalones<S, D, T extends { salones: { salon: S; distribucion: D }[] }>(
   evento: T,
-): Omit<T, 'salones'> & {
-  salones: S[];
-} {
-  return { ...evento, salones: evento.salones.map((vinculo) => vinculo.salon) };
-}
-
-// El detalle de un evento, como lo espera EventoDetallado: cada salón con la distribución que
-// tiene armada en este evento. Lo devuelven la consulta y todas las acciones sobre el evento.
-function detalleDe<S, T extends { salones: { salon: S; distribucionId: number | null }[] }>(
-  evento: T,
-): Omit<T, 'salones'> & { salones: (S & { distribucionId: number | null })[] } {
+): Omit<T, 'salones'> & { salones: (S & { distribucion: D })[] } {
   return {
     ...evento,
-    salones: evento.salones.map(({ salon, distribucionId }) => ({ ...salon, distribucionId })),
+    salones: evento.salones.map(({ salon, distribucion }) => ({ ...salon, distribucion })),
   };
 }
 
-// Relee el evento después de escribirlo, para devolver el estado que quedó.
+// Relee el evento después de escribirlo, para devolver el estado que quedó. Lo usan la consulta
+// del detalle y todas las acciones sobre el evento, así todas cumplen EventoDetallado.
 async function releerDetalle(id: number, repo: EventosRepositorio) {
   const evento = await repo.buscarDetallado(id);
   if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${id}`);
-  return detalleDe(evento);
+  return conSalones(evento);
 }
 
+// Aplana el presupuesto Confirmado en totalPresupuesto (esquemaEventoAgenda): la agenda no necesita
+// la lista de presupuestos, solo el total tomado. El filtrado es parte de la consulta (repositorio).
 export async function listarAgenda(
   filtros: FiltrosAgenda,
   repo: EventosRepositorio = eventosRepositorioReal,

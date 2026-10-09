@@ -37,13 +37,12 @@ export type EstadoEvento = z.infer<typeof esquemaEstadoEvento>;
 // que hace que una franja sin estos eventos se lea como disponible (criterio 5 de HU-15).
 export const ESTADOS_QUE_OCUPAN_SALON: readonly EstadoEvento[] = ['Reservado', 'Cobrado'];
 
-// distribucionId, inicio y fin pueden ser null en EnConsulta (y en Cancelado si viene de ahí). El
-// salón también, en una consulta social que todavía no lo tiene (ADR 0008).
+// inicio y fin pueden ser null en EnConsulta (y en Cancelado si viene de ahí). Los salones del
+// evento y la distribución de cada uno no están acá: viven en EventoSalon, porque un evento puede
+// ocupar varios a la vez (ADR 0011). Los traen EventoAgenda y EventoDetallado.
 export const esquemaEvento = z.object({
   id: esquemaId,
   clienteId: esquemaId,
-  salonId: esquemaId.nullable(),
-  distribucionId: esquemaId.nullable(),
   fecha: esquemaFecha,
   inicio: esquemaFechaHora.nullable(),
   fin: esquemaFechaHora.nullable(),
@@ -78,8 +77,14 @@ export const esquemaEventoAgenda = esquemaEvento.extend({
     telefono: z.string(),
     correo: z.string(),
   }),
-  salones: z.array(z.object({ id: esquemaId, nombre: z.string() })),
-  distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
+  // Los salones que ocupa, cada uno con la distribución que tiene armada (null sin agendar).
+  salones: z.array(
+    z.object({
+      id: esquemaId,
+      nombre: z.string(),
+      distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
+    }),
+  ),
   totalPresupuesto: esquemaImporte.nullable(),
 });
 export type EventoAgenda = z.infer<typeof esquemaEventoAgenda>;

@@ -54,7 +54,8 @@ export const esquemaPresupuestoListado = z.object({
     apellido: z.string().nullable(),
     correo: z.string(),
   }),
-  salon: z.object({ id: esquemaId, nombre: z.string() }).nullable(), // null: social sin salón
+  // Varios a la vez (ADR 0011); vacío en una consulta social que todavía no lo tiene.
+  salones: z.array(z.object({ id: esquemaId, nombre: z.string() })),
 });
 export type PresupuestoListado = z.infer<typeof esquemaPresupuestoListado>;
 

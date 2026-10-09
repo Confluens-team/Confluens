@@ -33,7 +33,7 @@ import { useSalones } from '@/hooks/use-salones';
 import { useServicios } from '@/hooks/use-servicios';
 import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
-import { formatearPesos, nombreCompleto } from '@/lib/formato';
+import { armadoDeSalones, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 
 // Una línea del detalle mientras se edita. servicioId null = adicional escrito a mano. Un
@@ -331,7 +331,8 @@ function Formulario({
     tipo === 'Corporativo'
       ? salonesSel.length > 0
       : !!tipoSocial && (tipoSocial !== 'Otro' || !!detalleOtro.trim());
-  const { distribucion, inicio, fin } = consulta.evento;
+  const { inicio, fin } = consulta.evento;
+  const armado = armadoDeSalones(consulta.salones);
   // La franja del evento, solo si ya está agendado: la hora de un servicio tiene que caer adentro
   // y la API la rechaza con 422 si no. Mientras la consulta no se agenda no hay con qué limitar
   // (ADR 0007: el horario real se carga después), así que se acepta cualquier hora. Un evento que
@@ -637,8 +638,8 @@ function Formulario({
           )}
           <p className="mt-4 text-sm">
             <span className="text-muted-foreground">Distribución y horario: </span>
-            {distribucion && inicio && fin
-              ? `${distribucion.nombre} · de ${hora(inicio)} a ${hora(fin)}`
+            {armado && inicio && fin
+              ? `${armado} · de ${hora(inicio)} a ${hora(fin)}`
               : 'sin agendar todavía (se cargan al registrar el pago)'}
           </p>
           <label className="mt-4 flex items-center gap-2 text-sm">

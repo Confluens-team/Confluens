@@ -12,7 +12,7 @@ import { prisma } from '../src/lib/prisma.js';
 
 const IVA = new Prisma.Decimal('1.21');
 
-function dec(valor: string | number) {
+function dec(valor: string | number | Prisma.Decimal) {
   return new Prisma.Decimal(valor);
 }
 
@@ -76,8 +76,11 @@ async function main() {
   const evento1 = await prisma.evento.create({
     data: {
       clienteId: cliente1.id,
-      salonId: pucara.id,
-      distribucionId: distribucion('Pucará', 'Mesas de trabajo').id,
+      salones: {
+        create: [
+          { salonId: pucara.id, distribucionId: distribucion('Pucará', 'Mesas de trabajo').id },
+        ],
+      },
       fecha: fecha('2026-10-14'),
       cantidadPersonas: personas1,
       estado: 'EnConsulta',
@@ -97,7 +100,8 @@ async function main() {
       lineas: {
         create: [
           {
-            descripcion: `Salón ${pucara.nombre} · media jornada`,
+            salonId: pucara.id,
+            descripcion: `Salón ${pucara.nombre} (media jornada)`,
             cantidad: 1,
             precioUnitario: linea1Salon,
             subtotal: linea1Salon,
@@ -163,8 +167,9 @@ async function main() {
   const evento3 = await prisma.evento.create({
     data: {
       clienteId: cliente3.id,
-      salonId: iguazu.id,
-      distribucionId: distribucion('Iguazú', 'Conferencia').id,
+      salones: {
+        create: [{ salonId: iguazu.id, distribucionId: distribucion('Iguazú', 'Conferencia').id }],
+      },
       fecha: fecha('2026-10-09'),
       cantidadPersonas: personas3,
       estado: 'EnConsulta',
@@ -183,7 +188,8 @@ async function main() {
       lineas: {
         create: [
           {
-            descripcion: `Salón ${iguazu.nombre} · media jornada`,
+            salonId: iguazu.id,
+            descripcion: `Salón ${iguazu.nombre} (media jornada)`,
             cantidad: 1,
             precioUnitario: linea3Salon,
             subtotal: linea3Salon,
@@ -221,8 +227,14 @@ async function main() {
   const evento4 = await prisma.evento.create({
     data: {
       clienteId: cliente4.id,
-      salonId: auditorio.id,
-      distribucionId: distribucion('Auditorio', 'Mesas de trabajo').id,
+      salones: {
+        create: [
+          {
+            salonId: auditorio.id,
+            distribucionId: distribucion('Auditorio', 'Mesas de trabajo').id,
+          },
+        ],
+      },
       fecha: fecha('2026-10-21'),
       inicio: hora('2026-10-21', '09:00'),
       fin: hora('2026-10-21', '18:00'),
@@ -244,7 +256,8 @@ async function main() {
       lineas: {
         create: [
           {
-            descripcion: `Salón ${auditorio.nombre} · jornada completa`,
+            salonId: auditorio.id,
+            descripcion: `Salón ${auditorio.nombre} (jornada completa)`,
             cantidad: 1,
             precioUnitario: linea4Salon,
             subtotal: linea4Salon,
@@ -291,8 +304,11 @@ async function main() {
   const evento5 = await prisma.evento.create({
     data: {
       clienteId: cliente5.id,
-      salonId: bariloche.id,
-      distribucionId: distribucion('Bariloche', 'Banquete').id,
+      salones: {
+        create: [
+          { salonId: bariloche.id, distribucionId: distribucion('Bariloche', 'Banquete').id },
+        ],
+      },
       fecha: fecha('2026-10-17'),
       inicio: hora('2026-10-17', '12:00'),
       fin: hora('2026-10-17', '20:00'),
@@ -314,7 +330,8 @@ async function main() {
       lineas: {
         create: [
           {
-            descripcion: `Salón ${bariloche.nombre} · jornada completa`,
+            salonId: bariloche.id,
+            descripcion: `Salón ${bariloche.nombre} (jornada completa)`,
             cantidad: 1,
             precioUnitario: linea5Salon,
             subtotal: linea5Salon,
@@ -364,8 +381,9 @@ async function main() {
   const evento6 = await prisma.evento.create({
     data: {
       clienteId: cliente6.id,
-      salonId: parana.id,
-      distribucionId: distribucion('Paraná', 'Banquete').id,
+      salones: {
+        create: [{ salonId: parana.id, distribucionId: distribucion('Paraná', 'Banquete').id }],
+      },
       fecha: fecha('2026-10-28'),
       cantidadPersonas: 12,
       estado: 'Cancelado',
@@ -385,7 +403,8 @@ async function main() {
       lineas: {
         create: [
           {
-            descripcion: `Salón ${parana.nombre} · media jornada`,
+            salonId: parana.id,
+            descripcion: `Salón ${parana.nombre} (media jornada)`,
             cantidad: 1,
             precioUnitario: total6,
             subtotal: total6,
