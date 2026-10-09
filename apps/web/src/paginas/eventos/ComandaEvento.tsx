@@ -50,6 +50,37 @@ function Dato({ rotulo, valor }: { rotulo: string; valor: string }) {
   );
 }
 
+// Las tres columnas de la comanda, iguales para la gastronomía y para los ítems escritos a mano:
+// cuándo, qué y para cuántos. Los números van en versales grandes y alineados a la derecha para
+// poder leerlos de lejos; la hora, a la izquierda, porque es por donde se recorre la hoja.
+function TablaServicios({ lineas }: { lineas: ConsultaDetallada['lineas'] }) {
+  return (
+    <table className="mt-3 w-full border-collapse text-left">
+      <thead>
+        <tr className="border-b border-bordo/40 text-[0.6rem] tracking-[0.2em] text-muted-foreground uppercase print:border-black/50">
+          <th className="w-28 pb-1.5 font-semibold">Horario</th>
+          <th className="pb-1.5 font-semibold">Descripción</th>
+          <th className="w-28 pb-1.5 text-right font-semibold">Personas</th>
+        </tr>
+      </thead>
+      <tbody>
+        {lineas.map((linea) => (
+          <tr key={linea.id} className="border-b border-border/70 print:border-black/20">
+            <td className="py-3 pr-3 font-serif text-xl font-semibold tabular-nums">
+              {/* Sin hora pedida: el guion deja la columna pareja y se nota que falta definirla. */}
+              {linea.horaEstimada ?? '—'}
+            </td>
+            <td className="py-3 pr-3 text-lg">{linea.descripcion}</td>
+            <td className="py-3 text-right font-serif text-xl font-semibold tabular-nums">
+              {linea.cantidad}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
   const { evento } = consulta;
   // Se guardan en Evento.observacionesComanda. El borrador vive acá mientras se escribe y se
@@ -101,21 +132,7 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
             Este evento no tiene servicios de gastronomía cargados.
           </p>
         ) : (
-          <table className="mt-3 w-full text-left">
-            <tbody>
-              {gastronomia.map((linea) => (
-                <tr key={linea.id} className="border-b border-border/70 print:border-black/20">
-                  <td className="w-24 py-3 font-serif text-xl font-semibold tabular-nums">
-                    {linea.horaEstimada ?? '—'}
-                  </td>
-                  <td className="py-3 text-lg">{linea.descripcion}</td>
-                  <td className="w-20 py-3 text-right font-serif text-xl font-semibold tabular-nums">
-                    {linea.cantidad}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <TablaServicios lineas={gastronomia} />
         )}
       </section>
 
@@ -124,22 +141,7 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
           <h3 className="text-[0.65rem] font-semibold tracking-[0.2em] text-muted-foreground uppercase">
             Otros ítems cargados a mano
           </h3>
-          <ul className="mt-3 space-y-1.5 text-sm">
-            {aMano.map((linea) => (
-              <li
-                key={linea.id}
-                className="flex justify-between gap-4 border-b border-border/70 pb-1.5 print:border-black/20"
-              >
-                <span>
-                  {linea.horaEstimada && (
-                    <span className="mr-2 font-medium tabular-nums">{linea.horaEstimada}</span>
-                  )}
-                  {linea.descripcion}
-                </span>
-                <span className="tabular-nums">{linea.cantidad}</span>
-              </li>
-            ))}
-          </ul>
+          <TablaServicios lineas={aMano} />
         </section>
       )}
 
