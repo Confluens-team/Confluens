@@ -306,10 +306,9 @@ export function CotizarEvento({
   function generar() {
     const nuevosErrores: Record<string, string> = {};
     validarEvento(nuevosErrores);
+    // La capacidad no bloquea: un evento se puede repartir de muchas formas y el salón chico
+    // puede ser el correcto igual. La ficha de cada salón avisa, pero deja elegir.
     if (!salonElegido) nuevosErrores['salon'] = 'Elegí un salón';
-    else if (salonElegido.capacidadMaxima < cantidadPersonas)
-      nuevosErrores['salon'] =
-        `El salón ${salonElegido.nombre} admite hasta ${salonElegido.capacidadMaxima} personas`;
     for (const [id, cantidad] of elegidos) {
       if (cantidad !== null && (cantidad < 1 || cantidad > cantidadPersonas)) {
         nuevosErrores['servicios'] =
@@ -565,8 +564,9 @@ export function CotizarEvento({
               {cantidadPersonas > 0 && entran.length === 0 && masGrande && (
                 <p className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  Ningún salón cubre {cantidadPersonas} personas. El de mayor capacidad es{' '}
-                  {masGrande.nombre}, hasta {masGrande.capacidadMaxima} personas.
+                  Ningún salón cubre {cantidadPersonas} personas por sí solo: el más grande es{' '}
+                  {masGrande.nombre}, hasta {masGrande.capacidadMaxima}. Elegí el que prefieras y lo
+                  resolvemos con vos.
                 </p>
               )}
               {errores['salon'] && (
@@ -574,20 +574,18 @@ export function CotizarEvento({
               )}
               <div className="grid gap-3">
                 {salonesVisibles.map((salon) => {
-                  const noEntran = cantidadPersonas > salon.capacidadMaxima;
+                  const superaCapacidad = cantidadPersonas > salon.capacidadMaxima;
                   const elegido = salon.id === salonId;
                   return (
                     <button
                       key={salon.id}
                       type="button"
-                      disabled={noEntran}
                       onClick={() => setSalonId(salon.id)}
                       className={cn(
                         'flex items-center gap-4 overflow-hidden rounded-xl border-2 p-2 pr-4 text-left transition-all',
                         elegido
                           ? 'border-bordo bg-bordo/5 shadow-md'
                           : 'border-border hover:border-dorado',
-                        noEntran && 'cursor-not-allowed opacity-45 hover:border-border',
                       )}
                     >
                       <img
@@ -612,9 +610,10 @@ export function CotizarEvento({
                           Hasta {salon.capacidadMaxima} personas · {salon.superficie} m² ·{' '}
                           {salon.distribuciones.map((d) => d.nombre).join(', ')}
                         </p>
-                        {noEntran && (
-                          <p className="text-xs text-destructive">
-                            No entran {cantidadPersonas} personas
+                        {superaCapacidad && (
+                          <p className="text-xs text-amber-700">
+                            {cantidadPersonas} personas superan su capacidad. Se puede elegir igual:
+                            lo vemos con vos.
                           </p>
                         )}
                       </div>
