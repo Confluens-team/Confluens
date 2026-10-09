@@ -394,6 +394,7 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       apellido: evento.cliente.apellido,
       correo: evento.cliente.correo,
       telefono: evento.cliente.telefono,
+      etiqueta: evento.cliente.etiqueta,
     },
     // Cada salón con la distribución que tiene armada en este evento (ADR 0011).
     salones: evento.salones.map(({ salon, distribucion }) => ({

@@ -3,6 +3,7 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Search, X } from 'luc
 import { useEffect, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -156,7 +157,7 @@ export function ListadoConsultas() {
               <Input
                 id="filtro-cliente"
                 className="bg-card pl-8"
-                placeholder="Nombre, apellido o correo"
+                placeholder="Nombre, apellido, correo o etiqueta"
                 value={textoCliente}
                 onChange={(e) => setTextoCliente(e.target.value)}
               />
@@ -296,6 +297,7 @@ export function ListadoConsultas() {
                         <p className="truncate text-xs text-muted-foreground">
                           {presupuesto.cliente.correo}
                         </p>
+                        <EtiquetaCliente etiqueta={presupuesto.cliente.etiqueta} className="mt-1" />
                       </td>
                       <td className="max-w-[11rem] px-3 py-3">
                         <BadgeTipoEvento evento={presupuesto} />

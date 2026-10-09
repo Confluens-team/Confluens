@@ -84,10 +84,23 @@ model Cliente {
   activo        Boolean     @default(true)
   usuarioId     Int?        @unique
   usuario       Usuario?    @relation(fields: [usuarioId], references: [id])
+  // Solo para el personal: para qué empresa reserva este cliente (ver Etiqueta).
+  etiquetaId    Int?
+  etiqueta      Etiqueta?   @relation(fields: [etiquetaId], references: [id], onDelete: SetNull)
   solicitudes   Solicitud[]
   eventos       Evento[]
   creadoEn      DateTime    @default(now())
   actualizadoEn DateTime    @updatedAt
+}
+
+// Etiqueta que el personal le pone a un cliente, típicamente la empresa en cuyo nombre reserva un
+// empleado (dominio.md). Lista reutilizable: varios clientes comparten la misma. El nombre es único
+// sin distinguir mayúsculas; eso lo controla el servicio, acá solo el índice exacto.
+model Etiqueta {
+  id       Int       @id @default(autoincrement())
+  nombre   String    @unique
+  clientes Cliente[]
+  creadoEn DateTime  @default(now())
 }
 
 // visibleEnLanding y fotoUrl son el contenido que el Administrador del Sistema publica en el canal

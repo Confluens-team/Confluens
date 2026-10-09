@@ -7,6 +7,7 @@ import {
   esquemaImporte,
   vacioComoAusente,
 } from './comunes.esquema.js';
+import { esquemaEtiqueta } from './etiqueta.esquema.js';
 import { esquemaTipoEvento, esquemaTipoEventoSocial } from './tipo-evento.esquema.js';
 
 // Valores literales de la máquina de estados aprobada (docs/producto/dominio.md).
@@ -53,6 +54,7 @@ export const esquemaPresupuestoListado = z.object({
     nombre: z.string(),
     apellido: z.string().nullable(),
     correo: z.string(),
+    etiqueta: esquemaEtiqueta.nullable(),
   }),
   // Varios a la vez (ADR 0011); vacío en una consulta social que todavía no lo tiene.
   salones: z.array(z.object({ id: esquemaId, nombre: z.string() })),
@@ -60,7 +62,7 @@ export const esquemaPresupuestoListado = z.object({
 export type PresupuestoListado = z.infer<typeof esquemaPresupuestoListado>;
 
 // Filtros de GET /presupuestos (HU-10). Sin `estado` lista todos menos los Confirmado. `cliente`
-// busca por nombre, apellido o correo; `desde` y `hasta` acotan la fecha del evento, inclusive. Un
+// busca por nombre, apellido, correo o etiqueta; `desde` y `hasta` acotan la fecha del evento, inclusive. Un
 // parámetro vacío (?cliente=) cuenta como ausente.
 export const esquemaFiltrosPresupuestos = z
   .object({

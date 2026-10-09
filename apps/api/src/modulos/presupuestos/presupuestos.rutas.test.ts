@@ -98,6 +98,8 @@ const clienteFixture = {
   correo: 'marina@example.com',
   activo: true,
   usuarioId: null,
+  etiquetaId: null,
+  etiqueta: null,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
 };
@@ -586,7 +588,13 @@ const presupuestoDelListado = {
     salones: [{ salon: { id: 5, nombre: 'Paraná' } }] as {
       salon: { id: number; nombre: string };
     }[],
-    cliente: { id: 10, nombre: 'Marina', apellido: 'Gómez', correo: 'marina@example.com' },
+    cliente: {
+      id: 10,
+      nombre: 'Marina',
+      apellido: 'Gómez',
+      correo: 'marina@example.com',
+      etiqueta: { id: 4, nombre: 'Empresa1' } as { id: number; nombre: string } | null,
+    },
   },
 };
 
@@ -596,7 +604,7 @@ describe('GET /api/presupuestos (HU-10)', () => {
     obtenerPresupuestosMock.mockResolvedValue([presupuestoDelListado]);
   });
 
-  it('lista cada presupuesto con número, cliente, salón, fechas, total y estado', async () => {
+  it('lista cada presupuesto con número, cliente (con su etiqueta), salón, fechas, total y estado', async () => {
     const respuesta = await request(app)
       .get('/api/presupuestos')
       .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')]);
@@ -615,7 +623,13 @@ describe('GET /api/presupuestos (HU-10)', () => {
           tipo: 'Corporativo',
           tipoSocial: null,
           tipoSocialDetalle: null,
-          cliente: { id: 10, nombre: 'Marina', apellido: 'Gómez', correo: 'marina@example.com' },
+          cliente: {
+            id: 10,
+            nombre: 'Marina',
+            apellido: 'Gómez',
+            correo: 'marina@example.com',
+            etiqueta: { id: 4, nombre: 'Empresa1' },
+          },
           salones: [{ id: 5, nombre: 'Paraná' }],
         },
       ],

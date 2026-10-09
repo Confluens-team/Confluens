@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { esquemaFecha, esquemaFechaHora, esquemaId, esquemaImporte } from './comunes.esquema.js';
+import { esquemaEtiqueta } from './etiqueta.esquema.js';
 import { esquemaEstadoEvento } from './evento.esquema.js';
 import { esquemaLineaPresupuesto } from './linea-presupuesto.esquema.js';
 import { esquemaEstadoPresupuesto } from './presupuesto.esquema.js';
@@ -53,6 +54,7 @@ export const esquemaConsultaDetallada = z.object({
     apellido: z.string().nullable(),
     correo: z.string(),
     telefono: z.string(),
+    etiqueta: esquemaEtiqueta.nullable(),
   }),
   // Vacío en una consulta social que todavía no tiene salón (ADR 0008).
   salones: z.array(

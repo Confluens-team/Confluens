@@ -297,7 +297,8 @@ describe('POST /api/auth/registro', () => {
 });
 
 describe('GET /api/auth/perfil', () => {
-  it('con sesión de CLIENTE devuelve sus datos comerciales', async () => {
+  // La etiqueta es solo para el personal: aunque el cliente tenga una, el perfil no la devuelve.
+  it('con sesión de CLIENTE devuelve sus datos comerciales, sin su etiqueta', async () => {
     buscarClientePorUsuarioIdMock.mockResolvedValue({
       id: 3,
       nombre: 'Ana',
@@ -306,6 +307,7 @@ describe('GET /api/auth/perfil', () => {
       correo: 'ana@empresa.com',
       activo: true,
       usuarioId: 7,
+      etiquetaId: 4,
       creadoEn: new Date(),
       actualizadoEn: new Date(),
     });

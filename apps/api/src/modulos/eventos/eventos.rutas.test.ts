@@ -63,6 +63,8 @@ const clienteFixture = {
   correo: 'marina@example.com',
   activo: true,
   usuarioId: null,
+  etiquetaId: null,
+  etiqueta: null,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
 };

@@ -7,6 +7,7 @@ import {
   esquemaImporte,
   vacioComoAusente,
 } from './comunes.esquema.js';
+import { esquemaEtiqueta } from './etiqueta.esquema.js';
 import {
   esquemaHoraEstimada,
   esquemaTipoEvento,
@@ -76,6 +77,7 @@ export const esquemaEventoAgenda = esquemaEvento.extend({
     apellido: z.string().nullable(),
     telefono: z.string(),
     correo: z.string(),
+    etiqueta: esquemaEtiqueta.nullable(),
   }),
   // Los salones que ocupa, cada uno con la distribución que tiene armada (null sin agendar).
   salones: z.array(

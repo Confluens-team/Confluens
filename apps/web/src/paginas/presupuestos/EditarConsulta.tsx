@@ -25,6 +25,7 @@ import {
 import { useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -487,7 +488,10 @@ function Formulario({
 
       <section className="rounded-xl bg-card p-5 ring-1 ring-border">
         <h3 className="text-sm font-semibold">Cliente</h3>
-        <p className="mt-2 font-medium">{nombreCompleto(consulta.cliente)}</p>
+        <p className="mt-2 flex flex-wrap items-center gap-2 font-medium">
+          {nombreCompleto(consulta.cliente)}
+          <EtiquetaCliente etiqueta={consulta.cliente.etiqueta} />
+        </p>
         <p className="text-sm text-muted-foreground">
           {consulta.cliente.correo} · {consulta.cliente.telefono}
         </p>

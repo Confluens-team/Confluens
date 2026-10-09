@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import { armadoDeSalones, nombresDeSalones } from '@/lib/formato';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useCancelarEvento, useEvento } from '@/hooks/use-eventos';
@@ -234,6 +235,7 @@ export function DetalleEvento({
                   <span className="block truncate text-xs text-muted-foreground">
                     {evento.cliente.telefono} · {evento.cliente.correo}
                   </span>
+                  <EtiquetaCliente etiqueta={evento.cliente.etiqueta} className="mt-1" />
                 </Dato>
                 <Dato etiqueta="Salón">
                   {nombresDeSalones(evento.salones)} · {evento.cantidadPersonas} personas

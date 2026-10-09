@@ -11,7 +11,8 @@ export async function buscarDetallado(id: number, tx: Prisma.TransactionClient =
   return tx.evento.findUnique({
     where: { id },
     include: {
-      cliente: true,
+      // La etiqueta es solo para el personal: estas rutas no las usa el rol Cliente.
+      cliente: { include: { etiqueta: { select: { id: true, nombre: true } } } },
       // Cada salón con la distribución que tiene armada en este evento (ADR 0011).
       salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
       solicitud: true,
@@ -44,7 +45,14 @@ export async function listarAgenda(
     orderBy: [{ fecha: 'asc' }, { inicio: 'asc' }],
     include: {
       cliente: {
-        select: { id: true, nombre: true, apellido: true, telefono: true, correo: true },
+        select: {
+          id: true,
+          nombre: true,
+          apellido: true,
+          telefono: true,
+          correo: true,
+          etiqueta: { select: { id: true, nombre: true } },
+        },
       },
       salones: {
         select: {

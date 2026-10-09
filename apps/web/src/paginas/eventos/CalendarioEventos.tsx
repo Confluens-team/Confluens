@@ -29,7 +29,10 @@ function comoEventoDelCalendario(evento: EventoAgenda): EventInput {
     textColor: '#f6f1ea', // crema
     extendedProps: {
       salon,
-      cliente: nombreCompleto(evento.cliente),
+      // Con etiqueta, primero la etiqueta: en un casillero chico es lo que identifica a la empresa.
+      cliente: evento.cliente.etiqueta
+        ? `${evento.cliente.etiqueta.nombre} · ${nombreCompleto(evento.cliente)}`
+        : nombreCompleto(evento.cliente),
       personas: evento.cantidadPersonas,
     },
   };
