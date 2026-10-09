@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { usePresupuestos } from '@/hooks/use-presupuestos';
-import { fechaLocal, formatearPesos, nombreCompleto } from '@/lib/formato';
+import { fechaLocal, formatearPesos, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { COLORES_TIPO_EVENTO } from '@/lib/tipo-evento';
 import { cn } from '@/lib/utils';
 import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
@@ -303,7 +303,9 @@ export function ListadoConsultas() {
                         <BadgeTipoEvento evento={presupuesto} />
                       </td>
                       <td className="px-3 py-3">
-                        {presupuesto.salon?.nombre ?? (
+                        {presupuesto.salones.length > 0 ? (
+                          nombresDeSalones(presupuesto.salones)
+                        ) : (
                           <span className="text-muted-foreground italic">A definir</span>
                         )}
                       </td>

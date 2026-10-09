@@ -234,4 +234,10 @@
   body {
     background: white;
   }
+
+  /* Margen parejo para los dos documentos que se imprimen: el presupuesto del cliente y la
+     comanda de cocina. Sin esto cada navegador elige el suyo. */
+  @page {
+    margin: 14mm;
+  }
 }

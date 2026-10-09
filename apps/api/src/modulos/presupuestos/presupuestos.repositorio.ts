@@ -35,6 +35,44 @@ export async function buscarSalon(salonId: number, tx: Prisma.TransactionClient 
   return tx.salon.findUnique({ where: { id: salonId } });
 }
 
+// Los salones de un evento, en el orden en que se eligieron: el servicio ordena por la lista que
+// recibe, no por id, así la primera línea del presupuesto es el primer salón elegido.
+export async function buscarSalonesPorIds(ids: number[], tx: Prisma.TransactionClient = prisma) {
+  return tx.salon.findMany({ where: { id: { in: ids } } });
+}
+
+/**
+ * Deja al evento con exactamente estos salones. Los renglones que ya estaban y siguen se
+ * conservan, para no perder la distribución que tengan cargada; los nuevos entran con la que diga
+ * `distribuciones` (el armado que heredan, ver modificarPresupuesto) o sin ninguna.
+ *
+ * inicio, fin y estado no se escriben acá a propósito: los pone el trigger a partir del evento
+ * (ADR 0011).
+ */
+export async function reemplazarSalonesDelEvento(
+  eventoId: number,
+  salonIds: number[],
+  tx: Prisma.TransactionClient = prisma,
+  distribuciones: Map<number, number> = new Map(),
+) {
+  await tx.eventoSalon.deleteMany({ where: { eventoId, salonId: { notIn: salonIds } } });
+  const actuales = await tx.eventoSalon.findMany({
+    where: { eventoId },
+    select: { salonId: true },
+  });
+  const yaEstan = new Set(actuales.map((fila) => fila.salonId));
+  const nuevos = salonIds.filter((id) => !yaEstan.has(id));
+  if (nuevos.length > 0) {
+    // createMany no dispara el trigger BEFORE INSERT fila por fila en todos los casos; create sí,
+    // y son a lo sumo cinco salones.
+    for (const salonId of nuevos) {
+      await tx.eventoSalon.create({
+        data: { eventoId, salonId, distribucionId: distribuciones.get(salonId) ?? null },
+      });
+    }
+  }
+}
+
 // No filtra por `activo`: el servicio necesita distinguir "no existe" (404) de "existe pero no
 // está activo" (422), así que decide con el listado completo.
 export async function buscarServiciosPorIds(ids: number[], tx: Prisma.TransactionClient = prisma) {
@@ -61,7 +99,6 @@ export async function vincularSolicitudAEvento(
 export async function crearEvento(
   datos: {
     clienteId: number;
-    salonId: number | null;
     fecha: Date;
     cantidadPersonas: number;
     tipo: 'Social' | 'Corporativo';
@@ -84,11 +121,13 @@ export async function crearPresupuestoConLineas(
     total: string;
     lineas: {
       servicioId: number | null;
+      salonId: number | null;
       descripcion: string;
       cantidad: number;
       precioUnitario: string;
       subtotal: string;
       aCotizar: boolean;
+      horaEstimada: string | null;
     }[];
   },
   tx: Prisma.TransactionClient = prisma,
@@ -167,7 +206,10 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
           tipo: true,
           tipoSocial: true,
           tipoSocialDetalle: true,
-          salon: { select: { id: true, nombre: true } },
+          salones: {
+            select: { salon: { select: { id: true, nombre: true } } },
+            orderBy: { salonId: 'asc' },
+          },
           cliente: {
             select: {
               id: true,
@@ -196,8 +238,8 @@ export async function buscarPresupuestoDetallado(
       evento: {
         include: {
           cliente: { include: { etiqueta: { select: { id: true, nombre: true } } } },
-          salon: true,
-          distribucion: true,
+          // Cada salón con la distribución que tiene armada en este evento (ADR 0011).
+          salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
         },
       },
       lineas: { include: { servicio: { select: { tercerizado: true } } }, orderBy: { id: 'asc' } },
@@ -227,11 +269,13 @@ export async function reemplazarLineas(
   presupuestoId: number,
   lineas: {
     servicioId: number | null;
+    salonId: number | null;
     descripcion: string;
     cantidad: number;
     precioUnitario: string;
     subtotal: string;
     aCotizar: boolean;
+    horaEstimada: string | null;
   }[],
   tx: Prisma.TransactionClient = prisma,
 ) {
@@ -263,6 +307,8 @@ export type PresupuestosRepositorio = {
   buscarClientePorUsuarioId: typeof buscarClientePorUsuarioId;
   crearCliente: typeof crearCliente;
   buscarSalon: typeof buscarSalon;
+  buscarSalonesPorIds: typeof buscarSalonesPorIds;
+  reemplazarSalonesDelEvento: typeof reemplazarSalonesDelEvento;
   buscarServiciosPorIds: typeof buscarServiciosPorIds;
   buscarSolicitud: typeof buscarSolicitud;
   vincularSolicitudAEvento: typeof vincularSolicitudAEvento;

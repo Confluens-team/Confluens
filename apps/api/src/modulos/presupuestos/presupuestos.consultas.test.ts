@@ -9,6 +9,8 @@ import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 // presupuestos.rutas.test.ts: el repositorio se mockea entero y la transacción ejecuta el callback.
 vi.mock('./presupuestos.repositorio.js', () => ({
   buscarSalon: vi.fn(),
+  buscarSalonesPorIds: vi.fn(),
+  reemplazarSalonesDelEvento: vi.fn(),
   buscarServiciosPorIds: vi.fn(),
   crearEnTransaccion: vi.fn((ejecutar: (tx: undefined) => unknown) => ejecutar(undefined)),
   buscarPresupuestoDetallado: vi.fn(),
@@ -21,6 +23,8 @@ vi.mock('./presupuestos.repositorio.js', () => ({
 
 const repo = await import('./presupuestos.repositorio.js');
 const buscarSalonMock = vi.mocked(repo.buscarSalon);
+const buscarSalonesPorIdsMock = vi.mocked(repo.buscarSalonesPorIds);
+const reemplazarSalonesDelEventoMock = vi.mocked(repo.reemplazarSalonesDelEvento);
 const buscarServiciosPorIdsMock = vi.mocked(repo.buscarServiciosPorIds);
 const buscarPresupuestoDetalladoMock = vi.mocked(repo.buscarPresupuestoDetallado);
 const actualizarEventoMock = vi.mocked(repo.actualizarEvento);
@@ -87,8 +91,6 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
     evento: {
       id: 20,
       clienteId: 10,
-      salonId: 5,
-      distribucionId: null,
       fecha: new Date('2026-11-15T00:00:00.000Z'),
       inicio: null,
       fin: null,
@@ -102,6 +104,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
       tipoJornada: null,
       horaInicioEstimada: null as string | null,
       modalidadSalonRestaurante: false,
+      observacionesComanda: null as string | null,
       creadoEn: new Date(),
       actualizadoEn: new Date(),
       cliente: {
@@ -111,8 +114,24 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         telefono: '+5493515551234',
         correo: 'marina@example.com',
       },
-      salon: salonParana,
-      distribucion: null,
+      salones: [
+        {
+          eventoId: 20,
+          salonId: salonParana.id,
+          distribucionId: null as number | null,
+          inicio: null as Date | null,
+          fin: null as Date | null,
+          estado: 'EnConsulta' as const,
+          creadoEn: new Date(),
+          salon: salonParana,
+          distribucion: null as {
+            id: number;
+            salonId: number;
+            nombre: string;
+            capacidad: number;
+          } | null,
+        },
+      ],
       ...evento,
     },
     lineas: [
@@ -120,22 +139,26 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         id: 1,
         presupuestoId: 31,
         servicioId: null,
+        salonId: salonParana.id,
         descripcion: 'Salón Paraná (jornada completa)',
         cantidad: 1,
         precioUnitario: D('142200'),
         subtotal: D('142200'),
         aCotizar: false,
+        horaEstimada: null,
         servicio: null,
       },
       {
         id: 2,
         presupuestoId: 31,
         servicioId: 1,
+        salonId: null,
         descripcion: 'Coffee Refresh',
         cantidad: 10,
         precioUnitario: D('8000'),
         subtotal: D('80000'),
         aCotizar: false,
+        horaEstimada: '10:30',
         servicio: { tercerizado: false },
       },
     ],
@@ -148,7 +171,7 @@ const pantallas = servicio({ id: 2, nombre: 'Pantallas LED', precio: '50000', te
 
 const bodyBase = {
   fecha: '2026-11-20',
-  salonId: 5,
+  salones: [{ salonId: 5 }],
   cantidadPersonas: 12,
   tipoJornada: 'completa',
   servicios: [{ servicioId: 1, cantidad: 12 }],
@@ -158,6 +181,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   buscarPresupuestoDetalladoMock.mockResolvedValue(consulta());
   buscarSalonMock.mockResolvedValue(salonParana);
+  buscarSalonesPorIdsMock.mockResolvedValue([salonParana]);
+  buscarSalonesPorIdsMock.mockResolvedValue([salonParana]);
   buscarServiciosPorIdsMock.mockResolvedValue([coffee, pantallas]);
 });
 
@@ -173,7 +198,7 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       tipoJornada: 'completa',
       evento: { id: 20, estado: 'EnConsulta', fecha: '2026-11-15', cantidadPersonas: 10 },
       cliente: { nombre: 'Marina', apellido: 'Gómez', telefono: '+5493515551234' },
-      salon: { id: 5, nombre: 'Paraná', capacidadMaxima: 12 },
+      salones: [{ id: 5, nombre: 'Paraná', capacidadMaxima: 12 }],
     });
     expect(respuesta.body.data.lineas[1]).toEqual({
       id: 2,
@@ -184,12 +209,52 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       precioUnitario: '8000.00',
       subtotal: '80000.00',
       aCotizar: false,
+      horaEstimada: '10:30',
+      salonId: null,
       tipo: 'servicio',
       tercerizado: false,
     });
   });
 
-  it('distingue el salón (la primera línea sin servicio) de los adicionales escritos a mano', async () => {
+  // Antes el tipo salía de la posición: "la primera línea sin servicio" era el salón. Con varios
+  // salones por evento eso no alcanza, y un adicional cargado antes que el salón se hacía pasar
+  // por salón.
+  it('reconoce el salón aunque no sea la primera línea', async () => {
+    const base = consulta() as unknown as { lineas: { id: number }[] };
+    const salon = base.lineas[0]!;
+    const servicio = base.lineas[1]!;
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({
+        lineas: [
+          {
+            id: 0, // id menor que el del salón: antes esta línea ganaba
+            presupuestoId: 31,
+            servicioId: null,
+            salonId: null,
+            descripcion: 'Decoración con globos',
+            cantidad: 1,
+            precioUnitario: D('25000'),
+            subtotal: D('25000'),
+            aCotizar: false,
+            horaEstimada: null,
+            servicio: null,
+          },
+          salon,
+          servicio,
+        ],
+      }),
+    );
+
+    const respuesta = await request(app).get('/api/presupuestos/31').set('Cookie', [cookieRE]);
+
+    expect(respuesta.body.data.lineas.map((l: { tipo: string }) => l.tipo)).toEqual([
+      'adicional',
+      'salon',
+      'servicio',
+    ]);
+  });
+
+  it('distingue el salón (el que tiene salonId) de los adicionales escritos a mano', async () => {
     const base = consulta() as unknown as { lineas: object[] };
     buscarPresupuestoDetalladoMock.mockResolvedValue(
       consulta({
@@ -199,6 +264,7 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
             id: 3,
             presupuestoId: 31,
             servicioId: null,
+            salonId: null,
             descripcion: 'Decoración con globos',
             cantidad: 1,
             precioUnitario: D('25000'),
@@ -225,8 +291,19 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       consulta(
         {},
         {
-          distribucionId: 2,
-          distribucion: { id: 2, nombre: 'Banquete' },
+          salones: [
+            {
+              eventoId: 20,
+              salonId: salonParana.id,
+              distribucionId: 2,
+              inicio: null,
+              fin: null,
+              estado: 'EnConsulta' as const,
+              creadoEn: new Date(),
+              salon: salonParana,
+              distribucion: { id: 2, salonId: salonParana.id, nombre: 'Banquete', capacidad: 12 },
+            },
+          ],
           inicio: new Date('2026-11-15T23:00:00.000Z'),
           fin: new Date('2026-11-16T05:00:00.000Z'),
         },
@@ -236,10 +313,11 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
     const respuesta = await request(app).get('/api/presupuestos/31').set('Cookie', [cookieRE]);
 
     expect(respuesta.body.data.evento).toMatchObject({
-      distribucion: { id: 2, nombre: 'Banquete' },
       inicio: '2026-11-15T23:00:00.000Z',
       fin: '2026-11-16T05:00:00.000Z',
     });
+    // ADR 0011: la distribución es de cada salón, no del evento.
+    expect(respuesta.body.data.salones[0].distribucion).toEqual({ id: 2, nombre: 'Banquete' });
   });
 
   it('responde 404 si el presupuesto no existe', async () => {
@@ -279,19 +357,23 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
     expect(lineasGuardadas()).toEqual([
       {
         servicioId: null,
+        salonId: salonParana.id,
         descripcion: 'Salón Paraná (jornada completa)',
         cantidad: 1,
         precioUnitario: '142200.00',
         subtotal: '142200.00',
         aCotizar: false,
+        horaEstimada: null,
       },
       {
         servicioId: 1,
+        salonId: null,
         descripcion: 'Coffee Refresh',
         cantidad: 12,
         precioUnitario: '8000.00',
         subtotal: '96000.00',
         aCotizar: false,
+        horaEstimada: null,
       },
     ]);
     const { estado, total, venceEn } = datosDelPresupuesto() as {
@@ -306,7 +388,6 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       20,
       {
         fecha: new Date('2026-11-20'),
-        salon: { connect: { id: 5 } },
         cantidadPersonas: 12,
         tipo: 'Corporativo',
         tipoSocial: null,
@@ -340,11 +421,13 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
 
     expect(lineasGuardadas()[2]).toEqual({
       servicioId: 3,
+      salonId: null,
       descripcion: 'Pantallas LED',
       cantidad: 1,
       precioUnitario: '0.00',
       subtotal: '0.00',
       aCotizar: true,
+      horaEstimada: null,
     });
     expect((datosDelPresupuesto() as { total: string }).total).toBe('238200.00');
   });
@@ -396,7 +479,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       .set('Cookie', [cookieRE])
       .send({
         ...bodyBase,
-        precioSalon: '130000',
+        salones: [{ salonId: 5, precioUnitario: '130000' }],
         servicios: [{ servicioId: 1, cantidad: 12, precioUnitario: '7500.50' }],
       });
 
@@ -432,11 +515,13 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
 
     expect(lineasGuardadas()[2]).toEqual({
       servicioId: null,
+      salonId: null,
       descripcion: 'Decoración con globos',
       cantidad: 2,
       precioUnitario: '12500.00',
       subtotal: '25000.00',
       aCotizar: false,
+      horaEstimada: null,
     });
     // 142200 + 12 × 8000 + 2 × 12500
     expect((datosDelPresupuesto() as { total: string }).total).toBe('263200.00');
@@ -460,7 +545,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       .send({
         ...bodyBase,
         cantidadPersonas: 10,
-        precioSalon: '150000',
+        salones: [{ salonId: 5, precioUnitario: '150000' }],
         servicios: [{ servicioId: 1, cantidad: 10, precioUnitario: '8730' }],
       });
 
@@ -536,14 +621,14 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
   });
 
   it('responde 404 si el salón o un servicio no existen', async () => {
-    buscarSalonMock.mockResolvedValue(null);
+    buscarSalonesPorIdsMock.mockResolvedValue([]);
     const sinSalon = await request(app)
       .patch('/api/presupuestos/31')
       .set('Cookie', [cookieRE])
       .send(bodyBase);
     expect(sinSalon.status).toBe(404);
 
-    buscarSalonMock.mockResolvedValue(salonParana);
+    buscarSalonesPorIdsMock.mockResolvedValue([salonParana]);
     const sinServicio = await request(app)
       .patch('/api/presupuestos/31')
       .set('Cookie', [cookieRE])
@@ -573,8 +658,19 @@ describe('PATCH /api/presupuestos/:id sobre un evento confirmado (RN-09)', () =>
       { estado: 'Confirmado' },
       {
         estado: 'Reservado',
-        distribucionId: 15,
-        distribucion: banquete,
+        salones: [
+          {
+            eventoId: 20,
+            salonId: 5,
+            distribucionId: 15,
+            inicio: null,
+            fin: null,
+            estado: 'Reservado' as const,
+            creadoEn: new Date(),
+            salon: salonParana,
+            distribucion: banquete,
+          },
+        ],
         inicio: new Date('2026-11-16T00:00:00.000Z'),
         fin: new Date('2026-11-16T08:00:00.000Z'),
         ...evento,
@@ -635,24 +731,63 @@ describe('PATCH /api/presupuestos/:id sobre un evento confirmado (RN-09)', () =>
     expect(datosDelEvento().estado).toBe('Reservado');
   });
 
-  it('al cambiar de salón conserva la distribución del mismo nombre en el salón nuevo', async () => {
-    buscarSalonMock.mockResolvedValue({ ...salonParana, id: 2, nombre: 'Pucará' });
+  // ADR 0011: con varios salones, el que entra hereda el armado y los que ya estaban no se tocan
+  // (no se los busca ni se los manda: el repositorio conserva su renglón con su distribución).
+  it('al sumar un salón a un evento armado, solo el nuevo hereda el armado', async () => {
+    const pucara = { ...salonParana, id: 2, nombre: 'Pucará' };
+    buscarSalonesPorIdsMock.mockResolvedValue([salonParana, pucara]);
     buscarDistribucionPorNombreMock.mockResolvedValue({ ...banquete, id: 6, salonId: 2 } as never);
 
     await request(app)
       .patch('/api/presupuestos/31')
       .set('Cookie', [cookieRE])
-      .send({ ...bodyBase, salonId: 2 });
+      .send({ ...bodyBase, salones: [{ salonId: 5 }, { salonId: 2 }] });
+
+    expect(buscarDistribucionPorNombreMock).toHaveBeenCalledTimes(1);
+    expect(buscarDistribucionPorNombreMock).toHaveBeenCalledWith(2, 'Banquete');
+    expect(reemplazarSalonesDelEventoMock).toHaveBeenCalledWith(
+      20,
+      [5, 2],
+      undefined,
+      new Map([[2, 6]]),
+    );
+  });
+
+  it('si el salón nuevo no tiene un armado con ese nombre, entra sin distribución', async () => {
+    buscarSalonesPorIdsMock.mockResolvedValue([{ ...salonParana, id: 2, nombre: 'Pucará' }]);
+    buscarDistribucionPorNombreMock.mockResolvedValue(null);
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, salones: [{ salonId: 2 }] });
+
+    expect(reemplazarSalonesDelEventoMock).toHaveBeenCalledWith(20, [2], undefined, new Map());
+  });
+
+  it('al cambiar de salón conserva la distribución del mismo nombre en el salón nuevo', async () => {
+    buscarSalonesPorIdsMock.mockResolvedValue([{ ...salonParana, id: 2, nombre: 'Pucará' }]);
+    buscarDistribucionPorNombreMock.mockResolvedValue({ ...banquete, id: 6, salonId: 2 } as never);
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, salones: [{ salonId: 2 }] });
 
     expect(buscarDistribucionPorNombreMock).toHaveBeenCalledWith(2, 'Banquete');
-    expect(datosDelEvento()).toMatchObject({ distribucion: { connect: { id: 6 } } });
+    expect(reemplazarSalonesDelEventoMock).toHaveBeenCalledWith(
+      20,
+      [2],
+      undefined,
+      new Map([[2, 6]]),
+    );
   });
 
   it('responde 422 si se le saca el salón', async () => {
     const respuesta = await request(app)
       .patch('/api/presupuestos/31')
       .set('Cookie', [cookieRE])
-      .send({ ...bodyBase, salonId: null, tipo: 'Social', tipoSocial: 'Cumpleanos' });
+      .send({ ...bodyBase, salones: [], tipo: 'Social', tipoSocial: 'Cumpleanos' });
 
     expect(respuesta.status).toBe(422);
     expect(reemplazarLineasMock).not.toHaveBeenCalled();
@@ -702,8 +837,7 @@ describe('Consultas sociales (ADR 0008)', () => {
     consulta(
       { venceEn: null, total: D('0'), lineas: [] },
       {
-        salonId: null,
-        salon: null,
+        salones: [],
         tipo: 'Social',
         tipoSocial: 'Casamiento',
         tipoJornada: 'media',
@@ -713,7 +847,7 @@ describe('Consultas sociales (ADR 0008)', () => {
     );
   const bodySocial = {
     fecha: '2026-11-20',
-    salonId: null,
+    salones: [],
     cantidadPersonas: 120,
     tipoJornada: 'media',
     servicios: [],
@@ -729,7 +863,7 @@ describe('Consultas sociales (ADR 0008)', () => {
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.data).toMatchObject({
       venceEn: null,
-      salon: null,
+      salones: [],
       tipoJornada: 'media',
       lineas: [],
       evento: {
@@ -751,7 +885,6 @@ describe('Consultas sociales (ADR 0008)', () => {
     expect(lineasGuardadas()).toEqual([]);
     expect(datosDelPresupuesto()).toMatchObject({ venceEn: null, total: '0.00' });
     expect(datosDelEvento()).toMatchObject({
-      salon: { disconnect: true },
       tipo: 'Social',
       tipoSocial: 'Casamiento',
     });
@@ -764,7 +897,7 @@ describe('Consultas sociales (ADR 0008)', () => {
     await request(app)
       .patch('/api/presupuestos/31')
       .set('Cookie', [cookieRE])
-      .send({ ...bodySocial, salonId: 5, cantidadPersonas: 12 });
+      .send({ ...bodySocial, salones: [{ salonId: 5 }], cantidadPersonas: 12 });
 
     expect(lineasGuardadas()).toEqual([
       expect.objectContaining({
@@ -819,7 +952,12 @@ describe('Consultas sociales (ADR 0008)', () => {
     await request(app)
       .patch('/api/presupuestos/31')
       .set('Cookie', [cookieRE])
-      .send({ ...bodySocial, tipo: 'Corporativo', salonId: 5, cantidadPersonas: 12 });
+      .send({
+        ...bodySocial,
+        tipo: 'Corporativo',
+        salones: [{ salonId: 5 }],
+        cantidadPersonas: 12,
+      });
     expect(datosDelEvento()).toMatchObject({
       tipo: 'Corporativo',
       tipoSocial: null,
@@ -836,7 +974,7 @@ describe('Consultas sociales (ADR 0008)', () => {
       .send(bodySocial);
 
     expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.message).toBe('Un evento corporativo necesita salón');
+    expect(respuesta.body.error.message).toBe('Un evento corporativo necesita al menos un salón');
     expect(actualizarEventoMock).not.toHaveBeenCalled();
   });
 
@@ -871,5 +1009,157 @@ describe('POST /api/presupuestos/:id/dar-de-baja (HU-12)', () => {
       .set('Cookie', [cookieRE]);
 
     expect(respuesta.status).toBe(409);
+  });
+});
+
+// Hora esperada de cada servicio dentro del horario del evento. Es opcional: la elige el cliente en
+// el cotizador o el personal al armar el presupuesto, y solo se puede controlar contra el horario
+// cuando el evento ya está agendado (mientras está EnConsulta, inicio y fin son null).
+describe('PATCH /api/presupuestos/:id — hora esperada de cada servicio', () => {
+  const lineasGuardadas = () => reemplazarLineasMock.mock.calls[0]![1];
+  // 12:00 a 18:00 en Córdoba (UTC-3), para que el control no dependa de la zona del servidor.
+  const agendado = {
+    inicio: new Date('2026-11-15T15:00:00.000Z'),
+    fin: new Date('2026-11-15T21:00:00.000Z'),
+  };
+
+  it('guarda la hora del servicio y la del adicional', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        servicios: [{ servicioId: 1, cantidad: 12, horaEstimada: '16:30' }],
+        adicionales: [
+          {
+            descripcion: 'Barra de tragos',
+            cantidad: 1,
+            precioUnitario: '40000',
+            horaEstimada: '21:00',
+          },
+        ],
+      });
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas()[1]).toMatchObject({ servicioId: 1, horaEstimada: '16:30' });
+    expect(lineasGuardadas()[2]).toMatchObject({
+      descripcion: 'Barra de tragos',
+      horaEstimada: '21:00',
+    });
+  });
+
+  it('la línea del salón nunca lleva hora', async () => {
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, horaEstimada: '16:30' }] });
+
+    expect(lineasGuardadas()[0]).toMatchObject({ servicioId: null, horaEstimada: null });
+  });
+
+  it('sin hora la línea queda sin hora, aunque antes tuviera una', async () => {
+    await request(app).patch('/api/presupuestos/31').set('Cookie', [cookieRE]).send(bodyBase);
+
+    expect(lineasGuardadas()[1]).toMatchObject({ servicioId: 1, horaEstimada: null });
+  });
+
+  it('acepta cualquier hora mientras el evento no esté agendado', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, horaEstimada: '23:45' }] });
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas()[1]).toMatchObject({ horaEstimada: '23:45' });
+  });
+
+  it('acepta una hora dentro del horario del evento agendado', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({}, agendado));
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, horaEstimada: '14:00' }] });
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('responde 422 si la hora cae fuera del horario del evento agendado', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({}, agendado));
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, horaEstimada: '10:30' }] });
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+    expect(respuesta.body.error.message).toContain('12:00');
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 400 si la hora no tiene formato HH:mm', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, horaEstimada: '25:99' }] });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+// ADR 0011: el panel también puede poner varios salones, incluso los cinco.
+describe('PATCH /api/presupuestos/:id — varios salones', () => {
+  const lineasGuardadas = () => reemplazarLineasMock.mock.calls[0]![1];
+  const pucara = { ...salonParana, id: 2, nombre: 'Pucará' };
+
+  it('emite una línea por salón y deja el resto de las líneas después', async () => {
+    buscarSalonesPorIdsMock.mockResolvedValue([salonParana, pucara]);
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, salones: [{ salonId: 5 }, { salonId: 2 }] });
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas().map((l) => l.salonId)).toEqual([5, 2, null]);
+    expect(lineasGuardadas()[1]).toMatchObject({ descripcion: 'Salón Pucará (jornada completa)' });
+  });
+
+  it('el salón que ya estaba conserva su precio congelado y el nuevo toma el vigente', async () => {
+    buscarSalonesPorIdsMock.mockResolvedValue([salonParana, pucara]);
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, salones: [{ salonId: 5 }, { salonId: 2 }] });
+
+    // Paraná venía congelado en 142200 aunque hoy valga 150000; Pucará entra con el vigente.
+    expect(lineasGuardadas()[0]).toMatchObject({ precioUnitario: '142200.00' });
+    expect(lineasGuardadas()[1]).toMatchObject({ precioUnitario: '150000.00' });
+  });
+
+  it('deja al evento con exactamente los salones enviados', async () => {
+    buscarSalonesPorIdsMock.mockResolvedValue([salonParana, pucara]);
+
+    await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, salones: [{ salonId: 2 }] });
+
+    const [eventoId, salones] = reemplazarSalonesDelEventoMock.mock.calls[0]!;
+    expect(eventoId).toBe(20);
+    expect(salones).toEqual([2]);
+  });
+
+  it('responde 400 si el mismo salón viene dos veces', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, salones: [{ salonId: 5 }, { salonId: 5 }] });
+
+    expect(respuesta.status).toBe(400);
+    expect(reemplazarSalonesDelEventoMock).not.toHaveBeenCalled();
   });
 });

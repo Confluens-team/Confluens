@@ -3,7 +3,7 @@ import { CheckCircle2, Home, Printer, RotateCcw } from 'lucide-react';
 
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
-import { fechaLocal, formatearFecha, formatearPesos } from '@/lib/formato';
+import { fechaLocal, formatearFecha, formatearPesos, nombresDeSalones } from '@/lib/formato';
 import { UBICACION } from '@/paginas/solicitudes/datos-institucionales';
 import type { PresupuestoGenerado } from './CotizarEvento';
 
@@ -18,7 +18,7 @@ export function PresupuestoEstimado({
   onOtro: () => void;
   onInicio: () => void;
 }) {
-  const { presupuesto, salon, tipoJornada, cliente } = resultado;
+  const { presupuesto, salones, tipoJornada, cliente } = resultado;
   const emision = new Date(presupuesto.fechaEmision);
   const vence = new Date(emision);
   vence.setDate(vence.getDate() + DIAS_VIGENCIA_PRESUPUESTO);
@@ -87,7 +87,7 @@ export function PresupuestoEstimado({
                 {formatearFecha(fechaLocal(presupuesto.evento.fecha), true)}
               </p>
               <p className="text-sm text-muted-foreground">
-                Salón {salon.nombre} ·{' '}
+                {salones.length === 1 ? 'Salón' : 'Salones'} {nombresDeSalones(salones)} ·{' '}
                 {tipoJornada === 'completa' ? 'Jornada completa' : 'Media jornada'}
               </p>
               <p className="text-sm text-muted-foreground">
@@ -108,7 +108,15 @@ export function PresupuestoEstimado({
             <tbody className="divide-y divide-border">
               {presupuesto.lineas.map((linea) => (
                 <tr key={linea.id}>
-                  <td className="py-3 pr-3">{linea.descripcion}</td>
+                  <td className="py-3 pr-3">
+                    {linea.descripcion}
+                    {/* La hora a la que se espera el servicio, si se pidió una. */}
+                    {linea.horaEstimada && (
+                      <span className="ml-2 text-xs whitespace-nowrap text-muted-foreground">
+                        a las {linea.horaEstimada}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-3 text-right tabular-nums">{linea.cantidad}</td>
                   <td className="hidden py-3 text-right tabular-nums sm:table-cell">
                     {linea.aCotizar ? '—' : formatearPesos(linea.precioUnitario)}

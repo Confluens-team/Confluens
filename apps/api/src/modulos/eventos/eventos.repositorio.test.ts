@@ -37,17 +37,24 @@ describe('eventos.repositorio: listarAgenda', () => {
     expect(whereDeLaConsulta().estado).toEqual({ in: ['Cancelado'] });
   });
 
-  // Criterio 3: "puedo filtrar por uno o varios salones".
+  // Criterio 3: "puedo filtrar por uno o varios salones". Desde que un evento puede ocupar
+  // varios (ADR 0011), acierta si ocupa alguno de los pedidos.
   it('filtra por varios salones a la vez', async () => {
     await listarAgenda({ salonId: [1, 3] });
 
-    expect(whereDeLaConsulta().salonId).toEqual({ in: [1, 3] });
+    expect(whereDeLaConsulta().salones).toEqual({ some: { salonId: { in: [1, 3] } } });
+  });
+
+  it('un evento con varios salones entra si alguno coincide con el filtro', async () => {
+    await listarAgenda({ salonId: [3] });
+
+    expect(whereDeLaConsulta().salones).toEqual({ some: { salonId: { in: [3] } } });
   });
 
   it('sin filtro de salón no acota por salón', async () => {
     await listarAgenda();
 
-    expect(whereDeLaConsulta().salonId).toBeUndefined();
+    expect(whereDeLaConsulta().salones).toBeUndefined();
   });
 
   it('acota la fecha del evento con desde y hasta, ambos inclusive', async () => {

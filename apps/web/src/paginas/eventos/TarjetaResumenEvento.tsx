@@ -4,7 +4,7 @@ import { ArrowRight, CalendarDays, Clock, LayoutGrid, Users, X } from 'lucide-re
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
-import { fechaLocal, nombreCompleto } from '@/lib/formato';
+import { fechaLocal, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { ESTADOS } from './estado-evento';
 
@@ -123,7 +123,7 @@ export function TarjetaResumenEvento({
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t pt-3">
         <Dato icono={Users} etiqueta="Salón">
-          {evento.salon ? evento.salon.nombre : 'A definir'} · {evento.cantidadPersonas} personas
+          {nombresDeSalones(evento.salones)} · {evento.cantidadPersonas} personas
         </Dato>
         <Dato icono={CalendarDays} etiqueta="Fecha">
           {formateadorFecha.format(fechaLocal(evento.fecha))}

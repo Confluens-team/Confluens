@@ -103,12 +103,19 @@ const lineaFixture = {
   id: 1,
   presupuestoId: 30,
   servicioId: null,
+  salonId: salonFixture.id,
   descripcion: `Salón ${salonFixture.nombre} (jornada completa)`,
   cantidad: 1,
   precioUnitario: new Prisma.Decimal(TOTAL_SIN_IVA),
   subtotal: new Prisma.Decimal(TOTAL_SIN_IVA),
   aCotizar: false,
+  horaEstimada: null,
 };
+
+// El salón del evento sin distribución, como queda antes de agendar.
+function salonSinArmar() {
+  return { ...eventoFixture().salones[0]!, distribucionId: null, distribucion: null };
+}
 
 type EstadoPresupuestoFixture = 'Estimado' | 'Confirmado' | 'Cancelado' | 'Expirado';
 
@@ -139,8 +146,6 @@ function eventoFixtureBase() {
   return {
     id: 20,
     clienteId: clienteFixture.id,
-    salonId: salonFixture.id as number | null,
-    distribucionId: distribucionFixture.id as number | null,
     fecha: new Date('2026-11-15'),
     inicio: inicioFixture as Date | null,
     fin: finFixture as Date | null,
@@ -154,11 +159,23 @@ function eventoFixtureBase() {
     tipoJornada: null,
     horaInicioEstimada: null as string | null,
     modalidadSalonRestaurante: false,
+    observacionesComanda: null,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     cliente: clienteFixture,
-    salon: salonFixture,
-    distribucion: distribucionFixture as typeof distribucionFixture | null,
+    salones: [
+      {
+        eventoId: 20,
+        salonId: salonFixture.id,
+        distribucionId: distribucionFixture.id as number | null,
+        inicio: null as Date | null,
+        fin: null as Date | null,
+        estado: 'EnConsulta' as EstadoEventoFixture,
+        creadoEn: new Date(),
+        salon: salonFixture,
+        distribucion: distribucionFixture as typeof distribucionFixture | null,
+      },
+    ],
     solicitud: null,
     presupuestos: [presupuestoFixture()],
   };
@@ -299,6 +316,45 @@ describe('POST /api/eventos/:id/pagos — transiciones de estado (HU-13)', () =>
     expect(marcarCobradoMock).not.toHaveBeenCalled();
   });
 
+  // ADR 0011: la seña reserva todos los salones del evento, así que RN-12 se controla en todos.
+  // Antes se miraba solo Evento.salonId, y un segundo salón se podía reservar pisado.
+  it('al cruzar el 20% controla el solapamiento y los conflictos en todos los salones del evento', async () => {
+    const pucara = { ...salonFixture, id: 9, nombre: 'Pucará' };
+    const base = eventoFixture();
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        salones: [...base.salones, { ...base.salones[0]!, salonId: pucara.id, salon: pucara }],
+      }),
+    );
+
+    const respuesta = await registrarPago(SENA_SIN_FACTURA);
+
+    expect(respuesta.status).toBe(201);
+    const salonIds = [salonFixture.id, pucara.id];
+    expect(buscarSolapamientoMock.mock.calls[0]![0]).toMatchObject({ salonIds });
+    expect(buscarConsultasSuperpuestasMock.mock.calls[0]![0]).toMatchObject({ salonIds });
+  });
+
+  it('la seña se rechaza si el segundo salón ya está reservado, diciendo cuál', async () => {
+    const pucara = { ...salonFixture, id: 9, nombre: 'Pucará' };
+    const base = eventoFixture();
+    const vinculoPucara = { ...base.salones[0]!, salonId: pucara.id, salon: pucara };
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ salones: [...base.salones, vinculoPucara] }),
+    );
+    buscarSolapamientoMock.mockResolvedValue(
+      eventoFixture({ id: 88, salones: [vinculoPucara] }) as never,
+    );
+
+    const respuesta = await registrarPago(SENA_SIN_FACTURA);
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.message).toBe(
+      'El salón Pucará ya está reservado en ese horario por el evento #88',
+    );
+    expect(confirmarPresupuestoYReservarMock).not.toHaveBeenCalled();
+  });
+
   it('un pago que completa el 100% sobre un evento ya Reservado lo pasa a Cobrado', async () => {
     buscarDetalladoMock.mockResolvedValue(
       eventoFixture({
@@ -420,7 +476,7 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
   // No se puede reservar sin franja horaria: sin inicio y fin no hay con qué evaluar RN-12.
   it('responde 422 si el pago cruza el 20% y el evento no está agendado', async () => {
     buscarDetalladoMock.mockResolvedValue(
-      eventoFixture({ inicio: null, fin: null, distribucionId: null, distribucion: null }),
+      eventoFixture({ inicio: null, fin: null, salones: [salonSinArmar()] }),
     );
 
     const respuesta = await registrarPago(SENA_SIN_FACTURA);
@@ -433,7 +489,7 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
 
   // ADR 0008: una consulta social puede llegar al pago sin salón cargado.
   it('responde 422 si el pago cruza el 20% y el evento no tiene salón', async () => {
-    buscarDetalladoMock.mockResolvedValue(eventoFixture({ salonId: null }));
+    buscarDetalladoMock.mockResolvedValue(eventoFixture({ salones: [] }));
 
     const respuesta = await registrarPago(SENA_SIN_FACTURA);
 
@@ -445,7 +501,7 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
 
   it('acepta un pago chico sobre un evento sin agendar: todavía no tiene que reservar nada', async () => {
     buscarDetalladoMock.mockResolvedValue(
-      eventoFixture({ inicio: null, fin: null, distribucionId: null, distribucion: null }),
+      eventoFixture({ inicio: null, fin: null, salones: [salonSinArmar()] }),
     );
 
     const respuesta = await registrarPago('1000');

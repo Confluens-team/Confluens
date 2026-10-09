@@ -13,8 +13,8 @@ export async function buscarDetallado(id: number, tx: Prisma.TransactionClient =
     include: {
       // La etiqueta es solo para el personal: estas rutas no las usa el rol Cliente.
       cliente: { include: { etiqueta: { select: { id: true, nombre: true } } } },
-      salon: true,
-      distribucion: true,
+      // Cada salón con la distribución que tiene armada en este evento (ADR 0011).
+      salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
       solicitud: true,
       presupuestos: { include: { lineas: true } },
     },
@@ -35,7 +35,8 @@ export async function listarAgenda(
   return tx.evento.findMany({
     where: {
       estado: { in: estado ?? [...ESTADOS_QUE_OCUPAN_SALON] },
-      salonId: salonId ? { in: salonId } : undefined,
+      // El filtro acierta si el evento ocupa alguno de los salones pedidos (ADR 0011).
+      salones: salonId ? { some: { salonId: { in: salonId } } } : undefined,
       fecha: {
         gte: desde ? new Date(desde) : undefined,
         lte: hasta ? new Date(hasta) : undefined,
@@ -53,8 +54,13 @@ export async function listarAgenda(
           etiqueta: { select: { id: true, nombre: true } },
         },
       },
-      salon: { select: { id: true, nombre: true } },
-      distribucion: { select: { id: true, nombre: true } },
+      salones: {
+        select: {
+          salon: { select: { id: true, nombre: true } },
+          distribucion: { select: { id: true, nombre: true } },
+        },
+        orderBy: { salonId: 'asc' },
+      },
       presupuestos: {
         where: { estado: 'Confirmado' },
         orderBy: { creadoEn: 'desc' },
@@ -63,10 +69,6 @@ export async function listarAgenda(
       },
     },
   });
-}
-
-export async function buscarDistribucion(id: number, tx: Prisma.TransactionClient = prisma) {
-  return tx.distribucion.findUnique({ where: { id } });
 }
 
 // Cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026), pero Presupuesto.eventoId
@@ -86,42 +88,76 @@ export async function buscarPresupuestoEstimado(
 // evento se superpone (el error de la constraint EXCLUDE de Postgres no lo dice). La constraint
 // sigue siendo la red de seguridad final ante una carrera entre dos reservas. Lo usan agendar() y
 // el módulo de pagos, que es el que termina ocupando el salón.
+// RN-12 en la aplicación: otro evento que ya ocupa alguno de estos salones en esa franja. Con
+// varios salones por evento (ADR 0011) choca si comparte cualquiera de ellos. Trae los salones del
+// evento encontrado para poder decir en cuál choca, algo que el error de la restricción EXCLUDE de
+// Postgres no dice.
 export async function buscarSolapamiento(
-  datos: { salonId: number; inicio: Date; fin: Date; excluirEventoId: number },
+  datos: { salonIds: number[]; inicio: Date; fin: Date; excluirEventoId: number },
   tx: Prisma.TransactionClient = prisma,
 ) {
   return tx.evento.findFirst({
     where: {
-      salonId: datos.salonId,
+      salones: { some: { salonId: { in: datos.salonIds } } },
       id: { not: datos.excluirEventoId },
       estado: { in: ['Reservado', 'Cobrado'] },
       inicio: { lt: datos.fin },
       fin: { gt: datos.inicio },
     },
+    include: { salones: { include: { salon: { select: { id: true, nombre: true } } } } },
   });
 }
 
-// Agendar NO cambia el estado ni toca el presupuesto: solo deja el evento con su franja horaria y
-// su distribución definidas, todavía EnConsulta. El paso a Reservado lo hace el módulo de pagos
-// cuando el acumulado cruza el 20% de la base de cobro (HU-13).
-export async function agendar(
+/**
+ * Deja agendado el evento: horario y modalidad en Evento, y la distribución de cada salón en su
+ * renglón de EventoSalon. inicio y fin de EventoSalon no se tocan acá: los baja el trigger
+ * (ADR 0011).
+ *
+ * Agendar NO cambia el estado ni toca el presupuesto: el evento queda con su franja y sus
+ * distribuciones definidas, todavía EnConsulta. El paso a Reservado lo hace el módulo de pagos
+ * cuando el acumulado cruza el 20% de la base de cobro (HU-13).
+ */
+export async function agendarConDistribuciones(
   datos: {
     eventoId: number;
-    distribucionId: number;
+    distribuciones: { salonId: number; distribucionId: number }[];
     inicio: Date;
     fin: Date;
     modalidadSalonRestaurante: boolean;
   },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.evento.update({
+  await tx.evento.update({
     where: { id: datos.eventoId },
     data: {
-      distribucionId: datos.distribucionId,
       inicio: datos.inicio,
       fin: datos.fin,
       modalidadSalonRestaurante: datos.modalidadSalonRestaurante,
     },
+  });
+  for (const { salonId, distribucionId } of datos.distribuciones) {
+    await tx.eventoSalon.update({
+      where: { eventoId_salonId: { eventoId: datos.eventoId, salonId } },
+      data: { distribucionId },
+    });
+  }
+}
+
+// Varias a la vez: las distribuciones de todos los salones del evento.
+export async function buscarDistribuciones(ids: number[], tx: Prisma.TransactionClient = prisma) {
+  return tx.distribucion.findMany({ where: { id: { in: ids } } });
+}
+
+// Notas de la comanda de cocina. Cadena vacía se guarda como null: "sin observaciones" es un
+// solo valor en la base, no dos.
+export async function guardarObservacionesComanda(
+  id: number,
+  observaciones: string,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.evento.update({
+    where: { id },
+    data: { observacionesComanda: observaciones === '' ? null : observaciones },
   });
 }
 
@@ -144,10 +180,11 @@ export async function crearEnTransaccion<T>(
 export type EventosRepositorio = {
   buscarDetallado: typeof buscarDetallado;
   listarAgenda: typeof listarAgenda;
-  buscarDistribucion: typeof buscarDistribucion;
   buscarPresupuestoEstimado: typeof buscarPresupuestoEstimado;
   buscarSolapamiento: typeof buscarSolapamiento;
-  agendar: typeof agendar;
+  agendarConDistribuciones: typeof agendarConDistribuciones;
+  buscarDistribuciones: typeof buscarDistribuciones;
+  guardarObservacionesComanda: typeof guardarObservacionesComanda;
   cancelar: typeof cancelar;
   crearEnTransaccion: typeof crearEnTransaccion;
 };

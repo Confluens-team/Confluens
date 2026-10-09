@@ -10,6 +10,8 @@ vi.mock('./presupuestos.repositorio.js', () => ({
   buscarClientePorUsuarioId: vi.fn(),
   crearCliente: vi.fn(),
   buscarSalon: vi.fn(),
+  buscarSalonesPorIds: vi.fn(),
+  reemplazarSalonesDelEvento: vi.fn(),
   buscarServiciosPorIds: vi.fn(),
   buscarSolicitud: vi.fn(),
   vincularSolicitudAEvento: vi.fn(),
@@ -27,6 +29,8 @@ const {
   buscarClientePorUsuarioId,
   crearCliente,
   buscarSalon,
+  buscarSalonesPorIds,
+  reemplazarSalonesDelEvento,
   buscarServiciosPorIds,
   buscarSolicitud,
   vincularSolicitudAEvento,
@@ -41,6 +45,8 @@ const buscarClientePorCorreoMock = vi.mocked(buscarClientePorCorreo);
 const buscarClientePorUsuarioIdMock = vi.mocked(buscarClientePorUsuarioId);
 const crearClienteMock = vi.mocked(crearCliente);
 const buscarSalonMock = vi.mocked(buscarSalon);
+const buscarSalonesPorIdsMock = vi.mocked(buscarSalonesPorIds);
+const reemplazarSalonesDelEventoMock = vi.mocked(reemplazarSalonesDelEvento);
 const buscarServiciosPorIdsMock = vi.mocked(buscarServiciosPorIds);
 const buscarSolicitudMock = vi.mocked(buscarSolicitud);
 const vincularSolicitudAEventoMock = vi.mocked(vincularSolicitudAEvento);
@@ -101,8 +107,6 @@ const clienteFixture = {
 const eventoFixture = {
   id: 20,
   clienteId: clienteFixture.id,
-  salonId: salonFixture.id,
-  distribucionId: null,
   fecha: new Date('2026-11-15'),
   inicio: null,
   fin: null,
@@ -116,6 +120,7 @@ const eventoFixture = {
   tipoJornada: null,
   horaInicioEstimada: null as string | null,
   modalidadSalonRestaurante: false,
+  observacionesComanda: null as string | null,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
 };
@@ -139,7 +144,7 @@ const bodyBase = {
   nombre: 'Marina Gómez',
   telefono: '+54 9 351 555-1234',
   correo: 'marina@example.com',
-  salonId: salonFixture.id,
+  salonIds: [salonFixture.id],
   fecha: '2026-11-15',
   cantidadPersonas: 10,
   tipoJornada: 'completa' as const,
@@ -153,6 +158,8 @@ function prepararMocksDeCreacion() {
   buscarClientePorCorreoMock.mockReset();
   crearClienteMock.mockReset();
   buscarSalonMock.mockReset();
+  buscarSalonesPorIdsMock.mockReset();
+  reemplazarSalonesDelEventoMock.mockReset();
   buscarServiciosPorIdsMock.mockReset();
   buscarSolicitudMock.mockReset();
   vincularSolicitudAEventoMock.mockReset();
@@ -161,7 +168,7 @@ function prepararMocksDeCreacion() {
   buscarEventoConPresupuestosMock.mockReset();
   crearEnTransaccionMock.mockClear();
 
-  buscarSalonMock.mockResolvedValue(salonFixture);
+  buscarSalonesPorIdsMock.mockResolvedValue([salonFixture]);
   buscarServiciosPorIdsMock.mockResolvedValue([servicioFixture()]);
   crearEventoMock.mockResolvedValue(eventoFixture);
   crearPresupuestoConLineasMock.mockImplementation((datos) =>
@@ -312,11 +319,13 @@ describe('POST /api/presupuestos', () => {
     const [datos] = crearPresupuestoConLineasMock.mock.calls[0]!;
     expect(datos.lineas[1]).toEqual({
       servicioId: 4,
+      salonId: null,
       descripcion: 'Pantallas LED',
       cantidad: 1,
       precioUnitario: '0.00',
       subtotal: '0.00',
       aCotizar: true,
+      horaEstimada: null,
     });
     expect(datos.total).toBe('142200.00'); // solo el salón
   });
@@ -336,8 +345,35 @@ describe('POST /api/presupuestos', () => {
     expect(lineaServicio.subtotal).toBe('261900.00'); // 8730 * 30
   });
 
+  // El cliente puede decir a qué hora del evento espera cada servicio. El evento recién creado está
+  // EnConsulta y todavía no tiene horario, así que acá no hay contra qué validar la hora.
+  it('guarda la hora esperada de cada servicio y deja la del salón en null', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+    buscarServiciosPorIdsMock.mockResolvedValue([servicioFixture()]);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 10, horaEstimada: '10:30' }] });
+
+    expect(respuesta.status).toBe(201);
+    const [datos] = crearPresupuestoConLineasMock.mock.calls[0]!;
+    expect(datos.lineas[0]).toMatchObject({ servicioId: null, horaEstimada: null });
+    expect(datos.lineas[1]).toMatchObject({ servicioId: 1, horaEstimada: '10:30' });
+  });
+
+  it('responde 400 si la hora de un servicio no tiene formato HH:mm', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 10, horaEstimada: '10.30' }] });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
   it('responde 404 si el salón no existe', async () => {
-    buscarSalonMock.mockResolvedValue(null);
+    buscarSalonesPorIdsMock.mockResolvedValue([]);
 
     const respuesta = await request(app)
       .post('/api/presupuestos')
@@ -375,8 +411,8 @@ describe('POST /api/presupuestos', () => {
     expect(crearEnTransaccionMock).not.toHaveBeenCalled();
   });
 
-  it('responde 400 VALIDATION_ERROR si falta salonId', async () => {
-    const { salonId: _salonId, ...sinSalon } = bodyBase;
+  it('responde 400 VALIDATION_ERROR si no se eligió ningún salón', async () => {
+    const { salonIds: _salonIds, ...sinSalon } = bodyBase;
 
     const respuesta = await request(app)
       .post('/api/presupuestos')
@@ -385,7 +421,7 @@ describe('POST /api/presupuestos', () => {
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
-    expect(buscarSalonMock).not.toHaveBeenCalled();
+    expect(buscarSalonesPorIdsMock).not.toHaveBeenCalled();
   });
 
   it('responde 400 VALIDATION_ERROR si falta tipoJornada', async () => {
@@ -398,7 +434,7 @@ describe('POST /api/presupuestos', () => {
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
-    expect(buscarSalonMock).not.toHaveBeenCalled();
+    expect(buscarSalonesPorIdsMock).not.toHaveBeenCalled();
   });
 
   it('vincula la solicitud al evento creado cuando viene solicitudId (HU-15)', async () => {
@@ -549,7 +585,9 @@ const presupuestoDelListado = {
     tipo: 'Corporativo' as 'Social' | 'Corporativo',
     tipoSocial: null as 'Casamiento' | null,
     tipoSocialDetalle: null,
-    salon: { id: 5, nombre: 'Paraná' } as { id: number; nombre: string } | null,
+    salones: [{ salon: { id: 5, nombre: 'Paraná' } }] as {
+      salon: { id: number; nombre: string };
+    }[],
     cliente: {
       id: 10,
       nombre: 'Marina',
@@ -592,7 +630,7 @@ describe('GET /api/presupuestos (HU-10)', () => {
             correo: 'marina@example.com',
             etiqueta: { id: 4, nombre: 'Empresa1' },
           },
-          salon: { id: 5, nombre: 'Paraná' },
+          salones: [{ id: 5, nombre: 'Paraná' }],
         },
       ],
     });
@@ -609,7 +647,7 @@ describe('GET /api/presupuestos (HU-10)', () => {
           ...presupuestoDelListado.evento,
           tipo: 'Social',
           tipoSocial: 'Casamiento',
-          salon: null,
+          salones: [],
         },
       },
     ]);
@@ -624,7 +662,7 @@ describe('GET /api/presupuestos (HU-10)', () => {
       total: '0.00',
       tipo: 'Social',
       tipoSocial: 'Casamiento',
-      salon: null,
+      salones: [],
     });
   });
 
@@ -775,7 +813,6 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
     expect(crearEventoMock).toHaveBeenCalledWith(
       {
         clienteId: clienteConCuenta.id,
-        salonId: null,
         fecha: new Date('2026-12-05'),
         cantidadPersonas: 120,
         tipo: 'Social',
@@ -963,5 +1000,86 @@ describe('POST /api/presupuestos/para-evento/:eventoId', () => {
     expect(sinSesion.status).toBe(401);
     expect(cliente.status).toBe(403);
     expect(buscarEventoConPresupuestosMock).not.toHaveBeenCalled();
+  });
+});
+
+// ADR 0011: un evento puede ocupar varios salones a la vez, hasta los cinco.
+describe('POST /api/presupuestos — varios salones', () => {
+  const pucara = { ...salonFixture, id: 9, nombre: 'Pucará' };
+
+  it('emite una línea por salón, en el orden en que se eligieron', async () => {
+    prepararMocksDeCreacion();
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+    // El repositorio devuelve por id, no en el orden pedido: el servicio reordena.
+    buscarSalonesPorIdsMock.mockResolvedValue([salonFixture, pucara]);
+    buscarServiciosPorIdsMock.mockResolvedValue([]);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, salonIds: [pucara.id, salonFixture.id], servicios: [] });
+
+    expect(respuesta.status).toBe(201);
+    const [datos] = crearPresupuestoConLineasMock.mock.calls[0]!;
+    expect(datos.lineas.map((l) => l.salonId)).toEqual([pucara.id, salonFixture.id]);
+    expect(datos.lineas.map((l) => l.descripcion)).toEqual([
+      'Salón Pucará (jornada completa)',
+      `Salón ${salonFixture.nombre} (jornada completa)`,
+    ]);
+  });
+
+  it('vincula al evento todos los salones elegidos', async () => {
+    prepararMocksDeCreacion();
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+    buscarSalonesPorIdsMock.mockResolvedValue([salonFixture, pucara]);
+    buscarServiciosPorIdsMock.mockResolvedValue([]);
+
+    await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, salonIds: [salonFixture.id, pucara.id], servicios: [] });
+
+    const [, salonesVinculados] = reemplazarSalonesDelEventoMock.mock.calls[0]!;
+    expect(salonesVinculados).toEqual([salonFixture.id, pucara.id]);
+  });
+
+  it('el total suma el alquiler de cada salón', async () => {
+    prepararMocksDeCreacion();
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+    buscarSalonesPorIdsMock.mockResolvedValue([salonFixture, pucara]);
+    buscarServiciosPorIdsMock.mockResolvedValue([]);
+
+    await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, salonIds: [salonFixture.id, pucara.id], servicios: [] });
+
+    const [datos] = crearPresupuestoConLineasMock.mock.calls[0]!;
+    const esperado = datos.lineas.reduce((suma, l) => suma + Number(l.subtotal), 0);
+    expect(Number(datos.total)).toBe(esperado);
+  });
+
+  it('responde 404 si alguno de los salones no existe, sin crear nada', async () => {
+    prepararMocksDeCreacion();
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+    buscarSalonesPorIdsMock.mockResolvedValue([salonFixture]);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, salonIds: [salonFixture.id, 404] });
+
+    expect(respuesta.status).toBe(404);
+    expect(crearPresupuestoConLineasMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 400 si el mismo salón viene repetido', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, salonIds: [salonFixture.id, salonFixture.id] });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
   });
 });

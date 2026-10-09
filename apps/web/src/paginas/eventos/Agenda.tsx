@@ -1,4 +1,9 @@
-import { ESTADOS_QUE_OCUPAN_SALON, type EstadoEvento, type EventoAgenda } from '@confluens/shared';
+import {
+  ESTADOS_QUE_OCUPAN_SALON,
+  horaDelEvento,
+  type EstadoEvento,
+  type EventoAgenda,
+} from '@confluens/shared';
 import { ArrowLeft, CalendarDays, Clock, List, Users } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import { type ReactNode, useState } from 'react';
@@ -9,24 +14,19 @@ import { Button } from '@/components/ui/button';
 import { useAgenda } from '@/hooks/use-eventos';
 import { useSalones } from '@/hooks/use-salones';
 import { fechaLocal, formatearPesos, hoyISO, nombreCompleto } from '@/lib/formato';
+import { armadoDeSalones, nombresDeSalones } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { CalendarioEventos } from './CalendarioEventos';
 import { EditarConsulta } from '@/paginas/presupuestos/EditarConsulta';
 
+import { ComandaEvento } from './ComandaEvento';
 import { DetalleEvento } from './DetalleEvento';
 import { ESTADOS, ESTADOS_DEL_FILTRO } from './estado-evento';
 import { TarjetaResumenEvento } from './TarjetaResumenEvento';
 
 type Vista = 'calendario' | 'lista';
 
-const hora = (instante: string | null) =>
-  instante
-    ? new Date(instante).toLocaleTimeString('es-AR', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-      })
-    : null;
+const hora = (instante: string | null) => (instante ? horaDelEvento(instante) : null);
 
 // Chip de filtro: se usa igual para los salones, los estados y el conmutador de vista.
 function Chip({
@@ -110,11 +110,12 @@ function ListaDeEventos({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">
-                        {evento.salon ? `Salón ${evento.salon.nombre}` : 'Salón a definir'}
-                        {evento.distribucion && (
+                        {evento.salones.length > 1 ? 'Salones' : 'Salón'}{' '}
+                        {nombresDeSalones(evento.salones, 'a definir')}
+                        {armadoDeSalones(evento.salones) && (
                           <span className="font-normal text-muted-foreground">
                             {' '}
-                            · {evento.distribucion.nombre}
+                            · {armadoDeSalones(evento.salones)}
                           </span>
                         )}
                       </p>
@@ -195,6 +196,9 @@ export function Agenda() {
   const [posicion, setPosicion] = useState({ fecha: hoyISO(), vista: 'dayGridMonth' });
   // HU-15 → HU-11: desde el evento se abre el detalle de su presupuesto.
   const [presupuestoAbierto, setPresupuestoAbierto] = useState<number | null>(null);
+  // Comanda de cocina del evento confirmado, para imprimir. Tiene prioridad sobre las otras dos
+  // vistas: se abre tanto desde el detalle del evento como desde el del presupuesto.
+  const [comandaAbierta, setComandaAbierta] = useState<number | null>(null);
 
   const salones = useSalones();
   const enCalendario = vista === 'calendario';
@@ -235,6 +239,12 @@ export function Agenda() {
     });
   }
 
+  if (comandaAbierta !== null) {
+    return (
+      <ComandaEvento presupuestoId={comandaAbierta} onVolver={() => setComandaAbierta(null)} />
+    );
+  }
+
   if (eventoAbierto !== null && presupuestoAbierto !== null) {
     const volverAlEvento = () => setPresupuestoAbierto(null);
     return (
@@ -246,6 +256,7 @@ export function Agenda() {
         onGuardada={volverAlEvento}
         onDadaDeBaja={volverAlEvento}
         onAbrirEvento={volverAlEvento}
+        onImprimirComanda={setComandaAbierta}
       />
     );
   }
@@ -256,7 +267,11 @@ export function Agenda() {
         <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
           <ArrowLeft /> Volver a la agenda
         </Button>
-        <DetalleEvento eventoId={eventoAbierto} onVerPresupuesto={setPresupuestoAbierto} />
+        <DetalleEvento
+          eventoId={eventoAbierto}
+          onVerPresupuesto={setPresupuestoAbierto}
+          onImprimirComanda={setComandaAbierta}
+        />
       </div>
     );
   }

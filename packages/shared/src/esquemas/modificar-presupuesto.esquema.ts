@@ -40,8 +40,10 @@ export const esquemaConsultaDetallada = z.object({
     tipoSocial: esquemaTipoEventoSocial.nullable(),
     tipoSocialDetalle: z.string().nullable(),
     horaInicioEstimada: esquemaHoraEstimada.nullable(),
-    // HU-11: se completan al agendar el evento; hasta entonces son null.
-    distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
+    // Notas de la comanda de cocina: la pantalla de la comanda las muestra y las edita.
+    observacionesComanda: z.string().nullable(),
+    // HU-11: se completan al agendar el evento; hasta entonces son null. La distribución va en
+    // cada salón: un evento puede ocupar varios (ADR 0011).
     inicio: esquemaFechaHora.nullable(),
     fin: esquemaFechaHora.nullable(),
   }),
@@ -54,22 +56,41 @@ export const esquemaConsultaDetallada = z.object({
     telefono: z.string(),
     etiqueta: esquemaEtiqueta.nullable(),
   }),
-  salon: z
-    .object({ id: esquemaId, nombre: z.string(), capacidadMaxima: z.number().int() })
-    .nullable(),
+  // Vacío en una consulta social que todavía no tiene salón (ADR 0008).
+  salones: z.array(
+    z.object({
+      id: esquemaId,
+      nombre: z.string(),
+      capacidadMaxima: z.number().int(),
+      // La que tiene armada en este evento; null hasta que se agenda.
+      distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
+    }),
+  ),
   lineas: z.array(
     esquemaLineaPresupuesto.extend({ tipo: esquemaTipoLinea, tercerizado: z.boolean() }),
   ),
 });
 export type ConsultaDetallada = z.infer<typeof esquemaConsultaDetallada>;
 
+// Un salón del evento. Como en los servicios, sin `precioUnitario` conserva el precio congelado
+// si el salón ya estaba, o toma el vigente según la jornada si es nuevo; con él es un ajuste
+// comercial (RN-03). Reemplaza al par salonId + precioSalon de cuando el evento tenía un salón.
+export const esquemaSalonModificado = z.object({
+  salonId: esquemaId,
+  precioUnitario: esquemaImporte.optional(),
+});
+export type SalonModificado = z.infer<typeof esquemaSalonModificado>;
+
 // Un servicio del presupuesto modificado. Sin `precioUnitario` conserva el precio congelado si ya
 // estaba en el presupuesto, o toma el vigente si es nuevo; con él es un ajuste comercial (RN-03).
 // Un tercerizado a cotizar sin `precioUnitario` sigue a cotizar; con él, queda con ese precio.
+// Como el PATCH manda el estado completo de la consulta, `horaEstimada` ausente borra la hora que
+// tuviera la línea.
 export const esquemaServicioModificado = z.object({
   servicioId: esquemaId,
   cantidad: z.number().int().positive(),
   precioUnitario: esquemaImporte.optional(),
+  horaEstimada: esquemaHoraEstimada.optional(),
 });
 export type ServicioModificado = z.infer<typeof esquemaServicioModificado>;
 
@@ -78,6 +99,7 @@ export const esquemaAdicional = z.object({
   descripcion: z.string().trim().min(1).max(120),
   cantidad: z.number().int().positive(),
   precioUnitario: esquemaImporte,
+  horaEstimada: esquemaHoraEstimada.optional(),
 });
 export type Adicional = z.infer<typeof esquemaAdicional>;
 
@@ -87,14 +109,20 @@ export type Adicional = z.infer<typeof esquemaAdicional>;
 export const esquemaModificarPresupuesto = z
   .object({
     fecha: esquemaFecha,
-    salonId: esquemaId.nullable(),
+    // Vacío solo vale para una consulta social todavía sin salón (ADR 0008).
+    salones: z
+      .array(esquemaSalonModificado)
+      .default([])
+      .refine(
+        (salones) => new Set(salones.map((s) => s.salonId)).size === salones.length,
+        'Un salón no puede aparecer dos veces',
+      ),
     cantidadPersonas: z.number().int().positive(),
     tipoJornada: esquemaTipoJornada,
     tipo: esquemaTipoEvento.optional(),
     tipoSocial: esquemaTipoEventoSocial.nullable().optional(),
     tipoSocialDetalle: esquemaTipoSocialDetalle.nullable().optional(),
     horaInicioEstimada: esquemaHoraEstimada.nullable().optional(),
-    precioSalon: esquemaImporte.optional(),
     // RN-01: si el cliente pide factura, la base de cobro de la seña y el saldo incluye el IVA. Sin
     // el campo, se mantiene lo que estaba.
     requiereFactura: z.boolean().optional(),
@@ -108,11 +136,11 @@ export const esquemaModificarPresupuesto = z
     adicionales: z.array(esquemaAdicional).default([]),
   })
   .superRefine((datos, ctx) => {
-    if (datos.tipo === 'Corporativo' && datos.salonId === null) {
+    if (datos.tipo === 'Corporativo' && datos.salones.length === 0) {
       ctx.addIssue({
         code: 'custom',
-        path: ['salonId'],
-        message: 'Un evento corporativo necesita salón',
+        path: ['salones'],
+        message: 'Un evento corporativo necesita al menos un salón',
       });
     }
     if (datos.tipo === 'Social' && !datos.tipoSocial) {

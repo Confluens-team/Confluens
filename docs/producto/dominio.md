@@ -186,6 +186,15 @@ el total del presupuesto** como cualquier otro servicio. Diferencias con un serv
 elige la modalidad de cada uno: normal, **continuo en salón (+20%)** o **en mesas con mozo
 (+30%)**. Ver RN-11.
 
+**Hora esperada del servicio.** Cada servicio del presupuesto puede llevar **una hora opcional**
+(`HH:mm`) que dice en qué momento del evento se lo espera: el coffee a las 10:30, el almuerzo a las
+13:00. La carga el cliente en el cotizador, al elegir cada servicio, o el Responsable de Eventos al
+armar o modificar el presupuesto, y también la pueden llevar los adicionales escritos a mano. El
+salón no: su horario es el del evento. **Es una preferencia, no una obligación**: un servicio sin
+hora es válido y no cambia nada del cálculo. Mientras el evento está `EnConsulta` todavía no tiene
+horario cargado, así que se acepta cualquier hora; una vez **agendado** (con `inicio` y `fin`), una
+hora fuera de esa franja se rechaza. Decisión del equipo, 08/10/2026.
+
 **Presupuesto.** Valorización del evento, detallada línea por línea. Guarda los importes **sin
 IVA** y se presenta con **subtotal sin IVA, IVA 21% y total**. Al emitirse congela los precios de
 sus líneas, aunque después cambie el catálogo. Lleva la leyenda **"Este presupuesto tiene una
@@ -197,6 +206,13 @@ según si el cliente pide factura o no. Define la **base de cobro** (ver RN-01).
 **Base de cobro.** Importe contra el que se miden la seña, el saldo y el cierre del evento. Si el
 cliente **requiere factura** es el **total con IVA**; si no, el **subtotal sin IVA**. No se guarda:
 se calcula a partir del presupuesto y de su marca de factura.
+
+**Varios salones.** Un evento puede realizarse en **más de un salón a la vez**, hasta los cinco:
+se reparte la gente entre varios espacios según cómo convenga armarlos. Todos comparten el horario
+del evento —la cantidad de salones no cambia cuándo empieza ni cuándo termina— y cada uno lleva su
+propia distribución. La **capacidad de un salón no limita la elección**: es un dato que se informa,
+no un tope, porque la misma cantidad de gente se reparte de maneras muy distintas. El no
+solapamiento de RN-12 se mide por cada salón que el evento ocupa. Decisión del equipo, 09/10/2026.
 
 **Evento.** Entidad central: cliente, tipo de evento, salón, distribución, fecha, horario,
 cantidad de personas, servicios, presupuesto y pagos. El salón es obligatorio para reservar; una
@@ -226,6 +242,16 @@ salón, servicios y precios desde la consulta. Las dos se distinguen por color e
 modifican igual y se confirman igual, con la seña del 20% (ADR 0008). Los datos propios de un evento
 social todavía no están definidos (ver `pendientes.md`). Se usa también en el reporte de ingresos
 (HU-21).
+
+**Comanda de cocina.** La hoja que el personal imprime y cuelga en la cocina para un evento ya
+confirmado. No es una entidad: es una vista del evento y de su presupuesto con fecha, salón,
+armado, horario, cantidad de personas, nombre del cliente y los servicios de gastronomía ordenados
+por la hora a la que se los espera. **Nunca lleva precios**: no es un documento comercial. Admite
+**observaciones** (`Evento.observacionesComanda`): notas internas del personal —menús especiales,
+alergias, a quién buscar en el salón— que salen solo en esa hoja y que el cliente nunca ve. No
+entran la línea del salón, cuyo horario ya encabeza la hoja, ni los servicios tercerizados, que son
+audiovisual y pantallas y no pasan por cocina. Integrarse con el sistema de cocina o con los de los
+proveedores sigue fuera de alcance (S-07). Decisión del equipo, 09/10/2026.
 
 **Comedor.** Servicio gastronómico del hotel, con sistema propio. Fuera de alcance (EXC-04).
 

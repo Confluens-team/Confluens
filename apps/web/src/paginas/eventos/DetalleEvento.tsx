@@ -1,7 +1,8 @@
 import type { EstadoEvento } from '@confluens/shared';
-import { Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Printer } from 'lucide-react';
 import { useState } from 'react';
 
+import { armadoDeSalones, nombresDeSalones } from '@/lib/formato';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
@@ -81,6 +82,8 @@ interface DetalleEventoProps {
   eventoId: number;
   // HU-11: abre el detalle completo del presupuesto (líneas, IVA, vigencia y los demás del evento).
   onVerPresupuesto?: (presupuestoId: number) => void;
+  // Comanda de cocina del evento confirmado: la hoja sin precios que se imprime y se cuelga.
+  onImprimirComanda?: (presupuestoId: number) => void;
 }
 
 // Vista central del evento: datos, presupuesto, cuenta y cancelación (criterio 5 / RN-07). No hay
@@ -91,7 +94,11 @@ interface DetalleEventoProps {
 // Dos columnas desde lg: a la izquierda lo que se lee (datos y presupuesto), a la derecha la cuenta,
 // fija al hacer scroll para que el saldo y el botón de cobro estén siempre a mano. En pantallas
 // angostas la cuenta va arriba del presupuesto, que es lo que se viene a hacer a esta vista.
-export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps) {
+export function DetalleEvento({
+  eventoId,
+  onVerPresupuesto,
+  onImprimirComanda,
+}: DetalleEventoProps) {
   const { data: evento, isLoading, isError } = useEvento(eventoId);
   const cancelarEvento = useCancelarEvento(eventoId);
   const armarPresupuesto = useArmarPresupuestoDeEvento(eventoId);
@@ -231,10 +238,10 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
                   <EtiquetaCliente etiqueta={evento.cliente.etiqueta} className="mt-1" />
                 </Dato>
                 <Dato etiqueta="Salón">
-                  {evento.salon?.nombre ?? 'A definir'} · {evento.cantidadPersonas} personas
-                  {evento.distribucion && (
+                  {nombresDeSalones(evento.salones)} · {evento.cantidadPersonas} personas
+                  {armadoDeSalones(evento.salones) && (
                     <span className="block truncate text-xs text-muted-foreground">
-                      {evento.distribucion.nombre}
+                      {armadoDeSalones(evento.salones)}
                     </span>
                   )}
                 </Dato>
@@ -264,7 +271,11 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
                     <li key={linea.id} className="flex justify-between gap-4 py-1.5">
                       <span className="min-w-0">
                         {linea.descripcion}{' '}
-                        <span className="text-muted-foreground">×{linea.cantidad}</span>
+                        <span className="text-muted-foreground">
+                          ×{linea.cantidad}
+                          {/* La hora a la que se espera el servicio, si se pidió una. */}
+                          {linea.horaEstimada && ` · ${linea.horaEstimada}`}
+                        </span>
                       </span>
                       <span className="shrink-0 tabular-nums">
                         {linea.aCotizar
@@ -297,17 +308,28 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
                   </Button>
                 )}
                 <div className="mt-2 flex items-center justify-between gap-3 border-t pt-3">
-                  {onVerPresupuesto ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onVerPresupuesto(presupuestoVigente.id)}
-                    >
-                      Ver detalle del presupuesto
-                    </Button>
-                  ) : (
-                    <span />
-                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {onVerPresupuesto && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onVerPresupuesto(presupuestoVigente.id)}
+                      >
+                        Ver detalle del presupuesto
+                      </Button>
+                    )}
+                    {/* Solo con el presupuesto confirmado: antes de la seña el evento todavía se
+                        puede caer y la cocina no tiene nada que preparar. */}
+                    {onImprimirComanda && presupuestoVigente.estado === 'Confirmado' && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onImprimirComanda(presupuestoVigente.id)}
+                      >
+                        <Printer /> Comanda de cocina
+                      </Button>
+                    )}
+                  </div>
                   <p className="text-right">
                     <span className="block text-xs text-muted-foreground">Total sin IVA</span>
                     <span className="font-medium tabular-nums">

@@ -108,31 +108,32 @@ model Etiqueta {
 // foto se carga cuando el cliente entrega el material. La URL apunta a un hosting externo; el
 // sistema no almacena archivos (ver ADR 0004).
 model Salon {
-  id                    Int            @id @default(autoincrement())
-  nombre                String         @unique
+  id                    Int                @id @default(autoincrement())
+  nombre                String             @unique
   capacidadMaxima       Int
   superficie            Int // m²
-  precioJornadaCompleta Decimal        @db.Decimal(12, 2) // sin IVA (RN-05)
-  precioMediaJornada    Decimal        @db.Decimal(12, 2) // sin IVA (RN-05)
-  visibleEnLanding      Boolean        @default(true)
+  precioJornadaCompleta Decimal            @db.Decimal(12, 2) // sin IVA (RN-05)
+  precioMediaJornada    Decimal            @db.Decimal(12, 2) // sin IVA (RN-05)
+  visibleEnLanding      Boolean            @default(true)
   fotoUrl               String?
   distribuciones        Distribucion[]
-  eventos               Evento[]
+  eventoSalones         EventoSalon[]
+  lineasPresupuesto     LineaPresupuesto[]
   solicitudes           Solicitud[]
-  creadoEn              DateTime       @default(now())
-  actualizadoEn         DateTime       @updatedAt
+  creadoEn              DateTime           @default(now())
+  actualizadoEn         DateTime           @updatedAt
 }
 
 // Nombre único por salón. La capacidad nunca supera la del salón (se valida en la aplicación).
 model Distribucion {
-  id            Int      @id @default(autoincrement())
+  id            Int           @id @default(autoincrement())
   salonId       Int
-  salon         Salon    @relation(fields: [salonId], references: [id])
+  salon         Salon         @relation(fields: [salonId], references: [id])
   nombre        String
   capacidad     Int
-  eventos       Evento[]
-  creadoEn      DateTime @default(now())
-  actualizadoEn DateTime @updatedAt
+  eventoSalones EventoSalon[]
+  creadoEn      DateTime      @default(now())
+  actualizadoEn DateTime      @updatedAt
 
   @@unique([salonId, nombre])
 }
@@ -188,12 +189,6 @@ model Evento {
   id                        Int               @id @default(autoincrement())
   clienteId                 Int
   cliente                   Cliente           @relation(fields: [clienteId], references: [id])
-  // Obligatorio para reservar (CHECK evento_salon_obligatorio); una consulta social llega sin
-  // salón y lo carga el Responsable de Eventos (ADR 0008).
-  salonId                   Int?
-  salon                     Salon?            @relation(fields: [salonId], references: [id], onDelete: Restrict)
-  distribucionId            Int?
-  distribucion              Distribucion?     @relation(fields: [distribucionId], references: [id])
   fecha                     DateTime          @db.Date
   inicio                    DateTime? // horario desde
   fin                       DateTime? // horario hasta
@@ -214,11 +209,44 @@ model Evento {
   // reservado (HU-13). Lo escribe el módulo de pagos, no una acción manual.
   senaRegistradaEn          DateTime?
   modalidadSalonRestaurante Boolean           @default(false) // opción interna, no visible al cliente
+  // Los salones que ocupa el evento, cada uno con su distribución: varios a la vez, en el mismo
+  // horario (ADR 0011). Un evento Reservado o Cobrado tiene al menos uno (constraint trigger
+  // evento_reservado_con_salon). Una consulta social puede no tener ninguno todavía (ADR 0008).
+  salones                   EventoSalon[]
+  // Notas al pie de la comanda de cocina: menús especiales, alergias, a quién buscar en el salón.
+  // Las escribe el personal y solo salen en esa hoja; el cliente nunca las ve.
+  observacionesComanda      String?
   solicitud                 Solicitud?
   presupuestos              Presupuesto[]
   pagos                     Pago[]
   creadoEn                  DateTime          @default(now())
   actualizadoEn             DateTime          @updatedAt
+}
+
+// Un evento puede ocupar varios salones a la vez, todos en el mismo horario: la cantidad de
+// salones no cambia la duración del evento (decisión del equipo, 09/10/2026). La distribución va
+// acá y no en Evento porque una distribución pertenece a un salón.
+//
+// inicio, fin y estado son copia de los del evento. Se duplican porque la restricción de exclusión
+// que garantiza el no solapamiento (RN-12) necesita el salón y el rango horario en la misma fila,
+// y acá el horario vive en Evento. Los mantiene al día un trigger sobre Evento, no la aplicación
+// (ADR 0011): el estado cambia desde pagos, cancelación y modificación del presupuesto, y que cada
+// uno de esos caminos tuviera que acordarse de sincronizar sería romper la garantía en silencio el
+// día que se agregue uno nuevo. **No escribir estas tres columnas a mano.**
+model EventoSalon {
+  eventoId       Int
+  evento         Evento        @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  salonId        Int
+  salon          Salon         @relation(fields: [salonId], references: [id], onDelete: Restrict)
+  distribucionId Int?
+  distribucion   Distribucion? @relation(fields: [distribucionId], references: [id])
+  inicio         DateTime? // copia de Evento, la escribe el trigger
+  fin            DateTime? // copia de Evento, la escribe el trigger
+  estado         EstadoEvento  @default(EnConsulta) // copia de Evento, la escribe el trigger
+  creadoEn       DateTime      @default(now())
+
+  @@id([eventoId, salonId])
+  @@index([salonId])
 }
 
 // Cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026): lo garantiza la aplicación,
@@ -256,6 +284,18 @@ model LineaPresupuesto {
   // HU-11: tercerizado sin precio todavía. Va con precio y subtotal en 0, así no suma al total;
   // deja de estar a cotizar cuando el personal completa el precio.
   aCotizar       Boolean     @default(false)
+  // La línea del alquiler de un salón. Las de servicio tienen servicioId, los adicionales escritos
+  // a mano no tienen ninguno de los dos. Antes la del salón se identificaba como "la primera sin
+  // servicio" y la jornada se sacaba parseando su descripción; con varios salones por evento hay
+  // varias líneas de salón y esa convención no alcanza.
+  salonId        Int?
+  salon          Salon?      @relation(fields: [salonId], references: [id], onDelete: Restrict)
+  // "HH:mm", opcional: a qué hora del evento se espera este servicio (un coffee a las 10:30). La
+  // elige el cliente en el cotizador o el personal al armar el presupuesto. Solo la llevan los
+  // servicios y los adicionales; la línea del salón no, su horario es el del evento. Mismo
+  // formato que Evento.horaInicioEstimada. Si el evento ya está agendado, el servicio valida que
+  // caiga entre inicio y fin; mientras está EnConsulta sin horario no hay contra qué validar.
+  horaEstimada   String?
 }
 
 // Catálogo de medios de pago (Efectivo, Tarjeta, A la habitación). Baja lógica con `activo`: no se

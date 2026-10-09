@@ -20,3 +20,28 @@ export const esquemaFecha = z.iso.date('Fecha inválida');
 // que el usuario borró llega como string vacío y no tiene que fallar la validación.
 export const vacioComoAusente = (valor: unknown) =>
   typeof valor === 'string' && valor.trim() === '' ? undefined : valor;
+
+// Zona horaria de los eventos (ADR 0010). Un instante guardado en UTC se lee siempre contra esta
+// zona para obtener la hora de reloj: la API la usa para validar la hora de un servicio contra el
+// horario del evento y la web para mostrar ese horario, así no pueden contradecirse. No se usa la
+// zona del proceso ni la del navegador: en Render el contenedor corre en UTC y daría otra franja.
+export const ZONA_HORARIA_EVENTOS = 'America/Argentina/Cordoba';
+
+const FORMATO_HORA_EVENTO = new Intl.DateTimeFormat('es-AR', {
+  timeZone: ZONA_HORARIA_EVENTOS,
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+// "HH:mm" de un instante, en la hora del salón. Mismo formato que Evento.horaInicioEstimada y que
+// LineaPresupuesto.horaEstimada, así se pueden comparar como texto.
+export function horaDelEvento(instante: Date | string): string {
+  return FORMATO_HORA_EVENTO.format(new Date(instante));
+}
+
+// "HH:mm" → minutos desde la medianoche, para comparar horas sin pelear con fechas.
+export function minutosDeHora(hora: string): number {
+  const [h = 0, m = 0] = hora.split(':').map(Number);
+  return h * 60 + m;
+}
