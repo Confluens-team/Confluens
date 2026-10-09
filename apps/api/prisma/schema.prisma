@@ -105,6 +105,7 @@ model Salon {
   fotoUrl               String?
   distribuciones        Distribucion[]
   eventos               Evento[]
+  eventoSalones         EventoSalon[]
   solicitudes           Solicitud[]
   creadoEn              DateTime       @default(now())
   actualizadoEn         DateTime       @updatedAt
@@ -112,14 +113,15 @@ model Salon {
 
 // Nombre único por salón. La capacidad nunca supera la del salón (se valida en la aplicación).
 model Distribucion {
-  id            Int      @id @default(autoincrement())
+  id            Int           @id @default(autoincrement())
   salonId       Int
-  salon         Salon    @relation(fields: [salonId], references: [id])
+  salon         Salon         @relation(fields: [salonId], references: [id])
   nombre        String
   capacidad     Int
   eventos       Evento[]
-  creadoEn      DateTime @default(now())
-  actualizadoEn DateTime @updatedAt
+  eventoSalones EventoSalon[]
+  creadoEn      DateTime      @default(now())
+  actualizadoEn DateTime      @updatedAt
 
   @@unique([salonId, nombre])
 }
@@ -201,6 +203,9 @@ model Evento {
   // reservado (HU-13). Lo escribe el módulo de pagos, no una acción manual.
   senaRegistradaEn          DateTime?
   modalidadSalonRestaurante Boolean           @default(false) // opción interna, no visible al cliente
+  // Los salones del evento (decisión del equipo, 09/10/2026). Mientras dura la migración convive
+  // con salonId/distribucionId, que son el salón principal; la parte 4 los saca.
+  salones                   EventoSalon[]
   // Notas al pie de la comanda de cocina: menús especiales, alergias, a quién buscar en el salón.
   // Las escribe el personal y solo salen en esa hoja; el cliente nunca las ve.
   observacionesComanda      String?
@@ -209,6 +214,32 @@ model Evento {
   pagos                     Pago[]
   creadoEn                  DateTime          @default(now())
   actualizadoEn             DateTime          @updatedAt
+}
+
+// Un evento puede ocupar varios salones a la vez, todos en el mismo horario: la cantidad de
+// salones no cambia la duración del evento (decisión del equipo, 09/10/2026). La distribución va
+// acá y no en Evento porque una distribución pertenece a un salón.
+//
+// inicio, fin y estado son copia de los del evento. Se duplican porque la restricción de exclusión
+// que garantiza el no solapamiento (RN-12) necesita el salón y el rango horario en la misma fila,
+// y acá el horario vive en Evento. Los mantiene al día un trigger sobre Evento, no la aplicación
+// (ADR 0011): el estado cambia desde pagos, cancelación y modificación del presupuesto, y que cada
+// uno de esos caminos tuviera que acordarse de sincronizar sería romper la garantía en silencio el
+// día que se agregue uno nuevo. **No escribir estas tres columnas a mano.**
+model EventoSalon {
+  eventoId       Int
+  evento         Evento        @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  salonId        Int
+  salon          Salon         @relation(fields: [salonId], references: [id], onDelete: Restrict)
+  distribucionId Int?
+  distribucion   Distribucion? @relation(fields: [distribucionId], references: [id])
+  inicio         DateTime? // copia de Evento, la escribe el trigger
+  fin            DateTime? // copia de Evento, la escribe el trigger
+  estado         EstadoEvento  @default(EnConsulta) // copia de Evento, la escribe el trigger
+  creadoEn       DateTime      @default(now())
+
+  @@id([eventoId, salonId])
+  @@index([salonId])
 }
 
 // Cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026): lo garantiza la aplicación,

@@ -193,6 +193,13 @@ según si el cliente pide factura o no. Define la **base de cobro** (ver RN-01).
 cliente **requiere factura** es el **total con IVA**; si no, el **subtotal sin IVA**. No se guarda:
 se calcula a partir del presupuesto y de su marca de factura.
 
+**Varios salones.** Un evento puede realizarse en **más de un salón a la vez**, hasta los cinco:
+se reparte la gente entre varios espacios según cómo convenga armarlos. Todos comparten el horario
+del evento —la cantidad de salones no cambia cuándo empieza ni cuándo termina— y cada uno lleva su
+propia distribución. La **capacidad de un salón no limita la elección**: es un dato que se informa,
+no un tope, porque la misma cantidad de gente se reparte de maneras muy distintas. El no
+solapamiento de RN-12 se mide por cada salón que el evento ocupa. Decisión del equipo, 09/10/2026.
+
 **Evento.** Entidad central: cliente, tipo de evento, salón, distribución, fecha, horario,
 cantidad de personas, servicios, presupuesto y pagos. El salón es obligatorio para reservar; una
 consulta social puede estar `EnConsulta` sin salón hasta que el Responsable de Eventos lo carga

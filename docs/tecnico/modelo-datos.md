@@ -77,6 +77,7 @@ enum TipoJornada {
 | `Evento` | Cliente, salón, distribución, fecha, horario desde/hasta (`inicio`/`fin`), cantidad de personas, estado, modalidad salón-restaurante. Tipo de evento (ADR 0008): `tipo` (`TipoEvento`, default `Corporativo`), `tipoSocial` (`TipoEventoSocial`, solo en los sociales) y `tipoSocialDetalle` (texto, solo con `Otro`). `tipoJornada` (`TipoJornada`, nullable): la que eligió el cliente; en los eventos anteriores es `null` y la jornada sale de la línea del salón. `horaInicioEstimada` (texto `HH:mm`, nullable): solo de referencia, el horario real lo carga agendar (ADR 0007). El salón (`salonId`) es nullable: una consulta social llega sin salón, y es obligatorio para reservar; la distribución y el horario pueden completarse después (ver restricciones). Ya agendado, la jornada (media / completa) se deriva del horario: ≤ 4 h es media. `observacionesComanda` (texto, nullable, hasta 2000 caracteres): las notas al pie de la comanda de cocina (menús especiales, alergias, a quién buscar en el salón). Las escribe el personal desde la comanda, salen solo en esa hoja y el cliente nunca las ve. |
 | `Presupuesto` | Pertenece a un evento. Estado, `emitidoEn`, `venceEn` (= emisión + 10 días, RN-08; `null` mientras el presupuesto de una consulta social está sin armar, sin líneas: arranca cuando se guarda la primera, ADR 0008), `subtotal` sin IVA, `requiereFactura` (booleano, default `false`): si el evento se factura, la base de cobro de RN-01 incluye el IVA y la seña del 20% se calcula sobre ese total. IVA y total **no se guardan**: se calculan al mostrar (RN-05). **Cada evento tiene un solo presupuesto** (decisión del PO, 06/10/2026): la aplicación lo crea junto con el evento y recalcular o modificar editan ese mismo presupuesto. En el modelo la relación sigue siendo de uno a muchos. |
 | `LineaPresupuesto` | Servicio, descripción, cantidad, `modalidad` (`ModalidadServicio`), precio base congelado, precio unitario congelado (base + recargo), subtotal. `aCotizar` (booleano): la línea no tiene importe y no suma. El precio del salón va como una línea más, con servicio `null`, y es siempre la **primera** línea del presupuesto. Las demás líneas con servicio `null` son adicionales que el personal escribió a mano, con su descripción y su precio (HU-12). `horaEstimada` (texto `HH:mm`, nullable): a qué hora del evento se espera ese servicio, igual formato que `Evento.horaInicioEstimada`. La llevan los servicios y los adicionales, nunca la línea del salón. Si el evento ya tiene `inicio` y `fin`, la aplicación exige que caiga dentro (`422`); mientras está `EnConsulta` sin horario no hay contra qué validarla. |
+| `EventoSalon` | Los salones que ocupa un evento, uno por renglón, con su `distribucionId` (una distribución pertenece a un salón, no al evento). **Un evento puede usar varios salones a la vez**, todos en el mismo horario: la cantidad de salones no cambia la duración del evento (equipo, 09/10/2026). Lleva copia de `inicio`, `fin` y `estado` del evento, que mantienen dos triggers y **no la aplicación**: la restricción de exclusión de RN-12 necesita el salón y el rango horario en la misma fila (ver "No solapamiento" y ADR 0011). |
 | `ConfiguracionPrecios` | Fila única. `porcentajeMensual` (Decimal) editable por el Responsable de Eventos (RN-10). |
 | `AjustePrecio` | Historial de aumentos: fecha, porcentaje, alcance (`Global` o un `servicioId`), si fue automático o manual, usuario. Sirve para auditar y para explicar por qué cambió un precio. |
 | `Pago` | Evento, fecha, monto, medio de pago, observación (nullable). A diferencia del resto de los importes, el `monto` **no** es sin IVA (RN-05): es la plata entregada, y se mide contra la base de cobro de RN-01. |
@@ -98,15 +99,23 @@ Un salón no puede tener dos eventos en la misma fecha y horario. Se valida en d
 1. En el servicio, para devolver un error legible que indique con qué evento se superpone.
 2. En la base, con una restricción de exclusión que la aplicación no puede saltear:
 
+Desde que un evento puede ocupar varios salones, la restricción vive en `EventoSalon` y aplica a
+cada salón del evento (ADR 0011):
+
 ```sql
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
-ALTER TABLE "Evento" ADD CONSTRAINT evento_sin_solapamiento
+ALTER TABLE "EventoSalon" ADD CONSTRAINT evento_salon_sin_solapamiento
   EXCLUDE USING gist (
     "salonId" WITH =,
     tsrange("inicio", "fin") WITH &&
   ) WHERE (estado IN ('Reservado', 'Cobrado'));
 ```
+
+`inicio`, `fin` y `estado` son copia de los del evento porque una restricción de exclusión no
+puede mirar otra tabla. Los mantienen dos triggers: `evento_propaga_horario` baja los cambios del
+evento a sus salones, y `evento_salon_copia_horario` los toma del evento al insertar o actualizar
+un renglón, descartando lo que mande la aplicación.
 
 El `WHERE` es importante: los eventos en `EnConsulta` **no** bloquean el salón, y los
 `Cancelado` tampoco. Varias consultas pueden superponerse entre sí y con un evento reservado;
