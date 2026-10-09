@@ -3,6 +3,7 @@ import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useCancelarEvento, useEvento } from '@/hooks/use-eventos';
@@ -227,6 +228,7 @@ export function DetalleEvento({ eventoId, onVerPresupuesto }: DetalleEventoProps
                   <span className="block truncate text-xs text-muted-foreground">
                     {evento.cliente.telefono} · {evento.cliente.correo}
                   </span>
+                  <EtiquetaCliente etiqueta={evento.cliente.etiqueta} className="mt-1" />
                 </Dato>
                 <Dato etiqueta="Salón">
                   {evento.salon?.nombre ?? 'A definir'} · {evento.cantidadPersonas} personas
