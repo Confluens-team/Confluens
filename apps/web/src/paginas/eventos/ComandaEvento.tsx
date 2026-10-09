@@ -1,7 +1,9 @@
 import type { ConsultaDetallada } from '@confluens/shared';
 import { ArrowLeft, Printer } from 'lucide-react';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import { useConsulta } from '@/hooks/use-presupuestos';
 import { fechaLocal, formatearFecha, nombreCompleto } from '@/lib/formato';
 
@@ -48,6 +50,9 @@ function Dato({ rotulo, valor }: { rotulo: string; valor: string }) {
 }
 
 function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
+  // Lo que se escribe acá se imprime, pero todavía no se guarda: al salir de la pantalla se
+  // pierde. Guardarlo necesita una columna nueva en Evento y su migración (AGENTS.md §6).
+  const [observaciones, setObservaciones] = useState('');
   const { evento } = consulta;
   const gastronomia = porHora(
     consulta.lineas.filter((l) => l.tipo === 'servicio' && !l.tercerizado),
@@ -135,12 +140,27 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
         </section>
       )}
 
-      {/* Estas hojas siempre terminan con algo anotado al margen. */}
+      {/* Estas hojas siempre terminan con algo anotado: menús especiales, alergias, a quién
+          buscar. Se puede escribir acá antes de imprimir, o dejarlo vacío y anotar a mano sobre el
+          papel. En el papel va el texto tipeado, no el campo: un textarea con alto fijo recortaría
+          lo que no entra, y encima imprimiría el borde del control. */}
       <section className="mt-8 break-inside-avoid">
-        <h3 className="text-[0.65rem] font-semibold tracking-[0.2em] text-muted-foreground uppercase">
+        <label
+          htmlFor="comanda-observaciones"
+          className="text-[0.65rem] font-semibold tracking-[0.2em] text-muted-foreground uppercase"
+        >
           Observaciones
-        </h3>
-        <div className="mt-2 h-28 rounded-md border border-dashed border-border print:border-black/40" />
+        </label>
+        <Textarea
+          id="comanda-observaciones"
+          value={observaciones}
+          onChange={(e) => setObservaciones(e.target.value)}
+          placeholder="Menús especiales, alergias, contacto en el salón, lo que haga falta…"
+          className="mt-2 min-h-28 border-dashed print:hidden"
+        />
+        <div className="mt-2 hidden min-h-28 rounded-md border border-dashed border-black/40 px-3 py-2 whitespace-pre-wrap print:block">
+          {observaciones}
+        </div>
       </section>
     </article>
   );
