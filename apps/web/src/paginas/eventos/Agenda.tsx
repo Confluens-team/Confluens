@@ -109,7 +109,8 @@ function ListaDeEventos({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">
-                        Salón {nombresDeSalones(evento.salones, 'a definir')}
+                        {evento.salones.length > 1 ? 'Salones' : 'Salón'}{' '}
+                        {nombresDeSalones(evento.salones, 'a definir')}
                         {evento.distribucion && (
                           <span className="font-normal text-muted-foreground">
                             {' '}

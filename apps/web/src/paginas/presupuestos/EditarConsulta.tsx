@@ -14,6 +14,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   CalendarCheck,
+  Check,
   ClipboardList,
   Plus,
   Printer,
@@ -47,6 +48,12 @@ interface LineaEditable {
   hora: string;
   precio: string;
   tercerizado: boolean;
+}
+
+// Un salón del evento mientras se edita: su precio se puede ajustar a mano (RN-03).
+interface SalonEditable {
+  salonId: number;
+  precio: string;
 }
 
 const OTRO = 'otro';
@@ -161,11 +168,22 @@ function Formulario({
   const modificar = useModificarConsulta(consulta.id);
   const darDeBaja = useDarDeBajaConsulta(consulta.id);
 
-  const lineaSalon = consulta.lineas.find((linea) => linea.tipo === 'salon');
+  // Precio congelado de cada salón que ya estaba en el presupuesto: vuelve a usarse si se lo
+  // destilda y se lo vuelve a tildar sin cambiar la jornada.
+  const preciosOriginales = new Map(
+    consulta.lineas
+      .filter((linea) => linea.tipo === 'salon' && linea.salonId !== null)
+      .map((linea) => [linea.salonId!, linea.precioUnitario]),
+  );
   const [fecha, setFecha] = useState(consulta.evento.fecha);
-  // null: consulta social todavía sin salón (ADR 0008).
-  // Parte 2b: la UI sigue manejando un salón; la 3 la hace multi-selección.
-  const [salonId, setSalonId] = useState<number | null>(consulta.salones[0]?.id ?? null);
+  // Los salones del evento, cada uno con su precio editable (RN-03), en el orden de las líneas.
+  // Vacío: consulta social todavía sin salón (ADR 0008). Un evento puede usar varios a la vez,
+  // incluso los cinco (ADR 0011).
+  const [salonesSel, setSalonesSel] = useState<SalonEditable[]>(
+    consulta.lineas
+      .filter((linea) => linea.tipo === 'salon' && linea.salonId !== null)
+      .map((linea) => ({ salonId: linea.salonId!, precio: linea.precioUnitario })),
+  );
   const [tipo, setTipo] = useState<TipoEvento>(consulta.evento.tipo);
   const [tipoSocial, setTipoSocial] = useState<TipoEventoSocial | ''>(
     consulta.evento.tipoSocial ?? '',
@@ -175,7 +193,6 @@ function Formulario({
   const [jornada, setJornada] = useState<TipoJornada>(consulta.tipoJornada);
   const [personas, setPersonas] = useState(String(consulta.evento.cantidadPersonas));
   const [requiereFactura, setRequiereFactura] = useState(consulta.requiereFactura);
-  const [precioSalon, setPrecioSalon] = useState(lineaSalon?.precioUnitario ?? '0.00');
   const [lineas, setLineas] = useState<LineaEditable[]>(
     consulta.lineas
       .filter((linea) => linea.tipo !== 'salon')
@@ -204,24 +221,52 @@ function Formulario({
     (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');
   const editable = enCurso || confirmado;
   const expirado = consulta.estado === 'Expirado';
-  const salon = salones.find((s) => s.id === salonId);
+  const salonDe = (salonId: number) => salones.find((s) => s.id === salonId);
+  const capacidadElegida = salonesSel.reduce(
+    (suma, s) => suma + (salonDe(s.salonId)?.capacidadMaxima ?? 0),
+    0,
+  );
 
-  // La línea del salón vuelve a su precio congelado si se vuelve al salón y la jornada originales;
-  // si no, toma el precio vigente. Después se puede ajustar a mano.
-  function cambiarSalonOJornada(nuevoSalonId: number | null, nuevaJornada: TipoJornada) {
-    setSalonId(nuevoSalonId);
+  // Un salón vuelve a su precio congelado si estaba en el presupuesto y la jornada es la
+  // original; si no, toma el vigente. Después se puede ajustar a mano (RN-03).
+  function precioInicial(salonId: number, conJornada: TipoJornada): string {
+    const congelado = preciosOriginales.get(salonId);
+    if (congelado && conJornada === consulta.tipoJornada && !recalculado) return congelado;
+    const salon = salonDe(salonId);
+    return salon ? precioDeSalon(salon, conJornada) : '0.00';
+  }
+
+  function alternarSalon(salonId: number) {
+    setSalonesSel((anteriores) =>
+      anteriores.some((s) => s.salonId === salonId)
+        ? anteriores.filter((s) => s.salonId !== salonId)
+        : [...anteriores, { salonId, precio: precioInicial(salonId, jornada) }],
+    );
+  }
+
+  // Cambiar la jornada cambia el precio de todos los salones a la vez.
+  function cambiarJornada(nuevaJornada: TipoJornada) {
     setJornada(nuevaJornada);
-    const original =
-      nuevoSalonId === consulta.salones[0]?.id && nuevaJornada === consulta.tipoJornada;
-    const nuevoSalon = salones.find((s) => s.id === nuevoSalonId);
-    if (original && lineaSalon && !recalculado) setPrecioSalon(lineaSalon.precioUnitario);
-    else if (nuevoSalon) setPrecioSalon(precioDeSalon(nuevoSalon, nuevaJornada));
+    setSalonesSel((anteriores) =>
+      anteriores.map((s) => ({ ...s, precio: precioInicial(s.salonId, nuevaJornada) })),
+    );
+  }
+
+  function cambiarPrecioSalon(salonId: number, precio: string) {
+    setSalonesSel((anteriores) =>
+      anteriores.map((s) => (s.salonId === salonId ? { ...s, precio } : s)),
+    );
   }
 
   // RN-06 / HU-12: un Expirado se recalcula con los precios vigentes del salón y de cada servicio
   // del catálogo. Los adicionales escritos a mano conservan su precio. Se guarda con «Guardar».
   function recalcularPrecios() {
-    if (salon) setPrecioSalon(precioDeSalon(salon, jornada));
+    setSalonesSel((anteriores) =>
+      anteriores.map((s) => {
+        const salon = salonDe(s.salonId);
+        return salon ? { ...s, precio: precioDeSalon(salon, jornada) } : s;
+      }),
+    );
     setLineas((anteriores) =>
       anteriores.map((linea) => {
         const servicio = catalogo.find((s) => s.id === linea.servicioId);
@@ -284,7 +329,7 @@ function Formulario({
   // Un corporativo necesita salón; un social, su tipo ("Otro" con su detalle).
   const tipoValido =
     tipo === 'Corporativo'
-      ? salonId !== null
+      ? salonesSel.length > 0
       : !!tipoSocial && (tipoSocial !== 'Otro' || !!detalleOtro.trim());
   const { distribucion, inicio, fin } = consulta.evento;
   // La franja del evento, solo si ya está agendado: la hora de un servicio tiene que caer adentro
@@ -300,22 +345,24 @@ function Formulario({
     !!fecha &&
     esEntero(personas) &&
     tipoValido &&
-    (salonId === null || esImporte(precioSalon)) &&
+    salonesSel.every((s) => esImporte(s.precio)) &&
     // Un evento confirmado ocupa un salón: no puede quedar «a definir».
-    (!confirmado || salonId !== null) &&
+    (!confirmado || salonesSel.length > 0) &&
     lineas.every(
       (l) => esEntero(l.cantidad) && precioValido(l) && horaValida(l) && l.descripcion.trim(),
     );
   // Sin salón ni líneas, el presupuesto sigue sin armar y no arranca la vigencia (ADR 0008).
-  const quedaSinArmar = salonId === null && lineas.length === 0;
+  const quedaSinArmar = salonesSel.length === 0 && lineas.length === 0;
   const cantidadACotizar = lineas.filter(aCotizar).length;
 
   // RN-05: los importes se cargan sin IVA y el resumen muestra el desglose.
   const importes = desglosarIva(
-    (salonId !== null && esImporte(precioSalon) ? Number(precioSalon) : 0) +
+    salonesSel.reduce((suma, s) => suma + (esImporte(s.precio) ? Number(s.precio) : 0), 0) +
       lineas.reduce((suma, l) => suma + subtotal(l.cantidad, l.precio), 0),
   );
-  const excedeCapacidad = !!salon && esEntero(personas) && Number(personas) > salon.capacidadMaxima;
+  // Es un dato, no un tope: la capacidad no bloquea (ADR 0011). Con varios salones cuenta la suma.
+  const excedeCapacidad =
+    salonesSel.length > 0 && esEntero(personas) && Number(personas) > capacidadElegida;
 
   // Se mandan los precios que se ven: lo que se guarda es exactamente lo que está en pantalla.
   function guardar(evento: React.FormEvent) {
@@ -325,8 +372,10 @@ function Formulario({
     modificar.mutate(
       {
         fecha,
-        salones:
-          salonId === null ? [] : [{ salonId, precioUnitario: Number(precioSalon).toFixed(2) }],
+        salones: salonesSel.map((s) => ({
+          salonId: s.salonId,
+          precioUnitario: aImporte(s.precio),
+        })),
         cantidadPersonas: Number(personas),
         tipoJornada: jornada,
         tipo,
@@ -460,27 +509,6 @@ function Formulario({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="consulta-salon">Salón</Label>
-              <select
-                id="consulta-salon"
-                className={claseSelect}
-                value={salonId ?? ''}
-                aria-invalid={tipo === 'Corporativo' && salonId === null}
-                onChange={(e) =>
-                  cambiarSalonOJornada(e.target.value ? Number(e.target.value) : null, jornada)
-                }
-              >
-                {(tipo === 'Social' || salonId === null) && !confirmado && (
-                  <option value="">A definir</option>
-                )}
-                {salones.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nombre} (hasta {s.capacidadMaxima})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
               <Label htmlFor="consulta-personas">Personas</Label>
               <Input
                 id="consulta-personas"
@@ -497,13 +525,47 @@ function Formulario({
                 id="consulta-jornada"
                 className={claseSelect}
                 value={jornada}
-                onChange={(e) => cambiarSalonOJornada(salonId, e.target.value as TipoJornada)}
+                onChange={(e) => cambiarJornada(e.target.value as TipoJornada)}
               >
                 <option value="completa">Jornada completa</option>
                 <option value="media">Media jornada (hasta 4 h)</option>
               </select>
             </div>
           </div>
+          {/* Un evento puede ocupar varios salones a la vez, incluso los cinco (ADR 0011). */}
+          <fieldset className="mt-4 space-y-2">
+            <legend className="text-sm font-medium">Salones</legend>
+            <div className="flex flex-wrap gap-2">
+              {salones.map((s) => {
+                const elegido = salonesSel.some((sel) => sel.salonId === s.id);
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    aria-pressed={elegido}
+                    onClick={() => alternarSalon(s.id)}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
+                      elegido
+                        ? 'border-bordo bg-bordo text-crema'
+                        : 'border-input hover:border-bordo/60',
+                    )}
+                  >
+                    {elegido && <Check className="size-3.5" />}
+                    {s.nombre}
+                    <span className={elegido ? 'text-crema/75' : 'text-muted-foreground'}>
+                      · hasta {s.capacidadMaxima}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {salonesSel.length > 1 && (
+              <p className="text-xs text-muted-foreground">
+                {salonesSel.length} salones · capacidad sumada {capacidadElegida} personas
+              </p>
+            )}
+          </fieldset>
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
               <Label htmlFor="consulta-tipo">Tipo de evento</Label>
@@ -560,15 +622,17 @@ function Formulario({
               />
             </div>
           </div>
-          {tipo === 'Corporativo' && salonId === null && (
+          {tipo === 'Corporativo' && salonesSel.length === 0 && (
             <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-destructive">
-              <AlertTriangle className="size-3.5" /> Un evento corporativo necesita salón.
+              <AlertTriangle className="size-3.5" /> Un evento corporativo necesita al menos un
+              salón.
             </p>
           )}
           {excedeCapacidad && (
             <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-amber-900">
-              <AlertTriangle className="size-3.5" /> {personas} personas superan la capacidad del
-              salón {salon.nombre} ({salon.capacidadMaxima}).
+              <AlertTriangle className="size-3.5" /> {personas} personas superan la capacidad{' '}
+              {salonesSel.length > 1 ? 'sumada de los salones' : 'del salón'} ({capacidadElegida}).
+              Es un aviso: se puede guardar igual.
             </p>
           )}
           <p className="mt-4 text-sm">
@@ -638,29 +702,33 @@ function Formulario({
                     </td>
                   </tr>
                 )}
-                {salonId !== null && (
-                  <tr>
-                    <td className="py-2 pr-3">
-                      Salón {salon?.nombre} (
-                      {jornada === 'completa' ? 'jornada completa' : 'media jornada'})
-                    </td>
-                    <td className="py-2 pr-3 text-muted-foreground">1</td>
-                    <td className="py-2 pr-3 text-muted-foreground">—</td>
-                    <td className="py-2 pr-3">
-                      <Input
-                        aria-label="Precio del salón"
-                        inputMode="decimal"
-                        value={precioSalon}
-                        aria-invalid={!esImporte(precioSalon)}
-                        onChange={(e) => setPrecioSalon(e.target.value)}
-                      />
-                    </td>
-                    <td className="py-2 text-right whitespace-nowrap">
-                      {esImporte(precioSalon) ? formatearPesos(precioSalon) : '—'}
-                    </td>
-                    <td />
-                  </tr>
-                )}
+                {/* Una línea por salón, cada una con su precio ajustable (RN-03). */}
+                {salonesSel.map((sel) => {
+                  const nombre = salonDe(sel.salonId)?.nombre ?? '';
+                  return (
+                    <tr key={`salon-${sel.salonId}`}>
+                      <td className="py-2 pr-3">
+                        Salón {nombre} (
+                        {jornada === 'completa' ? 'jornada completa' : 'media jornada'})
+                      </td>
+                      <td className="py-2 pr-3 text-muted-foreground">1</td>
+                      <td className="py-2 pr-3 text-muted-foreground">—</td>
+                      <td className="py-2 pr-3">
+                        <Input
+                          aria-label={`Precio del salón ${nombre}`}
+                          inputMode="decimal"
+                          value={sel.precio}
+                          aria-invalid={!esImporte(sel.precio)}
+                          onChange={(e) => cambiarPrecioSalon(sel.salonId, e.target.value)}
+                        />
+                      </td>
+                      <td className="py-2 text-right whitespace-nowrap">
+                        {esImporte(sel.precio) ? formatearPesos(sel.precio) : '—'}
+                      </td>
+                      <td />
+                    </tr>
+                  );
+                })}
                 {lineas.map((linea) => (
                   <tr key={linea.clave}>
                     <td className="py-2 pr-3">

@@ -17,7 +17,7 @@ import { ESTADOS } from './estado-evento';
 // evento un día antes en Argentina: por eso pasa por fechaLocal().
 function comoEventoDelCalendario(evento: EventoAgenda): EventInput {
   const { color } = ESTADOS[evento.estado];
-  const salon = `Salón ${nombresDeSalones(evento.salones, 'a definir')}`;
+  const salon = `${evento.salones.length > 1 ? 'Salones' : 'Salón'} ${nombresDeSalones(evento.salones, 'a definir')}`;
   return {
     id: String(evento.id),
     title: salon,

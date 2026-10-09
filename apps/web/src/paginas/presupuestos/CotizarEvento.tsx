@@ -47,7 +47,7 @@ interface ContactoCliente {
 // Evento corporativo: el presupuesto estimado que devolvió la API.
 export interface PresupuestoGenerado {
   presupuesto: PresupuestoDetallado;
-  salon: SalonConDistribuciones;
+  salones: SalonConDistribuciones[];
   tipoJornada: TipoJornada;
   cliente: ContactoCliente;
 }
@@ -154,7 +154,9 @@ export function CotizarEvento({
   );
   const [tipoSocial, setTipoSocial] = useState<TipoEventoSocial | undefined>();
   const [detalleOtro, setDetalleOtro] = useState('');
-  const [salonId, setSalonId] = useState<number | undefined>(salonInicialId);
+  // Un evento puede ocupar varios salones a la vez, hasta los cinco (ADR 0011). El orden es el de
+  // la elección: es el orden de las líneas del presupuesto.
+  const [salonIds, setSalonIds] = useState<number[]>(salonInicialId ? [salonInicialId] : []);
   // null = "para todas las personas del evento": sigue a la cantidad total si el cliente la cambia.
   // Un número es una cantidad parcial elegida a mano (RN-04).
   const [elegidos, setElegidos] = useState<Map<number, number | null>>(new Map());
@@ -167,7 +169,17 @@ export function CotizarEvento({
   const cantidadPersonas = Number(personas) || 0;
   // El cliente solo ve los salones publicados (HU-08), igual que en la landing.
   const salonesVisibles = (salones.data ?? []).filter((s) => s.visibleEnLanding);
-  const salonElegido = salonesVisibles.find((s) => s.id === salonId);
+  const salonesElegidos = salonIds
+    .map((id) => salonesVisibles.find((s) => s.id === id))
+    .filter((s): s is SalonConDistribuciones => s !== undefined);
+  // Capacidad sumada de lo elegido: la gente se reparte entre los salones (ADR 0011).
+  const capacidadElegida = salonesElegidos.reduce((suma, s) => suma + s.capacidadMaxima, 0);
+
+  function alternarSalon(id: number) {
+    setSalonIds((anteriores) =>
+      anteriores.includes(id) ? anteriores.filter((otro) => otro !== id) : [...anteriores, id],
+    );
+  }
   const entran = salonesVisibles.filter((s) => s.capacidadMaxima >= cantidadPersonas);
   // Sugerencia: el salón más chico en el que entran todos.
   const recomendado =
@@ -186,17 +198,13 @@ export function CotizarEvento({
   }
 
   const lineas = [
-    ...(salonElegido
-      ? [
-          {
-            clave: 'salon',
-            descripcion: `Salón ${salonElegido.nombre}`,
-            detalle: jornada === 'completa' ? 'Jornada completa' : 'Media jornada',
-            subtotal: precioSalon(salonElegido, jornada),
-            aCotizar: false,
-          },
-        ]
-      : []),
+    ...salonesElegidos.map((salon) => ({
+      clave: `salon-${salon.id}`,
+      descripcion: `Salón ${salon.nombre}`,
+      detalle: jornada === 'completa' ? 'Jornada completa' : 'Media jornada',
+      subtotal: precioSalon(salon, jornada),
+      aCotizar: false,
+    })),
     ...catalogo
       .filter((s) => elegidos.has(s.id))
       .map((s) => {
@@ -308,7 +316,7 @@ export function CotizarEvento({
     validarEvento(nuevosErrores);
     // La capacidad no bloquea: un evento se puede repartir de muchas formas y el salón chico
     // puede ser el correcto igual. La ficha de cada salón avisa, pero deja elegir.
-    if (!salonElegido) nuevosErrores['salon'] = 'Elegí un salón';
+    if (salonesElegidos.length === 0) nuevosErrores['salon'] = 'Elegí al menos un salón';
     for (const [id, cantidad] of elegidos) {
       if (cantidad !== null && (cantidad < 1 || cantidad > cantidadPersonas)) {
         nuevosErrores['servicios'] =
@@ -316,7 +324,7 @@ export function CotizarEvento({
         nuevosErrores[`servicio-${id}`] = 'Cantidad inválida';
       }
     }
-    if (mostrarErrores(nuevosErrores) || !salonElegido || !perfil.data) return;
+    if (mostrarErrores(nuevosErrores) || salonesElegidos.length === 0 || !perfil.data) return;
 
     // La solicitud y el presupuesto guardan el nombre completo, como lo cargaba el formulario.
     const cliente = { ...perfil.data, nombre: nombreCompleto(perfil.data) };
@@ -325,7 +333,7 @@ export function CotizarEvento({
         nombre: cliente.nombre,
         telefono: cliente.telefono,
         correo: cliente.correo,
-        salonIds: [salonElegido.id],
+        salonIds: salonesElegidos.map((s) => s.id),
         fecha,
         cantidadPersonas,
         tipoJornada: jornada,
@@ -343,7 +351,7 @@ export function CotizarEvento({
           onGenerado({
             tipo: 'Corporativo',
             presupuesto,
-            salon: salonElegido,
+            salones: salonesElegidos,
             tipoJornada: jornada,
             cliente,
           }),
@@ -557,16 +565,16 @@ export function CotizarEvento({
           {tipo === 'Corporativo' && (
             <Paso
               numero={3}
-              titulo="Elegí el salón"
-              bajada="Precios por evento, sin IVA, según la jornada elegida."
+              titulo="Elegí los salones"
+              bajada="Uno o varios, hasta los cinco: la gente se puede repartir entre salones. Precios por evento, sin IVA, según la jornada elegida."
             >
               {salones.isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
               {cantidadPersonas > 0 && entran.length === 0 && masGrande && (
                 <p className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
                   <AlertTriangle className="mt-0.5 size-4 shrink-0" />
                   Ningún salón cubre {cantidadPersonas} personas por sí solo: el más grande es{' '}
-                  {masGrande.nombre}, hasta {masGrande.capacidadMaxima}. Elegí el que prefieras y lo
-                  resolvemos con vos.
+                  {masGrande.nombre}, hasta {masGrande.capacidadMaxima}. Podés combinar varios, o
+                  elegir el que prefieras y lo resolvemos con vos.
                 </p>
               )}
               {errores['salon'] && (
@@ -575,12 +583,13 @@ export function CotizarEvento({
               <div className="grid gap-3">
                 {salonesVisibles.map((salon) => {
                   const superaCapacidad = cantidadPersonas > salon.capacidadMaxima;
-                  const elegido = salon.id === salonId;
+                  const elegido = salonIds.includes(salon.id);
                   return (
                     <button
                       key={salon.id}
                       type="button"
-                      onClick={() => setSalonId(salon.id)}
+                      aria-pressed={elegido}
+                      onClick={() => alternarSalon(salon.id)}
                       className={cn(
                         'flex items-center gap-4 overflow-hidden rounded-xl border-2 p-2 pr-4 text-left transition-all',
                         elegido
@@ -610,7 +619,7 @@ export function CotizarEvento({
                           Hasta {salon.capacidadMaxima} personas · {salon.superficie} m² ·{' '}
                           {salon.distribuciones.map((d) => d.nombre).join(', ')}
                         </p>
-                        {superaCapacidad && (
+                        {superaCapacidad && salonIds.length <= 1 && (
                           <p className="text-xs text-amber-700">
                             {cantidadPersonas} personas superan su capacidad. Se puede elegir igual:
                             lo vemos con vos.
@@ -625,7 +634,7 @@ export function CotizarEvento({
                       </div>
                       <span
                         className={cn(
-                          'flex size-5 shrink-0 items-center justify-center rounded-full border-2',
+                          'flex size-5 shrink-0 items-center justify-center rounded-md border-2',
                           elegido ? 'border-bordo bg-bordo text-crema' : 'border-input',
                         )}
                       >
@@ -635,6 +644,20 @@ export function CotizarEvento({
                   );
                 })}
               </div>
+              {/* Con varios salones lo que importa es la suma: la gente se reparte entre ellos.
+                  Es un dato, no un tope: la capacidad no bloquea la elección. */}
+              {salonesElegidos.length > 1 && (
+                <p className="mt-4 text-sm text-muted-foreground">
+                  {salonesElegidos.length} salones elegidos · capacidad sumada{' '}
+                  <span className="font-medium text-foreground">{capacidadElegida} personas</span>
+                  {cantidadPersonas > capacidadElegida && (
+                    <span className="text-amber-700">
+                      {' '}
+                      · {cantidadPersonas} personas la superan, lo vemos con vos
+                    </span>
+                  )}
+                </p>
+              )}
             </Paso>
           )}
 
