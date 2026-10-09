@@ -134,6 +134,20 @@ queda para una iteración futura. Decisión del equipo, 04/10/2026.
 **Correo de la cuenta.** Se guarda en minúsculas y sin espacios: `Juan@Mail.com` y
 `juan@mail.com` son la misma cuenta.
 
+**Etiqueta del cliente.** Muchas empresas contratan eventos, pero la cuenta la crea un empleado con
+su correo y su celular, así que el evento queda a nombre de esa persona. Para saber para qué empresa
+es, el personal le puede poner al cliente una **etiqueta** (por ejemplo, "Empresa1"):
+- Las etiquetas forman una **lista reutilizable**: varios clientes comparten la misma. El nombre es
+  único **sin distinguir mayúsculas** ("empresa1" y "Empresa1" son la misma).
+- Cada cliente tiene **como máximo una**, y es opcional.
+- Se asigna desde el listado de clientes: se elige una existente o, si no está, **se crea al
+  asignarla**. Renombrar y borrar etiquetas no está implementado.
+- Se muestra junto al nombre del cliente en Consultas, la agenda, el calendario y el detalle del
+  evento, y el filtro de cliente de Consultas también busca por ella.
+- **Solo la ve el personal**: el cliente nunca la ve, ni en su perfil ni en el canal público.
+
+Pedido del 09/10/2026; todavía sin HU en Jira.
+
 **Olvidé mi contraseña.** El cliente y el personal pueden pedir un enlace por correo para elegir
 una contraseña nueva. El enlace vence a los 30 minutos y sirve una sola vez. La respuesta es la
 misma exista o no una cuenta con ese correo, para no revelar qué correos están registrados. Al
