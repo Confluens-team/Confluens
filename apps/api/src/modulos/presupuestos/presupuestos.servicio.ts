@@ -344,6 +344,7 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       apellido: evento.cliente.apellido,
       correo: evento.cliente.correo,
       telefono: evento.cliente.telefono,
+      etiqueta: evento.cliente.etiqueta,
     },
     salon: evento.salon
       ? {

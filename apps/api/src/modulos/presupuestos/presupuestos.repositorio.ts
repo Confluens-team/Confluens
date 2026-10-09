@@ -128,7 +128,8 @@ export async function crearEnTransaccion<T>(
 
 // HU-10: listado de consultas del personal, del más reciente al más antiguo por emisión (el id
 // desempata los emitidos en el mismo instante). Los Confirmado no se listan: pasan a la agenda. Cada palabra de `cliente` tiene que aparecer en el nombre, el
-// apellido o el correo, así "Marina Gómez" encuentra a quien tiene nombre y apellido separados.
+// apellido, el correo o la etiqueta, así "Marina Gómez" encuentra a quien tiene nombre y apellido
+// separados y "empresa1" a todos los clientes con esa etiqueta.
 export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
   const { estado, cliente, desde, hasta } = filtros;
   const palabras = cliente?.split(/\s+/) ?? [];
@@ -147,6 +148,7 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
               { nombre: { contains: palabra, mode: 'insensitive' as const } },
               { apellido: { contains: palabra, mode: 'insensitive' as const } },
               { correo: { contains: palabra, mode: 'insensitive' as const } },
+              { etiqueta: { nombre: { contains: palabra, mode: 'insensitive' as const } } },
             ],
           })),
         },
@@ -166,7 +168,15 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
           tipoSocial: true,
           tipoSocialDetalle: true,
           salon: { select: { id: true, nombre: true } },
-          cliente: { select: { id: true, nombre: true, apellido: true, correo: true } },
+          cliente: {
+            select: {
+              id: true,
+              nombre: true,
+              apellido: true,
+              correo: true,
+              etiqueta: { select: { id: true, nombre: true } },
+            },
+          },
         },
       },
     },
@@ -185,7 +195,7 @@ export async function buscarPresupuestoDetallado(
     include: {
       evento: {
         include: {
-          cliente: true,
+          cliente: { include: { etiqueta: { select: { id: true, nombre: true } } } },
           salon: true,
           distribucion: true,
         },
