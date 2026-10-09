@@ -120,14 +120,16 @@ export function SalonesPublicos({ onConsultar }: { onConsultar: (salon: SalonPub
                 </div>
               )}
 
-              {/* Criterio 3: desde la ficha se avanza a la consulta con el salón preseleccionado. */}
+              {/* Criterio 3: desde la ficha se avanza a la consulta con el salón preseleccionado.
+                  AC3 de la auditoría de accesibilidad: el contorno al 30 % daba 1.8:1 contra la
+                  tarjeta y el botón se perdía entre el texto. Pasa a bordó macizo (12:1 con el
+                  crema), de ancho completo y 48 px de alto, el mínimo de WCAG 2.5.5. */}
               <Button
-                variant="outline"
                 size="lg"
-                className="mt-auto border-bordo/30 text-bordo hover:bg-bordo hover:text-crema"
+                className="mt-auto h-auto min-h-12 w-full gap-2.5 bg-bordo px-5 py-3 text-base font-semibold whitespace-normal text-crema shadow-md hover:bg-bordo-oscuro"
                 onClick={() => onConsultar(salon)}
               >
-                Cotizar en este salón <ArrowRight />
+                Cotizar en este salón <ArrowRight className="size-5" />
               </Button>
             </div>
           </article>
