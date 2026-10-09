@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useGuardarObservacionesComanda } from '@/hooks/use-eventos';
 import { useConsulta } from '@/hooks/use-presupuestos';
 import { fechaLocal, formatearFecha, nombreCompleto } from '@/lib/formato';
+import { cn } from '@/lib/utils';
 
 // Comanda de cocina de un evento ya confirmado: la hoja que se imprime y se cuelga en la cocina.
 // Lleva fecha, salón, horario, cantidad de personas y los servicios de gastronomía ordenados por
@@ -39,13 +40,68 @@ function porHora(lineas: ConsultaDetallada['lineas']) {
   });
 }
 
-function Dato({ rotulo, valor }: { rotulo: string; valor: string }) {
+/**
+ * La comanda se aprieta sola para entrar en una hoja. Medido sobre una A4 con los 14 mm de margen
+ * de index.css: quedan 1017 px de alto útil y cada renglón mide 53 px holgado, 45 medio y 33
+ * compacto. Cada escalón achica también la fecha, la banda de datos y el recuadro de
+ * observaciones, no solo la tabla, que es de donde sale el lugar para los renglones de más.
+ *
+ * No se mide el alto en vivo a propósito: el navegador pagina recién al imprimir, así que medir
+ * en pantalla para adivinar el papel sale caro y falla igual. Tres escalones fijos por cantidad
+ * de renglones son predecibles y se ven iguales en pantalla y en papel.
+ *
+ * Pasados los 16 servicios la hoja se parte, que es lo correcto: achicar más la dejaría
+ * ilegible, y el encabezado de la tabla se repite solo en la hoja siguiente.
+ */
+const DENSIDADES = {
+  holgada: {
+    fecha: 'text-3xl',
+    banda: 'mt-6 gap-5 py-5',
+    dato: 'text-xl',
+    hora: 'py-3 text-xl',
+    descripcion: 'py-3 text-lg',
+    cantidad: 'py-3 text-xl',
+    observaciones: 'min-h-28',
+  },
+  media: {
+    fecha: 'text-2xl',
+    banda: 'mt-4 gap-4 py-4',
+    dato: 'text-lg',
+    hora: 'py-2 text-lg',
+    descripcion: 'py-2 text-base',
+    cantidad: 'py-2 text-lg',
+    observaciones: 'min-h-20',
+  },
+  compacta: {
+    fecha: 'text-xl',
+    banda: 'mt-3 gap-3 py-3',
+    dato: 'text-base',
+    hora: 'py-1 text-base',
+    descripcion: 'py-1 text-sm',
+    cantidad: 'py-1 text-base',
+    observaciones: 'min-h-14',
+  },
+} as const;
+
+type Densidad = (typeof DENSIDADES)[keyof typeof DENSIDADES];
+
+// Los cortes salen de medir la hoja renderizada, no de estimarla: con 6 renglones holgados mide
+// 929 px, con 9 medios 964 y con 16 compactos 1017, contra los 1017 px de alto útil de la A4. Se
+// deja margen en cada escalón porque al imprimir la hoja es un poco más angosta que en pantalla y
+// alguna descripción larga puede pasar a dos renglones.
+function densidadPara(renglones: number): Densidad {
+  if (renglones <= 6) return DENSIDADES.holgada;
+  if (renglones <= 9) return DENSIDADES.media;
+  return DENSIDADES.compacta;
+}
+
+function Dato({ rotulo, valor, densidad }: { rotulo: string; valor: string; densidad: Densidad }) {
   return (
     <div>
       <p className="text-[0.6rem] font-semibold tracking-[0.2em] text-muted-foreground uppercase">
         {rotulo}
       </p>
-      <p className="mt-1 text-xl font-semibold text-bordo print:text-black">{valor}</p>
+      <p className={cn('mt-1 font-semibold text-bordo print:text-black', densidad.dato)}>{valor}</p>
     </div>
   );
 }
@@ -53,9 +109,16 @@ function Dato({ rotulo, valor }: { rotulo: string; valor: string }) {
 // Las tres columnas de la comanda, iguales para la gastronomía y para los ítems escritos a mano:
 // cuándo, qué y para cuántos. Los números van en versales grandes y alineados a la derecha para
 // poder leerlos de lejos; la hora, a la izquierda, porque es por donde se recorre la hoja.
-function TablaServicios({ lineas }: { lineas: ConsultaDetallada['lineas'] }) {
+function TablaServicios({
+  lineas,
+  densidad,
+}: {
+  lineas: ConsultaDetallada['lineas'];
+  densidad: Densidad;
+}) {
   return (
     <table className="mt-3 w-full border-collapse text-left">
+      {/* Si la hoja se parte, el navegador repite solo el thead en la siguiente. */}
       <thead>
         <tr className="border-b border-bordo/40 text-[0.6rem] tracking-[0.2em] text-muted-foreground uppercase print:border-black/50">
           <th className="w-28 pb-1.5 font-semibold">Horario</th>
@@ -65,13 +128,18 @@ function TablaServicios({ lineas }: { lineas: ConsultaDetallada['lineas'] }) {
       </thead>
       <tbody>
         {lineas.map((linea) => (
-          <tr key={linea.id} className="border-b border-border/70 print:border-black/20">
-            <td className="py-3 pr-3 font-serif text-xl font-semibold tabular-nums">
+          <tr
+            key={linea.id}
+            className="border-b border-border/70 break-inside-avoid print:border-black/20"
+          >
+            <td className={cn('pr-3 font-serif font-semibold tabular-nums', densidad.hora)}>
               {/* Sin hora pedida: el guion deja la columna pareja y se nota que falta definirla. */}
               {linea.horaEstimada ?? '—'}
             </td>
-            <td className="py-3 pr-3 text-lg">{linea.descripcion}</td>
-            <td className="py-3 text-right font-serif text-xl font-semibold tabular-nums">
+            <td className={cn('pr-3', densidad.descripcion)}>{linea.descripcion}</td>
+            <td
+              className={cn('text-right font-serif font-semibold tabular-nums', densidad.cantidad)}
+            >
               {linea.cantidad}
             </td>
           </tr>
@@ -94,6 +162,8 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
   const aMano = consulta.lineas.filter((l) => l.tipo === 'adicional');
   const horario =
     evento.inicio && evento.fin ? `${hora(evento.inicio)} a ${hora(evento.fin)}` : 'A confirmar';
+  // Cuenta los dos bloques: los dos ocupan renglones en la misma hoja.
+  const densidad = densidadPara(gastronomia.length + aMano.length);
 
   return (
     <article className="mx-auto max-w-3xl rounded-xl bg-card p-8 ring-1 ring-border print:max-w-none print:rounded-none print:p-0 print:ring-0">
@@ -107,15 +177,29 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
         <p className="font-serif text-lg tabular-nums">N° {String(consulta.id).padStart(6, '0')}</p>
       </header>
 
-      <p className="mt-6 font-serif text-3xl font-semibold text-bordo uppercase print:text-black">
+      <p
+        className={cn(
+          'mt-6 font-serif font-semibold text-bordo uppercase print:text-black',
+          densidad.fecha,
+        )}
+      >
         {formatearFecha(fechaLocal(evento.fecha), true)}
       </p>
 
-      <div className="mt-6 grid grid-cols-2 gap-5 border-y border-border py-5 sm:grid-cols-4 print:border-black/30">
-        <Dato rotulo="Salón" valor={consulta.salon?.nombre ?? 'A definir'} />
-        <Dato rotulo="Armado" valor={evento.distribucion?.nombre ?? 'A definir'} />
-        <Dato rotulo="Horario" valor={horario} />
-        <Dato rotulo="Personas" valor={String(evento.cantidadPersonas)} />
+      <div
+        className={cn(
+          'grid grid-cols-2 border-y border-border sm:grid-cols-4 print:border-black/30',
+          densidad.banda,
+        )}
+      >
+        <Dato rotulo="Salón" valor={consulta.salon?.nombre ?? 'A definir'} densidad={densidad} />
+        <Dato
+          rotulo="Armado"
+          valor={evento.distribucion?.nombre ?? 'A definir'}
+          densidad={densidad}
+        />
+        <Dato rotulo="Horario" valor={horario} densidad={densidad} />
+        <Dato rotulo="Personas" valor={String(evento.cantidadPersonas)} densidad={densidad} />
       </div>
 
       <p className="mt-4 text-sm">
@@ -132,7 +216,7 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
             Este evento no tiene servicios de gastronomía cargados.
           </p>
         ) : (
-          <TablaServicios lineas={gastronomia} />
+          <TablaServicios lineas={gastronomia} densidad={densidad} />
         )}
       </section>
 
@@ -141,7 +225,7 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
           <h3 className="text-[0.65rem] font-semibold tracking-[0.2em] text-muted-foreground uppercase">
             Otros ítems cargados a mano
           </h3>
-          <TablaServicios lineas={aMano} />
+          <TablaServicios lineas={aMano} densidad={densidad} />
         </section>
       )}
 
@@ -181,9 +265,14 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
           value={observaciones}
           onChange={(e) => setObservaciones(e.target.value)}
           placeholder="Menús especiales, alergias, contacto en el salón, lo que haga falta…"
-          className="mt-2 min-h-28 border-dashed print:hidden"
+          className={cn('mt-2 border-dashed print:hidden', densidad.observaciones)}
         />
-        <div className="mt-2 hidden min-h-28 rounded-md border border-dashed border-black/40 px-3 py-2 whitespace-pre-wrap print:block">
+        <div
+          className={cn(
+            'mt-2 hidden rounded-md border border-dashed border-black/40 px-3 py-2 whitespace-pre-wrap print:block',
+            densidad.observaciones,
+          )}
+        >
           {observaciones}
         </div>
       </section>
