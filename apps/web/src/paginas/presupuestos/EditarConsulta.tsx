@@ -280,6 +280,16 @@ function Formulario({
     tipo === 'Corporativo'
       ? salonId !== null
       : !!tipoSocial && (tipoSocial !== 'Otro' || !!detalleOtro.trim());
+  const { distribucion, inicio, fin } = consulta.evento;
+  // La franja del evento, solo si ya está agendado: la hora de un servicio tiene que caer adentro
+  // y la API la rechaza con 422 si no. Mientras la consulta no se agenda no hay con qué limitar
+  // (ADR 0007: el horario real se carga después), así que se acepta cualquier hora. Un evento que
+  // cruza la medianoche se deja pasar, igual que en la API: el rango daría vuelta.
+  const franja =
+    inicio && fin && hora(inicio) < hora(fin) ? { desde: hora(inicio), hasta: hora(fin) } : null;
+  // Las horas son "HH:mm" con cero adelante, así que alcanza con compararlas como texto.
+  const horaValida = (linea: LineaEditable) =>
+    !linea.hora || !franja || (linea.hora >= franja.desde && linea.hora <= franja.hasta);
   const valido =
     !!fecha &&
     esEntero(personas) &&
@@ -287,11 +297,12 @@ function Formulario({
     (salonId === null || esImporte(precioSalon)) &&
     // Un evento confirmado ocupa un salón: no puede quedar «a definir».
     (!confirmado || salonId !== null) &&
-    lineas.every((l) => esEntero(l.cantidad) && precioValido(l) && l.descripcion.trim());
+    lineas.every(
+      (l) => esEntero(l.cantidad) && precioValido(l) && horaValida(l) && l.descripcion.trim(),
+    );
   // Sin salón ni líneas, el presupuesto sigue sin armar y no arranca la vigencia (ADR 0008).
   const quedaSinArmar = salonId === null && lineas.length === 0;
   const cantidadACotizar = lineas.filter(aCotizar).length;
-  const { distribucion, inicio, fin } = consulta.evento;
 
   // RN-05: los importes se cargan sin IVA y el resumen muestra el desglose.
   const importes = desglosarIva(
@@ -587,8 +598,15 @@ function Formulario({
                   <th className="pb-2 font-medium">Concepto</th>
                   <th className="w-24 pb-2 font-medium">Cantidad</th>
                   {/* Opcional: a qué hora del evento se espera cada servicio. El salón no lleva,
-                      su horario es el del evento. */}
-                  <th className="w-28 pb-2 font-medium">Hora</th>
+                      su horario es el del evento. Agendado el evento, se limita a su franja. */}
+                  <th className="w-28 pb-2 font-medium">
+                    Hora
+                    {franja && (
+                      <span className="block font-normal">
+                        {franja.desde} a {franja.hasta}
+                      </span>
+                    )}
+                  </th>
                   <th className="w-36 pb-2 font-medium">Precio unitario</th>
                   <th className="w-32 pb-2 text-right font-medium">Subtotal</th>
                   <th className="w-10 pb-2" />
@@ -663,6 +681,11 @@ function Formulario({
                         aria-label={`Hora de ${linea.descripcion} (opcional)`}
                         type="time"
                         value={linea.hora}
+                        // min y max no impiden tipear una hora de más: marcan el campo y lo
+                        // bloquea horaValida, que es lo que deshabilita «Guardar».
+                        min={franja?.desde}
+                        max={franja?.hasta}
+                        aria-invalid={!horaValida(linea)}
                         onChange={(e) => actualizarLinea(linea.clave, { hora: e.target.value })}
                       />
                     </td>
@@ -705,6 +728,22 @@ function Formulario({
               </tbody>
             </table>
           </div>
+
+          {/* Pasa cuando se reprograma el evento y alguna hora queda afuera de la franja nueva.
+              Sin esto el aviso llegaría recién al guardar, con el 422 de la API. */}
+          {franja && lineas.some((l) => !horaValida(l)) && (
+            <p className="mt-3 flex items-start gap-1.5 text-xs font-medium text-destructive">
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              <span>
+                {lineas
+                  .filter((l) => !horaValida(l))
+                  .map((l) => l.descripcion.trim() || 'Un servicio')
+                  .join(', ')}{' '}
+                {lineas.filter((l) => !horaValida(l)).length === 1 ? 'queda' : 'quedan'} fuera del
+                horario del evento, que va de {franja.desde} a {franja.hasta}.
+              </span>
+            </p>
+          )}
 
           <div className="mt-4 space-y-3 rounded-lg bg-muted/50 p-3">
             <div className="flex flex-wrap items-end gap-2">
