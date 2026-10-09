@@ -4,6 +4,7 @@ import { Popover } from 'radix-ui';
 import { type ReactNode, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { useAgenda } from '@/hooks/use-eventos';
 import { useSalones } from '@/hooks/use-salones';
@@ -120,7 +121,10 @@ function ListaDeEventos({
                       <p className="truncate text-sm text-muted-foreground">
                         {nombreCompleto(evento.cliente)}
                       </p>
-                      <BadgeTipoEvento evento={evento} className="mt-1" />
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        <BadgeTipoEvento evento={evento} />
+                        <EtiquetaCliente etiqueta={evento.cliente.etiqueta} />
+                      </div>
                       <p className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
                         {desde && hasta && (
                           <span className="inline-flex items-center gap-1">
