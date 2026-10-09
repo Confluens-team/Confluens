@@ -15,6 +15,7 @@ import {
   CalendarCheck,
   ClipboardList,
   Plus,
+  Printer,
   RefreshCw,
   Trash2,
   X,
@@ -98,6 +99,7 @@ export function EditarConsulta({
   onGuardada,
   onDadaDeBaja,
   onAbrirEvento,
+  onImprimirComanda,
   textoVolver = 'Volver a las consultas',
 }: {
   id: number;
@@ -105,6 +107,9 @@ export function EditarConsulta({
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onAbrirEvento: (eventoId: number) => void;
+  // Comanda de cocina del evento confirmado. Sin esto el botón no aparece: desde Consultas no se
+  // llega a un presupuesto Confirmado, solo desde la agenda.
+  onImprimirComanda?: (presupuestoId: number) => void;
   // Se abre desde Consultas o desde un evento de la agenda (HU-15).
   textoVolver?: string;
 }) {
@@ -133,6 +138,7 @@ export function EditarConsulta({
           onGuardada={onGuardada}
           onDadaDeBaja={onDadaDeBaja}
           onAbrirEvento={onAbrirEvento}
+          onImprimirComanda={onImprimirComanda}
         />
       )}
     </div>
@@ -146,6 +152,7 @@ function Formulario({
   onGuardada,
   onDadaDeBaja,
   onAbrirEvento,
+  onImprimirComanda,
 }: {
   consulta: ConsultaDetallada;
   salones: SalonConDistribuciones[];
@@ -153,6 +160,7 @@ function Formulario({
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onAbrirEvento: (eventoId: number) => void;
+  onImprimirComanda?: (presupuestoId: number) => void;
 }) {
   const modificar = useModificarConsulta(consulta.id);
   const darDeBaja = useDarDeBajaConsulta(consulta.id);
@@ -401,10 +409,22 @@ function Formulario({
         </div>
       )}
       {confirmado && (
-        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
-          Evento confirmado: podés modificar todo y sigue confirmado. Si cambia el total, cambia el
-          saldo a cobrar; si cambiás la fecha, el horario se corre al mismo día.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
+          <p>
+            Evento confirmado: podés modificar todo y sigue confirmado. Si cambia el total, cambia
+            el saldo a cobrar; si cambiás la fecha, el horario se corre al mismo día.
+          </p>
+          {onImprimirComanda && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => onImprimirComanda(consulta.id)}
+            >
+              <Printer /> Comanda de cocina
+            </Button>
+          )}
+        </div>
       )}
       {!editable && (
         <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">

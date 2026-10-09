@@ -171,7 +171,7 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
 
   return (
     <div className="fondo-papel min-h-screen text-foreground">
-      <header className="sticky top-0 z-40 border-b border-border/70 bg-papel/90 backdrop-blur">
+      <header className="sticky top-0 z-40 border-b border-border/70 bg-papel/90 backdrop-blur print:hidden">
         <div className="mx-auto flex h-16 max-w-[90rem] items-center justify-between gap-4 px-4 sm:px-6">
           <Logo compacto />
           <div className="flex items-center gap-2 text-sm">
@@ -215,8 +215,8 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
           necesita cerca de 1100px para entrar sin scroll horizontal, que es justo lo que dejaban
           libre los 72rem de antes. El encabezado y las pestañas usan el mismo ancho para que el
           borde inferior de la pestaña activa siga alineado con el contenido. */}
-      <main className="mx-auto max-w-[90rem] px-4 py-8 sm:px-6">
-        <div className="mb-6">
+      <main className="mx-auto max-w-[90rem] px-4 py-8 sm:px-6 print:max-w-none print:p-0">
+        <div className="mb-6 print:hidden">
           <h1 className="text-2xl font-semibold text-bordo">{activa.texto}</h1>
           <p className="text-sm text-muted-foreground">{activa.bajada}</p>
         </div>

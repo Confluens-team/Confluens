@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { CalendarioEventos } from './CalendarioEventos';
 import { EditarConsulta } from '@/paginas/presupuestos/EditarConsulta';
 
+import { ComandaEvento } from './ComandaEvento';
 import { DetalleEvento } from './DetalleEvento';
 import { ESTADOS, ESTADOS_DEL_FILTRO } from './estado-evento';
 import { TarjetaResumenEvento } from './TarjetaResumenEvento';
@@ -191,6 +192,9 @@ export function Agenda() {
   const [posicion, setPosicion] = useState({ fecha: hoyISO(), vista: 'dayGridMonth' });
   // HU-15 → HU-11: desde el evento se abre el detalle de su presupuesto.
   const [presupuestoAbierto, setPresupuestoAbierto] = useState<number | null>(null);
+  // Comanda de cocina del evento confirmado, para imprimir. Tiene prioridad sobre las otras dos
+  // vistas: se abre tanto desde el detalle del evento como desde el del presupuesto.
+  const [comandaAbierta, setComandaAbierta] = useState<number | null>(null);
 
   const salones = useSalones();
   const enCalendario = vista === 'calendario';
@@ -231,6 +235,12 @@ export function Agenda() {
     });
   }
 
+  if (comandaAbierta !== null) {
+    return (
+      <ComandaEvento presupuestoId={comandaAbierta} onVolver={() => setComandaAbierta(null)} />
+    );
+  }
+
   if (eventoAbierto !== null && presupuestoAbierto !== null) {
     const volverAlEvento = () => setPresupuestoAbierto(null);
     return (
@@ -242,6 +252,7 @@ export function Agenda() {
         onGuardada={volverAlEvento}
         onDadaDeBaja={volverAlEvento}
         onAbrirEvento={volverAlEvento}
+        onImprimirComanda={setComandaAbierta}
       />
     );
   }
@@ -252,7 +263,11 @@ export function Agenda() {
         <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
           <ArrowLeft /> Volver a la agenda
         </Button>
-        <DetalleEvento eventoId={eventoAbierto} onVerPresupuesto={setPresupuestoAbierto} />
+        <DetalleEvento
+          eventoId={eventoAbierto}
+          onVerPresupuesto={setPresupuestoAbierto}
+          onImprimirComanda={setComandaAbierta}
+        />
       </div>
     );
   }
