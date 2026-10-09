@@ -35,6 +35,40 @@ export async function buscarSalon(salonId: number, tx: Prisma.TransactionClient 
   return tx.salon.findUnique({ where: { id: salonId } });
 }
 
+// Los salones de un evento, en el orden en que se eligieron: el servicio ordena por la lista que
+// recibe, no por id, así la primera línea del presupuesto es el primer salón elegido.
+export async function buscarSalonesPorIds(ids: number[], tx: Prisma.TransactionClient = prisma) {
+  return tx.salon.findMany({ where: { id: { in: ids } } });
+}
+
+/**
+ * Deja al evento con exactamente estos salones. Los renglones que ya estaban y siguen se
+ * conservan, para no perder la distribución que tengan cargada.
+ *
+ * inicio, fin y estado no se escriben acá a propósito: los pone el trigger a partir del evento
+ * (ADR 0011).
+ */
+export async function reemplazarSalonesDelEvento(
+  eventoId: number,
+  salonIds: number[],
+  tx: Prisma.TransactionClient = prisma,
+) {
+  await tx.eventoSalon.deleteMany({ where: { eventoId, salonId: { notIn: salonIds } } });
+  const actuales = await tx.eventoSalon.findMany({
+    where: { eventoId },
+    select: { salonId: true },
+  });
+  const yaEstan = new Set(actuales.map((fila) => fila.salonId));
+  const nuevos = salonIds.filter((id) => !yaEstan.has(id));
+  if (nuevos.length > 0) {
+    // createMany no dispara el trigger BEFORE INSERT fila por fila en todos los casos; create sí,
+    // y son a lo sumo cinco salones.
+    for (const salonId of nuevos) {
+      await tx.eventoSalon.create({ data: { eventoId, salonId } });
+    }
+  }
+}
+
 // No filtra por `activo`: el servicio necesita distinguir "no existe" (404) de "existe pero no
 // está activo" (422), así que decide con el listado completo.
 export async function buscarServiciosPorIds(ids: number[], tx: Prisma.TransactionClient = prisma) {
@@ -189,6 +223,7 @@ export async function buscarPresupuestoDetallado(
         include: {
           cliente: true,
           salon: true,
+          salones: { include: { salon: true }, orderBy: { salonId: 'asc' } },
           distribucion: true,
         },
       },
@@ -257,6 +292,8 @@ export type PresupuestosRepositorio = {
   buscarClientePorUsuarioId: typeof buscarClientePorUsuarioId;
   crearCliente: typeof crearCliente;
   buscarSalon: typeof buscarSalon;
+  buscarSalonesPorIds: typeof buscarSalonesPorIds;
+  reemplazarSalonesDelEvento: typeof reemplazarSalonesDelEvento;
   buscarServiciosPorIds: typeof buscarServiciosPorIds;
   buscarSolicitud: typeof buscarSolicitud;
   vincularSolicitudAEvento: typeof vincularSolicitudAEvento;

@@ -131,6 +131,18 @@ function eventoFixtureBase() {
     actualizadoEn: new Date(),
     cliente: clienteFixture,
     salon: salonFixture,
+    salones: [
+      {
+        eventoId: 20,
+        salonId: salonFixture.id,
+        distribucionId: null as number | null,
+        inicio: null as Date | null,
+        fin: null as Date | null,
+        estado: 'EnConsulta' as EstadoEventoFixture,
+        creadoEn: new Date(),
+        salon: salonFixture,
+      },
+    ],
     distribucion: null as typeof distribucionFixture | null,
     solicitud: null,
     presupuestos: [{ ...presupuestoEstimadoFixture, lineas: [lineaFixture] }],
@@ -454,7 +466,7 @@ describe('GET /api/eventos', () => {
     creadoEn: new Date('2026-09-29T00:00:00.000Z'),
     actualizadoEn: new Date('2026-09-29T00:00:00.000Z'),
     cliente: { id: 1, nombre: 'Ana Pérez', telefono: '3515551234', correo: 'ana@empresa.com' },
-    salon: { id: 5, nombre: 'Paraná' },
+    salones: [{ salon: { id: 5, nombre: 'Paraná' } }],
     distribucion: { id: 2, nombre: 'Banquete' },
   };
 
@@ -477,7 +489,7 @@ describe('GET /api/eventos', () => {
     expect(respuesta.body.data[0]).toMatchObject({
       id: 3,
       cliente: { nombre: 'Ana Pérez' },
-      salon: { nombre: 'Paraná' },
+      salones: [{ nombre: 'Paraná' }],
       totalPresupuesto: '1263936',
     });
     expect(respuesta.body.data[0]).not.toHaveProperty('presupuestos');

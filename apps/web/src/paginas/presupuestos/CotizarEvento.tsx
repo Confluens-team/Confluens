@@ -325,7 +325,7 @@ export function CotizarEvento({
         nombre: cliente.nombre,
         telefono: cliente.telefono,
         correo: cliente.correo,
-        salonId: salonElegido.id,
+        salonIds: [salonElegido.id],
         fecha,
         cantidadPersonas,
         tipoJornada: jornada,

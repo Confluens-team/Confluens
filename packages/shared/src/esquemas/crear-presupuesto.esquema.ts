@@ -32,7 +32,12 @@ export const esquemaCrearPresupuesto = z.object({
   telefono: z.string().min(1),
   correo: z.email(),
   // Datos del evento en consulta que se crea junto con el presupuesto.
-  salonId: esquemaId,
+  // Un evento puede ocupar varios salones a la vez, hasta los cinco (ADR 0011). El cotizador
+  // corporativo manda al menos uno; la consulta social va por otro endpoint y llega sin salón.
+  salonIds: z
+    .array(esquemaId)
+    .min(1, 'Elegí al menos un salón')
+    .refine((ids) => new Set(ids).size === ids.length, 'Un salón no puede repetirse'),
   fecha: esquemaFecha,
   cantidadPersonas: z.number().int().positive(),
   tipoJornada: esquemaTipoJornada,

@@ -152,8 +152,16 @@ export async function generarPresupuesto(
 ) {
   // Validaciones de catálogo primero, sin escribir nada: si el pedido es inválido, no se crea un
   // Cliente ni un Evento huérfanos.
-  const salon = await repo.buscarSalon(datos.salonId);
-  if (!salon) throw ErrorApi.noEncontrado(`No existe el salón ${datos.salonId}`);
+  // Un evento puede ocupar varios salones (ADR 0011). Se respeta el orden en que llegaron: la
+  // primera línea del presupuesto es el primer salón elegido.
+  const encontrados = new Map(
+    (await repo.buscarSalonesPorIds(datos.salonIds)).map((s) => [s.id, s]),
+  );
+  const salones = datos.salonIds.map((id) => {
+    const salon = encontrados.get(id);
+    if (!salon) throw ErrorApi.noEncontrado(`No existe el salón ${id}`);
+    return salon;
+  });
 
   if (datos.solicitudId !== undefined) {
     const solicitud = await repo.buscarSolicitud(datos.solicitudId);
@@ -177,10 +185,8 @@ export async function generarPresupuesto(
     }
   }
 
-  const lineaSalon = lineaDeSalon(
-    salon,
-    datos.tipoJornada,
-    precioDeSalon(salon, datos.tipoJornada),
+  const lineasSalones = salones.map((salon) =>
+    lineaDeSalon(salon, datos.tipoJornada, precioDeSalon(salon, datos.tipoJornada)),
   );
 
   const lineasServicios = datos.servicios.map((seleccionado) => {
@@ -195,7 +201,7 @@ export async function generarPresupuesto(
     );
   });
 
-  const todasLasLineas = [lineaSalon, ...lineasServicios];
+  const todasLasLineas = [...lineasSalones, ...lineasServicios];
   const total = sumarLineas(todasLasLineas);
 
   const fechaEmision = new Date();
@@ -212,7 +218,9 @@ export async function generarPresupuesto(
     const evento = await repo.crearEvento(
       {
         clienteId: cliente.id,
-        salonId: datos.salonId,
+        // salonId queda como el primero mientras dure la migración a varios salones: la fuente
+        // de verdad es EventoSalon y la columna se borra en la parte 4.
+        salonId: datos.salonIds[0]!,
         fecha: new Date(datos.fecha),
         cantidadPersonas: datos.cantidadPersonas,
         tipo: 'Corporativo',
@@ -221,6 +229,8 @@ export async function generarPresupuesto(
       },
       tx,
     );
+
+    await repo.reemplazarSalonesDelEvento(evento.id, datos.salonIds, tx);
 
     if (datos.solicitudId !== undefined) {
       await repo.vincularSolicitudAEvento(datos.solicitudId, evento.id, tx);
@@ -392,13 +402,11 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       correo: evento.cliente.correo,
       telefono: evento.cliente.telefono,
     },
-    salon: evento.salon
-      ? {
-          id: evento.salon.id,
-          nombre: evento.salon.nombre,
-          capacidadMaxima: evento.salon.capacidadMaxima,
-        }
-      : null,
+    salones: evento.salones.map(({ salon }) => ({
+      id: salon.id,
+      nombre: salon.nombre,
+      capacidadMaxima: salon.capacidadMaxima,
+    })),
     lineas: presupuesto.lineas.map(({ servicio, ...linea }) => ({
       id: linea.id,
       presupuestoId: linea.presupuestoId,
@@ -464,10 +472,13 @@ async function reubicarHorario(
           fin: new Date(evento.fin.getTime() + corrimiento),
         }
       : {};
-  if (datos.salonId === null || datos.salonId === evento.salonId) return horario;
+  // La distribución del evento es la del primer salón mientras dure la migración (la parte 2c la
+  // pasa a ser una por salón). Si ese salón no cambió, se conserva.
+  const primerSalon = datos.salones[0]?.salonId ?? null;
+  if (primerSalon === null || primerSalon === evento.salonId) return horario;
 
   const distribucion = evento.distribucion
-    ? await repo.buscarDistribucionPorNombre(datos.salonId, evento.distribucion.nombre)
+    ? await repo.buscarDistribucionPorNombre(primerSalon, evento.distribucion.nombre)
     : null;
   return {
     ...horario,
@@ -488,8 +499,8 @@ export async function obtenerConsulta(
 function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoRepo['evento']) {
   const tipo = datos.tipo ?? evento.tipo;
   if (tipo === 'Corporativo') {
-    if (datos.salonId === null) {
-      throw ErrorApi.reglaNegocio('Un evento corporativo necesita salón');
+    if (datos.salones.length === 0) {
+      throw ErrorApi.reglaNegocio('Un evento corporativo necesita al menos un salón');
     }
     return { tipo, tipoSocial: null, tipoSocialDetalle: null };
   }
@@ -542,14 +553,17 @@ export async function modificarPresupuesto(
   const presupuesto = await buscarOFallar(id, repo);
   const confirmado = esConfirmadoVigente(presupuesto);
   if (!confirmado) exigirConsultaEnCurso(presupuesto, 'modificar');
-  if (confirmado && datos.salonId === null) {
+  if (confirmado && datos.salones.length === 0) {
     throw ErrorApi.reglaNegocio('Un evento confirmado necesita salón');
   }
   const tipo = resolverTipo(datos, presupuesto.evento);
 
-  const salon = datos.salonId === null ? null : await repo.buscarSalon(datos.salonId);
-  if (datos.salonId !== null && !salon) {
-    throw ErrorApi.noEncontrado(`No existe el salón ${datos.salonId}`);
+  const salonIds = datos.salones.map((s) => s.salonId);
+  const encontrados = new Map(
+    (salonIds.length > 0 ? await repo.buscarSalonesPorIds(salonIds) : []).map((s) => [s.id, s]),
+  );
+  for (const id of salonIds) {
+    if (!encontrados.has(id)) throw ErrorApi.noEncontrado(`No existe el salón ${id}`);
   }
 
   const lineasAnteriores = new Map(
@@ -582,19 +596,25 @@ export async function modificarPresupuesto(
     );
   });
 
-  const salonAnterior = lineaDelSalon(presupuesto.lineas);
-  const mismoSalon =
-    !!salonAnterior &&
-    presupuesto.evento.salonId === datos.salonId &&
-    jornadaDeLineaSalon(salonAnterior.descripcion) === datos.tipoJornada;
-  const lineaSalon = salon
-    ? lineaDeSalon(
-        salon,
-        datos.tipoJornada,
-        datos.precioSalon ??
-          (mismoSalon ? salonAnterior.precioUnitario : precioDeSalon(salon, datos.tipoJornada)),
-      )
-    : undefined;
+  // Cada salón conserva su precio congelado si ya estaba y no cambió la jornada; si es nuevo, o si
+  // la jornada cambió, toma el vigente. Un precioUnitario explícito es un ajuste comercial (RN-03).
+  const salonesAnteriores = new Map(
+    presupuesto.lineas
+      .filter((linea) => linea.salonId !== null)
+      .map((linea) => [linea.salonId!, linea]),
+  );
+  const lineasSalones = datos.salones.map((elegido) => {
+    const salon = encontrados.get(elegido.salonId)!;
+    const anterior = salonesAnteriores.get(elegido.salonId);
+    const mismaJornada =
+      !!anterior && jornadaDeLineaSalon(anterior.descripcion) === datos.tipoJornada;
+    const congelado = mismaJornada ? anterior.precioUnitario : undefined;
+    return lineaDeSalon(
+      salon,
+      datos.tipoJornada,
+      elegido.precioUnitario ?? congelado ?? precioDeSalon(salon, datos.tipoJornada),
+    );
+  });
 
   const adicionales = datos.adicionales.map((adicional) =>
     calcularLinea(
@@ -606,7 +626,7 @@ export async function modificarPresupuesto(
     ),
   );
 
-  const lineas = [...(lineaSalon ? [lineaSalon] : []), ...lineasServicios, ...adicionales];
+  const lineas = [...lineasSalones, ...lineasServicios, ...adicionales];
   const total = sumarLineas(lineas);
   const horario = confirmado ? await reubicarHorario(presupuesto.evento, datos, repo) : {};
   // Contra el horario que va a quedar: si cambió la fecha de un evento confirmado, reubicarHorario
@@ -638,7 +658,9 @@ export async function modificarPresupuesto(
         presupuesto.eventoId,
         {
           fecha: new Date(datos.fecha),
-          salon: datos.salonId === null ? { disconnect: true } : { connect: { id: datos.salonId } },
+          // salonId sigue el primero mientras dure la migración; la fuente de verdad es
+          // EventoSalon, que se reemplaza abajo. La columna se borra en la parte 4.
+          salon: salonIds.length === 0 ? { disconnect: true } : { connect: { id: salonIds[0]! } },
           cantidadPersonas: datos.cantidadPersonas,
           ...tipo,
           tipoJornada: datos.tipoJornada,
@@ -649,6 +671,7 @@ export async function modificarPresupuesto(
         },
         tx,
       );
+      await repo.reemplazarSalonesDelEvento(presupuesto.eventoId, salonIds, tx);
       await repo.reemplazarLineas(id, lineas, tx);
       await repo.actualizarPresupuesto(
         id,

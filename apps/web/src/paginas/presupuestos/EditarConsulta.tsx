@@ -164,7 +164,8 @@ function Formulario({
   const lineaSalon = consulta.lineas.find((linea) => linea.tipo === 'salon');
   const [fecha, setFecha] = useState(consulta.evento.fecha);
   // null: consulta social todavía sin salón (ADR 0008).
-  const [salonId, setSalonId] = useState<number | null>(consulta.salon?.id ?? null);
+  // Parte 2b: la UI sigue manejando un salón; la 3 la hace multi-selección.
+  const [salonId, setSalonId] = useState<number | null>(consulta.salones[0]?.id ?? null);
   const [tipo, setTipo] = useState<TipoEvento>(consulta.evento.tipo);
   const [tipoSocial, setTipoSocial] = useState<TipoEventoSocial | ''>(
     consulta.evento.tipoSocial ?? '',
@@ -210,7 +211,8 @@ function Formulario({
   function cambiarSalonOJornada(nuevoSalonId: number | null, nuevaJornada: TipoJornada) {
     setSalonId(nuevoSalonId);
     setJornada(nuevaJornada);
-    const original = nuevoSalonId === consulta.salon?.id && nuevaJornada === consulta.tipoJornada;
+    const original =
+      nuevoSalonId === consulta.salones[0]?.id && nuevaJornada === consulta.tipoJornada;
     const nuevoSalon = salones.find((s) => s.id === nuevoSalonId);
     if (original && lineaSalon && !recalculado) setPrecioSalon(lineaSalon.precioUnitario);
     else if (nuevoSalon) setPrecioSalon(precioDeSalon(nuevoSalon, nuevaJornada));
@@ -323,7 +325,8 @@ function Formulario({
     modificar.mutate(
       {
         fecha,
-        salonId,
+        salones:
+          salonId === null ? [] : [{ salonId, precioUnitario: Number(precioSalon).toFixed(2) }],
         cantidadPersonas: Number(personas),
         tipoJornada: jornada,
         tipo,
@@ -331,7 +334,6 @@ function Formulario({
         tipoSocialDetalle: tipo === 'Social' && tipoSocial === 'Otro' ? detalleOtro.trim() : null,
         horaInicioEstimada: horaEstimada || null,
         requiereFactura,
-        precioSalon: salonId === null ? undefined : aImporte(precioSalon),
         servicios: lineas
           .filter((l) => l.servicioId !== null)
           .map((l) => ({
@@ -916,7 +918,7 @@ function Formulario({
             <p className="text-xs text-muted-foreground">
               {expirado
                 ? 'La consulta está vencida: recalculala y guardá los cambios antes de cobrar la seña.'
-                : !consulta.salon
+                : consulta.salones.length === 0
                   ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
                   : 'Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda (HU-13). Guardá antes los cambios de la consulta.'}
             </p>
@@ -924,7 +926,7 @@ function Formulario({
           <Button
             type="button"
             variant="outline"
-            disabled={expirado || !consulta.salon}
+            disabled={expirado || consulta.salones.length === 0}
             onClick={() => onAbrirEvento(consulta.evento.id)}
           >
             <CalendarCheck /> Registrar pagos

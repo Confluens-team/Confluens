@@ -13,6 +13,7 @@ export async function buscarDetallado(id: number, tx: Prisma.TransactionClient =
     include: {
       cliente: true,
       salon: true,
+      salones: { include: { salon: true }, orderBy: { salonId: 'asc' } },
       distribucion: true,
       solicitud: true,
       presupuestos: { include: { lineas: true } },
@@ -34,7 +35,8 @@ export async function listarAgenda(
   return tx.evento.findMany({
     where: {
       estado: { in: estado ?? [...ESTADOS_QUE_OCUPAN_SALON] },
-      salonId: salonId ? { in: salonId } : undefined,
+      // El filtro acierta si el evento ocupa alguno de los salones pedidos (ADR 0011).
+      salones: salonId ? { some: { salonId: { in: salonId } } } : undefined,
       fecha: {
         gte: desde ? new Date(desde) : undefined,
         lte: hasta ? new Date(hasta) : undefined,
@@ -45,7 +47,10 @@ export async function listarAgenda(
       cliente: {
         select: { id: true, nombre: true, apellido: true, telefono: true, correo: true },
       },
-      salon: { select: { id: true, nombre: true } },
+      salones: {
+        select: { salon: { select: { id: true, nombre: true } } },
+        orderBy: { salonId: 'asc' },
+      },
       distribucion: { select: { id: true, nombre: true } },
       presupuestos: {
         where: { estado: 'Confirmado' },

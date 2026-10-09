@@ -159,6 +159,18 @@ function eventoFixtureBase() {
     actualizadoEn: new Date(),
     cliente: clienteFixture,
     salon: salonFixture,
+    salones: [
+      {
+        eventoId: 20,
+        salonId: salonFixture.id,
+        distribucionId: null as number | null,
+        inicio: null as Date | null,
+        fin: null as Date | null,
+        estado: 'EnConsulta' as EstadoEventoFixture,
+        creadoEn: new Date(),
+        salon: salonFixture,
+      },
+    ],
     distribucion: distribucionFixture as typeof distribucionFixture | null,
     solicitud: null,
     presupuestos: [presupuestoFixture()],

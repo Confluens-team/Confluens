@@ -9,13 +9,23 @@ const CUARENTA_Y_OCHO_HORAS_EN_MS = 48 * 60 * 60 * 1000;
 
 // Aplana el presupuesto Confirmado en totalPresupuesto (esquemaEventoAgenda): la agenda no necesita
 // la lista de presupuestos, solo el total tomado. El filtrado es parte de la consulta (repositorio).
+// EventoSalon es la fila de la relación; afuera lo que interesa es el salón. Los contratos de
+// shared esperan la lista de salones, no la de vínculos.
+function conSalones<S, T extends { salones: { salon: S }[] }>(
+  evento: T,
+): Omit<T, 'salones'> & {
+  salones: S[];
+} {
+  return { ...evento, salones: evento.salones.map((vinculo) => vinculo.salon) };
+}
+
 export async function listarAgenda(
   filtros: FiltrosAgenda,
   repo: EventosRepositorio = eventosRepositorioReal,
 ) {
   const eventos = await repo.listarAgenda(filtros);
   return eventos.map(({ presupuestos, ...evento }) => ({
-    ...evento,
+    ...conSalones(evento),
     totalPresupuesto: presupuestos[0]?.total ?? null,
   }));
 }
@@ -26,7 +36,7 @@ export async function obtenerDetalle(
 ) {
   const evento = await repo.buscarDetallado(id);
   if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${id}`);
-  return evento;
+  return conSalones(evento);
 }
 
 /**

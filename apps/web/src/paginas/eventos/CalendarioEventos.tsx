@@ -6,7 +6,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 
-import { fechaISO, fechaLocal, nombreCompleto } from '@/lib/formato';
+import { fechaISO, fechaLocal, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { ESTADOS } from './estado-evento';
 
 // Un evento Reservado o Cobrado siempre tiene horario (lo fija agendar()), pero un EnConsulta o un
@@ -17,7 +17,7 @@ import { ESTADOS } from './estado-evento';
 // evento un día antes en Argentina: por eso pasa por fechaLocal().
 function comoEventoDelCalendario(evento: EventoAgenda): EventInput {
   const { color } = ESTADOS[evento.estado];
-  const salon = evento.salon ? `Salón ${evento.salon.nombre}` : 'Salón a definir';
+  const salon = `Salón ${nombresDeSalones(evento.salones, 'a definir')}`;
   return {
     id: String(evento.id),
     title: salon,

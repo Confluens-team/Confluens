@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useAgenda } from '@/hooks/use-eventos';
 import { useSalones } from '@/hooks/use-salones';
 import { fechaLocal, formatearPesos, hoyISO, nombreCompleto } from '@/lib/formato';
+import { nombresDeSalones } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { CalendarioEventos } from './CalendarioEventos';
 import { EditarConsulta } from '@/paginas/presupuestos/EditarConsulta';
@@ -108,7 +109,7 @@ function ListaDeEventos({
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate font-medium">
-                        {evento.salon ? `Salón ${evento.salon.nombre}` : 'Salón a definir'}
+                        Salón {nombresDeSalones(evento.salones, 'a definir')}
                         {evento.distribucion && (
                           <span className="font-normal text-muted-foreground">
                             {' '}

@@ -44,3 +44,11 @@ export function fechaISO(fecha: Date): string {
 export function hoyISO(): string {
   return fechaISO(new Date());
 }
+
+const FORMATO_LISTA = new Intl.ListFormat('es-AR', { style: 'long', type: 'conjunction' });
+
+// Un evento puede ocupar varios salones (ADR 0011): "Auditorio", "Auditorio y Pucará",
+// "Auditorio, Pucará y Paraná".
+export function nombresDeSalones(salones: { nombre: string }[], siNoHay = 'A definir'): string {
+  return salones.length > 0 ? FORMATO_LISTA.format(salones.map((s) => s.nombre)) : siNoHay;
+}

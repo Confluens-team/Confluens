@@ -78,7 +78,7 @@ export const esquemaEventoAgenda = esquemaEvento.extend({
     telefono: z.string(),
     correo: z.string(),
   }),
-  salon: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
+  salones: z.array(z.object({ id: esquemaId, nombre: z.string() })),
   distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
   totalPresupuesto: esquemaImporte.nullable(),
 });

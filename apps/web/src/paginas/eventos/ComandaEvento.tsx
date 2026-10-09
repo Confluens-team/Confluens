@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useGuardarObservacionesComanda } from '@/hooks/use-eventos';
 import { useConsulta } from '@/hooks/use-presupuestos';
-import { fechaLocal, formatearFecha, nombreCompleto } from '@/lib/formato';
+import { fechaLocal, formatearFecha, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 
 // Comanda de cocina de un evento ya confirmado: la hoja que se imprime y se cuelga en la cocina.
@@ -187,7 +187,11 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
           densidad.banda,
         )}
       >
-        <Dato rotulo="Salón" valor={consulta.salon?.nombre ?? 'A definir'} densidad={densidad} />
+        <Dato
+          rotulo={consulta.salones.length === 1 ? 'Salón' : 'Salones'}
+          valor={nombresDeSalones(consulta.salones)}
+          densidad={densidad}
+        />
         <Dato
           rotulo="Armado"
           valor={evento.distribucion?.nombre ?? 'A definir'}
