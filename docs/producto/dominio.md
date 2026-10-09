@@ -222,6 +222,16 @@ modifican igual y se confirman igual, con la seña del 20% (ADR 0008). Los datos
 social todavía no están definidos (ver `pendientes.md`). Se usa también en el reporte de ingresos
 (HU-21).
 
+**Comanda de cocina.** La hoja que el personal imprime y cuelga en la cocina para un evento ya
+confirmado. No es una entidad: es una vista del evento y de su presupuesto con fecha, salón,
+armado, horario, cantidad de personas, nombre del cliente y los servicios de gastronomía ordenados
+por la hora a la que se los espera. **Nunca lleva precios**: no es un documento comercial. Admite
+**observaciones** (`Evento.observacionesComanda`): notas internas del personal —menús especiales,
+alergias, a quién buscar en el salón— que salen solo en esa hoja y que el cliente nunca ve. No
+entran la línea del salón, cuyo horario ya encabeza la hoja, ni los servicios tercerizados, que son
+audiovisual y pantallas y no pasan por cocina. Integrarse con el sistema de cocina o con los de los
+proveedores sigue fuera de alcance (S-07). Decisión del equipo, 09/10/2026.
+
 **Comedor.** Servicio gastronómico del hotel, con sistema propio. Fuera de alcance (EXC-04).
 
 ---
