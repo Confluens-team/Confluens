@@ -1,4 +1,9 @@
-import { ESTADOS_QUE_OCUPAN_SALON, type EstadoEvento, type EventoAgenda } from '@confluens/shared';
+import {
+  ESTADOS_QUE_OCUPAN_SALON,
+  horaDelEvento,
+  type EstadoEvento,
+  type EventoAgenda,
+} from '@confluens/shared';
 import { ArrowLeft, CalendarDays, Clock, List, Users } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import { type ReactNode, useState } from 'react';
@@ -19,14 +24,7 @@ import { TarjetaResumenEvento } from './TarjetaResumenEvento';
 
 type Vista = 'calendario' | 'lista';
 
-const hora = (instante: string | null) =>
-  instante
-    ? new Date(instante).toLocaleTimeString('es-AR', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-      })
-    : null;
+const hora = (instante: string | null) => (instante ? horaDelEvento(instante) : null);
 
 // Chip de filtro: se usa igual para los salones, los estados y el conmutador de vista.
 function Chip({

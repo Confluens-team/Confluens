@@ -1,5 +1,7 @@
 import {
   DIAS_VIGENCIA_PRESUPUESTO,
+  horaDelEvento,
+  minutosDeHora,
   type ConsultaDetallada,
   type CrearConsultaSocial,
   type CrearPresupuesto,
@@ -61,23 +63,6 @@ function calcularLinea(
   };
 }
 
-// El negocio está en Córdoba y los horarios se cargan y se leen en hora argentina, pero la API
-// puede correr en UTC (Render). Se fija la zona para que la comparación con la hora del servicio dé
-// lo mismo esté donde esté el servidor; Argentina no tiene horario de verano.
-const ZONA_HORARIA = 'America/Argentina/Cordoba';
-const horaLocal = new Intl.DateTimeFormat('es-AR', {
-  timeZone: ZONA_HORARIA,
-  hour: '2-digit',
-  minute: '2-digit',
-  hour12: false,
-});
-
-// "HH:mm" → minutos desde la medianoche, para comparar horas sin pelear con fechas.
-function enMinutos(hora: string): number {
-  const [h = 0, m = 0] = hora.split(':').map(Number);
-  return h * 60 + m;
-}
-
 /**
  * Cada hora pedida para un servicio tiene que caer dentro del horario del evento. Solo se puede
  * controlar cuando el evento ya está agendado: mientras está EnConsulta, `inicio` y `fin` son null
@@ -91,15 +76,15 @@ function exigirHorasDentroDelEvento(
   fin: Date | null,
 ): void {
   if (!inicio || !fin) return;
-  const desde = enMinutos(horaLocal.format(inicio));
-  const hasta = enMinutos(horaLocal.format(fin));
+  const desde = minutosDeHora(horaDelEvento(inicio));
+  const hasta = minutosDeHora(horaDelEvento(fin));
   if (desde >= hasta) return;
   for (const linea of lineas) {
     if (!linea.horaEstimada) continue;
-    const minutos = enMinutos(linea.horaEstimada);
+    const minutos = minutosDeHora(linea.horaEstimada);
     if (minutos < desde || minutos > hasta) {
       throw ErrorApi.reglaNegocio(
-        `La hora de "${linea.descripcion}" (${linea.horaEstimada}) queda fuera del horario del evento, que va de ${horaLocal.format(inicio)} a ${horaLocal.format(fin)}`,
+        `La hora de "${linea.descripcion}" (${linea.horaEstimada}) queda fuera del horario del evento, que va de ${horaDelEvento(inicio)} a ${horaDelEvento(fin)}`,
       );
     }
   }

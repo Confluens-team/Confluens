@@ -1,4 +1,4 @@
-import type { ConsultaDetallada } from '@confluens/shared';
+import { horaDelEvento, type ConsultaDetallada } from '@confluens/shared';
 import { ArrowLeft, Printer, Save } from 'lucide-react';
 import { useState } from 'react';
 
@@ -22,12 +22,7 @@ import { cn } from '@/lib/utils';
 // y pantallas, no cocina. Los adicionales escritos a mano van aparte, al pie: pueden ser de cocina
 // («torta de cumpleaños») o no («decoración»), y dejarlos afuera sería peor que mostrarlos.
 
-const hora = (instante: string) =>
-  new Date(instante).toLocaleTimeString('es-AR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  });
+const hora = horaDelEvento;
 
 // Primero las que tienen hora, en orden; las que no, al final y en el orden en que se cargaron.
 // Mezclarlas haría parecer que un servicio sin hora va a las 00:00.

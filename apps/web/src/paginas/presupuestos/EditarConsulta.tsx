@@ -2,6 +2,7 @@ import {
   DIAS_VIGENCIA_PRESUPUESTO,
   desglosarIva,
   ETIQUETAS_TIPO_EVENTO_SOCIAL,
+  horaDelEvento,
   type ConsultaDetallada,
   type SalonConDistribuciones,
   type Servicio,
@@ -65,12 +66,7 @@ const aCotizar = (linea: LineaEditable) =>
   linea.precio === '' && linea.servicioId !== null && linea.tercerizado;
 const precioValido = (linea: LineaEditable) => esImporte(linea.precio) || aCotizar(linea);
 
-const hora = (instante: string) =>
-  new Date(instante).toLocaleTimeString('es-AR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  });
+const hora = horaDelEvento;
 
 const mensajeDeError = (error: unknown, porDefecto: string) =>
   error instanceof ErrorApiCliente ? error.message : porDefecto;
