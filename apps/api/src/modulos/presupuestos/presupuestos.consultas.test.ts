@@ -121,6 +121,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         id: 1,
         presupuestoId: 31,
         servicioId: null,
+        salonId: salonParana.id,
         descripcion: 'Salón Paraná (jornada completa)',
         cantidad: 1,
         precioUnitario: D('142200'),
@@ -133,6 +134,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         id: 2,
         presupuestoId: 31,
         servicioId: 1,
+        salonId: null,
         descripcion: 'Coffee Refresh',
         cantidad: 10,
         precioUnitario: D('8000'),
@@ -188,12 +190,51 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       subtotal: '80000.00',
       aCotizar: false,
       horaEstimada: '10:30',
+      salonId: null,
       tipo: 'servicio',
       tercerizado: false,
     });
   });
 
-  it('distingue el salón (la primera línea sin servicio) de los adicionales escritos a mano', async () => {
+  // Antes el tipo salía de la posición: "la primera línea sin servicio" era el salón. Con varios
+  // salones por evento eso no alcanza, y un adicional cargado antes que el salón se hacía pasar
+  // por salón.
+  it('reconoce el salón aunque no sea la primera línea', async () => {
+    const base = consulta() as unknown as { lineas: { id: number }[] };
+    const salon = base.lineas[0]!;
+    const servicio = base.lineas[1]!;
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({
+        lineas: [
+          {
+            id: 0, // id menor que el del salón: antes esta línea ganaba
+            presupuestoId: 31,
+            servicioId: null,
+            salonId: null,
+            descripcion: 'Decoración con globos',
+            cantidad: 1,
+            precioUnitario: D('25000'),
+            subtotal: D('25000'),
+            aCotizar: false,
+            horaEstimada: null,
+            servicio: null,
+          },
+          salon,
+          servicio,
+        ],
+      }),
+    );
+
+    const respuesta = await request(app).get('/api/presupuestos/31').set('Cookie', [cookieRE]);
+
+    expect(respuesta.body.data.lineas.map((l: { tipo: string }) => l.tipo)).toEqual([
+      'adicional',
+      'salon',
+      'servicio',
+    ]);
+  });
+
+  it('distingue el salón (el que tiene salonId) de los adicionales escritos a mano', async () => {
     const base = consulta() as unknown as { lineas: object[] };
     buscarPresupuestoDetalladoMock.mockResolvedValue(
       consulta({
@@ -203,6 +244,7 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
             id: 3,
             presupuestoId: 31,
             servicioId: null,
+            salonId: null,
             descripcion: 'Decoración con globos',
             cantidad: 1,
             precioUnitario: D('25000'),
@@ -283,6 +325,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
     expect(lineasGuardadas()).toEqual([
       {
         servicioId: null,
+        salonId: salonParana.id,
         descripcion: 'Salón Paraná (jornada completa)',
         cantidad: 1,
         precioUnitario: '142200.00',
@@ -292,6 +335,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       },
       {
         servicioId: 1,
+        salonId: null,
         descripcion: 'Coffee Refresh',
         cantidad: 12,
         precioUnitario: '8000.00',
@@ -346,6 +390,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
 
     expect(lineasGuardadas()[2]).toEqual({
       servicioId: 3,
+      salonId: null,
       descripcion: 'Pantallas LED',
       cantidad: 1,
       precioUnitario: '0.00',
@@ -439,6 +484,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
 
     expect(lineasGuardadas()[2]).toEqual({
       servicioId: null,
+      salonId: null,
       descripcion: 'Decoración con globos',
       cantidad: 2,
       precioUnitario: '12500.00',

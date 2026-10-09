@@ -84,6 +84,7 @@ export async function crearPresupuestoConLineas(
     total: string;
     lineas: {
       servicioId: number | null;
+      salonId: number | null;
       descripcion: string;
       cantidad: number;
       precioUnitario: string;
@@ -218,6 +219,7 @@ export async function reemplazarLineas(
   presupuestoId: number,
   lineas: {
     servicioId: number | null;
+    salonId: number | null;
     descripcion: string;
     cantidad: number;
     precioUnitario: string;

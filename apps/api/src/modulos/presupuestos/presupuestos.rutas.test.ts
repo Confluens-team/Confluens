@@ -311,6 +311,7 @@ describe('POST /api/presupuestos', () => {
     const [datos] = crearPresupuestoConLineasMock.mock.calls[0]!;
     expect(datos.lineas[1]).toEqual({
       servicioId: 4,
+      salonId: null,
       descripcion: 'Pantallas LED',
       cantidad: 1,
       precioUnitario: '0.00',

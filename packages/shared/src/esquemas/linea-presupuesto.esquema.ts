@@ -9,6 +9,9 @@ export const esquemaLineaPresupuesto = z.object({
   id: esquemaId,
   presupuestoId: esquemaId,
   servicioId: esquemaId.nullable(),
+  // El salón cuyo alquiler cobra la línea. Las de servicio tienen servicioId; los adicionales
+  // escritos a mano no tienen ninguno de los dos.
+  salonId: esquemaId.nullable(),
   descripcion: z.string().min(1),
   cantidad: z.number().int().positive(),
   precioUnitario: esquemaImporte,

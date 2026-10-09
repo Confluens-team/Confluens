@@ -33,6 +33,7 @@ function sumarLineas(lineas: LineaCalculada[]): Prisma.Decimal {
 
 interface LineaCalculada {
   servicioId: number | null;
+  salonId: number | null;
   descripcion: string;
   cantidad: number;
   precioUnitario: string;
@@ -50,10 +51,12 @@ function calcularLinea(
   cantidad: number,
   precioUnitario: Prisma.Decimal | string | null,
   horaEstimada: string | null = null,
+  salonId: number | null = null,
 ): LineaCalculada {
   const precio = new Prisma.Decimal(precioUnitario ?? 0);
   return {
     servicioId,
+    salonId,
     descripcion,
     cantidad,
     precioUnitario: precio.toFixed(2),
@@ -90,16 +93,24 @@ function exigirHorasDentroDelEvento(
   }
 }
 
-// La línea del salón no tiene servicio: se identifica por esta descripción, y de ella sale la
-// jornada al editar la consulta (jornadaDeLineaSalon).
 function descripcionSalon(nombre: string, jornada: TipoJornada): string {
   return `Salón ${nombre} (${jornada === 'completa' ? 'jornada completa' : 'media jornada'})`;
 }
 
-// La línea del salón es la primera sin servicio: se crea antes que las demás y las líneas se leen
-// ordenadas por id. Las otras líneas sin servicio son adicionales escritos a mano (HU-12).
-function lineaDelSalon<T extends { servicioId: number | null }>(lineas: T[]): T | undefined {
-  return lineas.find((linea) => linea.servicioId === null);
+// El alquiler de un salón. Cantidad 1: el precio no es por persona, es fijo para el evento entero.
+function lineaDeSalon(
+  salon: { id: number; nombre: string },
+  jornada: TipoJornada,
+  precio: Prisma.Decimal | string | null,
+): LineaCalculada {
+  return calcularLinea(null, descripcionSalon(salon.nombre, jornada), 1, precio, null, salon.id);
+}
+
+// Las líneas del salón son las que tienen salonId. Antes se las identificaba como "la primera sin
+// servicio", que también alcanzaba a los adicionales escritos a mano y no servía para un evento
+// con varios salones.
+function lineaDelSalon<T extends { salonId: number | null }>(lineas: T[]): T | undefined {
+  return lineas.find((linea) => linea.salonId !== null);
 }
 
 export function jornadaDeLineaSalon(descripcion: string | undefined): TipoJornada {
@@ -166,13 +177,9 @@ export async function generarPresupuesto(
     }
   }
 
-  // Línea del salón: cantidad=1 porque el precio no es "por persona", es fijo para el evento
-  // completo. servicioId null: modelo-datos.md documenta que la línea del salón se identifica
-  // por su descripción, no por una FK a Servicio.
-  const lineaSalon = calcularLinea(
-    null,
-    descripcionSalon(salon.nombre, datos.tipoJornada),
-    1,
+  const lineaSalon = lineaDeSalon(
+    salon,
+    datos.tipoJornada,
     precioDeSalon(salon, datos.tipoJornada),
   );
 
@@ -402,12 +409,8 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       subtotal: linea.subtotal.toFixed(2),
       aCotizar: linea.aCotizar,
       horaEstimada: linea.horaEstimada,
-      tipo:
-        linea.id === lineaSalon?.id
-          ? 'salon'
-          : linea.servicioId === null
-            ? 'adicional'
-            : 'servicio',
+      salonId: linea.salonId,
+      tipo: linea.salonId !== null ? 'salon' : linea.servicioId === null ? 'adicional' : 'servicio',
       tercerizado: servicio?.tercerizado ?? false,
     })),
   };
@@ -585,10 +588,9 @@ export async function modificarPresupuesto(
     presupuesto.evento.salonId === datos.salonId &&
     jornadaDeLineaSalon(salonAnterior.descripcion) === datos.tipoJornada;
   const lineaSalon = salon
-    ? calcularLinea(
-        null,
-        descripcionSalon(salon.nombre, datos.tipoJornada),
-        1,
+    ? lineaDeSalon(
+        salon,
+        datos.tipoJornada,
         datos.precioSalon ??
           (mismoSalon ? salonAnterior.precioUnitario : precioDeSalon(salon, datos.tipoJornada)),
       )

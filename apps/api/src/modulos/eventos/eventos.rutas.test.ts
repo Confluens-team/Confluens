@@ -80,6 +80,7 @@ const lineaFixture = {
   id: 1,
   presupuestoId: 30,
   servicioId: null,
+  salonId: salonFixture.id,
   descripcion: `Salón ${salonFixture.nombre} (jornada completa)`,
   cantidad: 1,
   precioUnitario: new Prisma.Decimal('142200'),

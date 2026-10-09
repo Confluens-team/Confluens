@@ -95,20 +95,21 @@ model Cliente {
 // foto se carga cuando el cliente entrega el material. La URL apunta a un hosting externo; el
 // sistema no almacena archivos (ver ADR 0004).
 model Salon {
-  id                    Int            @id @default(autoincrement())
-  nombre                String         @unique
+  id                    Int                @id @default(autoincrement())
+  nombre                String             @unique
   capacidadMaxima       Int
   superficie            Int // m²
-  precioJornadaCompleta Decimal        @db.Decimal(12, 2) // sin IVA (RN-05)
-  precioMediaJornada    Decimal        @db.Decimal(12, 2) // sin IVA (RN-05)
-  visibleEnLanding      Boolean        @default(true)
+  precioJornadaCompleta Decimal            @db.Decimal(12, 2) // sin IVA (RN-05)
+  precioMediaJornada    Decimal            @db.Decimal(12, 2) // sin IVA (RN-05)
+  visibleEnLanding      Boolean            @default(true)
   fotoUrl               String?
   distribuciones        Distribucion[]
   eventos               Evento[]
   eventoSalones         EventoSalon[]
+  lineasPresupuesto     LineaPresupuesto[]
   solicitudes           Solicitud[]
-  creadoEn              DateTime       @default(now())
-  actualizadoEn         DateTime       @updatedAt
+  creadoEn              DateTime           @default(now())
+  actualizadoEn         DateTime           @updatedAt
 }
 
 // Nombre único por salón. La capacidad nunca supera la del salón (se valida en la aplicación).
@@ -277,6 +278,12 @@ model LineaPresupuesto {
   // HU-11: tercerizado sin precio todavía. Va con precio y subtotal en 0, así no suma al total;
   // deja de estar a cotizar cuando el personal completa el precio.
   aCotizar       Boolean     @default(false)
+  // La línea del alquiler de un salón. Las de servicio tienen servicioId, los adicionales escritos
+  // a mano no tienen ninguno de los dos. Antes la del salón se identificaba como "la primera sin
+  // servicio" y la jornada se sacaba parseando su descripción; con varios salones por evento hay
+  // varias líneas de salón y esa convención no alcanza.
+  salonId        Int?
+  salon          Salon?      @relation(fields: [salonId], references: [id], onDelete: Restrict)
   // "HH:mm", opcional: a qué hora del evento se espera este servicio (un coffee a las 10:30). La
   // elige el cliente en el cotizador o el personal al armar el presupuesto. Solo la llevan los
   // servicios y los adicionales; la línea del salón no, su horario es el del evento. Mismo
