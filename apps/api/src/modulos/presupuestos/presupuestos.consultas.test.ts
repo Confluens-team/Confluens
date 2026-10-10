@@ -346,6 +346,37 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
   const lineasGuardadas = () => reemplazarLineasMock.mock.calls[0]![1];
   const datosDelPresupuesto = () => actualizarPresupuestoMock.mock.calls[0]![1];
 
+  // RN-04: un servicio que se cobra por persona se puede contratar para menos gente que la que
+  // asiste, nunca para más. Vale igual que al crear: el personal baja los asistentes y la cantidad
+  // del coffee tiene que acompañar.
+  it('rechaza con 422 un servicio por persona contratado para más gente que la que asiste', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, cantidadPersonas: 12, servicios: [{ servicioId: 1, cantidad: 13 }] });
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+    expect(respuesta.body.error.message).toContain('Coffee Refresh');
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+  });
+
+  // Un adicional escrito a mano se mide en unidades, no en personas: 20 centros de mesa para 12
+  // invitados es un pedido razonable y no lo frena esta regla.
+  it('no le aplica el tope de asistentes a un adicional escrito a mano', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        cantidadPersonas: 12,
+        servicios: [],
+        adicionales: [{ descripcion: 'Centros de mesa', cantidad: 20, precioUnitario: '1500' }],
+      });
+
+    expect(respuesta.status).toBe(200);
+  });
+
   it('conserva los precios congelados de lo que ya estaba y reinicia la vigencia', async () => {
     const antes = Date.now();
     const respuesta = await request(app)
