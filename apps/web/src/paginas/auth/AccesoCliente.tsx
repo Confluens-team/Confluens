@@ -137,7 +137,9 @@ function FormularioRegistro({
   const pais = useWatch({ control, name: 'pais' });
 
   const onSubmit = handleSubmit((datos) => registrar.mutate(datos, { onSuccess: onListo }));
-  const emailYaRegistrado =
+  // 409: ya hay una cuenta con ese email o con ese celular. El mensaje concreto lo da la API; acá
+  // solo se decide si vale ofrecer el atajo a iniciar sesión, que en los dos casos sirve.
+  const yaTieneCuenta =
     registrar.error instanceof ErrorApiCliente && registrar.error.code === 'CONFLICT';
 
   return (
@@ -147,6 +149,7 @@ function FormularioRegistro({
           <Input
             id="reg-nombre"
             autoComplete="given-name"
+            maxLength={30}
             className="h-10"
             {...ariaDeCampo('reg-nombre', errors.nombre?.message)}
             {...register('nombre')}
@@ -156,6 +159,7 @@ function FormularioRegistro({
           <Input
             id="reg-apellido"
             autoComplete="family-name"
+            maxLength={30}
             className="h-10"
             {...ariaDeCampo('reg-apellido', errors.apellido?.message)}
             {...register('apellido')}
@@ -206,7 +210,7 @@ function FormularioRegistro({
       {registrar.isError && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           {mensajeDeError(registrar.error, 'No se pudo crear la cuenta.')}{' '}
-          {emailYaRegistrado && (
+          {yaTieneCuenta && (
             <button type="button" className="font-medium underline" onClick={onIrAIngreso}>
               Ingresar
             </button>

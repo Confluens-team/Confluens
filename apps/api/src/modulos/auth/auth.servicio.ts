@@ -57,6 +57,8 @@ export async function iniciarSesion(
 }
 
 const MENSAJE_EMAIL_REGISTRADO = 'Ya existe una cuenta con ese email. Iniciá sesión.';
+const MENSAJE_TELEFONO_REGISTRADO =
+  'Ya existe una cuenta con ese celular. Iniciá sesión o usá otro número.';
 
 /**
  * Crea la cuenta de un Cliente desde la landing y lo deja con la sesión iniciada, para que pase
@@ -64,6 +66,12 @@ const MENSAJE_EMAIL_REGISTRADO = 'Ya existe una cuenta con ese email. Iniciá se
  *
  * Un email ya registrado se rechaza con 409. A diferencia del login, acá sí se informa: quien se
  * está registrando necesita saber que tiene que iniciar sesión en vez de crear otra cuenta.
+ *
+ * Un celular que ya tiene cuenta también se rechaza con 409: es el número al que se le escribe por
+ * WhatsApp, así que dos cuentas con el mismo celular dejan al equipo sin saber a quién contesta.
+ * La restricción es solo del canal público y no hay índice único en `Cliente.telefono`: el
+ * personal sí puede cargar dos fichas con el mismo número (el conmutador de una empresa, por
+ * ejemplo), y una ficha sin cuenta no bloquea el registro de nadie.
  */
 export async function registrarCliente(
   datos: RegistroCliente,
@@ -72,6 +80,11 @@ export async function registrarCliente(
   const existente = await repositorio.buscarUsuarioPorEmail(datos.email);
   if (existente) {
     throw ErrorApi.conflicto(MENSAJE_EMAIL_REGISTRADO);
+  }
+
+  const conEseTelefono = await repositorio.buscarClientePorTelefono(datos.telefono);
+  if (conEseTelefono) {
+    throw ErrorApi.conflicto(MENSAJE_TELEFONO_REGISTRADO);
   }
 
   let usuario: Awaited<ReturnType<RegistroRepositorio['crearUsuarioCliente']>>;

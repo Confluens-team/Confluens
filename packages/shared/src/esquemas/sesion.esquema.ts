@@ -13,6 +13,28 @@ const esquemaEmailDeCuenta = z
   .toLowerCase()
   .pipe(z.email({ error: 'Ingresá un email válido (por ejemplo: nombre@empresa.com)' }));
 
+// Nombre o apellido de la persona que se registra. Letras (con tildes y ñ), el espacio de los
+// nombres compuestos, el guión de los apellidos compuestos (García-López) y el apóstrofe
+// (D'Angelo), sin separadores al borde ni repetidos. Nada de dígitos ni símbolos: es el nombre con
+// el que el equipo la va a llamar, no un campo libre. 30 caracteres alcanzan para cualquiera.
+//
+// Solo rige en el registro. `Cliente.nombre` también guarda razones sociales cuando el personal
+// carga la ficha a mano (modelo-datos.md), y esas llevan puntos, "&" y números: los schemas de
+// solicitud y presupuesto quedan sin esta restricción a propósito.
+//
+// Es una función y no una constante porque el mensaje de campo vacío nombra el campo, y Zod reporta
+// los checks en el orden en que se encadenan: con el `min` al final, un campo vacío fallaba primero
+// por el regex y mostraba "usá solo letras" en lugar de "ingresá tu nombre".
+const esquemaNombreDePersona = (faltante: string) =>
+  z
+    .string()
+    .trim()
+    .min(1, { error: faltante })
+    .max(30, { error: 'Usá hasta 30 caracteres' })
+    .regex(/^\p{L}+(?:[ '’-]\p{L}+)*$/u, {
+      error: 'Usá solo letras, sin números ni símbolos',
+    });
+
 // Contraseña nueva, en el registro y al restablecerla. El mínimo de 6 caracteres es un piso básico
 // para la demo con el cliente; la política de contraseñas definitiva sigue siendo de HU-28.
 const esquemaContrasenaNueva = z
@@ -54,8 +76,8 @@ export type Sesion = z.infer<typeof esquemaSesion>;
 // cotizador con precios. Mensajes en español por la misma razón que esquemaCredenciales: es un
 // formulario de cara al público.
 export const esquemaRegistroCliente = z.object({
-  nombre: z.string().trim().min(1, { error: 'Ingresá tu nombre' }),
-  apellido: z.string().trim().min(1, { error: 'Ingresá tu apellido' }),
+  nombre: esquemaNombreDePersona('Ingresá tu nombre'),
+  apellido: esquemaNombreDePersona('Ingresá tu apellido'),
   email: esquemaEmailDeCuenta,
   // Celular para el contacto por WhatsApp; llega normalizado a E.164 (ver telefono.esquema.ts).
   telefono: esquemaCelular,
