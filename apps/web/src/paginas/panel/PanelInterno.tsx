@@ -211,10 +211,10 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
         </nav>
       </header>
 
-      {/* 90rem y no el max-w-6xl del sitio público: la tabla de consultas tiene diez columnas y
-          necesita cerca de 1100px para entrar sin scroll horizontal, que es justo lo que dejaban
-          libre los 72rem de antes. El encabezado y las pestañas usan el mismo ancho para que el
-          borde inferior de la pestaña activa siga alineado con el contenido. */}
+      {/* 90rem y no el max-w-6xl del sitio público: la tabla de consultas es la pantalla más ancha
+          del panel y con 72rem no entraba sin scroll horizontal. El encabezado y las pestañas usan
+          el mismo ancho para que el borde inferior de la pestaña activa siga alineado con el
+          contenido. */}
       <main className="mx-auto max-w-[90rem] px-4 py-8 sm:px-6 print:max-w-none print:p-0">
         <div className="mb-6 print:hidden">
           <h1 className="text-2xl font-semibold text-bordo">{activa.texto}</h1>
