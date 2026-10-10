@@ -54,8 +54,10 @@ export function ConsultaRecibida({
             <dl className="mx-auto mt-8 max-w-sm space-y-3 border-t border-dorado/40 pt-6 text-left text-sm">
               {filas.map(([etiqueta, valor]) => (
                 <div key={etiqueta} className="flex justify-between gap-4">
-                  <dt className="text-muted-foreground">{etiqueta}</dt>
-                  <dd className="text-right font-medium first-letter:uppercase">{valor}</dd>
+                  <dt className="shrink-0 text-muted-foreground">{etiqueta}</dt>
+                  <dd className="min-w-0 text-right font-medium break-words first-letter:uppercase">
+                    {valor}
+                  </dd>
                 </div>
               ))}
             </dl>
