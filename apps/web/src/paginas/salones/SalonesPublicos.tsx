@@ -1,7 +1,5 @@
-import type { SalonPublico } from '@confluens/shared';
-import { ArrowRight, Ruler, Users } from 'lucide-react';
+import { Ruler, Users } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import { useSalonesPublicos } from '@/hooks/use-salones';
 import { fotoDeSalon } from '@/lib/fotos';
 import { cn } from '@/lib/utils';
@@ -12,7 +10,13 @@ import { cn } from '@/lib/utils';
 //
 // Sin precios a propósito: el endpoint no los devuelve (ver salones.repositorio.ts). Los precios
 // se ven recién en el cotizador, con la sesión del cliente registrado.
-export function SalonesPublicos({ onConsultar }: { onConsultar: (salon: SalonPublico) => void }) {
+//
+// La ficha no lleva botón para cotizar: los tres CTA de la landing abren el cotizador sin salón
+// preseleccionado y el cliente lo elige ahí (ahora puede elegir varios, ADR 0011). Esto deja sin
+// cumplir el criterio 3 de HU-07 ("avanzar desde la ficha con el salón preseleccionado"): es un
+// cambio de criterio pedido por el equipo, no un olvido. El cotizador sigue aceptando un salón
+// preseleccionado (`salonInicialId`), así que para volver atrás alcanza con un botón que lo pase.
+export function SalonesPublicos() {
   const { data: salones, isLoading, isError } = useSalonesPublicos();
 
   if (isLoading) {
@@ -119,18 +123,6 @@ export function SalonesPublicos({ onConsultar }: { onConsultar: (salon: SalonPub
                   </ul>
                 </div>
               )}
-
-              {/* Criterio 3: desde la ficha se avanza a la consulta con el salón preseleccionado.
-                  AC3 de la auditoría de accesibilidad: el contorno al 30 % daba 1.8:1 contra la
-                  tarjeta y el botón se perdía entre el texto. Pasa a bordó macizo (12:1 con el
-                  crema), de ancho completo y 48 px de alto, el mínimo de WCAG 2.5.5. */}
-              <Button
-                size="lg"
-                className="mt-auto h-auto min-h-12 w-full gap-2.5 bg-bordo px-5 py-3 text-base font-semibold whitespace-normal text-crema shadow-md hover:bg-bordo-oscuro"
-                onClick={() => onConsultar(salon)}
-              >
-                Cotizar en este salón <ArrowRight className="size-5" />
-              </Button>
             </div>
           </article>
         );
