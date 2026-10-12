@@ -1,6 +1,12 @@
 import { z } from 'zod';
 
-import { esquemaFecha, esquemaFechaHora, esquemaId, esquemaImporte } from './comunes.esquema.js';
+import {
+  esquemaCantidadPersonas,
+  esquemaFecha,
+  esquemaFechaHora,
+  esquemaId,
+  esquemaImporte,
+} from './comunes.esquema.js';
 import { esquemaEtiqueta } from './etiqueta.esquema.js';
 import { esquemaEstadoEvento } from './evento.esquema.js';
 import { esquemaLineaPresupuesto } from './linea-presupuesto.esquema.js';
@@ -117,7 +123,7 @@ export const esquemaModificarPresupuesto = z
         (salones) => new Set(salones.map((s) => s.salonId)).size === salones.length,
         'Un salón no puede aparecer dos veces',
       ),
-    cantidadPersonas: z.number().int().positive(),
+    cantidadPersonas: esquemaCantidadPersonas,
     tipoJornada: esquemaTipoJornada,
     tipo: esquemaTipoEvento.optional(),
     tipoSocial: esquemaTipoEventoSocial.nullable().optional(),

@@ -345,6 +345,51 @@ describe('POST /api/presupuestos', () => {
     expect(lineaServicio.subtotal).toBe('261900.00'); // 8730 * 30
   });
 
+  // La otra mitad de RN-04: se puede contratar para menos, nunca para más. El cotizador recorta
+  // la cantidad mientras se escribe, así que esto cubre el body armado a mano.
+  it('rechaza con 422 un servicio por persona contratado para más gente que la que asiste', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+    buscarServiciosPorIdsMock.mockResolvedValue([servicioFixture()]);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, cantidadPersonas: 50, servicios: [{ servicioId: 1, cantidad: 51 }] });
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+    expect(respuesta.body.error.message).toContain('Coffee Refresh');
+    expect(crearPresupuestoConLineasMock).not.toHaveBeenCalled();
+  });
+
+  // La cantidad de un servicio con precio fijo son unidades, no gente: 12 dispensers para 10
+  // personas es un pedido válido.
+  it('deja pasar un servicio de precio fijo con más unidades que asistentes', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+    buscarServiciosPorIdsMock.mockResolvedValue([
+      servicioFixture({ nombre: 'Dispenser', porPersona: false }),
+    ]);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, cantidadPersonas: 10, servicios: [{ servicioId: 1, cantidad: 12 }] });
+
+    expect(respuesta.status).toBe(201);
+  });
+
+  it('rechaza con 400 una cantidad de personas por encima del tope del negocio', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, cantidadPersonas: 501, servicios: [] });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
   // El cliente puede decir a qué hora del evento espera cada servicio. El evento recién creado está
   // EnConsulta y todavía no tiene horario, así que acá no hay contra qué validar la hora.
   it('guarda la hora esperada de cada servicio y deja la del salón en null', async () => {

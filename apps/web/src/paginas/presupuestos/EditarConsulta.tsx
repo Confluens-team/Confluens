@@ -3,6 +3,7 @@ import {
   desglosarIva,
   ETIQUETAS_TIPO_EVENTO_SOCIAL,
   horaDelEvento,
+  MAXIMO_PERSONAS_EVENTO,
   type ConsultaDetallada,
   type SalonConDistribuciones,
   type Servicio,
@@ -27,6 +28,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
+import { InputEntero } from '@/components/InputEntero';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -337,6 +339,14 @@ function Formulario({
     setAgregar('');
   }
 
+  // RN-04: la cantidad de un servicio que se cobra por persona es gente del evento, así que no
+  // puede superar a los asistentes. La de un adicional escrito a mano son unidades (3 arreglos
+  // florales) y no tiene ese techo.
+  const topeDeLinea = (servicioId: number | null) =>
+    servicioId !== null && catalogo.find((s) => s.id === servicioId)?.porPersona
+      ? Number(personas) || undefined
+      : undefined;
+
   const disponibles = catalogo.filter(
     (s) => s.activo && !lineas.some((l) => l.servicioId === s.id),
   );
@@ -360,6 +370,13 @@ function Formulario({
   // Las horas son "HH:mm" con cero adelante, así que alcanza con compararlas como texto.
   const horaValida = (linea: LineaEditable) =>
     !linea.hora || !franja || (linea.hora >= franja.desde && linea.hora <= franja.hasta);
+  // RN-04: la cantidad de un servicio por persona no puede pasar a los asistentes. El input ya lo
+  // recorta al escribir, pero bajar la cantidad de personas después deja las líneas de antes por
+  // encima: ahí hay que frenar el guardado, que si no vuelve 422 desde la API.
+  const cantidadPosible = (linea: LineaEditable) => {
+    const tope = topeDeLinea(linea.servicioId);
+    return tope === undefined || Number(linea.cantidad) <= tope;
+  };
   const valido =
     !!fecha &&
     esEntero(personas) &&
@@ -368,7 +385,12 @@ function Formulario({
     // Un evento confirmado ocupa un salón: no puede quedar «a definir».
     (!confirmado || salonesSel.length > 0) &&
     lineas.every(
-      (l) => esEntero(l.cantidad) && precioValido(l) && horaValida(l) && l.descripcion.trim(),
+      (l) =>
+        esEntero(l.cantidad) &&
+        cantidadPosible(l) &&
+        precioValido(l) &&
+        horaValida(l) &&
+        l.descripcion.trim(),
     );
   // Sin salón ni líneas, el presupuesto sigue sin armar y no arranca la vigencia (ADR 0008).
   const quedaSinArmar = salonesSel.length === 0 && lineas.length === 0;
@@ -533,13 +555,12 @@ function Formulario({
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="consulta-personas">Personas</Label>
-              <Input
+              <InputEntero
                 id="consulta-personas"
-                type="number"
-                min={1}
+                max={MAXIMO_PERSONAS_EVENTO}
                 value={personas}
                 aria-invalid={!esEntero(personas)}
-                onChange={(e) => setPersonas(e.target.value)}
+                onChangeValor={setPersonas}
               />
             </div>
             <div className="space-y-1.5">
@@ -776,13 +797,12 @@ function Formulario({
                       )}
                     </td>
                     <td className="py-2 pr-3">
-                      <Input
+                      <InputEntero
                         aria-label={`Cantidad de ${linea.descripcion}`}
-                        type="number"
-                        min={1}
+                        max={topeDeLinea(linea.servicioId)}
                         value={linea.cantidad}
-                        aria-invalid={!esEntero(linea.cantidad)}
-                        onChange={(e) => actualizarLinea(linea.clave, { cantidad: e.target.value })}
+                        aria-invalid={!esEntero(linea.cantidad) || !cantidadPosible(linea)}
+                        onChangeValor={(cantidad) => actualizarLinea(linea.clave, { cantidad })}
                       />
                     </td>
                     <td className="py-2 pr-3">
@@ -907,13 +927,12 @@ function Formulario({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="otro-cantidad">Cantidad</Label>
-                  <Input
+                  <InputEntero
                     id="otro-cantidad"
                     className="bg-card"
-                    type="number"
-                    min={1}
                     value={otro.cantidad}
-                    onChange={(e) => setOtro({ ...otro, cantidad: e.target.value })}
+                    aria-invalid={!esEntero(otro.cantidad)}
+                    onChangeValor={(cantidad) => setOtro({ ...otro, cantidad })}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -961,6 +980,14 @@ function Formulario({
             {cantidadACotizar === 1
               ? 'Un servicio está a cotizar y no suma al total.'
               : `${cantidadACotizar} servicios están a cotizar y no suman al total.`}
+          </p>
+        )}
+        {/* Pasa al bajar la cantidad de personas con los servicios ya cargados: el campo queda
+            marcado pero sin esto no se entiende por qué no deja guardar. */}
+        {lineas.some((l) => esEntero(l.cantidad) && !cantidadPosible(l)) && (
+          <p className="mt-3 text-right text-xs text-destructive">
+            Hay un servicio por persona contratado para más gente que la que asiste. Ajustá su
+            cantidad a {personas} o menos.
           </p>
         )}
         <p className="mt-3 text-right text-xs text-muted-foreground">

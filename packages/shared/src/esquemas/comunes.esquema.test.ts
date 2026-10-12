@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { horaDelEvento, minutosDeHora, ZONA_HORARIA_EVENTOS } from './comunes.esquema.js';
+import { MAXIMO_PERSONAS_EVENTO } from '../dominio/evento.js';
+import {
+  esquemaCantidadPersonas,
+  horaDelEvento,
+  minutosDeHora,
+  ZONA_HORARIA_EVENTOS,
+} from './comunes.esquema.js';
 
 // ADR 0010: la hora de un evento se lee siempre contra una zona fija. Estos tests son lo que evita
 // que la regla vuelva a depender de dónde corre el proceso: en las máquinas del equipo el sistema
@@ -52,5 +58,46 @@ describe('minutosDeHora', () => {
     const porMinutos = [...horas].sort((a, b) => minutosDeHora(a) - minutosDeHora(b));
     const porTexto = [...horas].sort();
     expect(porMinutos).toEqual(porTexto);
+  });
+});
+
+// La cantidad de asistentes es lo que multiplica a cada servicio por persona: un decimal o un
+// número desmedido se arrastra a todo el presupuesto. Antes el schema solo pedía un entero
+// positivo, así que un evento de 999.999 personas pasaba y el social no tenía ningún techo (no
+// elige salón, ADR 0008, así que la capacidad no lo frenaba).
+describe('esquemaCantidadPersonas', () => {
+  it('acepta un entero entre 1 y el tope', () => {
+    for (const valor of [1, 50, 280, MAXIMO_PERSONAS_EVENTO]) {
+      expect(esquemaCantidadPersonas.safeParse(valor).success, String(valor)).toBe(true);
+    }
+  });
+
+  it('rechaza pasarse del tope, con un mensaje que se puede mostrar', () => {
+    const resultado = esquemaCantidadPersonas.safeParse(MAXIMO_PERSONAS_EVENTO + 1);
+    expect(resultado.success).toBe(false);
+    expect(resultado.error?.issues[0]?.message).toBe(
+      `Para más de ${MAXIMO_PERSONAS_EVENTO} personas, consultanos`,
+    );
+  });
+
+  it('rechaza decimales: una cantidad de personas con coma o punto no existe', () => {
+    for (const valor of [2.5, 0.5, 49.99]) {
+      expect(esquemaCantidadPersonas.safeParse(valor).success, String(valor)).toBe(false);
+    }
+    expect(esquemaCantidadPersonas.safeParse(2.5).error?.issues[0]?.message).toBe(
+      'Ingresá un número entero de personas',
+    );
+  });
+
+  it('rechaza cero y negativos', () => {
+    expect(esquemaCantidadPersonas.safeParse(0).success).toBe(false);
+    expect(esquemaCantidadPersonas.safeParse(-10).success).toBe(false);
+  });
+
+  it('no coacciona: un string no es una cantidad', () => {
+    expect(esquemaCantidadPersonas.safeParse('50').success).toBe(false);
+    expect(esquemaCantidadPersonas.safeParse('50').error?.issues[0]?.message).toBe(
+      'Ingresá la cantidad de personas',
+    );
   });
 });

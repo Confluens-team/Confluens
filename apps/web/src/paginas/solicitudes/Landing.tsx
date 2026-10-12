@@ -24,12 +24,10 @@ const NUMERALES = ['I', 'II', 'III', 'IV', 'V'];
 const CTA_BASE =
   'h-auto min-h-14 gap-2.5 px-6 py-3 text-base font-semibold tracking-wide whitespace-normal shadow-md sm:px-8 sm:text-lg';
 
-// Sobre las secciones oscuras (portada y cierre): dorado macizo con texto bordó, 5.7:1.
+// Sobre las secciones oscuras (portada y cierre): dorado macizo con texto bordó, 5.7:1. Si algún
+// día vuelve un CTA sobre el papel crema, el dorado no sirve de fondo ahí: da 2.8:1 y no llega al
+// 3:1 que WCAG 1.4.11 pide para el contorno de un control. Sobre crema va bordó macizo (11:1).
 const CTA_DORADO = `${CTA_BASE} bg-dorado text-bordo-oscuro hover:bg-dorado/90`;
-
-// Sobre el papel crema: bordó macizo, 11:1. Acá el dorado no sirve de fondo: contra el papel da
-// 2.8:1 y no llega al 3:1 que WCAG 1.4.11 pide para el contorno de un control.
-const CTA_BORDO = `${CTA_BASE} bg-bordo text-crema hover:bg-bordo-oscuro`;
 
 // Secundario de la portada, apoyado sobre la foto: el contorno pasa de 1 px al 40 % (3.4:1) a
 // 2 px al 70 % y suma un velo bordó, para que se lea como botón y no como texto suelto.
@@ -85,10 +83,15 @@ function TituloSeccion({
 // Salones y servicios se leen de la API (criterio 4: los cambios se reflejan sin publicación
 // manual). Lo institucional es estático, en datos-institucionales.ts.
 //
-// Sin precios en toda la pantalla: los ve el cliente registrado en el cotizador. "Cotizá tu
-// evento" (y "Cotizar en este salón", criterio 3 de HU-07) piden iniciar sesión o crear la cuenta
-// y abren el cotizador. Desde la entrevista del 24/09/2026 no hay consulta sin cuenta: toda
-// consulta del canal público pasa por el registro (dominio.md, "Canal público").
+// Sin precios en toda la pantalla: los ve el cliente registrado en el cotizador. Los tres CTA que
+// abren el cotizador ("Consultá para hacer tu evento" en el hero, "Cotizá tu evento" en el
+// encabezado fijo y el del cierre) piden iniciar sesión o crear la cuenta. Desde la entrevista del
+// 24/09/2026 no hay consulta sin cuenta: toda consulta del canal público pasa por el registro
+// (dominio.md, "Canal público").
+//
+// Tres y no cinco: antes cada sección tenía el suyo y la página se leía como cinco caminos
+// distintos en lugar de una acción repetida. Se quitaron el de esta sección y el de cada ficha de
+// salón (ver SalonesPublicos, que documenta el criterio de HU-07 que eso deja sin cumplir).
 export function Landing({
   onCotizar,
   onAccesoPersonal,
@@ -168,9 +171,6 @@ export function Landing({
           <p className="mt-6 font-display text-xl text-bordo italic">
             “Le agradecemos que se haya contactado con nosotros.”
           </p>
-          <Button size="lg" className={`mt-8 ${CTA_BORDO}`} onClick={() => onCotizar()}>
-            Armá tu presupuesto online <ArrowRight className="size-5" />
-          </Button>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <img
@@ -199,9 +199,9 @@ export function Landing({
           <TituloSeccion
             antetitulo="Nuestros salones"
             titulo="Un espacio para cada evento"
-            bajada="Mirá las distribuciones de cada salón y cotizá por el que te sirva."
+            bajada="Mirá la capacidad y las distribuciones de cada salón."
           />
-          <SalonesPublicos onConsultar={(salon) => onCotizar(salon.id)} />
+          <SalonesPublicos />
         </div>
       </section>
 

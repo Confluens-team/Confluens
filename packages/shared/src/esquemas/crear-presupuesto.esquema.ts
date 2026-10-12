@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { esquemaFecha, esquemaId } from './comunes.esquema.js';
+import { esquemaCantidadPersonas, esquemaFecha, esquemaId } from './comunes.esquema.js';
 import { esquemaEvento } from './evento.esquema.js';
 import { esquemaLineaPresupuesto } from './linea-presupuesto.esquema.js';
 import { esquemaPresupuesto } from './presupuesto.esquema.js';
@@ -39,7 +39,7 @@ export const esquemaCrearPresupuesto = z.object({
     .min(1, 'Elegí al menos un salón')
     .refine((ids) => new Set(ids).size === ids.length, 'Un salón no puede repetirse'),
   fecha: esquemaFecha,
-  cantidadPersonas: z.number().int().positive(),
+  cantidadPersonas: esquemaCantidadPersonas,
   tipoJornada: esquemaTipoJornada,
   horaInicioEstimada: esquemaHoraEstimada.optional(),
   // Puede venir vacío: un presupuesto solo con el salón es válido.
@@ -57,10 +57,7 @@ export type CrearPresupuesto = z.infer<typeof esquemaCrearPresupuesto>;
 export const esquemaCrearConsultaSocial = z
   .object({
     fecha: esquemaFecha,
-    cantidadPersonas: z
-      .number('Ingresá la cantidad de personas')
-      .int('Ingresá un número entero')
-      .positive('Ingresá la cantidad de personas'),
+    cantidadPersonas: esquemaCantidadPersonas,
     tipoJornada: esquemaTipoJornada,
     horaInicioEstimada: esquemaHoraEstimada.optional(),
     tipoSocial: esquemaTipoEventoSocial,

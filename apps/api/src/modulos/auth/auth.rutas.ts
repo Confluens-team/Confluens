@@ -75,7 +75,7 @@ registroOpenApi.registerPath({
       content: { 'application/json': { schema: z.object({ data: esquemaSesion }) } },
     },
     400: { description: 'Datos inválidos' },
-    409: { description: 'Ya existe una cuenta con ese email' },
+    409: { description: 'Ya existe una cuenta con ese email o con ese celular' },
     429: { description: 'Demasiados registros desde la misma IP (H2)' },
   },
 });

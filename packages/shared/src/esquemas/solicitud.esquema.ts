@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-import { esquemaFecha, esquemaFechaHora, esquemaId } from './comunes.esquema.js';
+import {
+  esquemaCantidadPersonas,
+  esquemaFecha,
+  esquemaFechaHora,
+  esquemaId,
+} from './comunes.esquema.js';
 
 // clienteId es null mientras el formulario no requiera autenticación (Sprint 1).
 // Mensajes en español en los campos de contacto: llegan directo al formulario público (HU-14,
@@ -12,7 +17,7 @@ export const esquemaSolicitud = z.object({
   telefono: z.string().min(1, 'Ingresá un teléfono de contacto'),
   correo: z.email('Ingresá un correo válido'),
   fechaDeseada: esquemaFecha,
-  cantidadPersonas: z.number().int().positive('Ingresá una cantidad mayor a 0'), // estimada
+  cantidadPersonas: esquemaCantidadPersonas, // estimada
   salonId: esquemaId.nullable(), // salón de interés elegido en la landing (HU-07)
   descartada: z.boolean(),
   eventoId: esquemaId.nullable(), // evento EnConsulta en el que se convirtió

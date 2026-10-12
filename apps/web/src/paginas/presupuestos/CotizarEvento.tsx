@@ -10,6 +10,7 @@ import {
   desglosarIva,
   ETIQUETAS_TIPO_EVENTO_SOCIAL,
   etiquetaTipoEvento,
+  MAXIMO_PERSONAS_EVENTO,
   PORCENTAJE_SENA,
 } from '@confluens/shared';
 import {
@@ -24,6 +25,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 
+import { InputEntero } from '@/components/InputEntero';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -194,7 +196,13 @@ export function CotizarEvento({
 
   function cantidadDe(servicioId: number, porPersona: boolean) {
     if (!porPersona) return 1;
-    return elegidos.get(servicioId) ?? cantidadPersonas;
+    const manual = elegidos.get(servicioId);
+    if (manual === null || manual === undefined) return cantidadPersonas;
+    // RN-04: la cantidad parcial nunca supera a los asistentes. Se recorta acá y no solo al
+    // guardarla porque bajar la cantidad de personas después deja la parcial por encima, y el
+    // subtotal de esa línea y el del ticket mostrarían un importe imposible. Con el campo de
+    // personas vacío (0) no hay tope todavía y se respeta lo que se eligió.
+    return cantidadPersonas > 0 ? Math.min(manual, cantidadPersonas) : manual;
   }
 
   const lineas = [
@@ -264,7 +272,8 @@ export function CotizarEvento({
   function cambiarCantidad(servicioId: number, valor: string) {
     setElegidos((anteriores) => {
       const siguientes = new Map(anteriores);
-      const numero = Number(valor);
+      const numero =
+        cantidadPersonas > 0 ? Math.min(Number(valor), cantidadPersonas) : Number(valor);
       siguientes.set(servicioId, valor === '' || numero === cantidadPersonas ? null : numero);
       return siguientes;
     });
@@ -410,17 +419,20 @@ export function CotizarEvento({
                 <Label htmlFor="personas" className="inline-flex items-center gap-1.5">
                   <Users className="size-4 text-dorado" /> Cantidad de personas
                 </Label>
-                <Input
+                <InputEntero
                   id="personas"
-                  type="number"
-                  min={1}
+                  max={MAXIMO_PERSONAS_EVENTO}
                   placeholder="Ej: 50"
                   value={personas}
-                  onChange={(e) => setPersonas(e.target.value)}
+                  onChangeValor={setPersonas}
                   className="h-11"
                 />
-                {errores['personas'] && (
+                {errores['personas'] ? (
                   <p className="text-xs text-destructive">{errores['personas']}</p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">
+                    Hasta {MAXIMO_PERSONAS_EVENTO} personas. Para un evento más grande, consultanos.
+                  </p>
                 )}
               </div>
             </div>
@@ -701,7 +713,6 @@ export function CotizarEvento({
                 {(grupos.find(([nombre]) => nombre === categoriaActiva)?.[1] ?? []).map(
                   (servicio) => {
                     const marcado = elegidos.has(servicio.id);
-                    const cantidadManual = elegidos.get(servicio.id);
                     return (
                       <li key={servicio.id} className="py-4">
                         <div className="flex items-start gap-3">
@@ -736,12 +747,11 @@ export function CotizarEvento({
                             {servicio.porPersona && (
                               <>
                                 Para
-                                <Input
-                                  type="number"
-                                  min={1}
+                                <InputEntero
+                                  aria-label={`Para cuántas personas es ${servicio.nombre}`}
                                   max={cantidadPersonas || undefined}
-                                  value={cantidadManual ?? (cantidadPersonas || '')}
-                                  onChange={(e) => cambiarCantidad(servicio.id, e.target.value)}
+                                  value={cantidadDe(servicio.id, true) || ''}
+                                  onChangeValor={(valor) => cambiarCantidad(servicio.id, valor)}
                                   className={cn(
                                     'h-8 w-20',
                                     errores[`servicio-${servicio.id}`] && 'border-destructive',
@@ -943,8 +953,8 @@ function ResumenConsultaSocial({
         <dl className="space-y-3 text-sm">
           {filas.map(([etiqueta, valor]) => (
             <div key={etiqueta} className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">{etiqueta}</dt>
-              <dd className="text-right font-medium">{valor}</dd>
+              <dt className="shrink-0 text-muted-foreground">{etiqueta}</dt>
+              <dd className="min-w-0 text-right font-medium break-words">{valor}</dd>
             </div>
           ))}
         </dl>

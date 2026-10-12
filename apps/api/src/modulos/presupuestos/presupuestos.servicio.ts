@@ -124,6 +124,23 @@ function precioDeSalon(
   return jornada === 'completa' ? salon.precioJornadaCompleta : salon.precioMediaJornada;
 }
 
+// RN-04: un servicio se puede contratar para menos personas que el total del evento, pero no para
+// más. Si se cobra por persona, su cantidad ES gente del evento. La web ya lo recorta mientras se
+// escribe; esto es lo que lo hace valer también para un body armado a mano. La cantidad de un
+// servicio con precio fijo son unidades (3 dispensers) y no tiene este techo.
+function exigirCantidadPosible(
+  servicio: { nombre: string; porPersona: boolean },
+  cantidad: number,
+  cantidadPersonas: number,
+) {
+  if (servicio.porPersona && cantidad > cantidadPersonas) {
+    throw ErrorApi.reglaNegocio(
+      `"${servicio.nombre}" se cobra por persona: no se puede contratar para ${cantidad} ` +
+        `personas si al evento asisten ${cantidadPersonas}`,
+    );
+  }
+}
+
 /**
  * Genera un presupuesto estimado a partir de salón, fecha, cantidad de personas y servicios
  * seleccionados (HU-09). En una única operación: busca o crea el Cliente por correo, crea el
@@ -183,6 +200,7 @@ export async function generarPresupuesto(
     if (!servicio.activo) {
       throw ErrorApi.reglaNegocio(`El servicio "${servicio.nombre}" no está activo`);
     }
+    exigirCantidadPosible(servicio, seleccionado.cantidad, datos.cantidadPersonas);
   }
 
   const lineasSalones = salones.map((salon) =>
@@ -588,6 +606,7 @@ export async function modificarPresupuesto(
     if (!anterior && !servicio.activo) {
       throw ErrorApi.reglaNegocio(`El servicio "${servicio.nombre}" no está activo`);
     }
+    exigirCantidadPosible(servicio, elegido.cantidad, datos.cantidadPersonas);
     // Lo que ya tenía precio lo conserva; lo nuevo, y lo que seguía a cotizar, toma el del catálogo,
     // que también puede ser null (sigue a cotizar).
     const congelado = anterior && !anterior.aCotizar ? anterior.precioUnitario : undefined;
