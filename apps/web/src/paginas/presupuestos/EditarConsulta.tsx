@@ -16,6 +16,7 @@ import {
   ArrowLeft,
   CalendarCheck,
   Check,
+  CheckCircle2,
   ClipboardList,
   Plus,
   Printer,
@@ -23,7 +24,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
@@ -107,9 +108,12 @@ export function EditarConsulta({
   onAbrirEvento,
   onImprimirComanda,
   textoVolver = 'Volver a las consultas',
+  textoVolverAlGuardar = 'Volver al inicio',
 }: {
   id: number;
   onVolver: () => void;
+  // Ya no se llama al guardar: guardar deja la consulta abierta con un aviso, y esto es lo que
+  // hace el botón de volver de ese aviso, con la consulta tal como quedó guardada.
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onAbrirEvento: (eventoId: number) => void;
@@ -118,6 +122,8 @@ export function EditarConsulta({
   onImprimirComanda?: (presupuestoId: number) => void;
   // Se abre desde Consultas o desde un evento de la agenda (HU-15).
   textoVolver?: string;
+  // El botón del aviso de guardado; arma también la pregunta («¿Querés volver al inicio?»).
+  textoVolverAlGuardar?: string;
 }) {
   const consulta = useConsulta(id);
   const salones = useSalones();
@@ -145,6 +151,7 @@ export function EditarConsulta({
           onDadaDeBaja={onDadaDeBaja}
           onAbrirEvento={onAbrirEvento}
           onImprimirComanda={onImprimirComanda}
+          textoVolverAlGuardar={textoVolverAlGuardar}
         />
       )}
     </div>
@@ -159,6 +166,7 @@ function Formulario({
   onDadaDeBaja,
   onAbrirEvento,
   onImprimirComanda,
+  textoVolverAlGuardar,
 }: {
   consulta: ConsultaDetallada;
   salones: SalonConDistribuciones[];
@@ -167,9 +175,18 @@ function Formulario({
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onAbrirEvento: (eventoId: number) => void;
   onImprimirComanda?: (presupuestoId: number) => void;
+  textoVolverAlGuardar: string;
 }) {
   const modificar = useModificarConsulta(consulta.id);
   const darDeBaja = useDarDeBajaConsulta(consulta.id);
+
+  // Guardar no saca de la consulta (pedido de Franco, 12/10/2026): se queda abierta con un aviso
+  // que ofrece volver. `guardada` es la consulta como la devolvió la API.
+  const [guardada, setGuardada] = useState<ConsultaDetallada | null>(null);
+  const refAviso = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (guardada) refAviso.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [guardada]);
 
   // Precio congelado de cada salón que ya estaba en el presupuesto: vuelve a usarse si se lo
   // destilda y se lo vuelve a tildar sin cambiar la jornada.
@@ -392,6 +409,7 @@ function Formulario({
   function guardar(evento: React.FormEvent) {
     evento.preventDefault();
     if (!valido) return;
+    setGuardada(null);
     const aImporte = (valor: string) => Number(valor).toFixed(2);
     modificar.mutate(
       {
@@ -425,7 +443,7 @@ function Formulario({
             precioUnitario: aImporte(l.precio),
           })),
       },
-      { onSuccess: onGuardada },
+      { onSuccess: setGuardada },
     );
   }
 
@@ -1005,6 +1023,32 @@ function Formulario({
             </p>
             <Button type="submit" disabled={!valido || modificar.isPending}>
               {modificar.isPending ? 'Guardando…' : 'Guardar cambios'}
+            </Button>
+          </div>
+        </div>
+      )}
+      {guardada && (
+        <div
+          ref={refAviso}
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200"
+        >
+          <p className="flex items-center gap-2 font-medium">
+            <CheckCircle2 className="size-4 shrink-0" /> Cambios guardados. ¿Querés{' '}
+            {textoVolverAlGuardar.charAt(0).toLowerCase() + textoVolverAlGuardar.slice(1)}?
+          </p>
+          <div className="flex items-center gap-2">
+            <Button type="button" size="sm" onClick={() => onGuardada(guardada)}>
+              <ArrowLeft /> {textoVolverAlGuardar}
+            </Button>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-label="Cerrar el aviso"
+              onClick={() => setGuardada(null)}
+            >
+              <X />
             </Button>
           </div>
         </div>
