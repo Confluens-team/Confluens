@@ -1,7 +1,10 @@
 import { z } from 'zod';
 
 import { esquemaFechaHora, esquemaId } from './comunes.esquema.js';
+import { esquemaEtiqueta } from './etiqueta.esquema.js';
 
+// Ficha del cliente tal como la ve el personal. Nunca se devuelve al rol Cliente: lleva la etiqueta,
+// que es solo interna (el perfil del canal público usa su propio schema, sesion.esquema.ts).
 export const esquemaCliente = z.object({
   id: esquemaId,
   nombre: z.string().min(1), // nombre de la persona, o razón social
@@ -10,6 +13,7 @@ export const esquemaCliente = z.object({
   correo: z.email(),
   activo: z.boolean(),
   usuarioId: esquemaId.nullable(),
+  etiqueta: esquemaEtiqueta.nullable(),
   creadoEn: esquemaFechaHora,
   actualizadoEn: esquemaFechaHora,
 });

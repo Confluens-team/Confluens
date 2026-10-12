@@ -51,6 +51,14 @@ export async function crearUsuarioCliente(datos: {
   });
 }
 
+// Cliente que ya tiene cuenta usando ese celular. El filtro `usuarioId` no es null es lo que
+// importa: una ficha que el personal cargó y todavía no tiene cuenta no debe bloquear el registro,
+// porque es justo la ficha que se le va a vincular (C7 de HU-48). El teléfono llega normalizado a
+// E.164 por esquemaCelular, así que la comparación exacta alcanza.
+export async function buscarClientePorTelefono(telefono: string) {
+  return prisma.cliente.findFirst({ where: { telefono, usuarioId: { not: null } } });
+}
+
 export async function buscarUsuarioPorId(id: number) {
   return prisma.usuario.findUnique({ where: { id } });
 }
@@ -75,5 +83,6 @@ export type RestablecimientoRepositorio = AuthRepositorio & {
 // Tipo aparte (y no más campos en AuthRepositorio) para que los fakes de iniciarSesion en
 // auth.servicio.test.ts no tengan que implementar funciones que ese flujo no usa.
 export type RegistroRepositorio = AuthRepositorio & {
+  buscarClientePorTelefono: typeof buscarClientePorTelefono;
   crearUsuarioCliente: typeof crearUsuarioCliente;
 };

@@ -27,7 +27,7 @@ El Product Owner los valida con el cliente antes del sprint en que se aborda la 
 | S-03 | Inactividad de un cliente | **No hay baja por inactividad.** HU-08 del backlog global se elimina. | Entrevista 24/09 |
 | S-04 | Tipos de evento | Social y corporativo (antes "empresarial"). El social se clasifica en cumpleaños, casamiento, fiesta de 15, bautismo, fiesta corporativa u otro; no pasa por el cotizador (ADR 0008). | Refinamiento; PO, 07/10/2026 |
 | S-06 | IVA | Los precios del tarifario son **sin IVA**. Se guardan sin IVA y se muestran subtotal, IVA 21% y total (RN-05). | Entrevista 24/09 |
-| S-07 | Comandas y proveedores | Fuera de alcance. | Equipo |
+| S-07 | Comandas y proveedores | **Partido en dos.** La **comanda de cocina** entra en alcance: es la información que el sistema ya tiene (fecha, salón, armado, horario, personas y servicios con su hora), formateada sin precios para imprimir y pegar en la cocina. No agrega complejidad, es otro manejo de los mismos datos. Lo que sigue **fuera de alcance** es lo que motivó el pendiente original: integrarse con el sistema de cocina o con los de los proveedores. | Equipo, 09/10/2026 |
 | — | Capacidades de los salones | Están en el tarifario vigente. Ver `../negocio/tarifario-2026.md`. | Tarifario |
 | — | Vigencia del presupuesto | **10 días** (no 30). Vencido, pasa a `Expirado` con aviso; no se da de baja solo (RN-08). | Entrevista 24/09 |
 | — | Plazo de la seña | Dentro de la vigencia de 10 días. **No hay cancelación automática** del evento (RN-06). | Entrevista 24/09 |

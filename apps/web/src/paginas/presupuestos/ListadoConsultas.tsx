@@ -3,11 +3,12 @@ import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Search, X } from 'luc
 import { useEffect, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { usePresupuestos } from '@/hooks/use-presupuestos';
-import { fechaLocal, formatearPesos, nombreCompleto } from '@/lib/formato';
+import { fechaLocal, formatearPesos, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { COLORES_TIPO_EVENTO } from '@/lib/tipo-evento';
 import { cn } from '@/lib/utils';
 import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
@@ -32,8 +33,10 @@ const fechaCompacta = (fecha: Date) =>
 
 // HU-10: las consultas del personal (cada una es un presupuesto no confirmado), de la más reciente a
 // la más antigua por emisión. Filtra por estado, cliente y rango de fechas del evento; las Expirado
-// llevan el aviso de RN-08. Los importes se guardan sin IVA y se muestran desglosados (RN-05). Cada
-// fila abre la consulta para editarla (HU-12).
+// llevan el aviso de RN-08. De los importes el listado muestra el total con IVA y el subtotal sin
+// IVA: el desglose completo que pide RN-05 (subtotal, IVA 21% y total) va en el presupuesto, que es
+// la consulta y el documento imprimible, no en un índice de muchos. Tres columnas de importes era
+// lo que no dejaba entrar la tabla sin scroll horizontal. Cada fila abre la consulta (HU-12).
 export function ListadoConsultas() {
   const [estado, setEstado] = useState<EstadoConsulta | undefined>();
   const [textoCliente, setTextoCliente] = useState('');
@@ -156,7 +159,7 @@ export function ListadoConsultas() {
               <Input
                 id="filtro-cliente"
                 className="bg-card pl-8"
-                placeholder="Nombre, apellido o correo"
+                placeholder="Nombre, apellido, correo o etiqueta"
                 value={textoCliente}
                 onChange={(e) => setTextoCliente(e.target.value)}
               />
@@ -245,7 +248,7 @@ export function ListadoConsultas() {
             </p>
           </div>
           <div className="overflow-x-auto rounded-xl bg-card ring-1 ring-border">
-            <table className="w-full min-w-[60rem] text-left text-sm">
+            <table className="w-full min-w-[48rem] text-left text-sm">
               <thead className="border-b text-xs text-muted-foreground">
                 <tr>
                   <th className="px-3 py-3 font-medium">Nº</th>
@@ -254,8 +257,6 @@ export function ListadoConsultas() {
                   <th className="px-3 py-3 font-medium">Salón</th>
                   <th className="px-3 py-3 font-medium">Evento</th>
                   <th className="px-3 py-3 font-medium">Vigencia</th>
-                  <th className="px-3 py-3 text-right font-medium">Subtotal</th>
-                  <th className="px-3 py-3 text-right font-medium">IVA 21%</th>
                   <th className="px-3 py-3 text-right font-medium">Total</th>
                   <th className="w-40 px-3 py-3 font-medium">Estado</th>
                 </tr>
@@ -296,12 +297,15 @@ export function ListadoConsultas() {
                         <p className="truncate text-xs text-muted-foreground">
                           {presupuesto.cliente.correo}
                         </p>
+                        <EtiquetaCliente etiqueta={presupuesto.cliente.etiqueta} className="mt-1" />
                       </td>
                       <td className="max-w-[11rem] px-3 py-3">
                         <BadgeTipoEvento evento={presupuesto} />
                       </td>
                       <td className="px-3 py-3">
-                        {presupuesto.salon?.nombre ?? (
+                        {presupuesto.salones.length > 0 ? (
+                          nombresDeSalones(presupuesto.salones)
+                        ) : (
                           <span className="text-muted-foreground italic">A definir</span>
                         )}
                       </td>
@@ -325,26 +329,16 @@ export function ListadoConsultas() {
                         </p>
                       </td>
                       {sinArmar ? (
-                        <td
-                          colSpan={3}
-                          className="px-3 py-3 text-center text-xs text-muted-foreground italic"
-                        >
-                          Presupuesto por armar
+                        <td className="px-3 py-3 text-center text-xs text-muted-foreground italic">
+                          Por armar
                         </td>
                       ) : (
-                        <>
-                          <td className="px-3 py-3 text-right whitespace-nowrap">
-                            {formatearPesos(importes.subtotal)}
-                            <p className="text-xs text-muted-foreground">sin IVA</p>
-                          </td>
-                          <td className="px-3 py-3 text-right whitespace-nowrap">
-                            {formatearPesos(importes.iva)}
-                          </td>
-                          <td className="px-3 py-3 text-right font-medium whitespace-nowrap">
-                            {formatearPesos(importes.total)}
-                            <p className="text-xs font-normal text-muted-foreground">con IVA</p>
-                          </td>
-                        </>
+                        <td className="px-3 py-3 text-right whitespace-nowrap">
+                          <p className="font-medium">{formatearPesos(importes.total)}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatearPesos(importes.subtotal)} sin IVA
+                          </p>
+                        </td>
                       )}
                       <td className="px-3 py-3">
                         <span

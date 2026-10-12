@@ -44,3 +44,24 @@ export function fechaISO(fecha: Date): string {
 export function hoyISO(): string {
   return fechaISO(new Date());
 }
+
+const FORMATO_LISTA = new Intl.ListFormat('es-AR', { style: 'long', type: 'conjunction' });
+
+// Un evento puede ocupar varios salones (ADR 0011): "Auditorio", "Auditorio y Pucará",
+// "Auditorio, Pucará y Paraná".
+export function nombresDeSalones(salones: { nombre: string }[], siNoHay = 'A definir'): string {
+  return salones.length > 0 ? FORMATO_LISTA.format(salones.map((s) => s.nombre)) : siNoHay;
+}
+
+// El armado de los salones de un evento: cada salón tiene su distribución (ADR 0011). "Banquete"
+// si todos los armados usan la misma, "Auditorio: Banquete · Pucará: Conferencia" si difieren, y
+// null si ninguno está armado todavía.
+export function armadoDeSalones(
+  salones: { nombre: string; distribucion: { nombre: string } | null }[],
+): string | null {
+  const armados = salones.filter((s) => s.distribucion !== null);
+  if (armados.length === 0) return null;
+  const nombres = new Set(armados.map((s) => s.distribucion!.nombre));
+  if (nombres.size === 1 && armados.length === salones.length) return [...nombres][0]!;
+  return armados.map((s) => `${s.nombre}: ${s.distribucion!.nombre}`).join(' · ');
+}

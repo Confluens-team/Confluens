@@ -15,6 +15,24 @@ import {
 
 const NUMERALES = ['I', 'II', 'III', 'IV', 'V'];
 
+// AC3 de la auditoría de accesibilidad: los llamados a la acción de la landing (consultar, cotizar
+// e iniciar sesión) son la puerta de entrada del cliente, así que se agrandan para que se vean de
+// lejos y con visión reducida: 56 px de alto —WCAG 2.5.5 pide 44—, texto de 18 px (el umbral de
+// "texto grande" de WCAG 1.4.3) y relleno amplio. `whitespace-normal` saca el `whitespace-nowrap`
+// del botón base: con la tipografía del navegador agrandada el texto pasa a dos renglones en vez
+// de desbordar (WCAG 1.4.4). El botón de la barra superior no entra acá: ahí el alto es fijo.
+const CTA_BASE =
+  'h-auto min-h-14 gap-2.5 px-6 py-3 text-base font-semibold tracking-wide whitespace-normal shadow-md sm:px-8 sm:text-lg';
+
+// Sobre las secciones oscuras (portada y cierre): dorado macizo con texto bordó, 5.7:1. Si algún
+// día vuelve un CTA sobre el papel crema, el dorado no sirve de fondo ahí: da 2.8:1 y no llega al
+// 3:1 que WCAG 1.4.11 pide para el contorno de un control. Sobre crema va bordó macizo (11:1).
+const CTA_DORADO = `${CTA_BASE} bg-dorado text-bordo-oscuro hover:bg-dorado/90`;
+
+// Secundario de la portada, apoyado sobre la foto: el contorno pasa de 1 px al 40 % (3.4:1) a
+// 2 px al 70 % y suma un velo bordó, para que se lea como botón y no como texto suelto.
+const CTA_CLARO = `${CTA_BASE} border-2 border-crema/70 bg-bordo-oscuro/30 text-crema backdrop-blur-sm hover:bg-crema/15 hover:text-crema`;
+
 // Encabezado de sección con el filete dorado del tarifario.
 function TituloSeccion({
   antetitulo,
@@ -65,10 +83,15 @@ function TituloSeccion({
 // Salones y servicios se leen de la API (criterio 4: los cambios se reflejan sin publicación
 // manual). Lo institucional es estático, en datos-institucionales.ts.
 //
-// Sin precios en toda la pantalla: los ve el cliente registrado en el cotizador. "Cotizá tu
-// evento" (y "Cotizar en este salón", criterio 3 de HU-07) piden iniciar sesión o crear la cuenta
-// y abren el cotizador. Desde la entrevista del 24/09/2026 no hay consulta sin cuenta: toda
-// consulta del canal público pasa por el registro (dominio.md, "Canal público").
+// Sin precios en toda la pantalla: los ve el cliente registrado en el cotizador. Los tres CTA que
+// abren el cotizador ("Consultá para hacer tu evento" en el hero, "Cotizá tu evento" en el
+// encabezado fijo y el del cierre) piden iniciar sesión o crear la cuenta. Desde la entrevista del
+// 24/09/2026 no hay consulta sin cuenta: toda consulta del canal público pasa por el registro
+// (dominio.md, "Canal público").
+//
+// Tres y no cinco: antes cada sección tenía el suyo y la página se leía como cinco caminos
+// distintos en lugar de una acción repetida. Se quitaron el de esta sección y el de cada ficha de
+// salón (ver SalonesPublicos, que documenta el criterio de HU-07 que eso deja sin cumplir).
 export function Landing({
   onCotizar,
   onAccesoPersonal,
@@ -99,20 +122,11 @@ export function Landing({
             <p className="mt-6 font-display text-2xl text-crema/85 italic">
               Cinco salones, gastronomía propia y un equipo que se ocupa de cada detalle.
             </p>
-            <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <Button
-                size="lg"
-                className="h-12 bg-dorado px-7 text-sm tracking-wide text-bordo-oscuro hover:bg-dorado/90"
-                onClick={() => onCotizar()}
-              >
-                Consultá para hacer tu evento <ArrowRight />
+            <div className="mt-10 flex flex-col gap-4 sm:flex-row">
+              <Button size="lg" className={CTA_DORADO} onClick={() => onCotizar()}>
+                Consultá para hacer tu evento <ArrowRight className="size-5" />
               </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="h-12 border-crema/40 bg-transparent px-7 text-sm text-crema hover:bg-crema/10 hover:text-crema"
-                asChild
-              >
+              <Button size="lg" variant="outline" className={CTA_CLARO} asChild>
                 <a href="#salones">Conocé los salones</a>
               </Button>
             </div>
@@ -157,9 +171,6 @@ export function Landing({
           <p className="mt-6 font-display text-xl text-bordo italic">
             “Le agradecemos que se haya contactado con nosotros.”
           </p>
-          <Button size="lg" className="mt-8 h-11 px-6" onClick={() => onCotizar()}>
-            Armá tu presupuesto online <ArrowRight />
-          </Button>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <img
@@ -188,9 +199,9 @@ export function Landing({
           <TituloSeccion
             antetitulo="Nuestros salones"
             titulo="Un espacio para cada evento"
-            bajada="Mirá las distribuciones de cada salón y cotizá por el que te sirva."
+            bajada="Mirá la capacidad y las distribuciones de cada salón."
           />
-          <SalonesPublicos onConsultar={(salon) => onCotizar(salon.id)} />
+          <SalonesPublicos />
         </div>
       </section>
 
@@ -312,12 +323,8 @@ export function Landing({
               </li>
             ))}
           </ul>
-          <Button
-            size="lg"
-            className="mt-10 h-12 bg-dorado px-7 text-sm text-bordo-oscuro hover:bg-dorado/90"
-            onClick={() => onCotizar()}
-          >
-            Iniciá sesión para cotizar tu evento <ArrowRight />
+          <Button size="lg" className={`mt-10 ${CTA_DORADO}`} onClick={() => onCotizar()}>
+            Iniciá sesión para cotizar tu evento <ArrowRight className="size-5" />
           </Button>
           <p className="mt-3 text-xs text-crema/60">
             Los precios solo se muestran a clientes registrados.

@@ -1,10 +1,22 @@
 import { z } from 'zod';
 
+import { MAXIMO_PERSONAS_EVENTO } from '../dominio/evento.js';
+
 // Primitivas comunes a las entidades. Los ids son enteros autoincrementales de PostgreSQL.
 export const esquemaId = z.number().int().positive();
 
 // Importe sin IVA (RN-05). Viaja como string (Decimal(12,2) de Prisma) para no perder precisión.
 export const esquemaImporte = z.string().regex(/^\d{1,10}(\.\d{1,2})?$/, 'Importe inválido');
+
+// Cantidad de asistentes de un evento o de una solicitud: entero, al menos 1 y con el tope del
+// negocio. Un corporativo además se valida contra la capacidad del salón, que no se conoce acá.
+// Mensajes en español: es un campo del cotizador público, así que el error se muestra tal cual al
+// cliente. El `.int()` es lo que rechaza una cantidad escrita con coma o punto.
+export const esquemaCantidadPersonas = z
+  .number('Ingresá la cantidad de personas')
+  .int('Ingresá un número entero de personas')
+  .positive('Ingresá una cantidad mayor a 0')
+  .max(MAXIMO_PERSONAS_EVENTO, `Para más de ${MAXIMO_PERSONAS_EVENTO} personas, consultanos`);
 
 // Instante en ISO 8601 UTC (2026-10-10T13:00:00.000Z).
 export const esquemaFechaHora = z.iso.datetime();
@@ -20,3 +32,28 @@ export const esquemaFecha = z.iso.date('Fecha inválida');
 // que el usuario borró llega como string vacío y no tiene que fallar la validación.
 export const vacioComoAusente = (valor: unknown) =>
   typeof valor === 'string' && valor.trim() === '' ? undefined : valor;
+
+// Zona horaria de los eventos (ADR 0010). Un instante guardado en UTC se lee siempre contra esta
+// zona para obtener la hora de reloj: la API la usa para validar la hora de un servicio contra el
+// horario del evento y la web para mostrar ese horario, así no pueden contradecirse. No se usa la
+// zona del proceso ni la del navegador: en Render el contenedor corre en UTC y daría otra franja.
+export const ZONA_HORARIA_EVENTOS = 'America/Argentina/Cordoba';
+
+const FORMATO_HORA_EVENTO = new Intl.DateTimeFormat('es-AR', {
+  timeZone: ZONA_HORARIA_EVENTOS,
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23',
+});
+
+// "HH:mm" de un instante, en la hora del salón. Mismo formato que Evento.horaInicioEstimada y que
+// LineaPresupuesto.horaEstimada, así se pueden comparar como texto.
+export function horaDelEvento(instante: Date | string): string {
+  return FORMATO_HORA_EVENTO.format(new Date(instante));
+}
+
+// "HH:mm" → minutos desde la medianoche, para comparar horas sin pelear con fechas.
+export function minutosDeHora(hora: string): number {
+  const [h = 0, m = 0] = hora.split(':').map(Number);
+  return h * 60 + m;
+}

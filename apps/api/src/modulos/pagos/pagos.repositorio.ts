@@ -77,13 +77,15 @@ export async function marcarCobrado(eventoId: number, tx: Prisma.TransactionClie
 // HU-13 C6: los eventos que siguen EnConsulta y pisan la franja que este evento acaba de tomar.
 // No se cancelan ni se tocan (dominio.md:30, Cancelado es siempre manual): se informan para que el
 // Responsable de Eventos los gestione. Es una consulta, no un campo nuevo (sprint-02.md:116).
+// RN-12: las consultas EnConsulta que comparten algún salón y se superponen quedan "en
+// conflicto". Con varios salones por evento (ADR 0011) alcanza con compartir uno.
 export async function buscarConsultasSuperpuestas(
-  datos: { salonId: number; inicio: Date; fin: Date; excluirEventoId: number },
+  datos: { salonIds: number[]; inicio: Date; fin: Date; excluirEventoId: number },
   tx: Prisma.TransactionClient = prisma,
 ) {
   return tx.evento.findMany({
     where: {
-      salonId: datos.salonId,
+      salones: { some: { salonId: { in: datos.salonIds } } },
       id: { not: datos.excluirEventoId },
       estado: 'EnConsulta',
       inicio: { lt: datos.fin },

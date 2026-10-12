@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { esquemaFecha, esquemaId } from './comunes.esquema.js';
+import { esquemaCantidadPersonas, esquemaFecha, esquemaId } from './comunes.esquema.js';
 import { esquemaEvento } from './evento.esquema.js';
 import { esquemaLineaPresupuesto } from './linea-presupuesto.esquema.js';
 import { esquemaPresupuesto } from './presupuesto.esquema.js';
@@ -13,9 +13,12 @@ import {
 } from './tipo-evento.esquema.js';
 
 // RN-04: un servicio puede contratarse para menos personas que el total del evento.
+// `horaEstimada` es opcional: a qué hora del evento se espera ese servicio. Si el evento ya está
+// agendado, la API valida que caiga dentro de su horario.
 export const esquemaServicioSeleccionado = z.object({
   servicioId: esquemaId,
   cantidad: z.number().int().positive(),
+  horaEstimada: esquemaHoraEstimada.optional(),
 });
 export type ServicioSeleccionado = z.infer<typeof esquemaServicioSeleccionado>;
 
@@ -29,9 +32,14 @@ export const esquemaCrearPresupuesto = z.object({
   telefono: z.string().min(1),
   correo: z.email(),
   // Datos del evento en consulta que se crea junto con el presupuesto.
-  salonId: esquemaId,
+  // Un evento puede ocupar varios salones a la vez, hasta los cinco (ADR 0011). El cotizador
+  // corporativo manda al menos uno; la consulta social va por otro endpoint y llega sin salón.
+  salonIds: z
+    .array(esquemaId)
+    .min(1, 'Elegí al menos un salón')
+    .refine((ids) => new Set(ids).size === ids.length, 'Un salón no puede repetirse'),
   fecha: esquemaFecha,
-  cantidadPersonas: z.number().int().positive(),
+  cantidadPersonas: esquemaCantidadPersonas,
   tipoJornada: esquemaTipoJornada,
   horaInicioEstimada: esquemaHoraEstimada.optional(),
   // Puede venir vacío: un presupuesto solo con el salón es válido.
@@ -49,10 +57,7 @@ export type CrearPresupuesto = z.infer<typeof esquemaCrearPresupuesto>;
 export const esquemaCrearConsultaSocial = z
   .object({
     fecha: esquemaFecha,
-    cantidadPersonas: z
-      .number('Ingresá la cantidad de personas')
-      .int('Ingresá un número entero')
-      .positive('Ingresá la cantidad de personas'),
+    cantidadPersonas: esquemaCantidadPersonas,
     tipoJornada: esquemaTipoJornada,
     horaInicioEstimada: esquemaHoraEstimada.optional(),
     tipoSocial: esquemaTipoEventoSocial,

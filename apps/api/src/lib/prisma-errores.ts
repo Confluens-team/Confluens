@@ -18,3 +18,20 @@ export function esViolacionDeSolapamiento(error: unknown): boolean {
   const meta = error.meta as { driverAdapterError?: { cause?: { code?: string } } } | undefined;
   return meta?.driverAdapterError?.cause?.code === '23P01';
 }
+
+/**
+ * RN-12: el mensaje para el usuario cuando la franja choca con otro evento. Con varios salones por
+ * evento (ADR 0011) dice en cuál, que es lo que el Responsable de Eventos necesita para resolverlo.
+ */
+export function mensajeDeSolapamiento(
+  solapado: { id: number; salones: { salonId: number; salon: { nombre: string } }[] },
+  salonIds: number[],
+): string {
+  const enComun = solapado.salones
+    .filter((s) => salonIds.includes(s.salonId))
+    .map((s) => s.salon.nombre);
+  if (enComun.length === 1) {
+    return `El salón ${enComun[0]} ya está reservado en ese horario por el evento #${solapado.id}`;
+  }
+  return `Los salones ${enComun.join(', ')} ya están reservados en ese horario por el evento #${solapado.id}`;
+}

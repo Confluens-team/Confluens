@@ -12,6 +12,7 @@ import { firmarToken, firmarTokenRestablecimiento, NOMBRE_COOKIE_SESION } from '
 // para el job de test) sin perder cobertura sobre la lógica de auth.
 vi.mock('./auth.repositorio.js', () => ({
   buscarUsuarioPorEmail: vi.fn(),
+  buscarClientePorTelefono: vi.fn(),
   crearUsuarioCliente: vi.fn(),
   buscarClientePorUsuarioId: vi.fn(),
   buscarUsuarioPorId: vi.fn(),
@@ -22,6 +23,7 @@ vi.mock('../../lib/correo.js', () => ({ enviarCorreo: vi.fn() }));
 
 const {
   buscarUsuarioPorEmail,
+  buscarClientePorTelefono,
   crearUsuarioCliente,
   buscarClientePorUsuarioId,
   buscarUsuarioPorId,
@@ -32,6 +34,7 @@ const buscarUsuarioPorIdMock = vi.mocked(buscarUsuarioPorId);
 const actualizarContrasenaMock = vi.mocked(actualizarContrasena);
 const enviarCorreoMock = vi.mocked(enviarCorreo);
 const buscarUsuarioPorEmailMock = vi.mocked(buscarUsuarioPorEmail);
+const buscarClientePorTelefonoMock = vi.mocked(buscarClientePorTelefono);
 const crearUsuarioClienteMock = vi.mocked(crearUsuarioCliente);
 const buscarClientePorUsuarioIdMock = vi.mocked(buscarClientePorUsuarioId);
 
@@ -171,8 +174,24 @@ describe('POST /api/auth/registro', () => {
     contrasena: 'secreta123',
   };
 
+  // Ficha de cliente que ya tiene cuenta, para el caso del celular repetido.
+  const clienteConCuenta = {
+    id: 3,
+    nombre: 'Juan',
+    apellido: 'Gómez',
+    telefono: '+5493515551234',
+    correo: 'juan@empresa.com',
+    activo: true,
+    usuarioId: 9,
+    etiquetaId: null,
+    creadoEn: new Date(),
+    actualizadoEn: new Date(),
+  };
+
   beforeEach(() => {
     buscarUsuarioPorEmailMock.mockReset();
+    buscarClientePorTelefonoMock.mockReset();
+    buscarClientePorTelefonoMock.mockResolvedValue(null);
     crearUsuarioClienteMock.mockReset();
   });
 
@@ -219,6 +238,63 @@ describe('POST /api/auth/registro', () => {
 
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(crearUsuarioClienteMock).not.toHaveBeenCalled();
+  });
+
+  it('con un celular que ya tiene cuenta responde 409 y no crea nada', async () => {
+    buscarUsuarioPorEmailMock.mockResolvedValue(null);
+    buscarClientePorTelefonoMock.mockResolvedValue(clienteConCuenta);
+
+    const respuesta = await request(app).post('/api/auth/registro').send(datosValidos);
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(respuesta.body.error.message).toContain('celular');
+    expect(crearUsuarioClienteMock).not.toHaveBeenCalled();
+    // Se busca por el celular normalizado, no por lo que se tipeó en el formulario.
+    expect(buscarClientePorTelefonoMock).toHaveBeenCalledWith('+5493515551234');
+  });
+
+  // C7: la ficha que el personal cargó antes del registro no tiene cuenta y se vincula, así que su
+  // teléfono no puede bloquear a quien se está registrando. Por eso la búsqueda filtra por
+  // usuarioId no null (ver auth.repositorio.ts) y acá no hay nada que la haga devolver una ficha.
+  it('un celular que está en una ficha sin cuenta no bloquea el registro (C7)', async () => {
+    buscarUsuarioPorEmailMock.mockResolvedValue(null);
+    buscarClientePorTelefonoMock.mockResolvedValue(null);
+    crearUsuarioClienteMock.mockImplementation(async (datos) => ({
+      id: 7,
+      email: datos.email,
+      hashContrasena: datos.hashContrasena,
+      rol: 'CLIENTE',
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+    }));
+
+    const respuesta = await request(app).post('/api/auth/registro').send(datosValidos);
+
+    expect(respuesta.status).toBe(201);
+    expect(crearUsuarioClienteMock).toHaveBeenCalled();
+  });
+
+  it('con un nombre con números o símbolos responde 400 y no crea nada', async () => {
+    for (const nombre of ['Ana3', 'Ana!', '<script>']) {
+      const respuesta = await request(app)
+        .post('/api/auth/registro')
+        .send({ ...datosValidos, nombre });
+
+      expect(respuesta.status).toBe(400);
+      expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    }
+    expect(crearUsuarioClienteMock).not.toHaveBeenCalled();
+  });
+
+  it('con un apellido de más de 30 caracteres responde 400 y no crea nada', async () => {
+    const respuesta = await request(app)
+      .post('/api/auth/registro')
+      .send({ ...datosValidos, apellido: 'a'.repeat(31) });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
     expect(crearUsuarioClienteMock).not.toHaveBeenCalled();
   });
 
@@ -297,7 +373,8 @@ describe('POST /api/auth/registro', () => {
 });
 
 describe('GET /api/auth/perfil', () => {
-  it('con sesión de CLIENTE devuelve sus datos comerciales', async () => {
+  // La etiqueta es solo para el personal: aunque el cliente tenga una, el perfil no la devuelve.
+  it('con sesión de CLIENTE devuelve sus datos comerciales, sin su etiqueta', async () => {
     buscarClientePorUsuarioIdMock.mockResolvedValue({
       id: 3,
       nombre: 'Ana',
@@ -306,6 +383,7 @@ describe('GET /api/auth/perfil', () => {
       correo: 'ana@empresa.com',
       activo: true,
       usuarioId: 7,
+      etiquetaId: 4,
       creadoEn: new Date(),
       actualizadoEn: new Date(),
     });

@@ -27,7 +27,7 @@ export function useSolicitarPresupuesto() {
         correo: datos.correo,
         fechaDeseada: datos.fecha,
         cantidadPersonas: datos.cantidadPersonas,
-        salonId: datos.salonId,
+        salonId: datos.salonIds[0] ?? null,
       };
       const creada = await apiFetch<RespuestaExito<Solicitud>>('/solicitudes', {
         method: 'POST',

@@ -3,6 +3,7 @@ import {
   esquemaEventoAgenda,
   esquemaEventoDetallado,
   esquemaFiltrosAgenda,
+  esquemaGuardarObservacionesComanda,
 } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -12,7 +13,13 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { agendar, cancelar, listar, obtener } from './eventos.controlador.js';
+import {
+  agendar,
+  cancelar,
+  guardarObservacionesComanda,
+  listar,
+  obtener,
+} from './eventos.controlador.js';
 
 // Detalle de la capa HTTP, no se comparte con el frontend (a diferencia de los esquemas de body).
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
@@ -83,6 +90,27 @@ registroOpenApi.registerPath({
 });
 
 registroOpenApi.registerPath({
+  method: 'patch',
+  path: '/eventos/{id}/observaciones-comanda',
+  tags: ['Eventos'],
+  summary: 'Guarda las notas al pie de la comanda de cocina. Texto libre, interno del personal',
+  request: {
+    params: esquemaIdParam,
+    body: {
+      content: { 'application/json': { schema: esquemaGuardarObservacionesComanda } },
+    },
+  },
+  responses: {
+    200: { description: 'Observaciones guardadas', content: respuestaEvento },
+    400: { description: 'El texto supera los 2000 caracteres' },
+    404: { description: 'No existe el evento' },
+    409: { description: 'El evento está cancelado' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
+  },
+});
+
+registroOpenApi.registerPath({
   method: 'post',
   path: '/eventos/{id}/cancelar',
   tags: ['Eventos'],
@@ -124,6 +152,14 @@ rutasEventos.post(
   autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaIdParam, body: esquemaAgendarEvento }),
   asincrono(agendar),
+);
+// La comanda la escribe cualquiera del personal: es una nota operativa, no una regla de negocio.
+rutasEventos.patch(
+  '/:id/observaciones-comanda',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaIdParam, body: esquemaGuardarObservacionesComanda }),
+  asincrono(guardarObservacionesComanda),
 );
 rutasEventos.post(
   '/:id/cancelar',

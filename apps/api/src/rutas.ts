@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import { rutasAuth } from './modulos/auth/auth.rutas.js';
 import { rutasClientes } from './modulos/clientes/clientes.rutas.js';
+import { rutasEtiquetas } from './modulos/etiquetas/etiquetas.rutas.js';
 import { rutasEventos } from './modulos/eventos/eventos.rutas.js';
 import { rutasFotos } from './modulos/fotos/fotos.rutas.js';
 import { rutasMediosPago, rutasPagos } from './modulos/pagos/pagos.rutas.js';
@@ -15,6 +16,7 @@ import { rutasSolicitudes } from './modulos/solicitudes/solicitudes.rutas.js';
 export const rutasApi = Router();
 
 rutasApi.use('/clientes', rutasClientes);
+rutasApi.use('/etiquetas', rutasEtiquetas);
 rutasApi.use('/eventos', rutasEventos);
 // Los pagos son un recurso anidado del evento (/eventos/:id/pagos), pero son un módulo aparte: se
 // monta un segundo router bajo el mismo prefijo y Express lo prueba cuando rutasEventos no matchea.
