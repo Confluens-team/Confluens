@@ -252,6 +252,7 @@ export function Agenda() {
         key={presupuestoAbierto}
         id={presupuestoAbierto}
         textoVolver="Volver al evento"
+        textoVolverAlGuardar="Volver al evento"
         onVolver={volverAlEvento}
         onGuardada={volverAlEvento}
         onDadaDeBaja={volverAlEvento}
