@@ -2,6 +2,7 @@ import {
   type CrearPago,
   esquemaCrearPago,
   type EventoDetallado,
+  mediosPagoHabilitados,
   PORCENTAJE_SENA,
   type TipoJornada,
 } from '@confluens/shared';
@@ -235,6 +236,12 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
 
   const { pagos, saldo } = cuenta.data;
   const base = Number(saldo.baseDeCobro);
+  // RN-14: con qué se puede cobrar depende de la casilla «El cliente requiere factura» del
+  // presupuesto, que es lo mismo que `incluyeIva` (es la marca que define la base de cobro de
+  // RN-01). Sin factura entran solo Efectivo, Transferencia y A la habitación; con factura se
+  // suman Débito, Crédito y Cheque. La API aplica la misma regla, así que el filtro de acá no la
+  // sostiene solo.
+  const mediosHabilitados = mediosPagoHabilitados(mediosPago.data ?? [], saldo.incluyeIva);
   // Presentación: cuánto falta para que el pago reserve el salón. La cuenta exacta la hace la API
   // con Decimal; acá es un número para mostrar, como el desglose de IVA.
   //
@@ -643,7 +650,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                       <option value="" disabled>
                         Elegir…
                       </option>
-                      {(mediosPago.data ?? []).map((medio) => (
+                      {mediosHabilitados.map((medio) => (
                         <option key={medio.id} value={medio.id}>
                           {medio.nombre}
                         </option>
@@ -651,6 +658,14 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                     </select>
                     {errors.medioPagoId && (
                       <p className="text-xs text-destructive">Elegí un medio de pago.</p>
+                    )}
+                    {/* RN-14: por qué faltan opciones. Sin la aclaración, el que cobra no sabe que
+                        la lista corta la define la casilla de factura del presupuesto. */}
+                    {!saldo.incluyeIva && (
+                      <p className="text-xs text-muted-foreground">
+                        Sin factura solo se puede cobrar en efectivo, por transferencia o a la
+                        habitación.
+                      </p>
                     )}
                   </div>
                   <div className="space-y-1.5">

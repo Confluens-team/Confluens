@@ -82,7 +82,7 @@ enum TipoJornada {
 | `ConfiguracionPrecios` | Fila única. `porcentajeMensual` (Decimal) editable por el Responsable de Eventos (RN-10). |
 | `AjustePrecio` | Historial de aumentos: fecha, porcentaje, alcance (`Global` o un `servicioId`), si fue automático o manual, usuario. Sirve para auditar y para explicar por qué cambió un precio. |
 | `Pago` | Evento, fecha, monto, medio de pago, observación (nullable). A diferencia del resto de los importes, el `monto` **no** es sin IVA (RN-05): es la plata entregada, y se mide contra la base de cobro de RN-01. |
-| `MedioPago` | Efectivo, tarjeta, a la habitación. Baja lógica. |
+| `MedioPago` | Efectivo, transferencia, débito, crédito, cheque, a la habitación. Baja lógica. Qué medios se pueden elegir en cada cobro lo define RN-14 según el `requiereFactura` del presupuesto, y no una columna: la lista vive en `packages/shared/src/dominio/medios-pago.ts`. La precarga del catálogo y la baja lógica de «Tarjeta» van en la migración `20261013_medios_de_pago_rn_14`, no en el seed, porque el deploy corre `prisma migrate deploy` y no `prisma db seed`. |
 | `AuditLog` | Usuario, fecha, entidad, id, valor anterior, valor nuevo. Inmutable. Usuario `null` cuando actúa el Sistema (`SYS`). Tabla `audit_log`. |
 
 ## Por qué `Usuario` y `Cliente` van separados

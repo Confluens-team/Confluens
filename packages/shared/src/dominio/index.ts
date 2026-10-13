@@ -2,4 +2,5 @@
 // Re-exportar cada archivo nuevo desde acá.
 export * from './evento.js';
 export * from './importes.js';
+export * from './medios-pago.js';
 export * from './tipo-evento.js';
