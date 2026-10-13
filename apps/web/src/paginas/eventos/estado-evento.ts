@@ -26,7 +26,8 @@ export const ESTADOS: Record<
   EnConsulta: {
     etiqueta: 'En consulta',
     color: '#b08d57',
-    clase: 'bg-dorado/15 text-dorado',
+    // AC1: el badge va sobre fondo claro, así que el texto usa la variante accesible del dorado.
+    clase: 'bg-dorado/15 text-dorado-texto',
     ayuda: 'Todavía no ocupa el salón: la franja sigue disponible',
   },
   Cancelado: {

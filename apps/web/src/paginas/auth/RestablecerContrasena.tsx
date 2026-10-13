@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ariaDeCampo, idDeError } from '@/lib/campo-accesible';
 import { useRestablecerContrasena } from '@/hooks/use-sesion';
 import { ErrorApiCliente } from '@/lib/api';
 
@@ -79,10 +80,14 @@ export function RestablecerContrasena({
             type="password"
             autoComplete="new-password"
             className="h-10"
+            {...ariaDeCampo('nueva-contrasena', errors.contrasena?.message)}
             {...register('contrasena')}
           />
+          {/* AC4 de la auditoría de accesibilidad: el error queda asociado al input y se anuncia. */}
           {errors.contrasena && (
-            <p className="text-xs text-destructive">{errors.contrasena.message}</p>
+            <p id={idDeError('nueva-contrasena')} role="alert" className="text-xs text-destructive">
+              {errors.contrasena.message}
+            </p>
           )}
         </div>
         <div className="flex flex-col gap-1.5">
@@ -92,9 +97,18 @@ export function RestablecerContrasena({
             type="password"
             autoComplete="new-password"
             className="h-10"
+            {...ariaDeCampo('repetir-contrasena', errors.repetir?.message)}
             {...register('repetir')}
           />
-          {errors.repetir && <p className="text-xs text-destructive">{errors.repetir.message}</p>}
+          {errors.repetir && (
+            <p
+              id={idDeError('repetir-contrasena')}
+              role="alert"
+              className="text-xs text-destructive"
+            >
+              {errors.repetir.message}
+            </p>
+          )}
         </div>
 
         {restablecer.isError && (

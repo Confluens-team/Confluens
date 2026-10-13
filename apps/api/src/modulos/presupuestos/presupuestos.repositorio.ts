@@ -1,4 +1,4 @@
-import type { FiltrosPresupuestos } from '@confluens/shared';
+import type { FiltrosPresupuestos, TipoEventoSocial, TipoJornada } from '@confluens/shared';
 
 import { prisma } from '../../lib/prisma.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -22,8 +22,55 @@ export async function crearCliente(
   return tx.cliente.create({ data: datos });
 }
 
+// ADR 0008: la consulta social toma el cliente de la sesión. Nunca crea una ficha: los clientes
+// solo se dan de alta registrándose (dominio.md).
+export async function buscarClientePorUsuarioId(
+  usuarioId: number,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.cliente.findUnique({ where: { usuarioId } });
+}
+
 export async function buscarSalon(salonId: number, tx: Prisma.TransactionClient = prisma) {
   return tx.salon.findUnique({ where: { id: salonId } });
+}
+
+// Los salones de un evento, en el orden en que se eligieron: el servicio ordena por la lista que
+// recibe, no por id, así la primera línea del presupuesto es el primer salón elegido.
+export async function buscarSalonesPorIds(ids: number[], tx: Prisma.TransactionClient = prisma) {
+  return tx.salon.findMany({ where: { id: { in: ids } } });
+}
+
+/**
+ * Deja al evento con exactamente estos salones. Los renglones que ya estaban y siguen se
+ * conservan, para no perder la distribución que tengan cargada; los nuevos entran con la que diga
+ * `distribuciones` (el armado que heredan, ver modificarPresupuesto) o sin ninguna.
+ *
+ * inicio, fin y estado no se escriben acá a propósito: los pone el trigger a partir del evento
+ * (ADR 0011).
+ */
+export async function reemplazarSalonesDelEvento(
+  eventoId: number,
+  salonIds: number[],
+  tx: Prisma.TransactionClient = prisma,
+  distribuciones: Map<number, number> = new Map(),
+) {
+  await tx.eventoSalon.deleteMany({ where: { eventoId, salonId: { notIn: salonIds } } });
+  const actuales = await tx.eventoSalon.findMany({
+    where: { eventoId },
+    select: { salonId: true },
+  });
+  const yaEstan = new Set(actuales.map((fila) => fila.salonId));
+  const nuevos = salonIds.filter((id) => !yaEstan.has(id));
+  if (nuevos.length > 0) {
+    // createMany no dispara el trigger BEFORE INSERT fila por fila en todos los casos; create sí,
+    // y son a lo sumo cinco salones.
+    for (const salonId of nuevos) {
+      await tx.eventoSalon.create({
+        data: { eventoId, salonId, distribucionId: distribuciones.get(salonId) ?? null },
+      });
+    }
+  }
 }
 
 // No filtra por `activo`: el servicio necesita distinguir "no existe" (404) de "existe pero no
@@ -48,8 +95,18 @@ export async function vincularSolicitudAEvento(
   return tx.solicitud.update({ where: { id: solicitudId }, data: { eventoId } });
 }
 
+// Un evento corporativo llega con salón; uno social, sin salón y con su tipo social (ADR 0008).
 export async function crearEvento(
-  datos: { clienteId: number; salonId: number; fecha: Date; cantidadPersonas: number },
+  datos: {
+    clienteId: number;
+    fecha: Date;
+    cantidadPersonas: number;
+    tipo: 'Social' | 'Corporativo';
+    tipoSocial?: TipoEventoSocial | null;
+    tipoSocialDetalle?: string | null;
+    tipoJornada: TipoJornada;
+    horaInicioEstimada?: string | null;
+  },
   tx: Prisma.TransactionClient = prisma,
 ) {
   // estado: EnConsulta es el default del schema, no hace falta pasarlo.
@@ -60,15 +117,17 @@ export async function crearPresupuestoConLineas(
   datos: {
     eventoId: number;
     fechaEmision: Date;
-    venceEn: Date;
+    venceEn: Date | null; // null: presupuesto sin armar de una consulta social (ADR 0008)
     total: string;
     lineas: {
       servicioId: number | null;
+      salonId: number | null;
       descripcion: string;
       cantidad: number;
       precioUnitario: string;
       subtotal: string;
       aCotizar: boolean;
+      horaEstimada: string | null;
     }[];
   },
   tx: Prisma.TransactionClient = prisma,
@@ -85,6 +144,18 @@ export async function crearPresupuestoConLineas(
   });
 }
 
+// El evento con el estado de sus presupuestos: alcanza para saber si ya tiene uno antes de
+// armarle el vacío. No trae las líneas, que acá no se miran.
+export async function buscarEventoConPresupuestos(
+  eventoId: number,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.evento.findUnique({
+    where: { id: eventoId },
+    select: { id: true, estado: true, presupuestos: { select: { id: true, estado: true } } },
+  });
+}
+
 // Orquesta la transacción completa: el servicio arma el callback y le pasa el mismo `tx` a cada
 // función interna, logrando atomicidad real (todo o nada) entre Cliente, Evento, Presupuesto y
 // sus líneas.
@@ -96,7 +167,8 @@ export async function crearEnTransaccion<T>(
 
 // HU-10: listado de consultas del personal, del más reciente al más antiguo por emisión (el id
 // desempata los emitidos en el mismo instante). Los Confirmado no se listan: pasan a la agenda. Cada palabra de `cliente` tiene que aparecer en el nombre, el
-// apellido o el correo, así "Marina Gómez" encuentra a quien tiene nombre y apellido separados.
+// apellido, el correo o la etiqueta, así "Marina Gómez" encuentra a quien tiene nombre y apellido
+// separados y "empresa1" a todos los clientes con esa etiqueta.
 export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
   const { estado, cliente, desde, hasta } = filtros;
   const palabras = cliente?.split(/\s+/) ?? [];
@@ -115,6 +187,7 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
               { nombre: { contains: palabra, mode: 'insensitive' as const } },
               { apellido: { contains: palabra, mode: 'insensitive' as const } },
               { correo: { contains: palabra, mode: 'insensitive' as const } },
+              { etiqueta: { nombre: { contains: palabra, mode: 'insensitive' as const } } },
             ],
           })),
         },
@@ -130,8 +203,22 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
       evento: {
         select: {
           fecha: true,
-          salon: { select: { id: true, nombre: true } },
-          cliente: { select: { id: true, nombre: true, apellido: true, correo: true } },
+          tipo: true,
+          tipoSocial: true,
+          tipoSocialDetalle: true,
+          salones: {
+            select: { salon: { select: { id: true, nombre: true } } },
+            orderBy: { salonId: 'asc' },
+          },
+          cliente: {
+            select: {
+              id: true,
+              nombre: true,
+              apellido: true,
+              correo: true,
+              etiqueta: { select: { id: true, nombre: true } },
+            },
+          },
         },
       },
     },
@@ -150,9 +237,9 @@ export async function buscarPresupuestoDetallado(
     include: {
       evento: {
         include: {
-          cliente: true,
-          salon: true,
-          distribucion: true,
+          cliente: { include: { etiqueta: { select: { id: true, nombre: true } } } },
+          // Cada salón con la distribución que tiene armada en este evento (ADR 0011).
+          salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
         },
       },
       lineas: { include: { servicio: { select: { tercerizado: true } } }, orderBy: { id: 'asc' } },
@@ -182,11 +269,13 @@ export async function reemplazarLineas(
   presupuestoId: number,
   lineas: {
     servicioId: number | null;
+    salonId: number | null;
     descripcion: string;
     cantidad: number;
     precioUnitario: string;
     subtotal: string;
     aCotizar: boolean;
+    horaEstimada: string | null;
   }[],
   tx: Prisma.TransactionClient = prisma,
 ) {
@@ -196,19 +285,42 @@ export async function reemplazarLineas(
   });
 }
 
+// HU-12 sobre un evento confirmado: con el total nuevo, lo pagado decide si el evento queda
+// Reservado o Cobrado.
+export async function sumarPagos(eventoId: number, tx: Prisma.TransactionClient = prisma) {
+  const resultado = await tx.pago.aggregate({ where: { eventoId }, _sum: { monto: true } });
+  return resultado._sum.monto;
+}
+
+// Al mover de salón un evento ya agendado se conserva la distribución del mismo nombre en el salón
+// nuevo (todos tienen Conferencia, Mesas de trabajo y Banquete). Si no la tiene, queda sin elegir.
+export async function buscarDistribucionPorNombre(
+  salonId: number,
+  nombre: string,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.distribucion.findFirst({ where: { salonId, nombre } });
+}
+
 export type PresupuestosRepositorio = {
   buscarClientePorCorreo: typeof buscarClientePorCorreo;
+  buscarClientePorUsuarioId: typeof buscarClientePorUsuarioId;
   crearCliente: typeof crearCliente;
   buscarSalon: typeof buscarSalon;
+  buscarSalonesPorIds: typeof buscarSalonesPorIds;
+  reemplazarSalonesDelEvento: typeof reemplazarSalonesDelEvento;
   buscarServiciosPorIds: typeof buscarServiciosPorIds;
   buscarSolicitud: typeof buscarSolicitud;
   vincularSolicitudAEvento: typeof vincularSolicitudAEvento;
   crearEvento: typeof crearEvento;
   crearPresupuestoConLineas: typeof crearPresupuestoConLineas;
+  buscarEventoConPresupuestos: typeof buscarEventoConPresupuestos;
   crearEnTransaccion: typeof crearEnTransaccion;
   obtenerPresupuestos: typeof obtenerPresupuestos;
   buscarPresupuestoDetallado: typeof buscarPresupuestoDetallado;
   actualizarEvento: typeof actualizarEvento;
   actualizarPresupuesto: typeof actualizarPresupuesto;
   reemplazarLineas: typeof reemplazarLineas;
+  sumarPagos: typeof sumarPagos;
+  buscarDistribucionPorNombre: typeof buscarDistribucionPorNombre;
 };

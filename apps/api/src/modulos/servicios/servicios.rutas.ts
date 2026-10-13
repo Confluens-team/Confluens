@@ -88,7 +88,9 @@ export const rutasServicios = Router();
 
 // /publicos va antes de cualquier ruta con parámetro (ver salones.rutas.ts).
 rutasServicios.get('/publicos', asincrono(listarPublicos));
-// Con precios: cualquier sesión, del personal o del cliente (C5 de HU-48). Sin sesión, /publicos.
+// H6 de la auditoría de seguridad: revisado y confirmado como intencional. Este listado con
+// precios lo necesita el cotizador del cliente (C5 de HU-48), así que exige sesión pero no rol;
+// el canal sin sesión tiene /publicos, que no expone precios ni el flag activo.
 rutasServicios.get('/', autenticar, asincrono(listar));
 rutasServicios.post(
   '/',

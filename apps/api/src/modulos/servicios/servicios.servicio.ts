@@ -1,5 +1,6 @@
 import type { CrearServicio } from '@confluens/shared';
 
+import { borrarFotoReemplazada } from '../../lib/cloudinary.js';
 import { ErrorApi } from '../../lib/errores.js';
 import * as serviciosRepositorioReal from './servicios.repositorio.js';
 import type { ServiciosRepositorio } from './servicios.repositorio.js';
@@ -41,15 +42,20 @@ export async function crearServicio(
 }
 
 // HU-08: asigna (o quita, con null) la foto del servicio en la landing. Igual que en salones, se
-// lee el estado anterior para poder auditarlo y se corta con 404 antes de escribir.
+// lee el estado anterior para poder auditarlo y se corta con 404 antes de escribir. La foto
+// anterior se borra de Cloudinary después de guardar (ADR 0009).
 export async function actualizarLandingServicio(
   id: number,
   fotoUrl: string | null,
   usuarioId: number,
   repo: ServiciosRepositorio = serviciosRepositorioReal,
+  fotos = { borrarFotoReemplazada },
 ) {
   const servicio = await repo.buscarPorId(id);
   if (!servicio) throw ErrorApi.noEncontrado('No existe el servicio indicado');
 
-  return repo.actualizarLanding(id, fotoUrl, servicio.fotoUrl, usuarioId);
+  const fotoAnterior = servicio.fotoUrl;
+  const actualizado = await repo.actualizarLanding(id, fotoUrl, fotoAnterior, usuarioId);
+  await fotos.borrarFotoReemplazada(fotoAnterior, fotoUrl);
+  return actualizado;
 }

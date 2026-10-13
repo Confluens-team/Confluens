@@ -26,7 +26,7 @@ describe('presupuestos.repositorio: obtenerPresupuestos', () => {
     expect(findMany.mock.calls[0]![0].where.estado).toEqual({ not: 'Confirmado' });
   });
 
-  it('cada palabra del cliente tiene que aparecer en el nombre, el apellido o el correo', async () => {
+  it('cada palabra del cliente tiene que aparecer en el nombre, el apellido, el correo o la etiqueta', async () => {
     await obtenerPresupuestos({ cliente: 'Marina Gómez' });
 
     const { cliente } = findMany.mock.calls[0]![0].where.evento;
@@ -36,6 +36,7 @@ describe('presupuestos.repositorio: obtenerPresupuestos', () => {
           { nombre: { contains: palabra, mode: 'insensitive' } },
           { apellido: { contains: palabra, mode: 'insensitive' } },
           { correo: { contains: palabra, mode: 'insensitive' } },
+          { etiqueta: { nombre: { contains: palabra, mode: 'insensitive' } } },
         ],
       })),
     );

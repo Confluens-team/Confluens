@@ -1,11 +1,12 @@
-# Responsables de revisión por ruta. GitHub pide su aprobación en los PR que tocan esas rutas.
-# Reemplazar los placeholders por los usuarios reales de GitHub (@usuario) y descomentar.
+# Dueños de código: los siete integrantes del equipo.
+#
+# Al abrir un pull request, GitHub le pide la review a todos los que figuren acá. El plan free de
+# la organización no tiene asignación rotativa de revisores, así que la solicitud le llega a todos
+# y revisa quien esté libre: el ruleset exige una sola aprobación para poder mergear, y cualquiera
+# de los siete sirve (todos tienen permiso de escritura). Nadie puede aprobar su propio PR.
+#
+# El ruleset NO exige la aprobación del dueño de código: este archivo solo reparte las
+# solicitudes de review. La versión que se aplica es la de la rama destino (develop o main).
 # La última regla que coincide es la que aplica.
 
-*                         @Juani-M @francorossi0811
-/apps/api/                @Juani-M @francorossi0811
-/apps/api/prisma/         @Juani-M @francorossi0811
-/apps/web/                @Juani-M @francorossi0811
-/packages/shared/         @Juani-M @francorossi0811
-/.github/                 @Juani-M @francorossi0811
-/docs/                    @Juani-M @francorossi0811
+* @francorossi0811 @Juani-M @AyrtonVanega @facupfening @AlexisMarti18 @TomasSantillanUTN @MartiinSoria

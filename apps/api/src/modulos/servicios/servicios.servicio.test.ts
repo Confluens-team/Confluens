@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { Servicio } from '../../generated/prisma/client.js';
 import { Decimal } from '../../generated/prisma/internal/prismaNamespace.js';
 import type { ServiciosRepositorio } from './servicios.repositorio.js';
-import { crearServicio, listarServicios } from './servicios.servicio.js';
+import { actualizarLandingServicio, crearServicio, listarServicios } from './servicios.servicio.js';
 
 // Repositorio fake: crearServicio()/listarServicios() reciben el repositorio real como default
 // param, así que acá se lo reemplaza por un array en memoria. Ni toca Prisma ni necesita una base
@@ -107,5 +107,31 @@ describe('servicios.servicio: crearServicio', () => {
         repo,
       ),
     ).rejects.toMatchObject({ status: 409, codigo: 'CONFLICT' });
+  });
+});
+
+describe('servicios.servicio: actualizarLandingServicio (ADR 0009)', () => {
+  const fotoVieja = 'https://res.cloudinary.com/demo/image/upload/v1/confluens/servicios/vieja.jpg';
+  const fotoNueva = 'https://res.cloudinary.com/demo/image/upload/v2/confluens/servicios/nueva.jpg';
+
+  it('guarda la foto nueva y después pide borrar la anterior', async () => {
+    const repo = repositorioFake([{ ...servicioBase, fotoUrl: fotoVieja }]);
+    const borrarFotoReemplazada = vi.fn(async () => {});
+
+    const actualizado = await actualizarLandingServicio(1, fotoNueva, 7, repo, {
+      borrarFotoReemplazada,
+    });
+
+    expect(actualizado.fotoUrl).toBe(fotoNueva);
+    expect(borrarFotoReemplazada).toHaveBeenCalledWith(fotoVieja, fotoNueva);
+  });
+
+  it('con un servicio inexistente lanza 404 sin tocar Cloudinary', async () => {
+    const borrarFotoReemplazada = vi.fn(async () => {});
+
+    await expect(
+      actualizarLandingServicio(99, fotoNueva, 7, repositorioFake([]), { borrarFotoReemplazada }),
+    ).rejects.toMatchObject({ status: 404 });
+    expect(borrarFotoReemplazada).not.toHaveBeenCalled();
   });
 });

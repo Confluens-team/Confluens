@@ -6,7 +6,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 
-import { fechaISO, fechaLocal, nombreCompleto } from '@/lib/formato';
+import { fechaISO, fechaLocal, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { ESTADOS } from './estado-evento';
 
 // Un evento Reservado o Cobrado siempre tiene horario (lo fija agendar()), pero un EnConsulta o un
@@ -17,9 +17,10 @@ import { ESTADOS } from './estado-evento';
 // evento un día antes en Argentina: por eso pasa por fechaLocal().
 function comoEventoDelCalendario(evento: EventoAgenda): EventInput {
   const { color } = ESTADOS[evento.estado];
+  const salon = `${evento.salones.length > 1 ? 'Salones' : 'Salón'} ${nombresDeSalones(evento.salones, 'a definir')}`;
   return {
     id: String(evento.id),
-    title: `Salón ${evento.salon.nombre}`,
+    title: salon,
     start: evento.inicio ?? fechaLocal(evento.fecha),
     end: evento.fin ?? undefined,
     allDay: !evento.inicio,
@@ -27,8 +28,11 @@ function comoEventoDelCalendario(evento: EventoAgenda): EventInput {
     borderColor: color,
     textColor: '#f6f1ea', // crema
     extendedProps: {
-      salon: `Salón ${evento.salon.nombre}`,
-      cliente: nombreCompleto(evento.cliente),
+      salon,
+      // Con etiqueta, primero la etiqueta: en un casillero chico es lo que identifica a la empresa.
+      cliente: evento.cliente.etiqueta
+        ? `${evento.cliente.etiqueta.nombre} · ${nombreCompleto(evento.cliente)}`
+        : nombreCompleto(evento.cliente),
       personas: evento.cantidadPersonas,
     },
   };
@@ -58,21 +62,35 @@ function ContenidoEvento(arg: EventContentArg) {
 // Calendario de la agenda (HU-15), con las vistas mensual, semanal y diaria. No decide qué eventos
 // trae: los recibe ya filtrados y avisa por onRango qué ventana de fechas quedó visible, para que
 // el contenedor se la pase a la API al cambiar de mes o de vista.
+//
+// Tampoco abre el evento: avisa cuál se tocó y con qué elemento del DOM, que es a lo que el
+// contenedor le ancla la tarjeta de resumen. `fechaVisible` y `vistaVisible` entran como valores
+// iniciales (FullCalendar los lee solo al montarse) y vuelven por onPosicion, para que al volver
+// del detalle el calendario reabra donde estaba.
 export function CalendarioEventos({
   eventos,
-  onAbrirEvento,
+  seleccionadoId,
+  fechaVisible,
+  vistaVisible,
+  onSeleccionar,
   onRango,
+  onPosicion,
 }: {
   eventos: EventoAgenda[];
-  onAbrirEvento: (id: number) => void;
+  seleccionadoId: number | null;
+  fechaVisible: string;
+  vistaVisible: string;
+  onSeleccionar: (id: number, ancla: HTMLElement) => void;
   onRango: (desde: string, hasta: string) => void;
+  onPosicion: (fecha: string, vista: string) => void;
 }) {
   return (
     <div className="calendario-agenda rounded-xl bg-card p-3 ring-1 ring-border sm:p-4">
       <FullCalendar
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
         locale={esLocale}
-        initialView="dayGridMonth"
+        initialView={vistaVisible}
+        initialDate={fechaVisible}
         headerToolbar={{
           left: 'prev,next today',
           center: 'title',
@@ -87,15 +105,23 @@ export function CalendarioEventos({
         // suelto, y el color del estado —que es lo que los distingue— casi no se ve.
         eventDisplay="block"
         eventContent={ContenidoEvento}
+        // El evento con la tarjeta abierta se marca con un filete dorado: la tarjeta tapa parte de
+        // la grilla y sin esto se pierde de vista cuál se está mirando.
+        eventClassNames={({ event }) =>
+          Number(event.id) === seleccionadoId ? ['evento-seleccionado'] : []
+        }
         eventClick={(click) => {
           click.jsEvent.preventDefault();
-          onAbrirEvento(Number(click.event.id));
+          onSeleccionar(Number(click.event.id), click.el);
         }}
         // activeEnd es exclusivo y la API toma `hasta` inclusive: se pide un día menos.
         datesSet={({ view }) => {
           const ultimoDia = new Date(view.activeEnd);
           ultimoDia.setDate(ultimoDia.getDate() - 1);
           onRango(fechaISO(view.activeStart), fechaISO(ultimoDia));
+          // currentStart y no activeStart: en la vista mensual activeStart suele caer en el mes
+          // anterior (los días que completan la primera semana) y al volver abriría ese mes.
+          onPosicion(fechaISO(view.currentStart), view.type);
         }}
         // El día entero, sin recortar: un evento de noche puede terminar pasada la medianoche y
         // acotar la franja horaria lo dejaría pegado al borde, en un horario que no es el suyo. La

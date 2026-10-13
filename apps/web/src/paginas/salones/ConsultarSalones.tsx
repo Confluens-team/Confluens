@@ -1,36 +1,20 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 
-import { Input } from '@/components/ui/input';
 import { useSalones } from '@/hooks/use-salones';
 
 // Mismo formato que los importes de negocio/tarifario-2026.md (separador de miles es-AR).
 const formatoNumero = new Intl.NumberFormat('es-AR');
 
+// Ficha de consulta de los salones (HU-03, criterios 1 y 3): los cinco salones con su capacidad,
+// superficie y distribuciones. Es solo lectura; el alta y la edición no existen todavía (están
+// previstas para el Sprint 4) y los datos se cargan por seed desde el tarifario.
+//
+// El filtro por capacidad mínima (criterio 2) y el aviso de "ninguno cubre esa capacidad, el mayor
+// es X" (criterio 4) se sacaron de acá: el cotizador ya resuelve las dos cosas contra la cantidad
+// de personas real del evento, que es el momento en que la pregunta se hace (CotizarEvento.tsx).
 export function ConsultarSalones() {
   const { data: salones, isLoading, isError } = useSalones();
-  const [capacidadMinima, setCapacidadMinima] = useState('');
   const [salonSeleccionadoId, setSalonSeleccionadoId] = useState<number | null>(null);
-
-  // Filtro simple de un solo campo: no amerita React Hook Form (evita además el fix de
-  // forwardRef que necesitaría <Input> para que el ref de RHF llegue al <input> nativo).
-  const minimo = capacidadMinima === '' ? null : Number(capacidadMinima);
-
-  // Criterio 2 (HU-01): filtrando por capacidad mínima N, solo aparecen los salones que la cubren.
-  // Sin filtro se ven los cinco salones completos (criterio 1).
-  const salonesFiltrados = useMemo(() => {
-    if (!salones) return [];
-    if (minimo === null || Number.isNaN(minimo)) return salones;
-    return salones.filter((salon) => salon.capacidadMaxima >= minimo);
-  }, [salones, minimo]);
-
-  // Criterio 4: el repositorio ya ordena por capacidadMaxima desc (ver salones.repositorio.ts),
-  // así que "la mayor disponible" es simplemente el primer salón de la lista sin filtrar.
-  const salonMasGrande = salones?.[0] ?? null;
-  const ningunoCubreLaCapacidad =
-    minimo !== null &&
-    !Number.isNaN(minimo) &&
-    salones !== undefined &&
-    salonesFiltrados.length === 0;
 
   if (isLoading) {
     return <p className="p-6 text-muted-foreground">Cargando salones…</p>;
@@ -49,30 +33,8 @@ export function ConsultarSalones() {
         </p>
       </div>
 
-      <div className="max-w-xs space-y-1.5">
-        <label htmlFor="capacidad-minima" className="text-sm font-medium">
-          Capacidad mínima
-        </label>
-        <Input
-          id="capacidad-minima"
-          type="number"
-          min={1}
-          placeholder="Ej: 150"
-          value={capacidadMinima}
-          onChange={(evento) => setCapacidadMinima(evento.target.value)}
-        />
-      </div>
-
-      {ningunoCubreLaCapacidad && salonMasGrande && (
-        <p className="rounded-lg border border-input bg-muted/50 p-3 text-sm">
-          Ningún salón cubre esa capacidad. El más grande disponible es{' '}
-          <strong>{salonMasGrande.nombre}</strong> (
-          {formatoNumero.format(salonMasGrande.capacidadMaxima)} personas).
-        </p>
-      )}
-
       <ul className="divide-y divide-border rounded-lg border border-border">
-        {salonesFiltrados.map((salon) => (
+        {(salones ?? []).map((salon) => (
           <li key={salon.id}>
             <button
               type="button"

@@ -1,5 +1,6 @@
 import type {
   ConsultaDetallada,
+  CrearConsultaSocial,
   CrearPresupuesto,
   CrearSolicitud,
   FiltrosPresupuestos,
@@ -26,7 +27,7 @@ export function useSolicitarPresupuesto() {
         correo: datos.correo,
         fechaDeseada: datos.fecha,
         cantidadPersonas: datos.cantidadPersonas,
-        salonId: datos.salonId,
+        salonId: datos.salonIds[0] ?? null,
       };
       const creada = await apiFetch<RespuestaExito<Solicitud>>('/solicitudes', {
         method: 'POST',
@@ -38,6 +39,47 @@ export function useSolicitarPresupuesto() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...datos, solicitudId: creada.data.id }),
       });
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['solicitudes'] });
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+    },
+  });
+}
+
+// ADR 0008: la consulta de un evento social. Igual que el cotizador, registra primero la Solicitud
+// (sin salón) y después la consulta vinculada a ella. No hay presupuesto: lo arma el Responsable de
+// Eventos. El cliente lo toma la API de la sesión; los datos de contacto van solo en la Solicitud.
+export function useEnviarConsultaSocial() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      contacto,
+      consulta,
+    }: {
+      contacto: { nombre: string; telefono: string; correo: string };
+      consulta: Omit<CrearConsultaSocial, 'solicitudId'>;
+    }) => {
+      const solicitud: CrearSolicitud = {
+        ...contacto,
+        fechaDeseada: consulta.fecha,
+        cantidadPersonas: consulta.cantidadPersonas,
+        salonId: null,
+      };
+      const creada = await apiFetch<RespuestaExito<Solicitud>>('/solicitudes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(solicitud),
+      });
+      const respuesta = await apiFetch<RespuestaExito<PresupuestoDetallado>>(
+        '/presupuestos/social',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ...consulta, solicitudId: creada.data.id }),
+        },
+      );
       return respuesta.data;
     },
     onSuccess: () => {
@@ -108,5 +150,25 @@ export function useDarDeBajaConsulta(id: number) {
       { method: 'POST' },
     );
     return respuesta.data;
+  });
+}
+
+// Arma el presupuesto vacío de un evento que no tiene ninguno (el equivalente a lo que la consulta
+// social crea junto con el evento). Deja la consulta lista para cargarle salón y servicios, así que
+// invalida el listado y el evento, que pasa a tener base de cobro.
+export function useArmarPresupuestoDeEvento(eventoId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const respuesta = await apiFetch<RespuestaExito<PresupuestoDetallado>>(
+        `/presupuestos/para-evento/${eventoId}`,
+        { method: 'POST' },
+      );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
+    },
   });
 }

@@ -7,7 +7,7 @@ Sistema Integral de Gestión de Eventos para Los Abuelos Servicios Gastronómico
 Requisitos: Node 20.19 o superior (`nvm use` toma la versión de `.nvmrc`) y Docker.
 
 ```bash
-git clone https://github.com/francorossi0811/Confluens.git && cd Confluens
+git clone https://github.com/Confluens-team/Confluens.git && cd Confluens
 cp .env.example .env
 npm install
 npm run db:up && npm run prisma:deploy -w @confluens/api

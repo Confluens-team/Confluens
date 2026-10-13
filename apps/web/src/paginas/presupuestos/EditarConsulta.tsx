@@ -1,14 +1,34 @@
 import {
   DIAS_VIGENCIA_PRESUPUESTO,
   desglosarIva,
+  ETIQUETAS_TIPO_EVENTO_SOCIAL,
+  horaDelEvento,
+  MAXIMO_PERSONAS_EVENTO,
   type ConsultaDetallada,
   type SalonConDistribuciones,
   type Servicio,
+  type TipoEvento,
+  type TipoEventoSocial,
   type TipoJornada,
 } from '@confluens/shared';
-import { AlertTriangle, ArrowLeft, CalendarCheck, Plus, RefreshCw, Trash2, X } from 'lucide-react';
-import { useState } from 'react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CalendarCheck,
+  Check,
+  CheckCircle2,
+  ClipboardList,
+  Plus,
+  Printer,
+  RefreshCw,
+  Trash2,
+  X,
+} from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
+import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { EtiquetaCliente } from '@/components/EtiquetaCliente';
+import { InputEntero } from '@/components/InputEntero';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,7 +37,7 @@ import { useSalones } from '@/hooks/use-salones';
 import { useServicios } from '@/hooks/use-servicios';
 import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
-import { formatearPesos, nombreCompleto } from '@/lib/formato';
+import { armadoDeSalones, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 
 // Una línea del detalle mientras se edita. servicioId null = adicional escrito a mano. Un
@@ -27,8 +47,17 @@ interface LineaEditable {
   servicioId: number | null;
   descripcion: string;
   cantidad: string;
+  // "HH:mm" o '': a qué hora del evento se espera el servicio. Es opcional, y si el evento ya está
+  // agendado la API rechaza con 422 una hora fuera de su horario.
+  hora: string;
   precio: string;
   tercerizado: boolean;
+}
+
+// Un salón del evento mientras se edita: su precio se puede ajustar a mano (RN-03).
+interface SalonEditable {
+  salonId: number;
+  precio: string;
 }
 
 const OTRO = 'otro';
@@ -48,12 +77,7 @@ const aCotizar = (linea: LineaEditable) =>
   linea.precio === '' && linea.servicioId !== null && linea.tercerizado;
 const precioValido = (linea: LineaEditable) => esImporte(linea.precio) || aCotizar(linea);
 
-const hora = (instante: string) =>
-  new Date(instante).toLocaleTimeString('es-AR', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hourCycle: 'h23',
-  });
+const hora = horaDelEvento;
 
 const mensajeDeError = (error: unknown, porDefecto: string) =>
   error instanceof ErrorApiCliente ? error.message : porDefecto;
@@ -67,26 +91,39 @@ const ESTADOS: Record<string, string> = {
 
 const claseSelect = 'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm';
 
+const TIPOS_SOCIALES = Object.entries(ETIQUETAS_TIPO_EVENTO_SOCIAL) as [TipoEventoSocial, string][];
+
 // HU-12: una consulta abierta desde el listado. Después de hablar con el cliente, el personal
 // corrige fecha, salón, personas, jornada, servicios (del catálogo o escritos a mano), cantidades y
 // precios. Al guardar queda Estimado, la vigencia vuelve a contar 10 días y se vuelve al listado.
 // En una Expirado, «Recalcular» trae los precios vigentes al formulario: al guardar, la misma
 // consulta vuelve a Estimado. Los datos del cliente son suyos: acá solo se muestran.
+// ADR 0008: también se corrigen el tipo de evento y la hora estimada. Una consulta social llega sin
+// salón ni servicios: el personal arma el presupuesto acá y la vigencia arranca al guardarlo.
 export function EditarConsulta({
   id,
   onVolver,
   onGuardada,
   onDadaDeBaja,
   onAbrirEvento,
+  onImprimirComanda,
   textoVolver = 'Volver a las consultas',
+  textoVolverAlGuardar = 'Volver al inicio',
 }: {
   id: number;
   onVolver: () => void;
+  // Ya no se llama al guardar: guardar deja la consulta abierta con un aviso, y esto es lo que
+  // hace el botón de volver de ese aviso, con la consulta tal como quedó guardada.
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onAbrirEvento: (eventoId: number) => void;
+  // Comanda de cocina del evento confirmado. Sin esto el botón no aparece: desde Consultas no se
+  // llega a un presupuesto Confirmado, solo desde la agenda.
+  onImprimirComanda?: (presupuestoId: number) => void;
   // Se abre desde Consultas o desde un evento de la agenda (HU-15).
   textoVolver?: string;
+  // El botón del aviso de guardado; arma también la pregunta («¿Querés volver al inicio?»).
+  textoVolverAlGuardar?: string;
 }) {
   const consulta = useConsulta(id);
   const salones = useSalones();
@@ -113,6 +150,8 @@ export function EditarConsulta({
           onGuardada={onGuardada}
           onDadaDeBaja={onDadaDeBaja}
           onAbrirEvento={onAbrirEvento}
+          onImprimirComanda={onImprimirComanda}
+          textoVolverAlGuardar={textoVolverAlGuardar}
         />
       )}
     </div>
@@ -126,6 +165,8 @@ function Formulario({
   onGuardada,
   onDadaDeBaja,
   onAbrirEvento,
+  onImprimirComanda,
+  textoVolverAlGuardar,
 }: {
   consulta: ConsultaDetallada;
   salones: SalonConDistribuciones[];
@@ -133,17 +174,45 @@ function Formulario({
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onAbrirEvento: (eventoId: number) => void;
+  onImprimirComanda?: (presupuestoId: number) => void;
+  textoVolverAlGuardar: string;
 }) {
   const modificar = useModificarConsulta(consulta.id);
   const darDeBaja = useDarDeBajaConsulta(consulta.id);
 
-  const lineaSalon = consulta.lineas.find((linea) => linea.tipo === 'salon');
+  // Guardar no saca de la consulta (pedido de Franco, 12/10/2026): se queda abierta con un aviso
+  // que ofrece volver. `guardada` es la consulta como la devolvió la API.
+  const [guardada, setGuardada] = useState<ConsultaDetallada | null>(null);
+  const refAviso = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (guardada) refAviso.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [guardada]);
+
+  // Precio congelado de cada salón que ya estaba en el presupuesto: vuelve a usarse si se lo
+  // destilda y se lo vuelve a tildar sin cambiar la jornada.
+  const preciosOriginales = new Map(
+    consulta.lineas
+      .filter((linea) => linea.tipo === 'salon' && linea.salonId !== null)
+      .map((linea) => [linea.salonId!, linea.precioUnitario]),
+  );
   const [fecha, setFecha] = useState(consulta.evento.fecha);
-  const [salonId, setSalonId] = useState(consulta.salon.id);
+  // Los salones del evento, cada uno con su precio editable (RN-03), en el orden de las líneas.
+  // Vacío: consulta social todavía sin salón (ADR 0008). Un evento puede usar varios a la vez,
+  // incluso los cinco (ADR 0011).
+  const [salonesSel, setSalonesSel] = useState<SalonEditable[]>(
+    consulta.lineas
+      .filter((linea) => linea.tipo === 'salon' && linea.salonId !== null)
+      .map((linea) => ({ salonId: linea.salonId!, precio: linea.precioUnitario })),
+  );
+  const [tipo, setTipo] = useState<TipoEvento>(consulta.evento.tipo);
+  const [tipoSocial, setTipoSocial] = useState<TipoEventoSocial | ''>(
+    consulta.evento.tipoSocial ?? '',
+  );
+  const [detalleOtro, setDetalleOtro] = useState(consulta.evento.tipoSocialDetalle ?? '');
+  const [horaEstimada, setHoraEstimada] = useState(consulta.evento.horaInicioEstimada ?? '');
   const [jornada, setJornada] = useState<TipoJornada>(consulta.tipoJornada);
   const [personas, setPersonas] = useState(String(consulta.evento.cantidadPersonas));
   const [requiereFactura, setRequiereFactura] = useState(consulta.requiereFactura);
-  const [precioSalon, setPrecioSalon] = useState(lineaSalon?.precioUnitario ?? '0.00');
   const [lineas, setLineas] = useState<LineaEditable[]>(
     consulta.lineas
       .filter((linea) => linea.tipo !== 'salon')
@@ -152,6 +221,7 @@ function Formulario({
         servicioId: linea.servicioId,
         descripcion: linea.descripcion,
         cantidad: String(linea.cantidad),
+        hora: linea.horaEstimada ?? '',
         precio: linea.aCotizar ? '' : linea.precioUnitario,
         tercerizado: linea.tercerizado,
       })),
@@ -163,24 +233,60 @@ function Formulario({
   const enCurso =
     (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
     consulta.evento.estado === 'EnConsulta';
+  // RN-09: el Responsable de Eventos modifica en todo momento, también un evento ya confirmado
+  // (decisión de Franco, 08/10/2026). Sigue Confirmado: ni vigencia ni baja, y el estado del evento
+  // (Reservado o Cobrado) lo recalcula la API con lo pagado contra el total nuevo.
+  const confirmado =
+    consulta.estado === 'Confirmado' &&
+    (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');
+  const editable = enCurso || confirmado;
   const expirado = consulta.estado === 'Expirado';
-  const salon = salones.find((s) => s.id === salonId);
+  const salonDe = (salonId: number) => salones.find((s) => s.id === salonId);
+  const capacidadElegida = salonesSel.reduce(
+    (suma, s) => suma + (salonDe(s.salonId)?.capacidadMaxima ?? 0),
+    0,
+  );
 
-  // La línea del salón vuelve a su precio congelado si se vuelve al salón y la jornada originales;
-  // si no, toma el precio vigente. Después se puede ajustar a mano.
-  function cambiarSalonOJornada(nuevoSalonId: number, nuevaJornada: TipoJornada) {
-    setSalonId(nuevoSalonId);
+  // Un salón vuelve a su precio congelado si estaba en el presupuesto y la jornada es la
+  // original; si no, toma el vigente. Después se puede ajustar a mano (RN-03).
+  function precioInicial(salonId: number, conJornada: TipoJornada): string {
+    const congelado = preciosOriginales.get(salonId);
+    if (congelado && conJornada === consulta.tipoJornada && !recalculado) return congelado;
+    const salon = salonDe(salonId);
+    return salon ? precioDeSalon(salon, conJornada) : '0.00';
+  }
+
+  function alternarSalon(salonId: number) {
+    setSalonesSel((anteriores) =>
+      anteriores.some((s) => s.salonId === salonId)
+        ? anteriores.filter((s) => s.salonId !== salonId)
+        : [...anteriores, { salonId, precio: precioInicial(salonId, jornada) }],
+    );
+  }
+
+  // Cambiar la jornada cambia el precio de todos los salones a la vez.
+  function cambiarJornada(nuevaJornada: TipoJornada) {
     setJornada(nuevaJornada);
-    const original = nuevoSalonId === consulta.salon.id && nuevaJornada === consulta.tipoJornada;
-    const nuevoSalon = salones.find((s) => s.id === nuevoSalonId);
-    if (original && lineaSalon && !recalculado) setPrecioSalon(lineaSalon.precioUnitario);
-    else if (nuevoSalon) setPrecioSalon(precioDeSalon(nuevoSalon, nuevaJornada));
+    setSalonesSel((anteriores) =>
+      anteriores.map((s) => ({ ...s, precio: precioInicial(s.salonId, nuevaJornada) })),
+    );
+  }
+
+  function cambiarPrecioSalon(salonId: number, precio: string) {
+    setSalonesSel((anteriores) =>
+      anteriores.map((s) => (s.salonId === salonId ? { ...s, precio } : s)),
+    );
   }
 
   // RN-06 / HU-12: un Expirado se recalcula con los precios vigentes del salón y de cada servicio
   // del catálogo. Los adicionales escritos a mano conservan su precio. Se guarda con «Guardar».
   function recalcularPrecios() {
-    if (salon) setPrecioSalon(precioDeSalon(salon, jornada));
+    setSalonesSel((anteriores) =>
+      anteriores.map((s) => {
+        const salon = salonDe(s.salonId);
+        return salon ? { ...s, precio: precioDeSalon(salon, jornada) } : s;
+      }),
+    );
     setLineas((anteriores) =>
       anteriores.map((linea) => {
         const servicio = catalogo.find((s) => s.id === linea.servicioId);
@@ -208,6 +314,7 @@ function Formulario({
           servicioId: null,
           descripcion: otro.descripcion.trim(),
           cantidad: otro.cantidad,
+          hora: '',
           precio: otro.precio,
           tercerizado: false,
         },
@@ -223,6 +330,7 @@ function Formulario({
           servicioId: servicio.id,
           descripcion: servicio.nombre,
           cantidad: servicio.porPersona && esEntero(personas) ? personas : '1',
+          hora: '',
           precio: servicio.precio ?? '',
           tercerizado: servicio.tercerizado,
         },
@@ -231,6 +339,14 @@ function Formulario({
     setAgregar('');
   }
 
+  // RN-04: la cantidad de un servicio que se cobra por persona es gente del evento, así que no
+  // puede superar a los asistentes. La de un adicional escrito a mano son unidades (3 arreglos
+  // florales) y no tiene ese techo.
+  const topeDeLinea = (servicioId: number | null) =>
+    servicioId !== null && catalogo.find((s) => s.id === servicioId)?.porPersona
+      ? Number(personas) || undefined
+      : undefined;
+
   const disponibles = catalogo.filter(
     (s) => s.activo && !lineas.some((l) => l.servicioId === s.id),
   );
@@ -238,39 +354,83 @@ function Formulario({
     otro.descripcion.trim().length > 0 && esEntero(otro.cantidad) && esImporte(otro.precio);
   const puedeAgregar = agregar === OTRO ? otroValido : !!agregar;
 
+  // Un corporativo necesita salón; un social, su tipo ("Otro" con su detalle).
+  const tipoValido =
+    tipo === 'Corporativo'
+      ? salonesSel.length > 0
+      : !!tipoSocial && (tipoSocial !== 'Otro' || !!detalleOtro.trim());
+  const { inicio, fin } = consulta.evento;
+  const armado = armadoDeSalones(consulta.salones);
+  // La franja del evento, solo si ya está agendado: la hora de un servicio tiene que caer adentro
+  // y la API la rechaza con 422 si no. Mientras la consulta no se agenda no hay con qué limitar
+  // (ADR 0007: el horario real se carga después), así que se acepta cualquier hora. Un evento que
+  // cruza la medianoche se deja pasar, igual que en la API: el rango daría vuelta.
+  const franja =
+    inicio && fin && hora(inicio) < hora(fin) ? { desde: hora(inicio), hasta: hora(fin) } : null;
+  // Las horas son "HH:mm" con cero adelante, así que alcanza con compararlas como texto.
+  const horaValida = (linea: LineaEditable) =>
+    !linea.hora || !franja || (linea.hora >= franja.desde && linea.hora <= franja.hasta);
+  // RN-04: la cantidad de un servicio por persona no puede pasar a los asistentes. El input ya lo
+  // recorta al escribir, pero bajar la cantidad de personas después deja las líneas de antes por
+  // encima: ahí hay que frenar el guardado, que si no vuelve 422 desde la API.
+  const cantidadPosible = (linea: LineaEditable) => {
+    const tope = topeDeLinea(linea.servicioId);
+    return tope === undefined || Number(linea.cantidad) <= tope;
+  };
   const valido =
     !!fecha &&
     esEntero(personas) &&
-    esImporte(precioSalon) &&
-    lineas.every((l) => esEntero(l.cantidad) && precioValido(l) && l.descripcion.trim());
+    tipoValido &&
+    salonesSel.every((s) => esImporte(s.precio)) &&
+    // Un evento confirmado ocupa un salón: no puede quedar «a definir».
+    (!confirmado || salonesSel.length > 0) &&
+    lineas.every(
+      (l) =>
+        esEntero(l.cantidad) &&
+        cantidadPosible(l) &&
+        precioValido(l) &&
+        horaValida(l) &&
+        l.descripcion.trim(),
+    );
+  // Sin salón ni líneas, el presupuesto sigue sin armar y no arranca la vigencia (ADR 0008).
+  const quedaSinArmar = salonesSel.length === 0 && lineas.length === 0;
   const cantidadACotizar = lineas.filter(aCotizar).length;
-  const { distribucion, inicio, fin } = consulta.evento;
 
   // RN-05: los importes se cargan sin IVA y el resumen muestra el desglose.
   const importes = desglosarIva(
-    (esImporte(precioSalon) ? Number(precioSalon) : 0) +
+    salonesSel.reduce((suma, s) => suma + (esImporte(s.precio) ? Number(s.precio) : 0), 0) +
       lineas.reduce((suma, l) => suma + subtotal(l.cantidad, l.precio), 0),
   );
-  const excedeCapacidad = !!salon && esEntero(personas) && Number(personas) > salon.capacidadMaxima;
+  // Es un dato, no un tope: la capacidad no bloquea (ADR 0011). Con varios salones cuenta la suma.
+  const excedeCapacidad =
+    salonesSel.length > 0 && esEntero(personas) && Number(personas) > capacidadElegida;
 
   // Se mandan los precios que se ven: lo que se guarda es exactamente lo que está en pantalla.
   function guardar(evento: React.FormEvent) {
     evento.preventDefault();
     if (!valido) return;
+    setGuardada(null);
     const aImporte = (valor: string) => Number(valor).toFixed(2);
     modificar.mutate(
       {
         fecha,
-        salonId,
+        salones: salonesSel.map((s) => ({
+          salonId: s.salonId,
+          precioUnitario: aImporte(s.precio),
+        })),
         cantidadPersonas: Number(personas),
         tipoJornada: jornada,
+        tipo,
+        tipoSocial: tipo === 'Social' && tipoSocial ? tipoSocial : null,
+        tipoSocialDetalle: tipo === 'Social' && tipoSocial === 'Otro' ? detalleOtro.trim() : null,
+        horaInicioEstimada: horaEstimada || null,
         requiereFactura,
-        precioSalon: aImporte(precioSalon),
         servicios: lineas
           .filter((l) => l.servicioId !== null)
           .map((l) => ({
             servicioId: l.servicioId!,
             cantidad: Number(l.cantidad),
+            horaEstimada: l.hora || undefined,
             // Sin precio, el tercerizado queda a cotizar (HU-11).
             precioUnitario: aCotizar(l) ? undefined : aImporte(l.precio),
           })),
@@ -279,10 +439,11 @@ function Formulario({
           .map((l) => ({
             descripcion: l.descripcion.trim(),
             cantidad: Number(l.cantidad),
+            horaEstimada: l.hora || undefined,
             precioUnitario: aImporte(l.precio),
           })),
       },
-      { onSuccess: onGuardada },
+      { onSuccess: setGuardada },
     );
   }
 
@@ -302,18 +463,23 @@ function Formulario({
             {consulta.estado === 'Confirmado' ? 'Presupuesto' : 'Consulta'} {consulta.id}
           </h2>
           <p className="text-sm text-muted-foreground">
-            Emitida el {fechaCorta(new Date(consulta.fechaEmision))} · vence el{' '}
-            {fechaCorta(new Date(consulta.venceEn))}
+            Emitida el {fechaCorta(new Date(consulta.fechaEmision))} ·{' '}
+            {consulta.venceEn
+              ? `vence el ${fechaCorta(new Date(consulta.venceEn))}`
+              : 'presupuesto sin armar'}
           </p>
         </div>
-        <span
-          className={cn(
-            'rounded-full px-3 py-1 text-xs font-semibold',
-            ESTADOS[consulta.estado] ?? '',
-          )}
-        >
-          {consulta.estado}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <BadgeTipoEvento evento={consulta.evento} />
+          <span
+            className={cn(
+              'rounded-full px-3 py-1 text-xs font-semibold',
+              ESTADOS[consulta.estado] ?? '',
+            )}
+          >
+            {consulta.estado}
+          </span>
+        </div>
       </header>
 
       {expirado && enCurso && (
@@ -331,7 +497,25 @@ function Formulario({
           )}
         </div>
       )}
-      {!enCurso && (
+      {confirmado && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
+          <p>
+            Evento confirmado: podés modificar todo y sigue confirmado. Si cambia el total, cambia
+            el saldo a cobrar; si cambiás la fecha, el horario se corre al mismo día.
+          </p>
+          {onImprimirComanda && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => onImprimirComanda(consulta.id)}
+            >
+              <Printer /> Comanda de cocina
+            </Button>
+          )}
+        </div>
+      )}
+      {!editable && (
         <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
           {consulta.estado === 'Cancelado'
             ? 'Esta consulta se dio de baja'
@@ -344,7 +528,10 @@ function Formulario({
 
       <section className="rounded-xl bg-card p-5 ring-1 ring-border">
         <h3 className="text-sm font-semibold">Cliente</h3>
-        <p className="mt-2 font-medium">{nombreCompleto(consulta.cliente)}</p>
+        <p className="mt-2 flex flex-wrap items-center gap-2 font-medium">
+          {nombreCompleto(consulta.cliente)}
+          <EtiquetaCliente etiqueta={consulta.cliente.etiqueta} />
+        </p>
         <p className="text-sm text-muted-foreground">
           {consulta.cliente.correo} · {consulta.cliente.telefono}
         </p>
@@ -353,7 +540,7 @@ function Formulario({
         </p>
       </section>
 
-      <fieldset disabled={!enCurso} className="space-y-6">
+      <fieldset disabled={!editable} className="space-y-6">
         <section className="rounded-xl bg-card p-5 ring-1 ring-border">
           <h3 className="text-sm font-semibold">Evento</h3>
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -367,29 +554,13 @@ function Formulario({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="consulta-salon">Salón</Label>
-              <select
-                id="consulta-salon"
-                className={claseSelect}
-                value={salonId}
-                onChange={(e) => cambiarSalonOJornada(Number(e.target.value), jornada)}
-              >
-                {salones.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.nombre} (hasta {s.capacidadMaxima})
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
               <Label htmlFor="consulta-personas">Personas</Label>
-              <Input
+              <InputEntero
                 id="consulta-personas"
-                type="number"
-                min={1}
+                max={MAXIMO_PERSONAS_EVENTO}
                 value={personas}
                 aria-invalid={!esEntero(personas)}
-                onChange={(e) => setPersonas(e.target.value)}
+                onChangeValor={setPersonas}
               />
             </div>
             <div className="space-y-1.5">
@@ -398,24 +569,121 @@ function Formulario({
                 id="consulta-jornada"
                 className={claseSelect}
                 value={jornada}
-                onChange={(e) => cambiarSalonOJornada(salonId, e.target.value as TipoJornada)}
+                onChange={(e) => cambiarJornada(e.target.value as TipoJornada)}
               >
                 <option value="completa">Jornada completa</option>
                 <option value="media">Media jornada (hasta 4 h)</option>
               </select>
             </div>
           </div>
+          {/* Un evento puede ocupar varios salones a la vez, incluso los cinco (ADR 0011). */}
+          <fieldset className="mt-4 space-y-2">
+            <legend className="text-sm font-medium">Salones</legend>
+            <div className="flex flex-wrap gap-2">
+              {salones.map((s) => {
+                const elegido = salonesSel.some((sel) => sel.salonId === s.id);
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    aria-pressed={elegido}
+                    onClick={() => alternarSalon(s.id)}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
+                      elegido
+                        ? 'border-bordo bg-bordo text-crema'
+                        : 'border-input hover:border-bordo/60',
+                    )}
+                  >
+                    {elegido && <Check className="size-3.5" />}
+                    {s.nombre}
+                    <span className={elegido ? 'text-crema/75' : 'text-muted-foreground'}>
+                      · hasta {s.capacidadMaxima}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {salonesSel.length > 1 && (
+              <p className="text-xs text-muted-foreground">
+                {salonesSel.length} salones · capacidad sumada {capacidadElegida} personas
+              </p>
+            )}
+          </fieldset>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="consulta-tipo">Tipo de evento</Label>
+              <select
+                id="consulta-tipo"
+                className={claseSelect}
+                value={tipo}
+                onChange={(e) => setTipo(e.target.value as TipoEvento)}
+              >
+                <option value="Corporativo">Corporativo</option>
+                <option value="Social">Social</option>
+              </select>
+            </div>
+            {tipo === 'Social' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="consulta-tipo-social">¿Qué evento?</Label>
+                <select
+                  id="consulta-tipo-social"
+                  className={claseSelect}
+                  value={tipoSocial}
+                  aria-invalid={!tipoSocial}
+                  onChange={(e) => setTipoSocial(e.target.value as TipoEventoSocial)}
+                >
+                  <option value="" disabled>
+                    Elegí…
+                  </option>
+                  {TIPOS_SOCIALES.map(([valor, etiqueta]) => (
+                    <option key={valor} value={valor}>
+                      {etiqueta}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+            {tipo === 'Social' && tipoSocial === 'Otro' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="consulta-detalle-otro">Detalle</Label>
+                <Input
+                  id="consulta-detalle-otro"
+                  maxLength={120}
+                  value={detalleOtro}
+                  aria-invalid={!detalleOtro.trim()}
+                  onChange={(e) => setDetalleOtro(e.target.value)}
+                />
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label htmlFor="consulta-hora">Hora de inicio estimada</Label>
+              <Input
+                id="consulta-hora"
+                type="time"
+                value={horaEstimada}
+                onChange={(e) => setHoraEstimada(e.target.value)}
+              />
+            </div>
+          </div>
+          {tipo === 'Corporativo' && salonesSel.length === 0 && (
+            <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-destructive">
+              <AlertTriangle className="size-3.5" /> Un evento corporativo necesita al menos un
+              salón.
+            </p>
+          )}
           {excedeCapacidad && (
             <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-amber-900">
-              <AlertTriangle className="size-3.5" /> {personas} personas superan la capacidad del
-              salón {salon.nombre} ({salon.capacidadMaxima}).
+              <AlertTriangle className="size-3.5" /> {personas} personas superan la capacidad{' '}
+              {salonesSel.length > 1 ? 'sumada de los salones' : 'del salón'} ({capacidadElegida}).
+              Es un aviso: se puede guardar igual.
             </p>
           )}
           <p className="mt-4 text-sm">
             <span className="text-muted-foreground">Distribución y horario: </span>
-            {distribucion && inicio && fin
-              ? `${distribucion.nombre} · de ${hora(inicio)} a ${hora(fin)}`
-              : 'sin agendar todavía (se cargan al agendar el evento)'}
+            {armado && inicio && fin
+              ? `${armado} · de ${hora(inicio)} a ${hora(fin)}`
+              : 'sin agendar todavía (se cargan al registrar el pago)'}
           </p>
           <label className="mt-4 flex items-center gap-2 text-sm">
             <input
@@ -425,10 +693,23 @@ function Formulario({
             />
             El cliente requiere factura
             <span className="text-xs text-muted-foreground">
-              (la seña y el saldo se calculan sobre el total con IVA, RN-01)
+              (la seña y el saldo se calculan sobre el total con IVA)
             </span>
           </label>
         </section>
+
+        {tipo === 'Social' && (
+          <section className="rounded-xl bg-card p-5 ring-1 ring-rose-200">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <ClipboardList className="size-4 text-rose-700" /> Detalle del evento social
+            </h3>
+            {/* Vacío a propósito: falta la plantilla de campos del evento social (pendientes.md). */}
+            <div className="mt-3 rounded-lg border border-dashed border-rose-200 px-4 py-8 text-center text-sm text-muted-foreground">
+              Todavía no hay plantilla para los eventos sociales. Acá van a ir los datos propios del
+              evento.
+            </div>
+          </section>
+        )}
 
         <section className="rounded-xl bg-card p-5 ring-1 ring-border">
           <h3 className="text-sm font-semibold">Detalle</h3>
@@ -442,32 +723,56 @@ function Formulario({
                 <tr>
                   <th className="pb-2 font-medium">Concepto</th>
                   <th className="w-24 pb-2 font-medium">Cantidad</th>
+                  {/* Opcional: a qué hora del evento se espera cada servicio. El salón no lleva,
+                      su horario es el del evento. Agendado el evento, se limita a su franja. */}
+                  <th className="w-28 pb-2 font-medium">
+                    Hora
+                    {franja && (
+                      <span className="block font-normal">
+                        {franja.desde} a {franja.hasta}
+                      </span>
+                    )}
+                  </th>
                   <th className="w-36 pb-2 font-medium">Precio unitario</th>
                   <th className="w-32 pb-2 text-right font-medium">Subtotal</th>
                   <th className="w-10 pb-2" />
                 </tr>
               </thead>
               <tbody className="divide-y">
-                <tr>
-                  <td className="py-2 pr-3">
-                    Salón {salon?.nombre} (
-                    {jornada === 'completa' ? 'jornada completa' : 'media jornada'})
-                  </td>
-                  <td className="py-2 pr-3 text-muted-foreground">1</td>
-                  <td className="py-2 pr-3">
-                    <Input
-                      aria-label="Precio del salón"
-                      inputMode="decimal"
-                      value={precioSalon}
-                      aria-invalid={!esImporte(precioSalon)}
-                      onChange={(e) => setPrecioSalon(e.target.value)}
-                    />
-                  </td>
-                  <td className="py-2 text-right whitespace-nowrap">
-                    {esImporte(precioSalon) ? formatearPesos(precioSalon) : '—'}
-                  </td>
-                  <td />
-                </tr>
+                {quedaSinArmar && (
+                  <tr>
+                    <td colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
+                      Presupuesto sin armar: elegí el salón y agregá los servicios.
+                    </td>
+                  </tr>
+                )}
+                {/* Una línea por salón, cada una con su precio ajustable (RN-03). */}
+                {salonesSel.map((sel) => {
+                  const nombre = salonDe(sel.salonId)?.nombre ?? '';
+                  return (
+                    <tr key={`salon-${sel.salonId}`}>
+                      <td className="py-2 pr-3">
+                        Salón {nombre} (
+                        {jornada === 'completa' ? 'jornada completa' : 'media jornada'})
+                      </td>
+                      <td className="py-2 pr-3 text-muted-foreground">1</td>
+                      <td className="py-2 pr-3 text-muted-foreground">—</td>
+                      <td className="py-2 pr-3">
+                        <Input
+                          aria-label={`Precio del salón ${nombre}`}
+                          inputMode="decimal"
+                          value={sel.precio}
+                          aria-invalid={!esImporte(sel.precio)}
+                          onChange={(e) => cambiarPrecioSalon(sel.salonId, e.target.value)}
+                        />
+                      </td>
+                      <td className="py-2 text-right whitespace-nowrap">
+                        {esImporte(sel.precio) ? formatearPesos(sel.precio) : '—'}
+                      </td>
+                      <td />
+                    </tr>
+                  );
+                })}
                 {lineas.map((linea) => (
                   <tr key={linea.clave}>
                     <td className="py-2 pr-3">
@@ -492,13 +797,25 @@ function Formulario({
                       )}
                     </td>
                     <td className="py-2 pr-3">
-                      <Input
+                      <InputEntero
                         aria-label={`Cantidad de ${linea.descripcion}`}
-                        type="number"
-                        min={1}
+                        max={topeDeLinea(linea.servicioId)}
                         value={linea.cantidad}
-                        aria-invalid={!esEntero(linea.cantidad)}
-                        onChange={(e) => actualizarLinea(linea.clave, { cantidad: e.target.value })}
+                        aria-invalid={!esEntero(linea.cantidad) || !cantidadPosible(linea)}
+                        onChangeValor={(cantidad) => actualizarLinea(linea.clave, { cantidad })}
+                      />
+                    </td>
+                    <td className="py-2 pr-3">
+                      <Input
+                        aria-label={`Hora de ${linea.descripcion} (opcional)`}
+                        type="time"
+                        value={linea.hora}
+                        // min y max no impiden tipear una hora de más: marcan el campo y lo
+                        // bloquea horaValida, que es lo que deshabilita «Guardar».
+                        min={franja?.desde}
+                        max={franja?.hasta}
+                        aria-invalid={!horaValida(linea)}
+                        onChange={(e) => actualizarLinea(linea.clave, { hora: e.target.value })}
                       />
                     </td>
                     <td className="py-2 pr-3">
@@ -540,6 +857,22 @@ function Formulario({
               </tbody>
             </table>
           </div>
+
+          {/* Pasa cuando se reprograma el evento y alguna hora queda afuera de la franja nueva.
+              Sin esto el aviso llegaría recién al guardar, con el 422 de la API. */}
+          {franja && lineas.some((l) => !horaValida(l)) && (
+            <p className="mt-3 flex items-start gap-1.5 text-xs font-medium text-destructive">
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              <span>
+                {lineas
+                  .filter((l) => !horaValida(l))
+                  .map((l) => l.descripcion.trim() || 'Un servicio')
+                  .join(', ')}{' '}
+                {lineas.filter((l) => !horaValida(l)).length === 1 ? 'queda' : 'quedan'} fuera del
+                horario del evento, que va de {franja.desde} a {franja.hasta}.
+              </span>
+            </p>
+          )}
 
           <div className="mt-4 space-y-3 rounded-lg bg-muted/50 p-3">
             <div className="flex flex-wrap items-end gap-2">
@@ -594,13 +927,12 @@ function Formulario({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="otro-cantidad">Cantidad</Label>
-                  <Input
+                  <InputEntero
                     id="otro-cantidad"
                     className="bg-card"
-                    type="number"
-                    min={1}
                     value={otro.cantidad}
-                    onChange={(e) => setOtro({ ...otro, cantidad: e.target.value })}
+                    aria-invalid={!esEntero(otro.cantidad)}
+                    onChangeValor={(cantidad) => setOtro({ ...otro, cantidad })}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -650,28 +982,73 @@ function Formulario({
               : `${cantidadACotizar} servicios están a cotizar y no suman al total.`}
           </p>
         )}
+        {/* Pasa al bajar la cantidad de personas con los servicios ya cargados: el campo queda
+            marcado pero sin esto no se entiende por qué no deja guardar. */}
+        {lineas.some((l) => esEntero(l.cantidad) && !cantidadPosible(l)) && (
+          <p className="mt-3 text-right text-xs text-destructive">
+            Hay un servicio por persona contratado para más gente que la que asiste. Ajustá su
+            cantidad a {personas} o menos.
+          </p>
+        )}
         <p className="mt-3 text-right text-xs text-muted-foreground">
-          Este presupuesto tiene una validez de {DIAS_VIGENCIA_PRESUPUESTO} días.
+          {quedaSinArmar
+            ? `La vigencia de ${DIAS_VIGENCIA_PRESUPUESTO} días empieza cuando guardes el presupuesto con el salón o algún servicio.`
+            : `Este presupuesto tiene una validez de ${DIAS_VIGENCIA_PRESUPUESTO} días.`}
         </p>
       </section>
 
-      {enCurso && (
+      {editable && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            className="text-destructive"
-            disabled={darDeBaja.isPending}
-            onClick={confirmarBaja}
-          >
-            <Trash2 /> Dar de baja
-          </Button>
+          {/* Un evento confirmado no se da de baja desde acá: se cancela desde el evento (RN-07). */}
+          {enCurso ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-destructive"
+              disabled={darDeBaja.isPending}
+              onClick={confirmarBaja}
+            >
+              <Trash2 /> Dar de baja
+            </Button>
+          ) : (
+            <span />
+          )}
           <div className="flex flex-wrap items-center justify-end gap-3">
             <p className="text-xs text-muted-foreground">
-              Al guardar, la vigencia vuelve a contar {DIAS_VIGENCIA_PRESUPUESTO} días.
+              {confirmado
+                ? 'Al guardar, el evento sigue confirmado y el saldo se recalcula con el total nuevo.'
+                : quedaSinArmar
+                  ? 'Sin salón ni servicios, el presupuesto sigue sin armar.'
+                  : `Al guardar, la vigencia vuelve a contar ${DIAS_VIGENCIA_PRESUPUESTO} días.`}
             </p>
             <Button type="submit" disabled={!valido || modificar.isPending}>
               {modificar.isPending ? 'Guardando…' : 'Guardar cambios'}
+            </Button>
+          </div>
+        </div>
+      )}
+      {guardada && (
+        <div
+          ref={refAviso}
+          role="status"
+          className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200"
+        >
+          <p className="flex items-center gap-2 font-medium">
+            <CheckCircle2 className="size-4 shrink-0" /> Cambios guardados. ¿Querés{' '}
+            {textoVolverAlGuardar.charAt(0).toLowerCase() + textoVolverAlGuardar.slice(1)}?
+          </p>
+          <div className="flex items-center gap-2">
+            <Button type="button" size="sm" onClick={() => onGuardada(guardada)}>
+              <ArrowLeft /> {textoVolverAlGuardar}
+            </Button>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-label="Cerrar el aviso"
+              onClick={() => setGuardada(null)}
+            >
+              <X />
             </Button>
           </div>
         </div>
@@ -680,21 +1057,23 @@ function Formulario({
         <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-card p-5 ring-1 ring-border">
           <div className="max-w-xl">
             <h3 className="flex items-center gap-2 text-sm font-semibold">
-              <CalendarCheck className="size-4 text-dorado" /> Agendar y cobrar la seña
+              <CalendarCheck className="size-4 text-dorado" /> Cobrar la seña
             </h3>
             <p className="text-xs text-muted-foreground">
               {expirado
                 ? 'La consulta está vencida: recalculala y guardá los cambios antes de cobrar la seña.'
-                : 'Cargá la distribución y el horario y registrá los pagos. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a Eventos (HU-13). Guardá antes los cambios de la consulta.'}
+                : consulta.salones.length === 0
+                  ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
+                  : 'Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda (HU-13). Guardá antes los cambios de la consulta.'}
             </p>
           </div>
           <Button
             type="button"
             variant="outline"
-            disabled={expirado}
+            disabled={expirado || consulta.salones.length === 0}
             onClick={() => onAbrirEvento(consulta.evento.id)}
           >
-            <CalendarCheck /> Agendar y registrar pagos
+            <CalendarCheck /> Registrar pagos
           </Button>
         </section>
       )}

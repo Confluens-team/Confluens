@@ -1,106 +1,134 @@
-import { esquemaActualizarLandingServicio } from '@confluens/shared';
-import { ImageOff } from 'lucide-react';
-import { useState } from 'react';
+import type { DestinoFoto } from '@confluens/shared';
+import { ImageOff, ImagePlus, Trash2 } from 'lucide-react';
+import { useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { TAMANO_MAXIMO_FOTO, useSubirFoto } from '@/hooks/use-fotos';
 import { useActualizarLandingSalon, useSalones } from '@/hooks/use-salones';
 import { useActualizarLandingServicio, useServicios } from '@/hooks/use-servicios';
 import { ErrorApiCliente } from '@/lib/api';
+import { fotoOptimizada } from '@/lib/fotos';
 
 function mensajeDeError(error: unknown, alternativa: string): string {
-  return error instanceof ErrorApiCliente ? error.message : alternativa;
+  return error instanceof ErrorApiCliente || error instanceof Error ? error.message : alternativa;
 }
 
-// Editor de la URL de la foto, igual para salones y para servicios: en los dos casos el campo es
-// el mismo `fotoUrl` con la misma validación, así que se comparte en vez de duplicarlo.
-// Dejar el campo vacío y guardar manda `null`, que es la forma de quitar la foto.
+// Editor de la foto, igual para salones y para servicios. Se elige el archivo de la galería (en el
+// celular abre la galería o la cámara), se sube directo a Cloudinary y se guarda la URL que
+// devuelve, todo de una: no hay un paso "Guardar" aparte, así no quedan fotos subidas sin usar
+// (ADR 0009). La foto anterior la borra la API al guardar la nueva o al quitarla.
 function EditorDeFoto({
   idCampo,
+  destino,
   fotoUrl,
   guardando,
   onGuardar,
 }: {
   idCampo: string;
+  destino: DestinoFoto;
   fotoUrl: string | null;
   guardando: boolean;
   onGuardar: (fotoUrl: string | null) => void;
 }) {
-  const [valor, setValor] = useState(fotoUrl ?? '');
+  const subir = useSubirFoto();
+  const entrada = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [imagenRota, setImagenRota] = useState(false);
+  const ocupado = subir.isPending || guardando;
 
-  const recortado = valor.trim();
-  // La previsualización usa el valor tipeado, no el guardado: la idea es ver la foto antes de
-  // publicarla, no después. Se muestra solo si ya es una URL válida para no pedirle al navegador
-  // una imagen por cada tecla.
-  const previsualizable = esquemaActualizarLandingServicio.safeParse({
-    fotoUrl: recortado,
-  }).success;
-
-  function manejarEnvio(evento: React.FormEvent) {
-    evento.preventDefault();
-
-    if (recortado === '') {
-      setError(null);
-      onGuardar(null);
+  function elegirArchivo(evento: React.ChangeEvent<HTMLInputElement>) {
+    const archivo = evento.target.files?.[0];
+    // Se limpia para que volver a elegir el mismo archivo dispare el cambio otra vez.
+    evento.target.value = '';
+    if (!archivo) return;
+    if (!archivo.type.startsWith('image/')) {
+      setError('Elegí un archivo de imagen (JPG, PNG, WebP…).');
       return;
     }
-
-    // Mismo schema que valida el servidor (packages/shared): si no pasa acá tampoco pasaría la
-    // API, así que se evita el round-trip (mismo criterio que RegistrarServicio.tsx).
-    const resultado = esquemaActualizarLandingServicio.safeParse({ fotoUrl: recortado });
-    if (!resultado.success) {
-      setError(resultado.error.issues[0]?.message ?? 'Ingresá una URL válida');
+    if (archivo.size > TAMANO_MAXIMO_FOTO) {
+      setError('La foto pesa más de 10 MB. Elegí una más liviana.');
       return;
     }
-
     setError(null);
-    onGuardar(recortado);
+    subir.mutate(
+      { archivo, destino },
+      {
+        onSuccess: (url) => {
+          setImagenRota(false);
+          onGuardar(url);
+        },
+        onError: (falla) => setError(mensajeDeError(falla, 'No se pudo subir la foto.')),
+      },
+    );
   }
 
   return (
-    <form onSubmit={manejarEnvio} className="space-y-1.5">
-      <Label htmlFor={idCampo} className="text-xs text-muted-foreground">
-        URL de la foto (vacío quita la foto)
-      </Label>
-      <div className="flex items-start gap-2">
-        {previsualizable && !imagenRota ? (
-          <img
-            src={recortado}
-            alt=""
-            className="size-12 shrink-0 rounded-md object-cover"
-            onError={() => setImagenRota(true)}
-          />
-        ) : (
-          <div className="flex size-12 shrink-0 items-center justify-center rounded-md bg-muted">
-            <ImageOff className="size-4 text-muted-foreground" />
-          </div>
-        )}
-        <div className="flex-1 space-y-1.5">
-          <Input
-            id={idCampo}
-            value={valor}
-            placeholder="https://…"
-            onChange={(e) => {
-              setValor(e.target.value);
-              setImagenRota(false);
-            }}
-          />
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          {!error && imagenRota && (
-            <p className="text-sm text-muted-foreground">
-              La URL es válida pero la imagen no se pudo cargar.
-            </p>
+    <div className="flex items-center gap-3">
+      {fotoUrl && !imagenRota ? (
+        <img
+          src={fotoOptimizada(fotoUrl, 200)}
+          alt=""
+          className="size-20 shrink-0 rounded-md object-cover"
+          onError={() => setImagenRota(true)}
+        />
+      ) : (
+        <div className="flex size-20 shrink-0 items-center justify-center rounded-md bg-muted">
+          <ImageOff className="size-5 text-muted-foreground" />
+        </div>
+      )}
+      <div className="flex-1 space-y-1.5">
+        <input
+          ref={entrada}
+          id={idCampo}
+          type="file"
+          accept="image/*"
+          hidden
+          onChange={elegirArchivo}
+        />
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={ocupado}
+            onClick={() => entrada.current?.click()}
+          >
+            <ImagePlus />
+            {subir.isPending
+              ? 'Subiendo…'
+              : guardando
+                ? 'Guardando…'
+                : fotoUrl
+                  ? 'Cambiar foto'
+                  : 'Elegir foto'}
+          </Button>
+          {fotoUrl && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="text-destructive"
+              disabled={ocupado}
+              onClick={() => {
+                setError(null);
+                onGuardar(null);
+              }}
+            >
+              <Trash2 /> Quitar foto
+            </Button>
           )}
         </div>
-        <Button type="submit" variant="outline" disabled={guardando}>
-          {guardando ? 'Guardando…' : 'Guardar'}
-        </Button>
+        {error && <p className="text-sm text-destructive">{error}</p>}
+        {!error && imagenRota && (
+          <p className="text-sm text-muted-foreground">La foto guardada no se pudo cargar.</p>
+        )}
+        {!error && !imagenRota && (
+          <p className="text-xs text-muted-foreground">JPG, PNG o WebP de hasta 10 MB.</p>
+        )}
       </div>
-    </form>
+    </div>
   );
 }
 
@@ -123,9 +151,9 @@ export function AdministrarLanding() {
       <div>
         <h1 className="text-2xl font-semibold">Landing page</h1>
         <p className="text-sm text-muted-foreground">
-          Elegí qué salones se publican y cargá las fotos que se muestran en el sitio público
-          (HU-08). Los cambios se ven en la landing al instante, sin ningún paso de publicación
-          adicional.
+          Elegí qué salones se publican y subí desde tu galería las fotos que se muestran en el
+          sitio público (HU-08). Los cambios se ven en la landing al instante, sin ningún paso de
+          publicación adicional.
         </p>
       </div>
 
@@ -175,6 +203,7 @@ export function AdministrarLanding() {
 
                 <EditorDeFoto
                   idCampo={`foto-salon-${salon.id}`}
+                  destino="salones"
                   fotoUrl={salon.fotoUrl}
                   guardando={guardando}
                   onGuardar={(fotoUrl) =>
@@ -216,6 +245,7 @@ export function AdministrarLanding() {
 
               <EditorDeFoto
                 idCampo={`foto-servicio-${servicio.id}`}
+                destino="servicios"
                 fotoUrl={servicio.fotoUrl}
                 guardando={
                   actualizarServicio.isPending && actualizarServicio.variables?.id === servicio.id

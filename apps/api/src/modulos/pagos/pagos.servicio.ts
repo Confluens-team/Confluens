@@ -1,48 +1,19 @@
 import type { CrearPago } from '@confluens/shared';
-import {
-  admiteMedioPago,
-  nombresMediosPagoHabilitados,
-  PORCENTAJE_IVA,
-  PORCENTAJE_SENA,
-} from '@confluens/shared';
+import { admiteMedioPago, nombresMediosPagoHabilitados, PORCENTAJE_SENA } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
+import {
+  alcanza,
+  calcularBaseDeCobro,
+  PORCENTAJE_TOTAL,
+  type PresupuestoDeBase,
+} from '../../lib/base-de-cobro.js';
 import { ErrorApi } from '../../lib/errores.js';
-import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
+import { esViolacionDeSolapamiento, mensajeDeSolapamiento } from '../../lib/prisma-errores.js';
 import * as pagosRepositorioReal from './pagos.repositorio.js';
 import type { PagosRepositorio } from './pagos.repositorio.js';
 
 const CIEN = new Prisma.Decimal(100);
-const PORCENTAJE_TOTAL = 100;
-
-type PresupuestoDeBase = {
-  id: number;
-  estado: string;
-  total: Prisma.Decimal;
-  requiereFactura: boolean;
-};
-
-/**
- * Base de cobro de **RN-01**, que es la resolución de S-08: el porcentaje de la seña no se calcula
- * sobre el total del presupuesto sino sobre lo que el cliente realmente tiene que pagar.
- *
- * - `requiereFactura: true` → el cliente paga el total más el IVA, así que la base lo incluye.
- * - `requiereFactura: false` → la base es el total tal cual está guardado, sin IVA (RN-05).
- *
- * No se guarda en ninguna columna: se recalcula en cada consulta (sprint-02.md:130). Toda la
- * aritmética es con `Prisma.Decimal`, nunca con `number`: son importes.
- */
-function calcularBaseDeCobro(presupuesto: PresupuestoDeBase): Prisma.Decimal {
-  const total = new Prisma.Decimal(presupuesto.total);
-  if (!presupuesto.requiereFactura) return total;
-  return total.times(CIEN.plus(PORCENTAJE_IVA)).dividedBy(CIEN).toDecimalPlaces(2);
-}
-
-// `pagado >= base * porcentaje / 100`, pero multiplicando en vez de dividiendo: la división puede
-// dejar decimales que no entran en Decimal(12,2) y un redondeo acá cambiaría de lado el umbral.
-function alcanza(pagado: Prisma.Decimal, base: Prisma.Decimal, porcentaje: number): boolean {
-  return pagado.times(CIEN).greaterThanOrEqualTo(base.times(porcentaje));
-}
 
 function armarSaldo(base: Prisma.Decimal, pagado: Prisma.Decimal, incluyeIva: boolean) {
   return {
@@ -113,9 +84,9 @@ export async function registrarPago(
     throw ErrorApi.noEncontrado(`No existe un medio de pago activo con id ${datos.medioPagoId}`);
   }
   // RN-14: los medios disponibles dependen de la casilla «El cliente requiere factura» del
-  // presupuesto. Sin factura solo entra la plata que no deja comprobante bancario propio
-  // (Efectivo, Transferencia); con factura entran además Débito, Crédito y Cheque. La web ya
-  // filtra el desplegable; esto es lo que hace que la regla valga igual contra la API.
+  // presupuesto. Sin factura entran solo Efectivo, Transferencia y A la habitación; con factura
+  // entran además Débito, Crédito y Cheque. La web ya filtra el desplegable; esto es lo que hace
+  // que la regla valga igual contra la API.
   if (!admiteMedioPago(medioPago.nombre, presupuesto.requiereFactura)) {
     const habilitados = nombresMediosPagoHabilitados(presupuesto.requiereFactura).join(', ');
     const caso = presupuesto.requiereFactura ? 'con factura' : 'sin factura';
@@ -147,7 +118,10 @@ export async function registrarPago(
       // Sin franja horaria cargada no hay con qué evaluar RN-12, así que no se puede reservar. Se
       // rechaza el pago en vez de aceptarlo sin reservar (el cliente pagó y el salón quedaría
       // libre) o de reservar a ciegas (riesgo de vender dos veces la misma franja).
-      if (reservaElSalon && (!evento.inicio || !evento.fin)) {
+      // Lo mismo sin salón: una consulta social puede no tenerlo todavía (ADR 0008).
+      // Los salones que ocupa el evento: varios a la vez (ADR 0011).
+      const salonIds = evento.salones.map((s) => s.salonId);
+      if (reservaElSalon && (salonIds.length === 0 || !evento.inicio || !evento.fin)) {
         throw ErrorApi.reglaNegocio(
           'Hay que agendar la distribución y el horario del evento antes de cobrar la seña',
         );
@@ -155,9 +129,9 @@ export async function registrarPago(
 
       let consultasEnConflicto: Awaited<ReturnType<typeof repo.buscarConsultasSuperpuestas>> = [];
 
-      if (reservaElSalon && evento.inicio && evento.fin) {
+      if (reservaElSalon && salonIds.length > 0 && evento.inicio && evento.fin) {
         const franja = {
-          salonId: evento.salonId,
+          salonIds,
           inicio: evento.inicio,
           fin: evento.fin,
           excluirEventoId: eventoId,
@@ -166,9 +140,7 @@ export async function registrarPago(
         // constraint EXCLUDE de Postgres no dice.
         const solapado = await repo.buscarSolapamiento(franja, tx);
         if (solapado) {
-          throw ErrorApi.conflicto(
-            `El salón ya está reservado en ese horario por el evento #${solapado.id}`,
-          );
+          throw ErrorApi.conflicto(mensajeDeSolapamiento(solapado, salonIds));
         }
         consultasEnConflicto = await repo.buscarConsultasSuperpuestas(franja, tx);
       }

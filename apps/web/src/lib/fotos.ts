@@ -20,6 +20,23 @@ const FOTO_POR_SALON: Record<string, string> = {
   Paraná: FOTOS.desayuno,
 };
 
-export function fotoDeSalon(salon: { nombre: string; fotoUrl: string | null }): string {
-  return salon.fotoUrl ?? FOTO_POR_SALON[salon.nombre] ?? FOTOS.evento;
+// Las fotos que se suben desde el panel están en Cloudinary (ADR 0009) a hasta 1920 px y en el formato
+// del archivo original (a veces PNG de más de 1 MB). Para mostrarlas se le pide a Cloudinary una
+// versión del ancho que se va a usar, en el formato y la calidad que mejor convengan a cada navegador
+// (WebP o AVIF): pesa varias veces menos y no se nota la diferencia. Cloudinary genera esa versión la
+// primera vez y después la sirve desde su CDN. Las URLs que no son de Cloudinary quedan como están.
+export function fotoOptimizada(url: string, ancho: number): string {
+  const marca = '/image/upload/';
+  if (!url.startsWith('https://res.cloudinary.com/') || !url.includes(marca)) return url;
+  return url.replace(marca, `${marca}f_auto,q_auto,c_limit,w_${ancho}/`);
+}
+
+// `ancho` en píxeles reales de pantalla: el doble del tamaño en CSS para que se vea nítida en
+// pantallas de alta densidad.
+export function fotoDeSalon(
+  salon: { nombre: string; fotoUrl: string | null },
+  ancho = 800,
+): string {
+  if (salon.fotoUrl) return fotoOptimizada(salon.fotoUrl, ancho);
+  return FOTO_POR_SALON[salon.nombre] ?? FOTOS.evento;
 }

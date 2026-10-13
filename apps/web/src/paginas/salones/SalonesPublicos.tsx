@@ -1,7 +1,5 @@
-import type { SalonPublico } from '@confluens/shared';
-import { ArrowRight, Ruler, Users } from 'lucide-react';
+import { Ruler, Users } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
 import { useSalonesPublicos } from '@/hooks/use-salones';
 import { fotoDeSalon } from '@/lib/fotos';
 import { cn } from '@/lib/utils';
@@ -12,7 +10,13 @@ import { cn } from '@/lib/utils';
 //
 // Sin precios a propósito: el endpoint no los devuelve (ver salones.repositorio.ts). Los precios
 // se ven recién en el cotizador, con la sesión del cliente registrado.
-export function SalonesPublicos({ onConsultar }: { onConsultar: (salon: SalonPublico) => void }) {
+//
+// La ficha no lleva botón para cotizar: los tres CTA de la landing abren el cotizador sin salón
+// preseleccionado y el cliente lo elige ahí (ahora puede elegir varios, ADR 0011). Esto deja sin
+// cumplir el criterio 3 de HU-07 ("avanzar desde la ficha con el salón preseleccionado"): es un
+// cambio de criterio pedido por el equipo, no un olvido. El cotizador sigue aceptando un salón
+// preseleccionado (`salonInicialId`), así que para volver atrás alcanza con un botón que lo pase.
+export function SalonesPublicos() {
   const { data: salones, isLoading, isError } = useSalonesPublicos();
 
   if (isLoading) {
@@ -56,15 +60,21 @@ export function SalonesPublicos({ onConsultar }: { onConsultar: (salon: SalonPub
             )}
           >
             <div className={cn('relative overflow-hidden', destacado ? 'h-72' : 'h-56')}>
+              {/* Diferida: se descarga recién cuando el visitante llega a la sección de salones. */}
               <img
-                src={fotoDeSalon(salon)}
+                src={fotoDeSalon(salon, destacado ? 1200 : 800)}
                 alt={`Salón ${salon.nombre}`}
+                loading="lazy"
+                decoding="async"
                 className="size-full object-cover transition-transform duration-700 group-hover:scale-105"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-bordo-oscuro/85 via-bordo-oscuro/10 to-transparent" />
+              {/* AC2 de la auditoría de accesibilidad: el nombre del salón y su rótulo van sobre
+                  la foto. El extremo inferior del degradado, que es donde se apoya el texto, pasa
+                  de 85 % a 95 %: contra una zona blanca de la foto el rótulo queda en 5.8:1. */}
+              <div className="absolute inset-0 bg-gradient-to-t from-bordo-oscuro/95 via-bordo-oscuro/10 to-transparent" />
               <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-5 text-crema">
                 <div>
-                  <p className="text-[0.65rem] font-medium tracking-[0.25em] text-dorado uppercase">
+                  <p className="text-[0.65rem] font-medium tracking-[0.25em] text-dorado-claro uppercase">
                     Salón
                   </p>
                   <h3 className="text-3xl font-semibold">{salon.nombre}</h3>
@@ -113,16 +123,6 @@ export function SalonesPublicos({ onConsultar }: { onConsultar: (salon: SalonPub
                   </ul>
                 </div>
               )}
-
-              {/* Criterio 3: desde la ficha se avanza a la consulta con el salón preseleccionado. */}
-              <Button
-                variant="outline"
-                size="lg"
-                className="mt-auto border-bordo/30 text-bordo hover:bg-bordo hover:text-crema"
-                onClick={() => onConsultar(salon)}
-              >
-                Cotizar en este salón <ArrowRight />
-              </Button>
             </div>
           </article>
         );

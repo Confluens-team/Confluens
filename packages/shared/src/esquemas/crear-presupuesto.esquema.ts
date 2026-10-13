@@ -1,21 +1,26 @@
 import { z } from 'zod';
 
-import { esquemaFecha, esquemaId } from './comunes.esquema.js';
+import { esquemaCantidadPersonas, esquemaFecha, esquemaId } from './comunes.esquema.js';
 import { esquemaEvento } from './evento.esquema.js';
 import { esquemaLineaPresupuesto } from './linea-presupuesto.esquema.js';
 import { esquemaPresupuesto } from './presupuesto.esquema.js';
+import {
+  esquemaHoraEstimada,
+  esquemaTipoEventoSocial,
+  esquemaTipoJornada,
+  esquemaTipoSocialDetalle,
+  exigirDetalleDeOtro,
+} from './tipo-evento.esquema.js';
 
 // RN-04: un servicio puede contratarse para menos personas que el total del evento.
+// `horaEstimada` es opcional: a qué hora del evento se espera ese servicio. Si el evento ya está
+// agendado, la API valida que caiga dentro de su horario.
 export const esquemaServicioSeleccionado = z.object({
   servicioId: esquemaId,
   cantidad: z.number().int().positive(),
+  horaEstimada: esquemaHoraEstimada.optional(),
 });
 export type ServicioSeleccionado = z.infer<typeof esquemaServicioSeleccionado>;
-
-// No se puede derivar de Evento.inicio/fin (quedan null mientras el evento está en EnConsulta).
-// Definición formal de ambos conceptos en docs/negocio/tarifario-2026.md.
-export const esquemaTipoJornada = z.enum(['completa', 'media']);
-export type TipoJornada = z.infer<typeof esquemaTipoJornada>;
 
 // Contrato de POST /presupuestos (HU-09). Lo usa el panel interno del Responsable de Eventos, no
 // el canal público, así que a diferencia de esquemaCrearSolicitud no hace falta un mensaje de Zod
@@ -27,10 +32,16 @@ export const esquemaCrearPresupuesto = z.object({
   telefono: z.string().min(1),
   correo: z.email(),
   // Datos del evento en consulta que se crea junto con el presupuesto.
-  salonId: esquemaId,
+  // Un evento puede ocupar varios salones a la vez, hasta los cinco (ADR 0011). El cotizador
+  // corporativo manda al menos uno; la consulta social va por otro endpoint y llega sin salón.
+  salonIds: z
+    .array(esquemaId)
+    .min(1, 'Elegí al menos un salón')
+    .refine((ids) => new Set(ids).size === ids.length, 'Un salón no puede repetirse'),
   fecha: esquemaFecha,
-  cantidadPersonas: z.number().int().positive(),
+  cantidadPersonas: esquemaCantidadPersonas,
   tipoJornada: esquemaTipoJornada,
+  horaInicioEstimada: esquemaHoraEstimada.optional(),
   // Puede venir vacío: un presupuesto solo con el salón es válido.
   servicios: z.array(esquemaServicioSeleccionado).default([]),
   // HU-15: si viene, vincula Solicitud.eventoId al evento recién creado (el RE "tomó" esa
@@ -39,6 +50,22 @@ export const esquemaCrearPresupuesto = z.object({
   solicitudId: esquemaId.optional(),
 });
 export type CrearPresupuesto = z.infer<typeof esquemaCrearPresupuesto>;
+
+// Contrato de POST /presupuestos/social (ADR 0008): la consulta de un evento social. Sin salón ni
+// servicios: el presupuesto lo arma el Responsable de Eventos. Sin datos de contacto: el cliente
+// es el de la sesión. Lo completa el cliente, así que los mensajes van en español.
+export const esquemaCrearConsultaSocial = z
+  .object({
+    fecha: esquemaFecha,
+    cantidadPersonas: esquemaCantidadPersonas,
+    tipoJornada: esquemaTipoJornada,
+    horaInicioEstimada: esquemaHoraEstimada.optional(),
+    tipoSocial: esquemaTipoEventoSocial,
+    tipoSocialDetalle: esquemaTipoSocialDetalle.optional(),
+    solicitudId: esquemaId.optional(),
+  })
+  .superRefine(exigirDetalleDeOtro);
+export type CrearConsultaSocial = z.infer<typeof esquemaCrearConsultaSocial>;
 
 // Respuesta de POST /presupuestos: el presupuesto recién creado con su evento y el detalle de
 // líneas, compuesto ad-hoc para esta respuesta puntual (esquemaPresupuesto se mantiene "plano"

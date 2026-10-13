@@ -15,6 +15,24 @@ import {
 
 const NUMERALES = ['I', 'II', 'III', 'IV', 'V'];
 
+// AC3 de la auditoría de accesibilidad: los llamados a la acción de la landing (consultar, cotizar
+// e iniciar sesión) son la puerta de entrada del cliente, así que se agrandan para que se vean de
+// lejos y con visión reducida: 56 px de alto —WCAG 2.5.5 pide 44—, texto de 18 px (el umbral de
+// "texto grande" de WCAG 1.4.3) y relleno amplio. `whitespace-normal` saca el `whitespace-nowrap`
+// del botón base: con la tipografía del navegador agrandada el texto pasa a dos renglones en vez
+// de desbordar (WCAG 1.4.4). El botón de la barra superior no entra acá: ahí el alto es fijo.
+const CTA_BASE =
+  'h-auto min-h-14 gap-2.5 px-6 py-3 text-base font-semibold tracking-wide whitespace-normal shadow-md sm:px-8 sm:text-lg';
+
+// Sobre las secciones oscuras (portada y cierre): dorado macizo con texto bordó, 5.7:1. Si algún
+// día vuelve un CTA sobre el papel crema, el dorado no sirve de fondo ahí: da 2.8:1 y no llega al
+// 3:1 que WCAG 1.4.11 pide para el contorno de un control. Sobre crema va bordó macizo (11:1).
+const CTA_DORADO = `${CTA_BASE} bg-dorado text-bordo-oscuro hover:bg-dorado/90`;
+
+// Secundario de la portada, apoyado sobre la foto: el contorno pasa de 1 px al 40 % (3.4:1) a
+// 2 px al 70 % y suma un velo bordó, para que se lea como botón y no como texto suelto.
+const CTA_CLARO = `${CTA_BASE} border-2 border-crema/70 bg-bordo-oscuro/30 text-crema backdrop-blur-sm hover:bg-crema/15 hover:text-crema`;
+
 // Encabezado de sección con el filete dorado del tarifario.
 function TituloSeccion({
   antetitulo,
@@ -29,7 +47,14 @@ function TituloSeccion({
 }) {
   return (
     <div className="mx-auto max-w-2xl text-center">
-      <p className="text-xs font-semibold tracking-[0.3em] text-dorado uppercase">{antetitulo}</p>
+      {/* AC1: el mismo rótulo se usa sobre crema y sobre bordó; el tono del dorado acompaña. */}
+      <p
+        className={`text-xs font-semibold tracking-[0.3em] uppercase ${
+          claro ? 'text-dorado-claro' : 'text-dorado-texto'
+        }`}
+      >
+        {antetitulo}
+      </p>
       <h2
         className={`mt-3 text-3xl font-semibold sm:text-4xl ${claro ? 'text-crema' : 'text-bordo'}`}
       >
@@ -58,10 +83,15 @@ function TituloSeccion({
 // Salones y servicios se leen de la API (criterio 4: los cambios se reflejan sin publicación
 // manual). Lo institucional es estático, en datos-institucionales.ts.
 //
-// Sin precios en toda la pantalla: los ve el cliente registrado en el cotizador. "Cotizá tu
-// evento" (y "Cotizar en este salón", criterio 3 de HU-07) piden iniciar sesión o crear la cuenta
-// y abren el cotizador. Desde la entrevista del 24/09/2026 no hay consulta sin cuenta: toda
-// consulta del canal público pasa por el registro (dominio.md, "Canal público").
+// Sin precios en toda la pantalla: los ve el cliente registrado en el cotizador. Los tres CTA que
+// abren el cotizador ("Consultá para hacer tu evento" en el hero, "Cotizá tu evento" en el
+// encabezado fijo y el del cierre) piden iniciar sesión o crear la cuenta. Desde la entrevista del
+// 24/09/2026 no hay consulta sin cuenta: toda consulta del canal público pasa por el registro
+// (dominio.md, "Canal público").
+//
+// Tres y no cinco: antes cada sección tenía el suyo y la página se leía como cinco caminos
+// distintos en lugar de una acción repetida. Se quitaron el de esta sección y el de cada ficha de
+// salón (ver SalonesPublicos, que documenta el criterio de HU-07 que eso deja sin cumplir).
 export function Landing({
   onCotizar,
   onAccesoPersonal,
@@ -83,7 +113,7 @@ export function Landing({
 
         <div className="mx-auto w-full max-w-6xl px-4 pt-28 pb-10 sm:px-6">
           <div className="max-w-2xl">
-            <p className="text-xs font-semibold tracking-[0.3em] text-dorado uppercase">
+            <p className="text-xs font-semibold tracking-[0.3em] text-dorado-claro uppercase">
               Hotel Dr. César Carman · Córdoba
             </p>
             <h1 className="mt-5 text-4xl leading-[1.1] font-semibold text-crema sm:text-6xl">
@@ -92,20 +122,11 @@ export function Landing({
             <p className="mt-6 font-display text-2xl text-crema/85 italic">
               Cinco salones, gastronomía propia y un equipo que se ocupa de cada detalle.
             </p>
-            <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <Button
-                size="lg"
-                className="h-12 bg-dorado px-7 text-sm tracking-wide text-bordo-oscuro hover:bg-dorado/90"
-                onClick={() => onCotizar()}
-              >
-                Consultá para hacer tu evento <ArrowRight />
+            <div className="mt-10 flex flex-col gap-4 sm:flex-row">
+              <Button size="lg" className={CTA_DORADO} onClick={() => onCotizar()}>
+                Consultá para hacer tu evento <ArrowRight className="size-5" />
               </Button>
-              <Button
-                size="lg"
-                variant="outline"
-                className="h-12 border-crema/40 bg-transparent px-7 text-sm text-crema hover:bg-crema/10 hover:text-crema"
-                asChild
-              >
+              <Button size="lg" variant="outline" className={CTA_CLARO} asChild>
                 <a href="#salones">Conocé los salones</a>
               </Button>
             </div>
@@ -118,10 +139,15 @@ export function Landing({
               { icono: ChefHat, valor: 'Gastronomía', detalle: 'propia, del coffee a la cena' },
               { icono: Car, valor: '100 autos', detalle: 'estacionamiento sin cargo' },
             ].map(({ icono: Icono, valor, detalle }) => (
-              <div key={valor} className="bg-bordo-oscuro/40 px-5 py-4 text-crema">
+              // AC2 de la auditoría de accesibilidad (WCAG 1.4.3): estas celdas se apoyan sobre
+              // la foto del hero, en la mitad donde el degradado ya casi no cubre, así que el
+              // contraste dependía de qué tan clara fuera la imagen. Con el velo al 80 % el peor
+              // caso posible (una zona blanca de la foto) da 7.8:1 para el dato y 6.2:1 para el
+              // detalle, que antes quedaba en 2.8:1.
+              <div key={valor} className="bg-bordo-oscuro/80 px-5 py-4 text-crema">
                 <Icono className="size-4 text-dorado" />
                 <dt className="mt-2 font-serif text-lg font-semibold">{valor}</dt>
-                <dd className="text-xs text-crema/70">{detalle}</dd>
+                <dd className="text-xs text-crema/85">{detalle}</dd>
               </div>
             ))}
           </dl>
@@ -131,7 +157,7 @@ export function Landing({
       {/* Presentación */}
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2">
         <div>
-          <p className="text-xs font-semibold tracking-[0.3em] text-dorado uppercase">
+          <p className="text-xs font-semibold tracking-[0.3em] text-dorado-texto uppercase">
             Los Abuelos Servicios Gastronómicos SRL
           </p>
           <h2 className="mt-3 text-3xl font-semibold text-bordo sm:text-4xl">
@@ -145,9 +171,6 @@ export function Landing({
           <p className="mt-6 font-display text-xl text-bordo italic">
             “Le agradecemos que se haya contactado con nosotros.”
           </p>
-          <Button size="lg" className="mt-8 h-11 px-6" onClick={() => onCotizar()}>
-            Armá tu presupuesto online <ArrowRight />
-          </Button>
         </div>
         <div className="grid grid-cols-2 gap-4">
           <img
@@ -176,9 +199,9 @@ export function Landing({
           <TituloSeccion
             antetitulo="Nuestros salones"
             titulo="Un espacio para cada evento"
-            bajada="Mirá las distribuciones de cada salón y cotizá por el que te sirva."
+            bajada="Mirá la capacidad y las distribuciones de cada salón."
           />
-          <SalonesPublicos onConsultar={(salon) => onCotizar(salon.id)} />
+          <SalonesPublicos />
         </div>
       </section>
 
@@ -223,7 +246,7 @@ export function Landing({
               key={formato}
               className="rounded-xl bg-card p-6 text-center shadow-sm ring-1 ring-border"
             >
-              <span className="font-serif text-2xl text-dorado">{NUMERALES[indice]}</span>
+              <span className="font-serif text-2xl text-dorado-texto">{NUMERALES[indice]}</span>
               <p className="mt-2 font-medium text-bordo">{formato}</p>
             </li>
           ))}
@@ -276,9 +299,11 @@ export function Landing({
           alt=""
           className="absolute inset-0 -z-10 size-full object-cover"
         />
-        <div className="absolute inset-0 -z-10 bg-bordo-oscuro/85" />
+        {/* AC2: el rótulo en versalitas necesita 4.5:1 contra la zona más clara de la foto;
+            con el velo al 85 % quedaba en 4.25:1 y con el 92 % llega a 5.3:1. */}
+        <div className="absolute inset-0 -z-10 bg-bordo-oscuro/92" />
         <div className="mx-auto flex max-w-3xl flex-col items-center px-4 text-center text-crema sm:px-6">
-          <p className="text-xs font-semibold tracking-[0.3em] text-dorado uppercase">
+          <p className="text-xs font-semibold tracking-[0.3em] text-dorado-claro uppercase">
             Hagamos tu evento
           </p>
           <h2 className="mt-3 text-3xl font-semibold sm:text-5xl">Tu presupuesto, en minutos</h2>
@@ -298,12 +323,8 @@ export function Landing({
               </li>
             ))}
           </ul>
-          <Button
-            size="lg"
-            className="mt-10 h-12 bg-dorado px-7 text-sm text-bordo-oscuro hover:bg-dorado/90"
-            onClick={() => onCotizar()}
-          >
-            Iniciá sesión para cotizar tu evento <ArrowRight />
+          <Button size="lg" className={`mt-10 ${CTA_DORADO}`} onClick={() => onCotizar()}>
+            Iniciá sesión para cotizar tu evento <ArrowRight className="size-5" />
           </Button>
           <p className="mt-3 text-xs text-crema/60">
             Los precios solo se muestran a clientes registrados.

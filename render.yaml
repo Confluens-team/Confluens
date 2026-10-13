@@ -38,4 +38,11 @@ services:
       # de sesión viaja con credentials:true, que no admite origin comodín.
       - key: FRONTEND_URL
         sync: false
+      # Cloudinary (ADR 0009): fotos de salones y servicios. Settings → API Keys en cloudinary.com.
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
 # PORT no se declara: Render lo inyecta y config/entorno.ts lo lee de process.env.

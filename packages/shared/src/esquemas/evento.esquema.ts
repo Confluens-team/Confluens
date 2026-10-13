@@ -7,6 +7,27 @@ import {
   esquemaImporte,
   vacioComoAusente,
 } from './comunes.esquema.js';
+import { esquemaEtiqueta } from './etiqueta.esquema.js';
+import {
+  esquemaHoraEstimada,
+  esquemaTipoEvento,
+  esquemaTipoEventoSocial,
+  esquemaTipoJornada,
+} from './tipo-evento.esquema.js';
+
+// Notas al pie de la comanda de cocina: menús especiales, alergias, a quién buscar en el salón.
+// Son internas: salen solo en esa hoja y el cliente nunca las ve. El tope es generoso porque es
+// texto libre, pero acotado para que no entre un documento entero en la columna.
+export const esquemaObservacionesComanda = z
+  .string()
+  .trim()
+  .max(2000, 'Las observaciones pueden tener hasta 2000 caracteres');
+
+// Body de PATCH /eventos/:id/observaciones-comanda. Vacío borra lo que hubiera.
+export const esquemaGuardarObservacionesComanda = z.object({
+  observacionesComanda: esquemaObservacionesComanda,
+});
+export type GuardarObservacionesComanda = z.infer<typeof esquemaGuardarObservacionesComanda>;
 
 // Valores literales de la máquina de estados aprobada (docs/producto/dominio.md).
 export const esquemaEstadoEvento = z.enum(['EnConsulta', 'Reservado', 'Cobrado', 'Cancelado']);
@@ -17,17 +38,22 @@ export type EstadoEvento = z.infer<typeof esquemaEstadoEvento>;
 // que hace que una franja sin estos eventos se lea como disponible (criterio 5 de HU-15).
 export const ESTADOS_QUE_OCUPAN_SALON: readonly EstadoEvento[] = ['Reservado', 'Cobrado'];
 
-// distribucionId, inicio y fin pueden ser null en EnConsulta (y en Cancelado si viene de ahí).
+// inicio y fin pueden ser null en EnConsulta (y en Cancelado si viene de ahí). Los salones del
+// evento y la distribución de cada uno no están acá: viven en EventoSalon, porque un evento puede
+// ocupar varios a la vez (ADR 0011). Los traen EventoAgenda y EventoDetallado.
 export const esquemaEvento = z.object({
   id: esquemaId,
   clienteId: esquemaId,
-  salonId: esquemaId,
-  distribucionId: esquemaId.nullable(),
   fecha: esquemaFecha,
   inicio: esquemaFechaHora.nullable(),
   fin: esquemaFechaHora.nullable(),
   cantidadPersonas: z.number().int().positive(),
   estado: esquemaEstadoEvento,
+  tipo: esquemaTipoEvento,
+  tipoSocial: esquemaTipoEventoSocial.nullable(),
+  tipoSocialDetalle: z.string().nullable(),
+  tipoJornada: esquemaTipoJornada.nullable(),
+  horaInicioEstimada: esquemaHoraEstimada.nullable(),
   // Columna del Sprint 1 que quedó sin escribirse: la vigencia de los 10 días es del presupuesto,
   // no del evento (RN-06, RN-08).
   senaVenceEn: esquemaFechaHora.nullable(),
@@ -35,6 +61,7 @@ export const esquemaEvento = z.object({
   // reservado (HU-13). Lo escribe el módulo de pagos, no una acción manual.
   senaRegistradaEn: esquemaFechaHora.nullable(),
   modalidadSalonRestaurante: z.boolean(), // opción interna, no visible al cliente
+  observacionesComanda: esquemaObservacionesComanda.nullable(),
   creadoEn: esquemaFechaHora,
   actualizadoEn: esquemaFechaHora,
 });
@@ -50,9 +77,16 @@ export const esquemaEventoAgenda = esquemaEvento.extend({
     apellido: z.string().nullable(),
     telefono: z.string(),
     correo: z.string(),
+    etiqueta: esquemaEtiqueta.nullable(),
   }),
-  salon: z.object({ id: esquemaId, nombre: z.string() }),
-  distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
+  // Los salones que ocupa, cada uno con la distribución que tiene armada (null sin agendar).
+  salones: z.array(
+    z.object({
+      id: esquemaId,
+      nombre: z.string(),
+      distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
+    }),
+  ),
   totalPresupuesto: esquemaImporte.nullable(),
 });
 export type EventoAgenda = z.infer<typeof esquemaEventoAgenda>;

@@ -76,7 +76,9 @@ export const rutasSalones = Router();
 // /publicos va antes de cualquier ruta con parámetro: si en el futuro se agrega un GET /:id,
 // Express matchearía "publicos" como id.
 rutasSalones.get('/publicos', asincrono(listarPublicos));
-// Con precios: cualquier sesión, del personal o del cliente (C5 de HU-48). Sin sesión, /publicos.
+// H6 de la auditoría de seguridad: revisado y confirmado como intencional. Este listado con
+// precios lo necesita el cotizador del cliente (C5 de HU-48), así que exige sesión pero no rol;
+// el canal sin sesión tiene /publicos, que no expone precios ni el flag activo.
 rutasSalones.get('/', autenticar, asincrono(listar));
 
 // autenticar antes que autorizar (autorizar confía en req.usuario) y validar al final, para que

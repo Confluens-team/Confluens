@@ -1,6 +1,6 @@
 # ADR 0004 — Contenido público de la landing: rutas sin precios, fotos por URL y rol propio
 
-**Fecha:** 2026-09  ·  **Estado:** aceptada
+**Fecha:** 2026-09  ·  **Estado:** aceptada; el punto 2 (fotos por URL pegada) lo reemplaza ADR 0009
 
 ## Contexto
 

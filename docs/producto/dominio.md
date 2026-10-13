@@ -61,6 +61,10 @@ su precio. En los dos casos el evento sigue `EnConsulta` (decisiones del PO, 05/
 evento tiene un solo presupuesto** (decisión del PO, 06/10/2026), así que dar de baja una consulta
 cancela también su evento.
 
+**Presupuesto sin armar.** El de una consulta social recién llegada: `Estimado`, sin líneas, en 0 y
+**sin vencimiento**. Los 10 días de RN-08 empiezan a correr cuando el Responsable de Eventos lo
+guarda con el salón o algún servicio (decisión del PO, 07/10/2026, ADR 0008).
+
 ---
 
 ## Canal público (landing + cliente registrado)
@@ -80,6 +84,16 @@ Definido en la entrevista del 24/09/2026. Es el recorrido completo que hace el c
    (con modalidad continuo o en mesa cuando aplique, RN-11) y audiovisual. El presupuesto
    estimado se recalcula en pantalla con cada selección y muestra **subtotal sin IVA, IVA (21%) y
    total** (RN-05).
+
+   **Social o corporativo (decisión del PO, 07/10/2026, ADR 0008).** El formulario pide primero el
+   evento: fecha, cantidad de personas, media o jornada completa y una hora de inicio estimada
+   (opcional). Después, el **tipo de evento**:
+   - **Corporativo**: sigue el recorrido de arriba (salón según la cantidad de invitados,
+     servicios y presupuesto estimado en vivo).
+   - **Social**: el cliente elige qué celebra (cumpleaños, casamiento, fiesta de 15, bautismo,
+     fiesta corporativa u otro, contando cuál) y manda la consulta. **No ve salones, servicios ni
+     precios y no se genera presupuesto**: los eventos sociales son muy variables y el Responsable
+     de Eventos lo arma con el cliente.
 5. **Confirmación del cliente.** El cliente confirma el formulario: se crea la **Solicitud** con
    todo lo elegido y el sistema le **envía un correo** confirmando que la consulta fue recibida.
    Esto **no reserva nada**: es una consulta.
@@ -120,6 +134,20 @@ queda para una iteración futura. Decisión del equipo, 04/10/2026.
 **Correo de la cuenta.** Se guarda en minúsculas y sin espacios: `Juan@Mail.com` y
 `juan@mail.com` son la misma cuenta.
 
+**Etiqueta del cliente.** Muchas empresas contratan eventos, pero la cuenta la crea un empleado con
+su correo y su celular, así que el evento queda a nombre de esa persona. Para saber para qué empresa
+es, el personal le puede poner al cliente una **etiqueta** (por ejemplo, "Empresa1"):
+- Las etiquetas forman una **lista reutilizable**: varios clientes comparten la misma. El nombre es
+  único **sin distinguir mayúsculas** ("empresa1" y "Empresa1" son la misma).
+- Cada cliente tiene **como máximo una**, y es opcional.
+- Se asigna desde el listado de clientes: se elige una existente o, si no está, **se crea al
+  asignarla**. Renombrar y borrar etiquetas no está implementado.
+- Se muestra junto al nombre del cliente en Consultas, la agenda, el calendario y el detalle del
+  evento, y el filtro de cliente de Consultas también busca por ella.
+- **Solo la ve el personal**: el cliente nunca la ve, ni en su perfil ni en el canal público.
+
+Pedido del 09/10/2026; todavía sin HU en Jira.
+
 **Olvidé mi contraseña.** El cliente y el personal pueden pedir un enlace por correo para elegir
 una contraseña nueva. El enlace vence a los 30 minutos y sirve una sola vez. La respuesta es la
 misma exista o no una cuenta con ese correo, para no revelar qué correos están registrados. Al
@@ -158,6 +186,15 @@ el total del presupuesto** como cualquier otro servicio. Diferencias con un serv
 elige la modalidad de cada uno: normal, **continuo en salón (+20%)** o **en mesas con mozo
 (+30%)**. Ver RN-11.
 
+**Hora esperada del servicio.** Cada servicio del presupuesto puede llevar **una hora opcional**
+(`HH:mm`) que dice en qué momento del evento se lo espera: el coffee a las 10:30, el almuerzo a las
+13:00. La carga el cliente en el cotizador, al elegir cada servicio, o el Responsable de Eventos al
+armar o modificar el presupuesto, y también la pueden llevar los adicionales escritos a mano. El
+salón no: su horario es el del evento. **Es una preferencia, no una obligación**: un servicio sin
+hora es válido y no cambia nada del cálculo. Mientras el evento está `EnConsulta` todavía no tiene
+horario cargado, así que se acepta cualquier hora; una vez **agendado** (con `inicio` y `fin`), una
+hora fuera de esa franja se rechaza. Decisión del equipo, 08/10/2026.
+
 **Presupuesto.** Valorización del evento, detallada línea por línea. Guarda los importes **sin
 IVA** y se presenta con **subtotal sin IVA, IVA 21% y total**. Al emitirse congela los precios de
 sus líneas, aunque después cambie el catálogo. Lleva la leyenda **"Este presupuesto tiene una
@@ -170,8 +207,17 @@ según si el cliente pide factura o no. Define la **base de cobro** (ver RN-01).
 cliente **requiere factura** es el **total con IVA**; si no, el **subtotal sin IVA**. No se guarda:
 se calcula a partir del presupuesto y de su marca de factura.
 
-**Evento.** Entidad central: cliente, salón, distribución, fecha, horario, cantidad de personas,
-servicios, presupuesto y pagos.
+**Varios salones.** Un evento puede realizarse en **más de un salón a la vez**, hasta los cinco:
+se reparte la gente entre varios espacios según cómo convenga armarlos. Todos comparten el horario
+del evento —la cantidad de salones no cambia cuándo empieza ni cuándo termina— y cada uno lleva su
+propia distribución. La **capacidad de un salón no limita la elección**: es un dato que se informa,
+no un tope, porque la misma cantidad de gente se reparte de maneras muy distintas. El no
+solapamiento de RN-12 se mide por cada salón que el evento ocupa. Decisión del equipo, 09/10/2026.
+
+**Evento.** Entidad central: cliente, tipo de evento, salón, distribución, fecha, horario,
+cantidad de personas, servicios, presupuesto y pagos. El salón es obligatorio para reservar; una
+consulta social puede estar `EnConsulta` sin salón hasta que el Responsable de Eventos lo carga
+(ADR 0008).
 
 **Pago.** Importe recibido con fecha y medio de pago. Monto libre, sin mínimo. Un pago que excede
 el saldo se rechaza: no hay saldo a favor.
@@ -189,7 +235,24 @@ Prohibido. Se valida en la aplicación **y** con una restricción de exclusión 
 usando `btree_gist`. Los eventos `EnConsulta` no cuentan: pueden coincidir entre sí y con un
 evento reservado (ver RN-12).
 
-**Tipo de evento.** Social o empresarial. Se usa en el reporte de ingresos (HU-21).
+**Tipo de evento.** Social o corporativo (decisión del PO, 07/10/2026; antes se llamaba
+"empresarial"). El social se clasifica en cumpleaños, casamiento, fiesta de 15, bautismo, fiesta
+corporativa u otro (con una descripción de cuál). Las consultas corporativas pasan por el cotizador;
+las sociales llegan **sin salón y con el presupuesto sin armar**: el Responsable de Eventos carga
+salón, servicios y precios desde la consulta. Las dos se distinguen por color en el panel, se
+modifican igual y se confirman igual, con la seña del 20% (ADR 0008). Los datos propios de un evento
+social todavía no están definidos (ver `pendientes.md`). Se usa también en el reporte de ingresos
+(HU-21).
+
+**Comanda de cocina.** La hoja que el personal imprime y cuelga en la cocina para un evento ya
+confirmado. No es una entidad: es una vista del evento y de su presupuesto con fecha, salón,
+armado, horario, cantidad de personas, nombre del cliente y los servicios de gastronomía ordenados
+por la hora a la que se los espera. **Nunca lleva precios**: no es un documento comercial. Admite
+**observaciones** (`Evento.observacionesComanda`): notas internas del personal —menús especiales,
+alergias, a quién buscar en el salón— que salen solo en esa hoja y que el cliente nunca ve. No
+entran la línea del salón, cuyo horario ya encabeza la hoja, ni los servicios tercerizados, que son
+audiovisual y pantallas y no pasan por cocina. Integrarse con el sistema de cocina o con los de los
+proveedores sigue fuera de alcance (S-07). Decisión del equipo, 09/10/2026.
 
 **Comedor.** Servicio gastronómico del hotel, con sistema propio. Fuera de alcance (EXC-04).
 

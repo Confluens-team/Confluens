@@ -8,6 +8,7 @@ import { useForm } from 'react-hook-form';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ariaDeCampo, idDeError } from '@/lib/campo-accesible';
 import { useSolicitarRestablecimiento } from '@/hooks/use-sesion';
 
 import { TarjetaAcceso } from './TarjetaAcceso';
@@ -57,9 +58,15 @@ export function OlvideContrasena({ onVolver }: { onVolver: () => void }) {
             type="email"
             autoComplete="username"
             className="h-10"
+            {...ariaDeCampo('olvido-email', errors.email?.message)}
             {...register('email')}
           />
-          {errors.email && <p className="text-xs text-destructive">{errors.email.message}</p>}
+          {/* AC4 de la auditoría de accesibilidad: el error queda asociado al input y se anuncia. */}
+          {errors.email && (
+            <p id={idDeError('olvido-email')} role="alert" className="text-xs text-destructive">
+              {errors.email.message}
+            </p>
+          )}
         </div>
 
         {solicitar.isError && (

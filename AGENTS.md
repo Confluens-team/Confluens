@@ -25,7 +25,7 @@ workspaces en `docs/tecnico/arquitectura.md`.
 | Área                  | Versiones                                                                                                                                                                 |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Runtime               | Node 20 LTS (≥ 20.19, `.nvmrc`), npm workspaces, typescript 5.9.3                                                                                                         |
-| Backend               | express 4.22.2, zod 4.6.4, @asteasolutions/zod-to-openapi 9.1.0, swagger-ui-express 5.0.1, tsx 4.23.13, bcrypt 6.0.0, jsonwebtoken 9.0.3, cookie-parser 1.4.7, cors 2.8.6 |
+| Backend               | express 4.22.3, zod 4.6.4, @asteasolutions/zod-to-openapi 9.1.0, swagger-ui-express 5.0.1, tsx 4.23.13, bcrypt 6.0.0, jsonwebtoken 9.0.3, cookie-parser 1.4.7, cors 2.8.6 |
 | Base de datos         | PostgreSQL 16 (`postgres:16.15-alpine` local, Neon en la nube) + `btree_gist`; prisma, @prisma/client y @prisma/adapter-pg 7.10.0                                         |
 | Frontend              | react y react-dom 18.3.1, react-router 7.18.4, vite 7.3.6, @vitejs/plugin-react 5.2.0, tailwindcss y @tailwindcss/vite 4.3.3, shadcn 4.21.0, radix-ui 1.6.7               |
 | Datos en la web       | @tanstack/react-query 5.102.8, react-hook-form 7.88.0, @hookform/resolvers 5.9.1                                                                                          |
@@ -57,8 +57,13 @@ docs/              Fuente de verdad del dominio y del producto.
   final. Un cambio lógico por commit.
 - Se integra a `develop` solo por pull request, con la plantilla, CI en verde y revisión de otro
   integrante. Nunca push directo a `develop`, `--force` ni `--no-verify`.
-- `main` es la rama de release: recibe solo merges de `develop`, por decisión del equipo. Ninguna
+- `main` es producción y `develop` la antesala: `main` recibe solo merges de `develop`. Ninguna
   rama de historia apunta a `main`.
+- GitHub lo hace cumplir con el ruleset "Flujo equipos: proteger develop y main", que sobre las
+  dos ramas exige pull request con **1 aprobación** de otro integrante y los cinco checks del CI
+  (Install, Typecheck, Lint, Build, Test) con la rama al día, permite **solo merge commit** (ni
+  squash ni rebase) y prohíbe borrarlas y el push forzado. Al mergear, GitHub borra la rama de la
+  historia: es temporal y no se reutiliza.
 
 ## 4. Formato de respuesta de la API
 
@@ -89,6 +94,7 @@ Error: siempre por `ErrorApi` y el middleware `manejadorErrores`, nunca a mano.
 | 404    | `NOT_FOUND`               | El recurso o la ruta no existen                                   |
 | 409    | `CONFLICT`                | Choca con el estado actual (por ejemplo, solapamiento de eventos) |
 | 422    | `BUSINESS_RULE_VIOLATION` | Datos válidos que violan una regla RN-xx                          |
+| 429    | `RATE_LIMITED`            | Se pasó el límite de peticiones de la ruta                        |
 | 500    | `INTERNAL_ERROR`          | Error no previsto. Nunca expone detalles internos.                |
 
 `message` va en español y se puede mostrar al usuario; `code` es estable y la web decide con él.
