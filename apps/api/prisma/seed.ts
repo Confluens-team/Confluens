@@ -328,8 +328,11 @@ async function cargarServicios(): Promise<void> {
 // shared porque la aplican la web y la API. El ABM es del Sprint 3 (HU-36 a HU-39); acá solo la
 // precarga, sin la que no se puede registrar ningún pago.
 //
-// Los medios de versiones anteriores que ya no se usan («Tarjeta») no se tocan: quedan en la base
-// porque los pagos históricos los referencian, pero no se ofrecen más.
+// La precarga que vale es la de la migración 20261013201842_medios_de_pago_rn_14, porque el deploy
+// corre `prisma migrate deploy` y nunca el seed. Esto queda para la base que se levanta a mano y
+// para que el seed se describa solo; al ser idempotente, no choca con la migración. La misma
+// migración le da baja lógica a «Tarjeta», el medio de la versión anterior: los pagos históricos
+// que lo referencian quedan intactos y se siguen mostrando, pero ya no se ofrece ni se acepta.
 
 async function cargarMediosPago(): Promise<void> {
   for (const nombre of MEDIOS_PAGO) {
