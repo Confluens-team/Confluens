@@ -486,8 +486,9 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
 // HU-13 C6: las consultas que pisan la franja no se cancelan (dominio.md:30, Cancelado es siempre
 // manual), se informan para que el Responsable de Eventos las gestione.
 // RN-14: con qué se puede cobrar depende de la casilla «El cliente requiere factura» del
-// presupuesto. Sin factura solo Efectivo y Transferencia; con factura se suman Débito, Crédito y
-// Cheque. La web filtra el desplegable, pero la regla la tiene que sostener la API.
+// presupuesto. Sin factura solo Efectivo y Transferencia; con factura se suman Débito, Crédito,
+// Cheque y A la habitación. La web filtra el desplegable, pero la regla la tiene que sostener la
+// API.
 describe('POST /api/eventos/:id/pagos — medios de pago según la factura (RN-14)', () => {
   function conMedio(nombre: string, requiereFactura: boolean) {
     buscarMedioPagoActivoMock.mockResolvedValue({ ...medioPagoFixture, id: 7, nombre });
@@ -496,7 +497,7 @@ describe('POST /api/eventos/:id/pagos — medios de pago según la factura (RN-1
     );
   }
 
-  it.each(['Débito', 'Crédito', 'Cheque'])(
+  it.each(['Débito', 'Crédito', 'Cheque', 'A la habitación'])(
     'responde 422 al cobrar con %s un presupuesto sin factura',
     async (nombre) => {
       conMedio(nombre, false);
@@ -521,7 +522,7 @@ describe('POST /api/eventos/:id/pagos — medios de pago según la factura (RN-1
     },
   );
 
-  it.each(['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Cheque'])(
+  it.each(['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Cheque', 'A la habitación'])(
     'acepta %s con un presupuesto con factura',
     async (nombre) => {
       conMedio(nombre, true);
@@ -535,7 +536,7 @@ describe('POST /api/eventos/:id/pagos — medios de pago según la factura (RN-1
   // Los medios de versiones anteriores siguen en la base por los pagos históricos, pero ya no se
   // cobra con ellos ni cuando el presupuesto se factura.
   it('responde 422 con un medio que quedó fuera del catálogo', async () => {
-    conMedio('A la habitación', true);
+    conMedio('Tarjeta', true);
 
     const respuesta = await registrarPago('1000');
 

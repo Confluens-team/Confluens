@@ -25,7 +25,7 @@ const formateadorHorario = new Intl.DateTimeFormat('es-AR', {
 });
 
 // Clases del <input> de components/ui: no hay un <Select> en el proyecto (shadcn trae uno con
-// radix, pero el catálogo son 5 opciones como máximo y el nativo ya da teclado, lector de pantalla
+// radix, pero el catálogo son 6 opciones como máximo y el nativo ya da teclado, lector de pantalla
 // y el selector del celular, igual que el de países en AccesoCliente.tsx).
 const CLASES_SELECT =
   'h-8 w-full min-w-0 rounded-lg border border-input bg-transparent px-2.5 py-1 text-base transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30';
@@ -96,7 +96,8 @@ export function CuentaDelEvento({ eventoId, admitePagos }: CuentaDelEventoProps)
   // RN-14: con qué se puede cobrar depende de la casilla «El cliente requiere factura» del
   // presupuesto, que es lo mismo que `incluyeIva` (es la marca que define la base de cobro de
   // RN-01). Sin factura entran solo Efectivo y Transferencia; con factura se suman Débito,
-  // Crédito y Cheque. La API aplica la misma regla, así que el filtro de acá no la sostiene solo.
+  // Crédito, Cheque y A la habitación. La API aplica la misma regla, así que el filtro de acá no
+  // la sostiene solo.
   const mediosHabilitados = mediosPagoHabilitados(mediosPago.data ?? [], saldo.incluyeIva);
   // Presentación: cuánto falta para que el pago reserve el salón. La cuenta exacta la hace la API
   // con Decimal; acá es un número para mostrar, como el desglose de IVA.

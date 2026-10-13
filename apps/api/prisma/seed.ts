@@ -328,8 +328,8 @@ async function cargarServicios(): Promise<void> {
 // shared porque la aplican la web y la API. El ABM es del Sprint 3 (HU-36 a HU-39); acá solo la
 // precarga, sin la que no se puede registrar ningún pago.
 //
-// Los medios de versiones anteriores que ya no se usan («Tarjeta», «A la habitación») no se tocan:
-// quedan en la base porque los pagos históricos los referencian, pero no se ofrecen más.
+// Los medios de versiones anteriores que ya no se usan («Tarjeta») no se tocan: quedan en la base
+// porque los pagos históricos los referencian, pero no se ofrecen más.
 
 async function cargarMediosPago(): Promise<void> {
   for (const nombre of MEDIOS_PAGO) {

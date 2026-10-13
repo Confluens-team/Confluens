@@ -16,6 +16,7 @@ export const MEDIOS_PAGO_CON_FACTURA = [
   'Débito',
   'Crédito',
   'Cheque',
+  'A la habitación',
 ] as const;
 
 // El catálogo completo, en el orden en que se muestra. Es el que precarga el seed.
@@ -30,8 +31,8 @@ export function nombresMediosPagoHabilitados(requiereFactura: boolean): readonly
 }
 
 // Un medio del catálogo que no esté en la lista de arriba (los que quedaron de versiones
-// anteriores, como «Tarjeta» o «A la habitación») no se ofrece ni se acepta: los pagos históricos
-// que lo referencian siguen intactos, pero no se cobra más con él.
+// anteriores, como «Tarjeta») no se ofrece ni se acepta: los pagos históricos que lo referencian
+// siguen intactos, pero no se cobra más con él.
 export function admiteMedioPago(nombre: string, requiereFactura: boolean): boolean {
   return nombresMediosPagoHabilitados(requiereFactura).includes(nombre);
 }

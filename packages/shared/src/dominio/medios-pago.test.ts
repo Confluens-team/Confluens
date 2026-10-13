@@ -10,6 +10,7 @@ import {
 // El catálogo tal cual lo devuelve la API: activos y ordenados alfabéticamente, más un medio viejo
 // que quedó en la base de una versión anterior.
 const catalogo = [
+  { id: 7, nombre: 'A la habitación' },
   { id: 4, nombre: 'Cheque' },
   { id: 3, nombre: 'Crédito' },
   { id: 2, nombre: 'Débito' },
@@ -25,9 +26,10 @@ describe('admiteMedioPago', () => {
     expect(admiteMedioPago('Débito', false)).toBe(false);
     expect(admiteMedioPago('Crédito', false)).toBe(false);
     expect(admiteMedioPago('Cheque', false)).toBe(false);
+    expect(admiteMedioPago('A la habitación', false)).toBe(false);
   });
 
-  it('con factura admite los cinco medios del catálogo', () => {
+  it('con factura admite todos los medios del catálogo', () => {
     for (const nombre of MEDIOS_PAGO_CON_FACTURA) {
       expect(admiteMedioPago(nombre, true)).toBe(true);
     }
@@ -35,7 +37,7 @@ describe('admiteMedioPago', () => {
 
   it('nunca admite un medio que no está en el catálogo', () => {
     expect(admiteMedioPago('Tarjeta', true)).toBe(false);
-    expect(admiteMedioPago('A la habitación', false)).toBe(false);
+    expect(admiteMedioPago('Tarjeta', false)).toBe(false);
   });
 });
 
@@ -46,7 +48,7 @@ describe('mediosPagoHabilitados', () => {
     ]);
   });
 
-  it('con factura devuelve los cinco en el orden del catálogo, no en el alfabético', () => {
+  it('con factura devuelve todos en el orden del catálogo, no en el alfabético', () => {
     expect(mediosPagoHabilitados(catalogo, true).map((medio) => medio.nombre)).toEqual([
       ...MEDIOS_PAGO_CON_FACTURA,
     ]);
