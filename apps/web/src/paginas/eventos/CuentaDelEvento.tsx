@@ -95,9 +95,9 @@ export function CuentaDelEvento({ eventoId, admitePagos }: CuentaDelEventoProps)
   const base = Number(saldo.baseDeCobro);
   // RN-14: con qué se puede cobrar depende de la casilla «El cliente requiere factura» del
   // presupuesto, que es lo mismo que `incluyeIva` (es la marca que define la base de cobro de
-  // RN-01). Sin factura entran solo Efectivo y Transferencia; con factura se suman Débito,
-  // Crédito, Cheque y A la habitación. La API aplica la misma regla, así que el filtro de acá no
-  // la sostiene solo.
+  // RN-01). Sin factura entran solo Efectivo, Transferencia y A la habitación; con factura se
+  // suman Débito, Crédito y Cheque. La API aplica la misma regla, así que el filtro de acá no la
+  // sostiene solo.
   const mediosHabilitados = mediosPagoHabilitados(mediosPago.data ?? [], saldo.incluyeIva);
   // Presentación: cuánto falta para que el pago reserve el salón. La cuenta exacta la hace la API
   // con Decimal; acá es un número para mostrar, como el desglose de IVA.
@@ -190,7 +190,8 @@ export function CuentaDelEvento({ eventoId, admitePagos }: CuentaDelEventoProps)
                       la lista corta la define la casilla de factura del presupuesto. */}
                   {!saldo.incluyeIva && (
                     <p className="text-xs text-muted-foreground">
-                      Sin factura solo se puede cobrar en efectivo o por transferencia.
+                      Sin factura solo se puede cobrar en efectivo, por transferencia o a la
+                      habitación.
                     </p>
                   )}
                 </div>

@@ -5,18 +5,16 @@
 // El catálogo son nombres y no ids: los ids los asigna la base (tabla `MedioPago`, baja lógica con
 // `activo`) y cambian entre entornos. El seed precarga estos mismos nombres.
 
-// Lo que se puede cobrar cuando el presupuesto NO se factura: solo lo que no deja comprobante
-// bancario propio.
-export const MEDIOS_PAGO_SIN_FACTURA = ['Efectivo', 'Transferencia'] as const;
+// Lo que se puede cobrar siempre, se facture o no.
+export const MEDIOS_PAGO_SIN_FACTURA = ['Efectivo', 'Transferencia', 'A la habitación'] as const;
 
-// Lo que se puede cobrar cuando el presupuesto SÍ se factura: los dos de arriba más los que
-// requieren factura para respaldarse.
+// Lo que se puede cobrar cuando el presupuesto SÍ se factura: los de arriba más los que necesitan
+// la factura para respaldarse.
 export const MEDIOS_PAGO_CON_FACTURA = [
   ...MEDIOS_PAGO_SIN_FACTURA,
   'Débito',
   'Crédito',
   'Cheque',
-  'A la habitación',
 ] as const;
 
 // El catálogo completo, en el orden en que se muestra. Es el que precarga el seed.
@@ -24,7 +22,8 @@ export const MEDIOS_PAGO = MEDIOS_PAGO_CON_FACTURA;
 
 /**
  * Los medios habilitados según la marca de factura del presupuesto (`requiereFactura`, la casilla
- * «El cliente requiere factura»): con factura los cinco, sin factura solo Efectivo y Transferencia.
+ * «El cliente requiere factura»): con factura, todo el catálogo; sin factura, solo Efectivo,
+ * Transferencia y A la habitación.
  */
 export function nombresMediosPagoHabilitados(requiereFactura: boolean): readonly string[] {
   return requiereFactura ? MEDIOS_PAGO_CON_FACTURA : MEDIOS_PAGO_SIN_FACTURA;

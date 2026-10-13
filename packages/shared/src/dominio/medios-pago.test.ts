@@ -20,13 +20,13 @@ const catalogo = [
 ];
 
 describe('admiteMedioPago', () => {
-  it('sin factura solo admite Efectivo y Transferencia', () => {
+  it('sin factura solo admite Efectivo, Transferencia y A la habitación', () => {
     expect(admiteMedioPago('Efectivo', false)).toBe(true);
     expect(admiteMedioPago('Transferencia', false)).toBe(true);
+    expect(admiteMedioPago('A la habitación', false)).toBe(true);
     expect(admiteMedioPago('Débito', false)).toBe(false);
     expect(admiteMedioPago('Crédito', false)).toBe(false);
     expect(admiteMedioPago('Cheque', false)).toBe(false);
-    expect(admiteMedioPago('A la habitación', false)).toBe(false);
   });
 
   it('con factura admite todos los medios del catálogo', () => {
@@ -42,7 +42,7 @@ describe('admiteMedioPago', () => {
 });
 
 describe('mediosPagoHabilitados', () => {
-  it('sin factura deja solo los dos medios habilitados', () => {
+  it('sin factura deja solo los medios habilitados', () => {
     expect(mediosPagoHabilitados(catalogo, false).map((medio) => medio.nombre)).toEqual([
       ...MEDIOS_PAGO_SIN_FACTURA,
     ]);

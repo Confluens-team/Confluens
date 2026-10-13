@@ -486,8 +486,8 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
 // HU-13 C6: las consultas que pisan la franja no se cancelan (dominio.md:30, Cancelado es siempre
 // manual), se informan para que el Responsable de Eventos las gestione.
 // RN-14: con qué se puede cobrar depende de la casilla «El cliente requiere factura» del
-// presupuesto. Sin factura solo Efectivo y Transferencia; con factura se suman Débito, Crédito,
-// Cheque y A la habitación. La web filtra el desplegable, pero la regla la tiene que sostener la
+// presupuesto. Sin factura solo Efectivo, Transferencia y A la habitación; con factura se suman
+// Débito, Crédito y Cheque. La web filtra el desplegable, pero la regla la tiene que sostener la
 // API.
 describe('POST /api/eventos/:id/pagos — medios de pago según la factura (RN-14)', () => {
   function conMedio(nombre: string, requiereFactura: boolean) {
@@ -497,7 +497,7 @@ describe('POST /api/eventos/:id/pagos — medios de pago según la factura (RN-1
     );
   }
 
-  it.each(['Débito', 'Crédito', 'Cheque', 'A la habitación'])(
+  it.each(['Débito', 'Crédito', 'Cheque'])(
     'responde 422 al cobrar con %s un presupuesto sin factura',
     async (nombre) => {
       conMedio(nombre, false);
@@ -511,7 +511,7 @@ describe('POST /api/eventos/:id/pagos — medios de pago según la factura (RN-1
     },
   );
 
-  it.each(['Efectivo', 'Transferencia'])(
+  it.each(['Efectivo', 'Transferencia', 'A la habitación'])(
     'acepta %s con un presupuesto sin factura',
     async (nombre) => {
       conMedio(nombre, false);
@@ -522,7 +522,7 @@ describe('POST /api/eventos/:id/pagos — medios de pago según la factura (RN-1
     },
   );
 
-  it.each(['Efectivo', 'Transferencia', 'Débito', 'Crédito', 'Cheque', 'A la habitación'])(
+  it.each(['Efectivo', 'Transferencia', 'A la habitación', 'Débito', 'Crédito', 'Cheque'])(
     'acepta %s con un presupuesto con factura',
     async (nombre) => {
       conMedio(nombre, true);
