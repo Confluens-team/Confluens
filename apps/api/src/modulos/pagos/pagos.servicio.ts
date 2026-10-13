@@ -1,5 +1,10 @@
 import type { CrearPago } from '@confluens/shared';
-import { PORCENTAJE_IVA, PORCENTAJE_SENA } from '@confluens/shared';
+import {
+  admiteMedioPago,
+  nombresMediosPagoHabilitados,
+  PORCENTAJE_IVA,
+  PORCENTAJE_SENA,
+} from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
 import { ErrorApi } from '../../lib/errores.js';
@@ -106,6 +111,17 @@ export async function registrarPago(
   const medioPago = await repo.buscarMedioPagoActivo(datos.medioPagoId);
   if (!medioPago) {
     throw ErrorApi.noEncontrado(`No existe un medio de pago activo con id ${datos.medioPagoId}`);
+  }
+  // RN-14: los medios disponibles dependen de la casilla «El cliente requiere factura» del
+  // presupuesto. Sin factura solo entra la plata que no deja comprobante bancario propio
+  // (Efectivo, Transferencia); con factura entran además Débito, Crédito y Cheque. La web ya
+  // filtra el desplegable; esto es lo que hace que la regla valga igual contra la API.
+  if (!admiteMedioPago(medioPago.nombre, presupuesto.requiereFactura)) {
+    const habilitados = nombresMediosPagoHabilitados(presupuesto.requiereFactura).join(', ');
+    const caso = presupuesto.requiereFactura ? 'con factura' : 'sin factura';
+    throw ErrorApi.reglaNegocio(
+      `No se puede cobrar con ${medioPago.nombre} en un evento ${caso}: los medios habilitados son ${habilitados}`,
+    );
   }
 
   const base = calcularBaseDeCobro(presupuesto);

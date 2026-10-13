@@ -2,6 +2,8 @@
 // Fuente única: docs/negocio/tarifario-2026.md. Todos los precios en pesos, sin IVA (RN-05).
 // Es idempotente: se puede correr varias veces (upsert por nombre/email).
 // Uso: npm run prisma:seed -w @confluens/api
+import { MEDIOS_PAGO } from '@confluens/shared';
+
 import { hashearContrasena } from '../src/lib/contrasena.js';
 import { prisma } from '../src/lib/prisma.js';
 
@@ -321,9 +323,13 @@ async function cargarServicios(): Promise<void> {
   }
 }
 
-// Los tres medios con los que hoy cobra el hotel (modelo-datos.md). El ABM es del Sprint 3
-// (HU-36 a HU-39); acá solo la precarga, sin la que no se puede registrar ningún pago.
-const MEDIOS_PAGO = ['Efectivo', 'Tarjeta', 'A la habitación'];
+// Los medios con los que hoy cobra el hotel (dominio.md, modelo-datos.md). Cuáles de ellos se
+// pueden elegir en cada cobro depende de si el presupuesto se factura (RN-14); la lista vive en
+// shared porque la aplican la web y la API. El ABM es del Sprint 3 (HU-36 a HU-39); acá solo la
+// precarga, sin la que no se puede registrar ningún pago.
+//
+// Los medios de versiones anteriores que ya no se usan («Tarjeta», «A la habitación») no se tocan:
+// quedan en la base porque los pagos históricos los referencian, pero no se ofrecen más.
 
 async function cargarMediosPago(): Promise<void> {
   for (const nombre of MEDIOS_PAGO) {

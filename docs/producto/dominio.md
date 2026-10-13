@@ -178,7 +178,8 @@ el saldo se rechaza: no hay saldo a favor.
 
 **Saldo.** Base de cobro menos la suma de los pagos registrados.
 
-**Medio de pago.** Efectivo, tarjeta, a la habitación.
+**Medio de pago.** Efectivo, transferencia, débito, crédito, cheque. Cuáles de ellos se pueden
+usar en un cobro depende de si el presupuesto **requiere factura** (ver RN-14).
 
 **Auditoría.** Registro inmutable de usuario, fecha, entidad, valor anterior y valor nuevo.
 Nadie lo edita ni lo borra. Se implementa con middleware de Prisma sobre `audit_log`.
@@ -229,6 +230,7 @@ arriba describe la división a la que se apunta, que se implementa más adelante
 | RN-11 | **Recargo por modalidad.** Continuo en salón: +20%. En mesas con mozo: +30%. Se aplica **sobre el precio base por persona** del servicio, **sin IVA**, y **por cada servicio** en que el cliente elija esa modalidad (si elige tres coffees y marca continuo en dos, el recargo va solo en esos dos). Es opcional: el cliente elige. |
 | RN-12 | **El que seña primero se queda con el salón.** Puede haber varias consultas para el mismo salón, fecha y horario. Cuando una pasa a `Reservado`, las demás `EnConsulta` que se superponen **no se cancelan**: el sistema las marca como "en conflicto" y el Responsable de Eventos gestiona con esos clientes mover la fecha, el horario o el salón. Registrar la seña de una consulta cuyo horario ya está reservado por otro evento se rechaza. |
 | RN-13 | **Precios proyectados a la fecha del evento.** Cuando el cliente arma un presupuesto para una fecha futura, los precios de los servicios propios y del salón se proyectan aplicando el porcentaje mensual vigente, **compuesto**, una vez por cada mes entre el mes actual y el mes del evento: `precio_actual × (1 + p)^meses`. Los tercerizados no se proyectan. Casos particulares los arregla a mano el Responsable de Eventos (RN-03). |
+| RN-14 | **Medios de pago habilitados según la factura.** Los medios con los que se puede registrar un pago dependen de la marca de **requiere factura** del presupuesto: **sin factura**, solo **Efectivo** y **Transferencia**; **con factura**, además **Débito**, **Crédito** y **Cheque**. La regla la aplican la web (el desplegable del formulario de cobro) y la API (rechaza el pago con 422). Los medios de versiones anteriores («Tarjeta», «A la habitación») quedan en la base por los pagos históricos, pero no se ofrecen ni se aceptan. |
 
 ---
 
@@ -238,6 +240,7 @@ arriba describe la división a la que se apunta, que se implementa más adelante
   `Confirmado`: hoy es solo una etiqueta de pantalla).
 - Cambiar el porcentaje de la seña, la base de cobro de RN-01, la vigencia de 10 días, el plazo de
   48 horas o el de 7 días.
+- Cambiar el catálogo de medios de pago o qué medios habilita cada caso de RN-14.
 - Cambiar la tasa de IVA o dejar de guardar los importes sin IVA.
 - Definir qué pasa con lo abonado por encima de la seña ante una cancelación en plazo.
 - Cancelar o dar de baja automáticamente un evento o un presupuesto: todas las bajas son manuales.
