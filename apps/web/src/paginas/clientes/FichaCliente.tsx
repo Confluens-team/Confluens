@@ -8,6 +8,7 @@ import { formatearFecha, nombreCompleto } from '@/lib/formato';
 import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
 import { EditarConsulta } from '@/paginas/presupuestos/EditarConsulta';
 
+import { EditorDatosCliente } from './EditorDatosCliente';
 import { EditorEtiqueta, ID_LISTA_ETIQUETAS } from './EditorEtiqueta';
 import { HistorialCliente } from './HistorialCliente';
 
@@ -118,6 +119,8 @@ export function FichaCliente({ clienteId, onVolver }: { clienteId: number; onVol
               </dd>
             </div>
           </dl>
+
+          <EditorDatosCliente cliente={cliente.data} />
         </section>
       )}
 
