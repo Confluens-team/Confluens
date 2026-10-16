@@ -1,5 +1,5 @@
-import type { CrearPago } from '@confluens/shared';
-import { admiteMedioPago, nombresMediosPagoHabilitados, PORCENTAJE_SENA } from '@confluens/shared';
+import type { CrearMedioPago, CrearPago } from '@confluens/shared';
+import { admiteMedioPago, mediosPagoHabilitados, PORCENTAJE_SENA } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
 import {
@@ -84,11 +84,14 @@ export async function registrarPago(
     throw ErrorApi.noEncontrado(`No existe un medio de pago activo con id ${datos.medioPagoId}`);
   }
   // RN-14: los medios disponibles dependen de la casilla «El cliente requiere factura» del
-  // presupuesto. Sin factura entran solo Efectivo, Transferencia y A la habitación; con factura
-  // entran además Débito, Crédito y Cheque. La web ya filtra el desplegable; esto es lo que hace
-  // que la regla valga igual contra la API.
-  if (!admiteMedioPago(medioPago.nombre, presupuesto.requiereFactura)) {
-    const habilitados = nombresMediosPagoHabilitados(presupuesto.requiereFactura).join(', ');
+  // presupuesto y de la habilitación de cada medio (con factura, sin factura o los dos), que se
+  // elige al darlo de alta (HU-19). La web ya filtra el desplegable; esto es lo que hace que la
+  // regla valga igual contra la API.
+  if (!admiteMedioPago(medioPago, presupuesto.requiereFactura)) {
+    const activos = await repo.listarMediosPagoActivos();
+    const habilitados = mediosPagoHabilitados(activos, presupuesto.requiereFactura)
+      .map((medio) => medio.nombre)
+      .join(', ');
     const caso = presupuesto.requiereFactura ? 'con factura' : 'sin factura';
     throw ErrorApi.reglaNegocio(
       `No se puede cobrar con ${medioPago.nombre} en un evento ${caso}: los medios habilitados son ${habilitados}`,
@@ -208,4 +211,20 @@ export async function obtenerCuenta(
 
 export async function listarMediosPago(repo: PagosRepositorio = pagosRepositorioReal) {
   return repo.listarMediosPagoActivos();
+}
+
+/**
+ * HU-19: alta de un medio de pago, con su habilitación para cobros con factura, sin factura o los
+ * dos (RN-14). El nombre llega recortado por esquemaCrearMedioPago y es único sin distinguir
+ * mayúsculas: «efectivo» choca con «Efectivo», aunque ese medio esté dado de baja.
+ */
+export async function crearMedioPago(
+  datos: CrearMedioPago,
+  repo: PagosRepositorio = pagosRepositorioReal,
+) {
+  const existente = await repo.buscarMedioPagoPorNombre(datos.nombre);
+  if (existente) {
+    throw ErrorApi.conflicto(`Ya existe un medio de pago llamado «${existente.nombre}»`);
+  }
+  return repo.crearMedioPago(datos);
 }

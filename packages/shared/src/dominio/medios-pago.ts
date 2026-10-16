@@ -1,51 +1,63 @@
-// Catálogo de medios de pago y qué medios se pueden usar en cada caso. Vive en shared porque la
-// regla la aplican los dos lados: la web para armar el desplegable del formulario de cobro y la
-// API para rechazar un medio que no corresponde.
+// Medios de pago y qué medios se pueden usar en cada cobro (RN-14). Vive en shared porque la regla
+// la aplican los dos lados: la web para armar el desplegable del formulario de cobro y la API para
+// rechazar un medio que no corresponde.
 //
-// El catálogo son nombres y no ids: los ids los asigna la base (tabla `MedioPago`, baja lógica con
-// `activo`) y cambian entre entornos. El seed precarga estos mismos nombres.
+// Desde HU-19 (decisión del PO, 16/10/2026) cada medio guarda en la base si se habilita con
+// factura, sin factura o en los dos casos (`conFactura` y `sinFactura`), así que el personal puede
+// dar de alta medios nuevos y la regla los alcanza sin tocar código. Lo que queda fijo acá es el
+// catálogo inicial: el orden en que se muestra y lo que precarga el seed.
 
-// Lo que se puede cobrar siempre, se facture o no.
-export const MEDIOS_PAGO_SIN_FACTURA = ['Efectivo', 'Transferencia', 'A la habitación'] as const;
-
-// Lo que se puede cobrar cuando el presupuesto SÍ se factura: los de arriba más los que necesitan
-// la factura para respaldarse.
-export const MEDIOS_PAGO_CON_FACTURA = [
-  ...MEDIOS_PAGO_SIN_FACTURA,
-  'Débito',
-  'Crédito',
-  'Cheque',
+/**
+ * El catálogo inicial de RN-14, en el orden en que se muestra en el formulario de cobro, con su
+ * habilitación. La migración 20261016211752_medios_de_pago_habilitacion_factura carga estas mismas
+ * marcas en la base; el seed las usa para una base levantada a mano.
+ */
+export const MEDIOS_PAGO_INICIALES = [
+  { nombre: 'Efectivo', conFactura: true, sinFactura: true },
+  { nombre: 'Transferencia', conFactura: true, sinFactura: true },
+  { nombre: 'A la habitación', conFactura: true, sinFactura: true },
+  { nombre: 'Débito', conFactura: true, sinFactura: false },
+  { nombre: 'Crédito', conFactura: true, sinFactura: false },
+  { nombre: 'Cheque', conFactura: true, sinFactura: false },
 ] as const;
 
-// El catálogo completo, en el orden en que se muestra. Es el que precarga el seed.
-export const MEDIOS_PAGO = MEDIOS_PAGO_CON_FACTURA;
+export const MEDIOS_PAGO: readonly string[] = MEDIOS_PAGO_INICIALES.map(({ nombre }) => nombre);
 
-/**
- * Los medios habilitados según la marca de factura del presupuesto (`requiereFactura`, la casilla
- * «El cliente requiere factura»): con factura, todo el catálogo; sin factura, solo Efectivo,
- * Transferencia y A la habitación.
- */
-export function nombresMediosPagoHabilitados(requiereFactura: boolean): readonly string[] {
-  return requiereFactura ? MEDIOS_PAGO_CON_FACTURA : MEDIOS_PAGO_SIN_FACTURA;
-}
-
-// Un medio del catálogo que no esté en la lista de arriba (los que quedaron de versiones
-// anteriores, como «Tarjeta») no se ofrece ni se acepta: los pagos históricos que lo referencian
-// siguen intactos, pero no se cobra más con él.
-export function admiteMedioPago(nombre: string, requiereFactura: boolean): boolean {
-  return nombresMediosPagoHabilitados(requiereFactura).includes(nombre);
+interface HabilitacionMedioPago {
+  conFactura: boolean;
+  sinFactura: boolean;
 }
 
 /**
- * Filtra el catálogo que devuelve la API dejando solo lo que se puede elegir para este presupuesto,
- * en el orden del catálogo (no el alfabético con el que viene de la base).
+ * Si un medio se puede usar en un cobro, según la marca de factura del presupuesto
+ * (`requiereFactura`, la casilla «El cliente requiere factura»). Que el medio esté activo lo
+ * controla quien lo busca: un medio dado de baja no se ofrece ni se acepta.
  */
-export function mediosPagoHabilitados<T extends { nombre: string }>(
+export function admiteMedioPago(medio: HabilitacionMedioPago, requiereFactura: boolean): boolean {
+  return requiereFactura ? medio.conFactura : medio.sinFactura;
+}
+
+const alfabetico = new Intl.Collator('es', { sensitivity: 'base' });
+
+/**
+ * Orden en que se muestran los medios: primero los del catálogo inicial, en el orden de RN-14 (el
+ * que el personal ya conoce), y después los que se dieron de alta, en orden alfabético.
+ */
+export function compararMediosPago(a: { nombre: string }, b: { nombre: string }): number {
+  const posicion = (nombre: string) => {
+    const i = MEDIOS_PAGO.indexOf(nombre);
+    return i === -1 ? MEDIOS_PAGO.length : i;
+  };
+  return posicion(a.nombre) - posicion(b.nombre) || alfabetico.compare(a.nombre, b.nombre);
+}
+
+/**
+ * Los medios que se pueden elegir para un presupuesto, en el orden de `compararMediosPago`. Recibe
+ * el catálogo que devuelve la API (los activos) y deja los habilitados para el caso.
+ */
+export function mediosPagoHabilitados<T extends HabilitacionMedioPago & { nombre: string }>(
   medios: readonly T[],
   requiereFactura: boolean,
 ): T[] {
-  const habilitados = nombresMediosPagoHabilitados(requiereFactura);
-  return habilitados
-    .map((nombre) => medios.find((medio) => medio.nombre === nombre))
-    .filter((medio): medio is T => medio !== undefined);
+  return medios.filter((medio) => admiteMedioPago(medio, requiereFactura)).sort(compararMediosPago);
 }

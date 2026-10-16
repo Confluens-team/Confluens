@@ -1,4 +1,5 @@
 import request from 'supertest';
+import { MEDIOS_PAGO_INICIALES } from '@confluens/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { crearApp } from '../../app.js';
@@ -12,6 +13,8 @@ vi.mock('./pagos.repositorio.js', () => ({
   sumarPagos: vi.fn(),
   buscarMedioPagoActivo: vi.fn(),
   listarMediosPagoActivos: vi.fn(),
+  buscarMedioPagoPorNombre: vi.fn(),
+  crearMedioPago: vi.fn(),
   crear: vi.fn(),
   confirmarPresupuestoYReservar: vi.fn(),
   marcarCobrado: vi.fn(),
@@ -28,6 +31,8 @@ const {
   sumarPagos,
   buscarMedioPagoActivo,
   listarMediosPagoActivos,
+  buscarMedioPagoPorNombre,
+  crearMedioPago,
   crear,
   confirmarPresupuestoYReservar,
   marcarCobrado,
@@ -40,6 +45,8 @@ const listarDeEventoMock = vi.mocked(listarDeEvento);
 const sumarPagosMock = vi.mocked(sumarPagos);
 const buscarMedioPagoActivoMock = vi.mocked(buscarMedioPagoActivo);
 const listarMediosPagoActivosMock = vi.mocked(listarMediosPagoActivos);
+const buscarMedioPagoPorNombreMock = vi.mocked(buscarMedioPagoPorNombre);
+const crearMedioPagoMock = vi.mocked(crearMedioPago);
 const crearMock = vi.mocked(crear);
 const confirmarPresupuestoYReservarMock = vi.mocked(confirmarPresupuestoYReservar);
 const marcarCobradoMock = vi.mocked(marcarCobrado);
@@ -95,6 +102,8 @@ const medioPagoFixture = {
   id: 1,
   nombre: 'Efectivo',
   activo: true,
+  conFactura: true,
+  sinFactura: true,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
 };
@@ -561,12 +570,31 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
 // HU-13 C6: las consultas que pisan la franja no se cancelan (dominio.md:30, Cancelado es siempre
 // manual), se informan para que el Responsable de Eventos las gestione.
 // RN-14: con qué se puede cobrar depende de la casilla «El cliente requiere factura» del
-// presupuesto. Sin factura solo Efectivo, Transferencia y A la habitación; con factura se suman
-// Débito, Crédito y Cheque. La web filtra el desplegable, pero la regla la tiene que sostener la
-// API.
+// presupuesto y de la habilitación de cada medio (con factura, sin factura o los dos, HU-19). Del
+// catálogo inicial, sin factura solo Efectivo, Transferencia y A la habitación; con factura se suman
+// Débito, Crédito y Cheque. La web filtra el desplegable, pero la regla la tiene que sostener la API.
 describe('POST /api/eventos/:id/pagos — medios de pago según la factura (RN-14)', () => {
-  function conMedio(nombre: string, requiereFactura: boolean) {
-    buscarMedioPagoActivoMock.mockResolvedValue({ ...medioPagoFixture, id: 7, nombre });
+  const catalogo = MEDIOS_PAGO_INICIALES.map((medio, i) => ({
+    ...medioPagoFixture,
+    ...medio,
+    id: i + 1,
+  }));
+
+  function conMedio(
+    nombre: string,
+    requiereFactura: boolean,
+    habilitacion: { conFactura: boolean; sinFactura: boolean } = MEDIOS_PAGO_INICIALES.find(
+      (m) => m.nombre === nombre,
+    ) ?? { conFactura: false, sinFactura: false },
+  ) {
+    buscarMedioPagoActivoMock.mockResolvedValue({
+      ...medioPagoFixture,
+      id: 7,
+      nombre,
+      conFactura: habilitacion.conFactura,
+      sinFactura: habilitacion.sinFactura,
+    });
+    listarMediosPagoActivosMock.mockResolvedValue(catalogo);
     buscarDetalladoMock.mockResolvedValue(
       eventoFixture({ presupuestos: [presupuestoFixture({ requiereFactura })] }),
     );
@@ -617,6 +645,28 @@ describe('POST /api/eventos/:id/pagos — medios de pago según la factura (RN-1
 
     expect(respuesta.status).toBe(422);
     expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+    expect(crearMock).not.toHaveBeenCalled();
+  });
+
+  // CP-19-02: un medio dado de alta (HU-19) se puede usar en un cobro del caso que habilita.
+  it('acepta un medio dado de alta en el caso para el que se habilitó', async () => {
+    conMedio('Mercado Pago', false, { conFactura: true, sinFactura: true });
+
+    const respuesta = await registrarPago('1000');
+
+    expect(respuesta.status).toBe(201);
+  });
+
+  // CP-19-09: y se rechaza en el otro, informando con qué se puede cobrar.
+  it('responde 422 con un medio dado de alta solo con factura en un presupuesto sin factura', async () => {
+    conMedio('Mercado Pago', false, { conFactura: true, sinFactura: false });
+
+    const respuesta = await registrarPago('1000');
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.message).toBe(
+      'No se puede cobrar con Mercado Pago en un evento sin factura: los medios habilitados son Efectivo, Transferencia, A la habitación',
+    );
     expect(crearMock).not.toHaveBeenCalled();
   });
 });
@@ -685,6 +735,99 @@ describe('GET /api/medios-pago', () => {
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.data).toHaveLength(1);
     expect(respuesta.body.data[0].nombre).toBe('Efectivo');
+  });
+});
+
+describe('POST /api/medios-pago (HU-19)', () => {
+  const alta = (cuerpo: object, cookie = cookieResponsableEventos) =>
+    request(app).post('/api/medios-pago').set('Cookie', [cookie]).send(cuerpo);
+
+  beforeEach(() => {
+    buscarMedioPagoPorNombreMock.mockReset();
+    crearMedioPagoMock.mockReset();
+    buscarMedioPagoPorNombreMock.mockResolvedValue(null);
+    crearMedioPagoMock.mockImplementation(async (datos) => ({
+      ...medioPagoFixture,
+      id: 9,
+      ...datos,
+    }));
+  });
+
+  // CP-19-01
+  it('crea el medio activo con su habilitación y el nombre recortado', async () => {
+    const respuesta = await alta({ nombre: '  Mercado Pago ', conFactura: true, sinFactura: true });
+
+    expect(respuesta.status).toBe(201);
+    expect(crearMedioPagoMock).toHaveBeenCalledWith({
+      nombre: 'Mercado Pago',
+      conFactura: true,
+      sinFactura: true,
+    });
+    expect(respuesta.body.data).toMatchObject({
+      id: 9,
+      nombre: 'Mercado Pago',
+      activo: true,
+      conFactura: true,
+      sinFactura: true,
+    });
+  });
+
+  it('se puede habilitar para un solo caso', async () => {
+    const respuesta = await alta({ nombre: 'Vale', sinFactura: true });
+
+    expect(respuesta.status).toBe(201);
+    expect(crearMedioPagoMock).toHaveBeenCalledWith({
+      nombre: 'Vale',
+      conFactura: false,
+      sinFactura: true,
+    });
+  });
+
+  // CP-19-04
+  it('sin nombre o con el nombre solo con espacios responde 400 VALIDATION_ERROR', async () => {
+    for (const cuerpo of [{ sinFactura: true }, { nombre: '   ', sinFactura: true }]) {
+      const respuesta = await alta(cuerpo);
+      expect(respuesta.status).toBe(400);
+      expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+      expect(respuesta.body.error.details[0].campo).toBe('nombre');
+    }
+    expect(crearMedioPagoMock).not.toHaveBeenCalled();
+  });
+
+  // CP-19-08
+  it('sin habilitarlo en ningún caso responde 400 VALIDATION_ERROR', async () => {
+    const respuesta = await alta({ nombre: 'Vale' });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details[0].campo).toBe('conFactura');
+    expect(crearMedioPagoMock).not.toHaveBeenCalled();
+  });
+
+  // CP-19-05: el nombre es único sin distinguir mayúsculas.
+  it('un nombre que ya existe con otras mayúsculas responde 409 CONFLICT', async () => {
+    buscarMedioPagoPorNombreMock.mockResolvedValue({ ...medioPagoFixture, nombre: 'Efectivo' });
+
+    const respuesta = await alta({ nombre: 'efectivo', sinFactura: true });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(buscarMedioPagoPorNombreMock).toHaveBeenCalledWith('efectivo');
+    expect(crearMedioPagoMock).not.toHaveBeenCalled();
+  });
+
+  // CP-19-07
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app)
+      .post('/api/medios-pago')
+      .send({ nombre: 'Vale', sinFactura: true });
+    const comoCliente = await alta(
+      { nombre: 'Vale', sinFactura: true },
+      cookieDe('CLIENTE', 'cliente@mail.test'),
+    );
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
+    expect(crearMedioPagoMock).not.toHaveBeenCalled();
   });
 });
 

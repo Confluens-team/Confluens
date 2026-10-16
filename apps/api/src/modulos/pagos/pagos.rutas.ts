@@ -1,4 +1,5 @@
 import {
+  esquemaCrearMedioPago,
   esquemaCrearPago,
   esquemaCuentaEvento,
   esquemaMedioPago,
@@ -12,7 +13,7 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { listarCuenta, listarMedios, registrar } from './pagos.controlador.js';
+import { crearMedio, listarCuenta, listarMedios, registrar } from './pagos.controlador.js';
 
 // Detalle de la capa HTTP, no se comparte con el frontend (igual que en eventos.rutas.ts).
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
@@ -78,7 +79,8 @@ registroOpenApi.registerPath({
   method: 'get',
   path: '/medios-pago',
   tags: ['Pagos'],
-  summary: 'Medios de pago activos, para el formulario de cobro. El ABM es del Sprint 3',
+  summary:
+    'Medios de pago activos, con su habilitación con o sin factura (RN-14), para el formulario de cobro',
   responses: {
     200: {
       description: 'Medios de pago activos',
@@ -108,6 +110,34 @@ rutasPagos.get(
   asincrono(listarCuenta),
 );
 
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/medios-pago',
+  tags: ['Pagos'],
+  summary:
+    'Da de alta un medio de pago, eligiendo si se puede usar con factura, sin factura o en los dos casos (HU-19, RN-14)',
+  request: { body: { content: { 'application/json': { schema: esquemaCrearMedioPago } } } },
+  responses: {
+    201: {
+      description: 'Medio de pago creado, activo',
+      content: { 'application/json': { schema: z.object({ data: esquemaMedioPago }) } },
+    },
+    400: { description: 'Nombre vacío o de más de 40 caracteres, o sin habilitar en ningún caso' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
+    409: { description: 'Ya existe un medio con ese nombre (sin distinguir mayúsculas)' },
+  },
+});
+
 export const rutasMediosPago = Router();
 
 rutasMediosPago.get('/', autenticar, autorizar(...ROLES_PERSONAL), asincrono(listarMedios));
+// HU-19: el actor es el Responsable de Finanzas, pero mientras no se dividan las funciones por rol
+// todo el personal ve y hace todo (decisión del PO, 06/10/2026).
+rutasMediosPago.post(
+  '/',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ body: esquemaCrearMedioPago }),
+  asincrono(crearMedio),
+);

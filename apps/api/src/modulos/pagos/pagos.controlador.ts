@@ -1,4 +1,5 @@
 import type {
+  CrearMedioPago,
   CrearPago,
   CuentaEvento,
   MedioPago,
@@ -7,7 +8,12 @@ import type {
 } from '@confluens/shared';
 import type { Request, Response } from 'express';
 
-import { listarMediosPago, obtenerCuenta, registrarPago } from './pagos.servicio.js';
+import {
+  crearMedioPago,
+  listarMediosPago,
+  obtenerCuenta,
+  registrarPago,
+} from './pagos.servicio.js';
 
 // req.params y req.body ya validados por `validar()` en las rutas.
 export async function registrar(req: Request, res: Response): Promise<void> {
@@ -28,4 +34,11 @@ export async function listarMedios(_req: Request, res: Response): Promise<void> 
   const medios = await listarMediosPago();
   const cuerpo: RespuestaExito<MedioPago[]> = { data: medios as unknown as MedioPago[] };
   res.status(200).json(cuerpo);
+}
+
+// req.body ya validado por validar({ body: esquemaCrearMedioPago }) en pagos.rutas.ts.
+export async function crearMedio(req: Request, res: Response): Promise<void> {
+  const medio = await crearMedioPago(req.body as CrearMedioPago);
+  const cuerpo: RespuestaExito<MedioPago> = { data: medio as unknown as MedioPago };
+  res.status(201).json(cuerpo);
 }
