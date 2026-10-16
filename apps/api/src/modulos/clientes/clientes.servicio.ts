@@ -1,4 +1,4 @@
-import type { AsignarEtiqueta } from '@confluens/shared';
+import type { AsignarEtiqueta, FiltrosClientes } from '@confluens/shared';
 
 import { ErrorApi } from '../../lib/errores.js';
 import * as clientesRepositorioReal from './clientes.repositorio.js';
@@ -15,9 +15,36 @@ function conResumen({ _count, ...cliente }: ClienteConConteo) {
   };
 }
 
-export async function listarClientes(repo: ClientesRepositorio = clientesRepositorioReal) {
-  const clientes = await repo.listarConResumen();
-  return clientes.map(conResumen);
+// HU-16 C3: alfabético por apellido y nombre. Una razón social no tiene apellido, así que se
+// ordena por su nombre, intercalada con las personas («Acme» antes que «Bustos, Ana»). Sin
+// distinguir mayúsculas ni tildes, como lo leería una persona.
+const alfabetico = new Intl.Collator('es', { sensitivity: 'base' });
+export function compararClientes(
+  a: { nombre: string; apellido: string | null },
+  b: { nombre: string; apellido: string | null },
+): number {
+  return (
+    alfabetico.compare(a.apellido ?? a.nombre, b.apellido ?? b.nombre) ||
+    alfabetico.compare(a.nombre, b.nombre)
+  );
+}
+
+export async function listarClientes(
+  { busqueda }: FiltrosClientes = {},
+  repo: ClientesRepositorio = clientesRepositorioReal,
+) {
+  const clientes = await repo.listarConResumen(busqueda);
+  return clientes.map(conResumen).sort(compararClientes);
+}
+
+// La ficha del cliente (HU-16 C4).
+export async function obtenerCliente(
+  id: number,
+  repo: ClientesRepositorio = clientesRepositorioReal,
+) {
+  const cliente = await repo.buscarConResumen(id);
+  if (!cliente) throw ErrorApi.noEncontrado('No existe el cliente');
+  return conResumen(cliente);
 }
 
 // Le pone o le quita (etiquetaId null) la etiqueta a un cliente. Solo el personal (dominio.md).

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { esquemaFechaHora, esquemaId } from './comunes.esquema.js';
+import { esquemaFechaHora, esquemaId, vacioComoAusente } from './comunes.esquema.js';
 import { esquemaEtiqueta } from './etiqueta.esquema.js';
 
 // Ficha del cliente tal como la ve el personal. Nunca se devuelve al rol Cliente: lleva la etiqueta,
@@ -26,3 +26,11 @@ export const esquemaClienteConResumen = esquemaCliente.extend({
   cantidadSolicitudes: z.number().int().nonnegative(),
 });
 export type ClienteConResumen = z.infer<typeof esquemaClienteConResumen>;
+
+// Filtro de GET /clientes (HU-16). Cada palabra de `busqueda` tiene que aparecer en el nombre, el
+// apellido, el correo, el teléfono o la etiqueta, sin distinguir mayúsculas. Vacío cuenta como
+// ausente, como en los demás listados.
+export const esquemaFiltrosClientes = z.object({
+  busqueda: z.preprocess(vacioComoAusente, z.string().trim().max(100).optional()),
+});
+export type FiltrosClientes = z.infer<typeof esquemaFiltrosClientes>;

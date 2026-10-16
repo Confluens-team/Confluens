@@ -1,5 +1,5 @@
 import { Mail, Phone, Search } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Input } from '@/components/ui/input';
 import { useClientes } from '@/hooks/use-clientes';
@@ -7,24 +7,39 @@ import { useEtiquetas } from '@/hooks/use-etiquetas';
 import { formatearFecha, nombreCompleto } from '@/lib/formato';
 
 import { EditorEtiqueta, ID_LISTA_ETIQUETAS } from './EditorEtiqueta';
+import { FichaCliente } from './FichaCliente';
 
-// Clientes del panel del administrador: la ficha comercial, si tiene cuenta en el canal público,
-// cuántos eventos y solicitudes lleva y su etiqueta interna. Lo único editable es la etiqueta: los
-// datos de contacto los mantiene el cliente desde su cuenta.
+// Clientes del panel (HU-16): la ficha comercial, si tiene cuenta en el canal público, cuántos
+// eventos y solicitudes lleva y su etiqueta interna, en orden alfabético por apellido y nombre.
+// Lo único editable es la etiqueta: los datos de contacto los mantiene el cliente desde su cuenta.
+// Cada nombre abre la ficha del cliente.
 export function ListadoClientes() {
-  const clientes = useClientes();
-  const etiquetas = useEtiquetas();
+  const [texto, setTexto] = useState('');
   const [busqueda, setBusqueda] = useState('');
+  const [abierto, setAbierto] = useState<number | null>(null);
+  const clientes = useClientes({ busqueda });
+  const etiquetas = useEtiquetas();
 
-  const texto = busqueda.trim().toLowerCase();
-  const filtrados = (clientes.data ?? []).filter(
-    (c) =>
-      !texto ||
-      nombreCompleto(c).toLowerCase().includes(texto) ||
-      c.correo.toLowerCase().includes(texto) ||
-      c.telefono.includes(texto) ||
-      (c.etiqueta?.nombre.toLowerCase().includes(texto) ?? false),
-  );
+  // La búsqueda la resuelve la API: espera a que se deje de escribir para no pedir una vez por tecla.
+  useEffect(() => {
+    const espera = setTimeout(() => setBusqueda(texto.trim()), 300);
+    return () => clearTimeout(espera);
+  }, [texto]);
+
+  if (abierto !== null) {
+    return (
+      <FichaCliente
+        key={abierto}
+        clienteId={abierto}
+        onVolver={() => {
+          setAbierto(null);
+          window.scrollTo({ top: 0 });
+        }}
+      />
+    );
+  }
+
+  const lista = clientes.data ?? [];
 
   return (
     <div className="space-y-4">
@@ -32,8 +47,9 @@ export function ListadoClientes() {
         <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Buscar por nombre, email, teléfono o etiqueta"
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
+          aria-label="Buscar clientes"
+          value={texto}
+          onChange={(e) => setTexto(e.target.value)}
           className="h-10 bg-card pl-9"
         />
       </div>
@@ -53,7 +69,8 @@ export function ListadoClientes() {
             ))}
           </datalist>
           <p className="text-xs text-muted-foreground">
-            {filtrados.length} de {clientes.data.length} clientes
+            {lista.length === 1 ? '1 cliente' : `${lista.length} clientes`}
+            {busqueda && (lista.length === 1 ? ' coincide' : ' coinciden') + ' con la búsqueda'}
           </p>
           <div className="overflow-x-auto rounded-xl bg-card ring-1 ring-border">
             <table className="w-full min-w-[820px] text-sm">
@@ -68,10 +85,17 @@ export function ListadoClientes() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filtrados.map((cliente) => (
+                {lista.map((cliente) => (
                   <tr key={cliente.id} className="align-top">
                     <td className="px-4 py-3">
-                      <p className="font-medium">{nombreCompleto(cliente)}</p>
+                      <button
+                        type="button"
+                        onClick={() => setAbierto(cliente.id)}
+                        className="text-left font-medium text-bordo underline-offset-2 hover:underline"
+                        aria-label={`Ver la ficha de ${nombreCompleto(cliente)}`}
+                      >
+                        {nombreCompleto(cliente)}
+                      </button>
                       <p className="text-xs text-muted-foreground">
                         Desde el {formatearFecha(new Date(cliente.creadoEn))}
                       </p>
@@ -108,12 +132,12 @@ export function ListadoClientes() {
                     </td>
                   </tr>
                 ))}
-                {filtrados.length === 0 && (
+                {lista.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
-                      {clientes.data.length === 0
-                        ? 'Todavía no hay clientes.'
-                        : 'Ningún cliente coincide con la búsqueda.'}
+                      {busqueda
+                        ? 'Ningún cliente coincide con la búsqueda.'
+                        : 'Todavía no hay clientes.'}
                     </td>
                   </tr>
                 )}

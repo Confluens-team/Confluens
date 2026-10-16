@@ -1,14 +1,38 @@
-import type { AsignarEtiqueta, ClienteConResumen, RespuestaExito } from '@confluens/shared';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type {
+  AsignarEtiqueta,
+  ClienteConResumen,
+  FiltrosClientes,
+  RespuestaExito,
+} from '@confluens/shared';
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api';
 
-// Listado de clientes del panel del administrador, con su cantidad de eventos y solicitudes.
-export function useClientes() {
+/**
+ * HU-16: listado de clientes del panel, con su cantidad de eventos y solicitudes. La búsqueda la
+ * resuelve la API; mientras llega la respuesta de una búsqueda nueva se sigue mostrando la anterior
+ * para que la tabla no parpadee con cada tecla.
+ */
+export function useClientes(filtros: FiltrosClientes = {}) {
   return useQuery({
-    queryKey: ['clientes'],
+    queryKey: ['clientes', filtros],
     queryFn: async () => {
-      const respuesta = await apiFetch<RespuestaExito<ClienteConResumen[]>>('/clientes');
+      const parametros = new URLSearchParams();
+      if (filtros.busqueda) parametros.set('busqueda', filtros.busqueda);
+      const consulta = parametros.size ? `?${parametros}` : '';
+      const respuesta = await apiFetch<RespuestaExito<ClienteConResumen[]>>(`/clientes${consulta}`);
+      return respuesta.data;
+    },
+    placeholderData: keepPreviousData,
+  });
+}
+
+// HU-16 C4: la ficha de un cliente.
+export function useCliente(id: number) {
+  return useQuery({
+    queryKey: ['clientes', id],
+    queryFn: async () => {
+      const respuesta = await apiFetch<RespuestaExito<ClienteConResumen>>(`/clientes/${id}`);
       return respuesta.data;
     },
   });
