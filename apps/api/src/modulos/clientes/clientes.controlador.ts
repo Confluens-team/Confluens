@@ -1,12 +1,27 @@
-import type { AsignarEtiqueta, ClienteConResumen, RespuestaExito } from '@confluens/shared';
+import type {
+  AsignarEtiqueta,
+  ClienteConResumen,
+  FiltrosClientes,
+  RespuestaExito,
+} from '@confluens/shared';
 import type { Request, Response } from 'express';
 
-import { asignarEtiquetaACliente, listarClientes } from './clientes.servicio.js';
+import { asignarEtiquetaACliente, listarClientes, obtenerCliente } from './clientes.servicio.js';
 
-export async function listar(_req: Request, res: Response): Promise<void> {
-  const clientes = await listarClientes();
+// req.query ya validado por validar({ query: esquemaFiltrosClientes }) en clientes.rutas.ts.
+export async function listar(req: Request, res: Response): Promise<void> {
+  const clientes = await listarClientes(req.query as FiltrosClientes);
   const cuerpo: RespuestaExito<ClienteConResumen[]> = {
     data: clientes as unknown as ClienteConResumen[],
+  };
+  res.status(200).json(cuerpo);
+}
+
+// req.params ya validado por validar({ params: esquemaIdParam }) en clientes.rutas.ts.
+export async function obtener(req: Request, res: Response): Promise<void> {
+  const cliente = await obtenerCliente(Number(req.params.id));
+  const cuerpo: RespuestaExito<ClienteConResumen> = {
+    data: cliente as unknown as ClienteConResumen,
   };
   res.status(200).json(cuerpo);
 }
