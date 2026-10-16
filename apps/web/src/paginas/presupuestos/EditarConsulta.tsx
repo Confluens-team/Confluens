@@ -699,12 +699,12 @@ function Formulario({
         </section>
 
         {tipo === 'Social' && (
-          <section className="rounded-xl bg-card p-5 ring-1 ring-rose-200">
+          <section className="rounded-xl bg-card p-5 ring-1 ring-tipo-social-suave">
             <h3 className="flex items-center gap-2 text-sm font-semibold">
-              <ClipboardList className="size-4 text-rose-700" /> Detalle del evento social
+              <ClipboardList className="size-4 text-tipo-social" /> Detalle del evento social
             </h3>
             {/* Vacío a propósito: falta la plantilla de campos del evento social (pendientes.md). */}
-            <div className="mt-3 rounded-lg border border-dashed border-rose-200 px-4 py-8 text-center text-sm text-muted-foreground">
+            <div className="mt-3 rounded-lg border border-dashed border-tipo-social-suave px-4 py-8 text-center text-sm text-muted-foreground">
               Todavía no hay plantilla para los eventos sociales. Acá van a ir los datos propios del
               evento.
             </div>
