@@ -163,6 +163,12 @@ en el Sprint 1) pueden no tener usuario: si esa persona se registra con el mismo
 se vincula a la ficha existente en lugar de crear otra, y el teléfono pasa a ser el celular
 validado del registro (C7 de HU-09 del Sprint 2).
 
+**Datos de contacto del cliente.** El personal puede corregir **nombre, apellido y teléfono** de
+cualquier cliente desde su ficha (por ejemplo, cuando avisa que cambió de celular). El **correo**
+solo lo puede cambiar el personal si el cliente **no tiene cuenta**: en un cliente con cuenta el
+correo es su usuario para iniciar sesión, y lo cambia él. Decisión del PO, 16/10/2026 (HU-17 del
+Sprint 3; cierra S-15).
+
 **Solicitud (consulta).** Lo que el cliente confirma desde el formulario del canal público. Llega
 asociada al cliente que la envió y guarda **todo lo que eligió**: fecha, horario, salón,
 distribución, cantidad de personas, servicios con su modalidad, y el presupuesto estimado que vio.
@@ -184,7 +190,9 @@ el total del presupuesto** como cualquier otro servicio. Diferencias con un serv
 
 **Modalidad de servicio.** Para los servicios que la admiten (hoy los coffee breaks), el cliente
 elige la modalidad de cada uno: normal, **continuo en salón (+20%)** o **en mesas con mozo
-(+30%)**. Ver RN-11.
+(+30%)**. Ver RN-11. Se implementa en el Sprint 3 (decisión del PO, 16/10/2026): la elige el
+cliente en el cotizador o el Responsable de Eventos al armar o modificar el presupuesto, y se copia
+al reutilizar un evento. Mientras S-09 siga abierto, **una sola modalidad por servicio**.
 
 **Hora esperada del servicio.** Cada servicio del presupuesto puede llevar **una hora opcional**
 (`HH:mm`) que dice en qué momento del evento se lo espera: el coffee a las 10:30, el almuerzo a las
@@ -220,12 +228,16 @@ consulta social puede estar `EnConsulta` sin salón hasta que el Responsable de 
 (ADR 0008).
 
 **Pago.** Importe recibido con fecha y medio de pago. Monto libre, sin mínimo. Un pago que excede
-el saldo se rechaza: no hay saldo a favor.
+el saldo se rechaza: un pago nunca genera saldo a favor.
 
-**Saldo.** Base de cobro menos la suma de los pagos registrados.
+**Saldo.** Base de cobro menos la suma de los pagos registrados. Puede quedar **negativo** si se
+modifica un presupuesto ya confirmado y su total baja por debajo de lo pagado (08/10/2026): se
+muestra como **saldo a favor del cliente** y se resuelve a mano con él. Decisión del PO, 16/10/2026.
 
-**Medio de pago.** Efectivo, transferencia, débito, crédito, cheque, a la habitación. Cuáles de
-ellos se pueden usar en un cobro depende de si el presupuesto **requiere factura** (ver RN-14).
+**Medio de pago.** El catálogo inicial es Efectivo, Transferencia, Débito, Crédito, Cheque y A la
+habitación. El Responsable de Finanzas puede dar de alta otros, eligiendo en cada uno si se puede
+usar **con factura, sin factura o en los dos casos** (ver RN-14). Baja lógica: un medio dado de
+baja se sigue viendo en los pagos ya registrados.
 
 **Auditoría.** Registro inmutable de usuario, fecha, entidad, valor anterior y valor nuevo.
 Nadie lo edita ni lo borra. Se implementa con middleware de Prisma sobre `audit_log`.
@@ -286,14 +298,14 @@ arriba describe la división a la que se apunta, que se implementa más adelante
 | RN-04 | Los servicios no necesariamente cubren a todos los asistentes: pueden contratarse para menos. |
 | RN-05 | **Todos los importes se guardan sin IVA.** El presupuesto (en pantalla y en PDF) muestra tres renglones: **subtotal sin IVA**, **IVA 21%** calculado sobre ese subtotal, y **total** = subtotal + IVA. La tasa del 21% va en una constante, no desparramada por el código. |
 | RN-06 | La seña se abona **dentro de la vigencia del presupuesto (10 días)** y es lo que lo congela (`Confirmado`) y pasa el evento a `Reservado`. Si vencen los 10 días sin seña, **no se cancela nada automáticamente**: el presupuesto pasa a `Expirado` y hay que recalcularlo (con los precios vigentes) antes de cobrar la seña. Lo abonado no es reembolsable. |
-| RN-07 | La cancelación por parte del cliente requiere un mínimo de **48 horas corridas** de anticipación. **Fines de semana y feriados cuentan** (hay eventos todos los días), así que no hace falta calendario de feriados. |
+| RN-07 | La cancelación por parte del cliente requiere un mínimo de **48 horas corridas** de anticipación. **Fines de semana y feriados cuentan** (hay eventos todos los días), así que no hace falta calendario de feriados. El plazo aplica a un evento **confirmado** (`Reservado`); una consulta sin seña (`EnConsulta`) se cancela en cualquier momento (decisión del PO, 16/10/2026). |
 | RN-08 | El presupuesto tiene una **vigencia de 10 días** desde su emisión; **cada modificación la reinicia** (decisión del PO, 05/10/2026). Vencida, un control automático lo pasa a `Expirado` y el sistema **muestra un aviso** al Responsable de Eventos ("presupuesto vencido, recalcular"). El presupuesto **no se borra ni se cancela solo**: solo se da de baja a mano, si el Responsable de Eventos lo decide. |
 | RN-09 | **Modificaciones y plazo de 7 días.** El cliente puede modificar su consulta o evento hasta **7 días antes** de la fecha del evento; después, cualquier modificación del lado del cliente se **bloquea** (no solo se avisa). El Responsable de Eventos puede modificar **en todo momento**, sin límite de plazo. Esto reemplaza la condición del PDF sobre confirmar asistentes 7 días antes y sumar hasta 5 personas a 48 hs. |
 | RN-10 | **Incremento de precios.** El Responsable de Eventos define un **porcentaje de incremento mensual**, modificable en cualquier momento. Se aplica automáticamente al tarifario una vez por mes. Además puede aplicar aumentos **a mitad de mes**, **a todo el catálogo** o **a servicios puntuales**. No afecta a los servicios tercerizados ni a presupuestos ya emitidos. |
 | RN-11 | **Recargo por modalidad.** Continuo en salón: +20%. En mesas con mozo: +30%. Se aplica **sobre el precio base por persona** del servicio, **sin IVA**, y **por cada servicio** en que el cliente elija esa modalidad (si elige tres coffees y marca continuo en dos, el recargo va solo en esos dos). Es opcional: el cliente elige. |
 | RN-12 | **El que seña primero se queda con el salón.** Puede haber varias consultas para el mismo salón, fecha y horario. Cuando una pasa a `Reservado`, las demás `EnConsulta` que se superponen **no se cancelan**: el sistema las marca como "en conflicto" y el Responsable de Eventos gestiona con esos clientes mover la fecha, el horario o el salón. Registrar la seña de una consulta cuyo horario ya está reservado por otro evento se rechaza. |
 | RN-13 | **Precios proyectados a la fecha del evento.** Cuando el cliente arma un presupuesto para una fecha futura, los precios de los servicios propios y del salón se proyectan aplicando el porcentaje mensual vigente, **compuesto**, una vez por cada mes entre el mes actual y el mes del evento: `precio_actual × (1 + p)^meses`. Los tercerizados no se proyectan. Casos particulares los arregla a mano el Responsable de Eventos (RN-03). |
-| RN-14 | **Medios de pago habilitados según la factura.** Los medios con los que se puede registrar un pago dependen de la marca de **requiere factura** del presupuesto: **sin factura**, solo **Efectivo**, **Transferencia** y **A la habitación**; **con factura**, además **Débito**, **Crédito** y **Cheque**. La regla la aplican la web (el desplegable del formulario de cobro) y la API (rechaza el pago con 422). «Tarjeta», el medio de la versión anterior que Débito y Crédito reemplazan, queda con **baja lógica**: los pagos ya registrados con él se siguen mostrando en el historial del evento, pero no se ofrece ni se acepta en un cobro nuevo. |
+| RN-14 | **Medios de pago habilitados según la factura.** Los medios con los que se puede registrar un pago dependen de la marca de **requiere factura** del presupuesto: **sin factura**, solo **Efectivo**, **Transferencia** y **A la habitación**; **con factura**, además **Débito**, **Crédito** y **Cheque**. Un medio dado de alta después se habilita según lo que se eligió al crearlo: con factura, sin factura o en los dos casos (decisión del PO, 16/10/2026; se implementa con HU-19 del Sprint 3, y hasta entonces la lista vive fija en `packages/shared`). La regla la aplican la web (el desplegable del formulario de cobro) y la API (rechaza el pago con 422). «Tarjeta», el medio de la versión anterior que Débito y Crédito reemplazan, queda con **baja lógica**: los pagos ya registrados con él se siguen mostrando en el historial del evento, pero no se ofrece ni se acepta en un cobro nuevo. |
 
 ---
 
