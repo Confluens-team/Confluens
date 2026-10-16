@@ -2,6 +2,8 @@ import {
   esquemaAsignarEtiqueta,
   esquemaClienteConResumen,
   esquemaFiltrosClientes,
+  esquemaFiltrosHistorialCliente,
+  esquemaHistorialCliente,
 } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -11,7 +13,7 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { asignarEtiqueta, listar, obtener } from './clientes.controlador.js';
+import { asignarEtiqueta, historial, listar, obtener } from './clientes.controlador.js';
 
 // Detalle de la capa HTTP, no se comparte con el frontend (a diferencia de los esquemas de body).
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
@@ -48,6 +50,27 @@ registroOpenApi.registerPath({
       description: 'El cliente',
       content: { 'application/json': { schema: z.object({ data: esquemaClienteConResumen }) } },
     },
+    401: { description: 'Sin sesión' },
+    403: { description: 'La sesión no es del personal' },
+    404: { description: 'No existe el cliente' },
+  },
+});
+
+registroOpenApi.registerPath({
+  method: 'get',
+  path: '/clientes/{id}/eventos',
+  tags: ['Clientes'],
+  summary:
+    'Historial de eventos de un cliente, en cualquier estado y del más reciente al más antiguo ' +
+    '(HU-18), con la cantidad de eventos en cada estado. `estado` admite varios separados por coma',
+  request: { params: esquemaIdParam, query: esquemaFiltrosHistorialCliente },
+  responses: {
+    200: {
+      description:
+        'Los eventos que cumplen los filtros y el resumen por estado de todos los del cliente',
+      content: { 'application/json': { schema: z.object({ data: esquemaHistorialCliente }) } },
+    },
+    400: { description: 'Un filtro no es válido (estado inexistente o rango de fechas invertido)' },
     401: { description: 'Sin sesión' },
     403: { description: 'La sesión no es del personal' },
     404: { description: 'No existe el cliente' },
@@ -93,6 +116,13 @@ rutasClientes.get(
   autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaIdParam }),
   asincrono(obtener),
+);
+rutasClientes.get(
+  '/:id/eventos',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaIdParam, query: esquemaFiltrosHistorialCliente }),
+  asincrono(historial),
 );
 rutasClientes.patch(
   '/:id/etiqueta',

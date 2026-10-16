@@ -1,4 +1,9 @@
-import type { AsignarEtiqueta, FiltrosClientes } from '@confluens/shared';
+import type {
+  AsignarEtiqueta,
+  FiltrosClientes,
+  FiltrosHistorialCliente,
+  HistorialCliente,
+} from '@confluens/shared';
 
 import { ErrorApi } from '../../lib/errores.js';
 import * as clientesRepositorioReal from './clientes.repositorio.js';
@@ -45,6 +50,51 @@ export async function obtenerCliente(
   const cliente = await repo.buscarConResumen(id);
   if (!cliente) throw ErrorApi.noEncontrado('No existe el cliente');
   return conResumen(cliente);
+}
+
+/**
+ * HU-18: el historial de eventos de un cliente, filtrado, más el resumen por estado de todos sus
+ * eventos. Una consulta social sin salón viene con `salones` vacío; la web la muestra como «Sin
+ * salón asignado». El total es el del presupuesto, sin IVA (RN-05).
+ */
+export async function obtenerHistorialDeCliente(
+  clienteId: number,
+  filtros: FiltrosHistorialCliente,
+  repo: ClientesRepositorio = clientesRepositorioReal,
+): Promise<HistorialCliente> {
+  if (!(await repo.existeCliente(clienteId))) {
+    throw ErrorApi.noEncontrado('No existe el cliente');
+  }
+  const [eventos, conteos] = await Promise.all([
+    repo.listarEventosDeCliente(clienteId, filtros),
+    repo.contarEventosPorEstado(clienteId),
+  ]);
+
+  const resumen: HistorialCliente['resumen'] = {
+    EnConsulta: 0,
+    Reservado: 0,
+    Cobrado: 0,
+    Cancelado: 0,
+  };
+  for (const { estado, _count } of conteos) resumen[estado] = _count._all;
+
+  return {
+    eventos: eventos.map(({ salones, presupuestos, ...evento }) => ({
+      id: evento.id,
+      fecha: evento.fecha.toISOString().slice(0, 10),
+      inicio: evento.inicio?.toISOString() ?? null,
+      fin: evento.fin?.toISOString() ?? null,
+      estado: evento.estado,
+      tipo: evento.tipo,
+      tipoSocial: evento.tipoSocial,
+      tipoSocialDetalle: evento.tipoSocialDetalle,
+      cantidadPersonas: evento.cantidadPersonas,
+      salones: salones.map(({ salon }) => salon),
+      presupuestoId: presupuestos[0]?.id ?? null,
+      total: presupuestos[0]?.total.toFixed(2) ?? null,
+    })),
+    resumen,
+  };
 }
 
 // Le pone o le quita (etiquetaId null) la etiqueta a un cliente. Solo el personal (dominio.md).
