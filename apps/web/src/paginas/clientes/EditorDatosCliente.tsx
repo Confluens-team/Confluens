@@ -161,6 +161,7 @@ export function EditorDatosCliente({ cliente }: { cliente: ClienteConResumen }) 
           type="email"
           autoComplete="off"
           readOnly={!correoEditable}
+          className="read-only:bg-muted read-only:text-muted-foreground"
           {...ariaDeCampo(
             'cli-correo',
             errors.correo?.message,
