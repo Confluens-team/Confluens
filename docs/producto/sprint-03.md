@@ -143,7 +143,7 @@ Como Responsable de Eventos, quiero dar de baja un presupuesto que el cliente no
 - Los pagos parciales registrados antes de la baja se conservan en el estado de cuenta (HU-21); lo abonado no se reintegra (RN-06).
 - Solo el personal interno puede dar de baja un presupuesto; el rol Cliente no accede.
 
-**Implementación.** La baja ya se construyó en el Sprint 2 como parte de HU-12: `POST /api/presupuestos/:id/dar-de-baja` cancela el presupuesto y su evento. Esta historia la formaliza: falta verificar el diálogo de confirmación en la web y cubrir con tests los casos CP-22-01 a CP-22-11.
+**Hecho (16/10/2026).** La baja ya se había construido en el Sprint 2 como parte de HU-12: `POST /api/presupuestos/:id/dar-de-baja` cancela el presupuesto y su evento en una sola transacción, y responde `409` si el presupuesto no está Estimado ni Expirado o si el evento ya no está EnConsulta, y `404` si no existe. Esta historia la cubre con tests por criterio: los CP-22-xx están en la Definición del Producto y no en el repo. Los tests prueban la baja de un Estimado y de un Expirado, el rechazo de un Confirmado y de un Cancelado, que no borra líneas ni pagos, que el detalle se sigue viendo, que un PATCH sobre un Cancelado da `409` y los permisos. En la web, la confirmación avisa que el evento también se cancela y que los pagos se conservan sin reintegro, y el formulario de un Cancelado queda deshabilitado. Los pagos del evento dado de baja se ven en su estado de cuenta (HU-21).
 
 ## HU-23 — Registrar evento cancelado
 
