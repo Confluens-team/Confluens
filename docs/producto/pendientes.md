@@ -9,7 +9,8 @@ El Product Owner los valida con el cliente antes del sprint en que se aborda la 
 
 | ID | Tema | Situación | Bloquea |
 |---|---|---|---|
-| S-01 | Reintegro parcial | RN-06 dice que lo abonado no se reintegra. No está definido qué pasa con lo abonado **por encima** de la seña si el cliente cancela dentro del plazo de 48 hs de RN-07. | HU-44 (S3) |
+| S-01 | Reintegro parcial | RN-06 dice que lo abonado no se reintegra. No está definido qué pasa con lo abonado **por encima** de la seña si el cliente cancela dentro del plazo de 48 hs de RN-07. Hasta definirlo, cancelar no registra ningún reintegro: los pagos solo se conservan para consulta. | HU-44 (S3; HU-23 en `sprint-03.md`) |
+| S-15 | Correo de un cliente con cuenta | El personal puede modificar los datos de contacto de un cliente (HU-17 del Sprint 3). Falta que el PO confirme si, cuando el cliente tiene cuenta, cambiar su correo cambia también el correo con el que inicia sesión. Hasta definirlo, la regla del correo de HU-17 se aplica solo a las fichas sin cuenta. | HU-06 (S3; HU-17 en `sprint-03.md`) |
 | S-05 | Vencimiento del saldo | RD-06.1 exige alertar el próximo vencimiento, pero no está definida la fecha de vencimiento del saldo de un evento. | HU-23 (S6) |
 | S-09 | Recargos combinables | RN-11 define continuo (+20%) y en mesa (+30%) por servicio, pero no se aclaró si un mismo servicio puede llevar **las dos** modalidades a la vez. Modelar la modalidad como un valor único por línea (normal / continuo / mesa) hasta que se confirme. | HU-49 |
 | S-10 | Día de aplicación del incremento mensual | El cliente dijo que el porcentaje impacta "cada 31, mes a mes". Falta confirmar si es el último día de cada mes o el primero del mes siguiente. Hasta confirmar, usar el primer día de cada mes (misma fecha que usa RN-13 para contar meses). | HU-34 (S5) |
