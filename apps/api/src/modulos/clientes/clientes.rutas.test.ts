@@ -14,6 +14,8 @@ vi.mock('./clientes.repositorio.js', () => ({
   existeCliente: vi.fn(),
   existeEtiqueta: vi.fn(),
   asignarEtiqueta: vi.fn(),
+  existeOtroClienteConCorreo: vi.fn(),
+  modificarDatos: vi.fn(),
 }));
 
 const {
@@ -24,6 +26,8 @@ const {
   existeCliente,
   existeEtiqueta,
   asignarEtiqueta,
+  existeOtroClienteConCorreo,
+  modificarDatos,
 } = await import('./clientes.repositorio.js');
 const listarConResumenMock = vi.mocked(listarConResumen);
 const buscarConResumenMock = vi.mocked(buscarConResumen);
@@ -32,6 +36,8 @@ const contarEventosPorEstadoMock = vi.mocked(contarEventosPorEstado);
 const existeClienteMock = vi.mocked(existeCliente);
 const existeEtiquetaMock = vi.mocked(existeEtiqueta);
 const asignarEtiquetaMock = vi.mocked(asignarEtiqueta);
+const existeOtroClienteConCorreoMock = vi.mocked(existeOtroClienteConCorreo);
+const modificarDatosMock = vi.mocked(modificarDatos);
 
 const FECHA = new Date('2026-09-29T00:00:00.000Z');
 
@@ -498,5 +504,145 @@ describe('PATCH /api/clientes/:id/etiqueta', () => {
     expect(respuesta.status).toBe(403);
     expect(respuesta.body.error.code).toBe('FORBIDDEN');
     expect(asignarEtiquetaMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/clientes/:id (HU-17)', () => {
+  const app = crearApp();
+
+  const fila = (cambios: Record<string, unknown> = {}) => ({
+    id: 1,
+    nombre: 'Ana',
+    apellido: 'Pérez',
+    telefono: '+5493515551234',
+    correo: 'ana@empresa.com',
+    activo: true,
+    usuarioId: null,
+    etiquetaId: null,
+    etiqueta: null,
+    creadoEn: FECHA,
+    actualizadoEn: FECHA,
+    _count: { eventos: 2, solicitudes: 3 },
+    ...cambios,
+  });
+
+  const cuerpo = { nombre: 'Ana María', apellido: 'Pérez', telefono: '351 6123456' };
+  const modificar = (
+    id: number,
+    datos: object,
+    rol: Parameters<typeof cookieDe>[0] = 'GERENTE_GENERAL',
+  ) =>
+    request(app)
+      .patch(`/api/clientes/${id}`)
+      .set('Cookie', [cookieDe(rol)])
+      .send(datos);
+
+  beforeEach(() => {
+    buscarConResumenMock.mockReset();
+    existeOtroClienteConCorreoMock.mockReset();
+    modificarDatosMock.mockReset();
+    buscarConResumenMock.mockResolvedValue(fila() as never);
+    existeOtroClienteConCorreoMock.mockResolvedValue(false);
+    modificarDatosMock.mockImplementation((async (_id: number, datos: Record<string, unknown>) =>
+      fila(datos)) as never);
+  });
+
+  it('modifica nombre y teléfono, guarda el celular en E.164 y no toca el correo', async () => {
+    const respuesta = await modificar(1, cuerpo);
+
+    expect(respuesta.status).toBe(200);
+    expect(modificarDatosMock).toHaveBeenCalledWith(1, {
+      nombre: 'Ana María',
+      apellido: 'Pérez',
+      telefono: '+5493516123456',
+      correo: undefined,
+    });
+    expect(respuesta.body.data).toMatchObject({
+      id: 1,
+      cantidadEventos: 2,
+      cantidadSolicitudes: 3,
+    });
+    expect(respuesta.body.data).not.toHaveProperty('_count');
+  });
+
+  it('de un cliente sin cuenta cambia también el correo, en minúsculas y sin espacios', async () => {
+    const respuesta = await modificar(1, { ...cuerpo, correo: '  Nuevo@Empresa.COM ' });
+
+    expect(respuesta.status).toBe(200);
+    expect(existeOtroClienteConCorreoMock).toHaveBeenCalledWith('nuevo@empresa.com', 1);
+    expect(modificarDatosMock).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ correo: 'nuevo@empresa.com' }),
+    );
+  });
+
+  it('un correo que ya es de otro cliente responde 409 CONFLICT y no guarda nada', async () => {
+    existeOtroClienteConCorreoMock.mockResolvedValue(true);
+
+    const respuesta = await modificar(1, { ...cuerpo, correo: 'otro@empresa.com' });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(modificarDatosMock).not.toHaveBeenCalled();
+  });
+
+  it('cambiar el correo de un cliente con cuenta responde 422 y no guarda nada', async () => {
+    buscarConResumenMock.mockResolvedValue(fila({ usuarioId: 7 }) as never);
+
+    const respuesta = await modificar(1, { ...cuerpo, correo: 'otro@empresa.com' });
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+    expect(respuesta.body.error.details).toEqual([expect.objectContaining({ campo: 'correo' })]);
+    expect(modificarDatosMock).not.toHaveBeenCalled();
+  });
+
+  it('en un cliente con cuenta modifica nombre y teléfono, y mandar su mismo correo no es un cambio', async () => {
+    buscarConResumenMock.mockResolvedValue(fila({ usuarioId: 7 }) as never);
+
+    const respuesta = await modificar(1, { ...cuerpo, correo: 'ANA@empresa.com' });
+
+    expect(respuesta.status).toBe(200);
+    expect(existeOtroClienteConCorreoMock).not.toHaveBeenCalled();
+    expect(modificarDatosMock).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ correo: undefined }),
+    );
+  });
+
+  it.each([
+    ['sin nombre', { telefono: cuerpo.telefono }, 'nombre'],
+    ['con el nombre en blanco', { ...cuerpo, nombre: '   ' }, 'nombre'],
+    ['sin teléfono', { nombre: 'Ana' }, 'telefono'],
+    ['con un teléfono que no es celular', { ...cuerpo, telefono: '123' }, 'telefono'],
+    ['con un correo inválido', { ...cuerpo, correo: 'ana@' }, 'correo'],
+  ])('%s responde 400 VALIDATION_ERROR indicando el campo', async (_caso, datos, campo) => {
+    const respuesta = await modificar(1, datos);
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(respuesta.body.error.details).toEqual(
+      expect.arrayContaining([expect.objectContaining({ campo })]),
+    );
+    expect(modificarDatosMock).not.toHaveBeenCalled();
+  });
+
+  it('si el cliente no existe responde 404 NOT_FOUND', async () => {
+    buscarConResumenMock.mockResolvedValue(null);
+
+    const respuesta = await modificar(99, cuerpo);
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body.error.code).toBe('NOT_FOUND');
+    expect(modificarDatosMock).not.toHaveBeenCalled();
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app).patch('/api/clientes/1').send(cuerpo);
+    const comoCliente = await modificar(1, cuerpo, 'CLIENTE');
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
+    expect(modificarDatosMock).not.toHaveBeenCalled();
   });
 });
