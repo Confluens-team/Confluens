@@ -7,7 +7,7 @@ const findMany = vi.fn();
 
 vi.mock('../../lib/prisma.js', () => ({ prisma: { evento: { findMany } } }));
 
-const { listarAgenda } = await import('./eventos.repositorio.js');
+const { cancelar, listarAgenda } = await import('./eventos.repositorio.js');
 
 const whereDeLaConsulta = () => findMany.mock.calls[0]![0].where;
 
@@ -64,5 +64,41 @@ describe('eventos.repositorio: listarAgenda', () => {
       gte: new Date('2026-11-01'),
       lte: new Date('2026-11-30'),
     });
+  });
+});
+
+// HU-23: cancelar el evento no borra nada ni toca los pagos (RN-06: lo abonado no se reintegra, y
+// S-01 sigue abierto). Solo cambia el estado del evento y el de sus presupuestos activos, y el
+// trigger de EventoSalon libera el salón al propagar el estado (ADR 0011).
+describe('eventos.repositorio: cancelar', () => {
+  const presupuestoUpdateMany = vi.fn();
+  const eventoUpdate = vi.fn();
+  const tx = {
+    presupuesto: { updateMany: presupuestoUpdateMany },
+    evento: { update: eventoUpdate },
+  };
+
+  beforeEach(() => {
+    presupuestoUpdateMany.mockReset();
+    eventoUpdate.mockReset();
+  });
+
+  it('pasa el evento y sus presupuestos Estimado y Confirmado a Cancelado', async () => {
+    await cancelar(20, tx as never);
+
+    expect(presupuestoUpdateMany).toHaveBeenCalledWith({
+      where: { eventoId: 20, estado: { in: ['Estimado', 'Confirmado'] } },
+      data: { estado: 'Cancelado' },
+    });
+    expect(eventoUpdate).toHaveBeenCalledWith({
+      where: { id: 20 },
+      data: { estado: 'Cancelado' },
+    });
+  });
+
+  it('no toca los pagos del evento', async () => {
+    await cancelar(20, tx as never);
+
+    expect(Object.keys(tx).sort()).toEqual(['evento', 'presupuesto']);
   });
 });

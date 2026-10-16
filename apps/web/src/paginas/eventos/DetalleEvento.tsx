@@ -139,10 +139,26 @@ export function DetalleEvento({
     });
   }
 
+  // HU-23: la cancelación pide confirmación explícita. En un evento confirmado el aviso dice qué
+  // implica: el salón queda libre y lo abonado no se reintegra (RN-06).
   function manejarCancelacion() {
-    if (!window.confirm('¿Cancelar este evento? Esta acción no se puede deshacer.')) return;
+    const aviso =
+      evento?.estado === 'Reservado'
+        ? '¿Cancelar este evento? El salón queda libre en ese horario y lo abonado no se reintegra. Esta acción no se puede deshacer.'
+        : '¿Cancelar esta consulta? Esta acción no se puede deshacer.';
+    if (!window.confirm(aviso)) return;
     cancelarEvento.mutate();
   }
+
+  // El rechazo de la API (por ejemplo, RN-07 con menos de 48 horas) lo comparten la consulta
+  // (EnConsulta) y el evento confirmado (Reservado).
+  const errorDeCancelacion = cancelarEvento.isError && (
+    <p role="alert" className="text-sm text-destructive">
+      {cancelarEvento.error instanceof ErrorApiCliente
+        ? cancelarEvento.error.message
+        : 'No se pudo cancelar el evento.'}
+    </p>
+  );
 
   const horario =
     evento.inicio && evento.fin
@@ -215,6 +231,27 @@ export function DetalleEvento({
                     {armarPresupuesto.isPending ? 'Armando…' : 'Armar el presupuesto'}
                   </Button>
                 )}
+              </CardContent>
+            </Card>
+          )}
+          {evento.estado === 'EnConsulta' && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Cancelar la consulta</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <p className="text-muted-foreground">
+                  Si el cliente desiste, la consulta se cancela en cualquier momento y queda en su
+                  historial.
+                </p>
+                {errorDeCancelacion}
+                <Button
+                  variant="destructive"
+                  disabled={cancelarEvento.isPending}
+                  onClick={manejarCancelacion}
+                >
+                  Cancelar consulta
+                </Button>
               </CardContent>
             </Card>
           )}
@@ -355,13 +392,11 @@ export function DetalleEvento({
                   </p>
                 )}
 
-                {cancelarEvento.isError && (
-                  <p className="text-sm text-destructive">
-                    {cancelarEvento.error instanceof ErrorApiCliente
-                      ? cancelarEvento.error.message
-                      : 'No se pudo cancelar el evento.'}
-                  </p>
-                )}
+                <p className="text-muted-foreground">
+                  Se puede cancelar hasta 48 horas corridas antes del inicio. El salón queda libre y
+                  los pagos se conservan en la cuenta: lo abonado no se reintegra.
+                </p>
+                {errorDeCancelacion}
                 <Button
                   variant="destructive"
                   disabled={cancelarEvento.isPending}
