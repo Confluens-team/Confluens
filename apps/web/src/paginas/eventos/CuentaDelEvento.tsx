@@ -342,10 +342,10 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           {/* Un evento cobrado no tiene saldo que mirar: lo que importa es cuánto entró y que
-              ya está completo. Va en el verde con el que la agenda marca los eventos que ocupan el
-              salón, para que se lea de un vistazo sin tener que interpretar un $0 de saldo. */}
+              ya está completo. Va en el azul con el que la agenda marca los eventos Cobrados, para
+              que se lea de un vistazo sin tener que interpretar un $0 de saldo. */}
           {cobrado ? (
-            <div className="rounded-xl bg-emerald-700 px-4 py-3 text-crema">
+            <div className="rounded-xl bg-estado-cobrado px-4 py-3 text-crema">
               <p className="text-xs font-medium tracking-wide uppercase opacity-90">
                 Evento cobrado
               </p>

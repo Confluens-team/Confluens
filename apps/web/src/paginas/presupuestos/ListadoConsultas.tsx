@@ -17,9 +17,9 @@ import { EditarConsulta } from './EditarConsulta';
 
 // Los Confirmado no aparecen: pasan a la agenda de eventos.
 const ESTADOS: { valor: EstadoConsulta; clase: string }[] = [
-  { valor: 'Estimado', clase: 'bg-muted text-foreground' },
-  { valor: 'Expirado', clase: 'bg-amber-100 text-amber-900' },
-  { valor: 'Cancelado', clase: 'bg-bordo/10 text-bordo' },
+  { valor: 'Estimado', clase: 'bg-estado-consulta-fondo text-estado-consulta-texto' },
+  { valor: 'Expirado', clase: 'bg-estado-expirado-fondo text-estado-expirado-texto' },
+  { valor: 'Cancelado', clase: 'bg-estado-cancelado-fondo text-estado-cancelado-texto' },
 ];
 
 const claseDeEstado = (estado: string) => ESTADOS.find((e) => e.valor === estado)?.clase ?? '';
@@ -273,7 +273,7 @@ export function ListadoConsultas() {
                       onClick={() => setAbierta(presupuesto.id)}
                       className={cn(
                         'cursor-pointer transition-colors hover:bg-muted/60',
-                        expirado && 'bg-amber-50/70',
+                        expirado && 'bg-estado-expirado-fondo/50',
                       )}
                     >
                       <td
@@ -350,7 +350,7 @@ export function ListadoConsultas() {
                           {presupuesto.estado}
                         </span>
                         {expirado && (
-                          <p className="mt-1 flex items-start gap-1 text-xs font-medium text-amber-900">
+                          <p className="mt-1 flex items-start gap-1 text-xs font-medium text-estado-expirado-texto">
                             <AlertTriangle className="mt-px size-3 shrink-0" />
                             Presupuesto vencido, recalcular
                           </p>

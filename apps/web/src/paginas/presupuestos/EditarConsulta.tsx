@@ -83,10 +83,10 @@ const mensajeDeError = (error: unknown, porDefecto: string) =>
   error instanceof ErrorApiCliente ? error.message : porDefecto;
 
 const ESTADOS: Record<string, string> = {
-  Estimado: 'bg-muted text-foreground',
-  Expirado: 'bg-amber-100 text-amber-900',
-  Cancelado: 'bg-bordo/10 text-bordo',
-  Confirmado: 'bg-emerald-100 text-emerald-900',
+  Estimado: 'bg-estado-consulta-fondo text-estado-consulta-texto',
+  Expirado: 'bg-estado-expirado-fondo text-estado-expirado-texto',
+  Cancelado: 'bg-estado-cancelado-fondo text-estado-cancelado-texto',
+  Confirmado: 'bg-estado-confirmado-fondo text-estado-confirmado-texto',
 };
 
 const claseSelect = 'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm';
@@ -483,7 +483,7 @@ function Formulario({
       </header>
 
       {expirado && enCurso && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-estado-expirado-fondo px-4 py-3 text-sm text-estado-expirado-texto ring-1 ring-estado-expirado/30">
           <p className="flex items-center gap-2 font-medium">
             <AlertTriangle className="size-4 shrink-0" />
             {recalculado
@@ -498,7 +498,7 @@ function Formulario({
         </div>
       )}
       {confirmado && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-estado-confirmado-fondo px-4 py-3 text-sm text-estado-confirmado-texto ring-1 ring-estado-confirmado-borde">
           <p>
             Evento confirmado: podés modificar todo y sigue confirmado. Si cambia el total, cambia
             el saldo a cobrar; si cambiás la fecha, el horario se corre al mismo día.

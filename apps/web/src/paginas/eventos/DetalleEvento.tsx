@@ -54,7 +54,7 @@ function PasosDelEvento({ estado }: { estado: EstadoEvento }) {
               aria-current={actual ? 'step' : undefined}
               className={cn(
                 'inline-flex items-center gap-1 rounded-full px-2 py-0.5',
-                hecho && 'text-emerald-800',
+                hecho && 'text-estado-confirmado-texto',
                 actual && 'bg-bordo/10 font-medium text-bordo',
                 !hecho && !actual && 'text-muted-foreground',
               )}
