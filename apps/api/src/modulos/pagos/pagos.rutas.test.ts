@@ -13,6 +13,7 @@ vi.mock('./pagos.repositorio.js', () => ({
   sumarPagos: vi.fn(),
   buscarMedioPagoActivo: vi.fn(),
   listarMediosPagoActivos: vi.fn(),
+  listarTodosLosMediosPago: vi.fn(),
   buscarMedioPagoPorNombre: vi.fn(),
   crearMedioPago: vi.fn(),
   crear: vi.fn(),
@@ -31,6 +32,7 @@ const {
   sumarPagos,
   buscarMedioPagoActivo,
   listarMediosPagoActivos,
+  listarTodosLosMediosPago,
   buscarMedioPagoPorNombre,
   crearMedioPago,
   crear,
@@ -45,6 +47,7 @@ const listarDeEventoMock = vi.mocked(listarDeEvento);
 const sumarPagosMock = vi.mocked(sumarPagos);
 const buscarMedioPagoActivoMock = vi.mocked(buscarMedioPagoActivo);
 const listarMediosPagoActivosMock = vi.mocked(listarMediosPagoActivos);
+const listarTodosLosMediosPagoMock = vi.mocked(listarTodosLosMediosPago);
 const buscarMedioPagoPorNombreMock = vi.mocked(buscarMedioPagoPorNombre);
 const crearMedioPagoMock = vi.mocked(crearMedioPago);
 const crearMock = vi.mocked(crear);
@@ -735,6 +738,61 @@ describe('GET /api/medios-pago', () => {
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.data).toHaveLength(1);
     expect(respuesta.body.data[0].nombre).toBe('Efectivo');
+    expect(listarTodosLosMediosPagoMock).not.toHaveBeenCalled();
+  });
+
+  // HU-20, CP-20-01 y CP-20-03: el listado trae también los dados de baja, con su estado y su
+  // habilitación, en el orden alfabético en que los devuelve el repositorio.
+  it('con incluirInactivos=true devuelve también los dados de baja, con su habilitación', async () => {
+    listarTodosLosMediosPagoMock.mockResolvedValue([
+      { ...medioPagoFixture, id: 3, nombre: 'A la habitación' },
+      { ...medioPagoFixture, id: 1, nombre: 'Efectivo' },
+      {
+        ...medioPagoFixture,
+        id: 6,
+        nombre: 'Tarjeta',
+        activo: false,
+        conFactura: false,
+        sinFactura: false,
+      },
+    ]);
+
+    const respuesta = await request(app)
+      .get('/api/medios-pago?incluirInactivos=true')
+      .set('Cookie', [cookieResponsableEventos]);
+
+    expect(respuesta.status).toBe(200);
+    expect(listarMediosPagoActivosMock).not.toHaveBeenCalled();
+    expect(respuesta.body.data.map((m: { nombre: string }) => m.nombre)).toEqual([
+      'A la habitación',
+      'Efectivo',
+      'Tarjeta',
+    ]);
+    expect(respuesta.body.data[2]).toMatchObject({
+      activo: false,
+      conFactura: false,
+      sinFactura: false,
+    });
+  });
+
+  it('un valor de incluirInactivos que no es booleano responde 400 VALIDATION_ERROR', async () => {
+    const respuesta = await request(app)
+      .get('/api/medios-pago?incluirInactivos=quizas')
+      .set('Cookie', [cookieResponsableEventos]);
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  // CP-20-05
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app).get('/api/medios-pago');
+    const comoCliente = await request(app)
+      .get('/api/medios-pago')
+      .set('Cookie', [cookieDe('CLIENTE', 'cliente@mail.test')]);
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
   });
 });
 

@@ -2,6 +2,7 @@ import type {
   CrearMedioPago,
   CrearPago,
   CuentaEvento,
+  FiltrosMediosPago,
   MedioPago,
   RespuestaExito,
   ResultadoPago,
@@ -30,8 +31,9 @@ export async function listarCuenta(req: Request, res: Response): Promise<void> {
   res.status(200).json(cuerpo);
 }
 
-export async function listarMedios(_req: Request, res: Response): Promise<void> {
-  const medios = await listarMediosPago();
+// req.query ya validado por validar({ query: esquemaFiltrosMediosPago }) en pagos.rutas.ts.
+export async function listarMedios(req: Request, res: Response): Promise<void> {
+  const medios = await listarMediosPago(req.query as FiltrosMediosPago);
   const cuerpo: RespuestaExito<MedioPago[]> = { data: medios as unknown as MedioPago[] };
   res.status(200).json(cuerpo);
 }

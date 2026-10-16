@@ -34,6 +34,13 @@ export const esquemaCrearMedioPago = z
   });
 export type CrearMedioPago = z.infer<typeof esquemaCrearMedioPago>;
 
+// Filtro de GET /medios-pago. Sin parámetros devuelve solo los activos, que es lo que usa el
+// formulario de cobro; el listado de HU-20 pide también los dados de baja.
+export const esquemaFiltrosMediosPago = z.object({
+  incluirInactivos: z.stringbool().optional(),
+});
+export type FiltrosMediosPago = z.infer<typeof esquemaFiltrosMediosPago>;
+
 // OJO: a diferencia del resto de los importes del sistema, `monto` NO es un importe sin IVA
 // (RN-05). Es la plata que el cliente entregó, y se mide contra la base de cobro de RN-01, que
 // incluye el IVA cuando el presupuesto tiene requiereFactura.
