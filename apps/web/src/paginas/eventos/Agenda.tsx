@@ -4,7 +4,7 @@ import {
   type EstadoEvento,
   type EventoAgenda,
 } from '@confluens/shared';
-import { ArrowLeft, CalendarDays, Clock, List, Users } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Clock, Users } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import { type ReactNode, useState } from 'react';
 
@@ -25,11 +25,11 @@ import { DetalleEvento } from './DetalleEvento';
 import { ESTADOS, ESTADOS_DEL_FILTRO } from './estado-evento';
 import { TarjetaResumenEvento } from './TarjetaResumenEvento';
 
-type Vista = 'calendario' | 'lista';
+export type VistaAgenda = 'calendario' | 'lista';
 
 const hora = (instante: string | null) => (instante ? horaDelEvento(instante) : null);
 
-// Chip de filtro: se usa igual para los salones, los estados y el conmutador de vista.
+// Chip de filtro: se usa igual para los salones y para los estados.
 function Chip({
   activo,
   onClick,
@@ -178,8 +178,12 @@ function ListaDeEventos({
 // lee como disponible aunque haya consultas EnConsulta sobre ella (criterio 5), y los Cancelado
 // quedan afuera hasta que se los pida (criterio 2). Tres eventos el mismo día y horario en salones
 // distintos se ven los tres: el filtro de salón es opcional y acepta varios a la vez.
-export function Agenda() {
-  const [vista, setVista] = useState<Vista>('calendario');
+/**
+ * La agenda de eventos en una de sus dos vistas. Cada una es su propia pestaña del panel: «Agenda»
+ * es el calendario y «Eventos» la lista agrupada por mes (decisión de Franco, 16/10/2026). Antes
+ * convivían en la misma pestaña con un conmutador.
+ */
+export function Agenda({ vista }: { vista: VistaAgenda }) {
   const [salonId, setSalonId] = useState<number[]>([]);
   const [estado, setEstado] = useState<EstadoEvento[]>([...ESTADOS_QUE_OCUPAN_SALON]);
   // Ventana visible del calendario; la manda él mismo al cambiar de mes o de vista.
@@ -191,7 +195,7 @@ export function Agenda() {
   const [resumen, setResumen] = useState<{
     id: number;
     ancla: HTMLElement;
-    origen: Vista;
+    origen: VistaAgenda;
   } | null>(null);
   // Dónde quedó parado el calendario. FullCalendar se desmonta al abrir el detalle, así que sin
   // esto volvería siempre al mes de hoy en la vista mensual.
@@ -214,13 +218,6 @@ export function Agenda() {
     },
     !enCalendario || rango !== null,
   );
-
-  // El resumen está anclado a un elemento del calendario o de la lista: si cambia lo que se
-  // muestra, ese elemento puede desaparecer y la tarjeta quedaría flotando en cualquier lado.
-  function cambiarVista(valor: Vista) {
-    setResumen(null);
-    setVista(valor);
-  }
 
   function alternarSalon(id: number) {
     setResumen(null);
@@ -268,7 +265,7 @@ export function Agenda() {
     return (
       <div className="space-y-2">
         <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
-          <ArrowLeft /> Volver a la agenda
+          <ArrowLeft /> {enCalendario ? 'Volver a la agenda' : 'Volver a los eventos'}
         </Button>
         <DetalleEvento
           eventoId={eventoAbierto}
@@ -289,29 +286,9 @@ export function Agenda() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-lg bg-muted p-1">
-          {(
-            [
-              { valor: 'calendario', texto: 'Calendario', icono: CalendarDays },
-              { valor: 'lista', texto: 'Lista', icono: List },
-            ] as const
-          ).map(({ valor, texto, icono: Icono }) => (
-            <button
-              key={valor}
-              type="button"
-              onClick={() => cambiarVista(valor)}
-              className={cn(
-                'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                vista === valor ? 'bg-card shadow-sm' : 'text-muted-foreground',
-              )}
-            >
-              <Icono className="size-4" /> {texto}
-            </button>
-          ))}
-        </div>
-        {agenda.isFetching && <span className="text-xs text-muted-foreground">Actualizando…</span>}
-      </div>
+      {agenda.isFetching && (
+        <p className="text-right text-xs text-muted-foreground">Actualizando…</p>
+      )}
 
       <div className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-border">
         <div>
