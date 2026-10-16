@@ -360,7 +360,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
           ) : cancelado ? (
             // RN-06: lo abonado no se reintegra. La cuenta queda para consulta, sin cobro ni saldo
             // que perseguir: lo que importa es cuánto entró antes de la baja.
-            <div className="rounded-xl bg-bordo/10 px-4 py-3 text-bordo">
+            <div className="rounded-xl bg-estado-cancelado-fondo px-4 py-3 text-estado-cancelado-texto">
               <p className="text-xs font-medium tracking-wide uppercase">Evento cancelado</p>
               <p className="text-2xl font-semibold tabular-nums">
                 {formateadorMoneda.format(Number(saldo.pagado))}
@@ -417,7 +417,13 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                 {porcentajeAbonado}% abonado · {formateadorMoneda.format(Number(saldo.pagado))}
               </span>
               {/* HU-21: la seña se ve en cualquier estado, con su importe y si ya se alcanzó. */}
-              <span className={saldo.senaAlcanzada ? 'text-emerald-800' : 'text-dorado-texto'}>
+              <span
+                className={
+                  saldo.senaAlcanzada
+                    ? 'text-estado-confirmado-texto'
+                    : 'text-estado-consulta-texto'
+                }
+              >
                 Seña {PORCENTAJE_SENA}%: {formateadorMoneda.format(montoSena)}
                 {saldo.senaAlcanzada && ' · cubierta'}
               </span>
@@ -439,7 +445,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
           </p>
 
           {resultado?.reservoElSalon && (
-            <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+            <div className="space-y-2 rounded-lg border border-estado-confirmado-borde bg-estado-confirmado-fondo p-3 text-sm text-estado-confirmado-texto">
               <p className="font-medium">
                 Con este pago se alcanzó la seña: el presupuesto quedó confirmado y el salón
                 reservado.{' '}
@@ -489,20 +495,28 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
             ) : (
               <ul className="divide-y">
                 {pagos.map((pago) => {
-                  // HU-21: el pago que completó la seña y el que completó el total se destacan en
-                  // verde, que es el color con el que la cuenta y la agenda marcan lo ya cobrado.
+                  // HU-21: el pago que completó la seña y el que completó el total se destacan con
+                  // el color del estado al que llevaron el evento, el mismo de la agenda: verde de
+                  // Confirmado y azul de Cobrado. Si un solo pago hizo las dos cosas, la fila va en
+                  // azul, que es como quedó el evento, y lleva las dos etiquetas.
                   const hitos = [
-                    pago.completaSena && 'Seña completa',
-                    pago.completaPago && 'Evento con pago completo',
-                  ].filter((hito): hito is string => Boolean(hito));
+                    pago.completaSena && { texto: 'Seña completa', clase: 'bg-estado-confirmado' },
+                    pago.completaPago && {
+                      texto: 'Evento con pago completo',
+                      clase: 'bg-estado-cobrado',
+                    },
+                  ].filter((hito): hito is { texto: string; clase: string } => Boolean(hito));
                   const destacado = hitos.length > 0;
                   return (
                     <li
                       key={pago.id}
                       className={cn(
                         'py-2',
-                        destacado &&
-                          'my-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-emerald-900',
+                        destacado && 'my-1 rounded-lg border px-2.5',
+                        pago.completaPago
+                          ? 'border-estado-cobrado-borde bg-estado-cobrado-fondo text-estado-cobrado-texto'
+                          : pago.completaSena &&
+                              'border-estado-confirmado-borde bg-estado-confirmado-fondo text-estado-confirmado-texto',
                       )}
                     >
                       <div className="flex justify-between gap-3">
@@ -518,10 +532,13 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                         <div className="mt-1 flex flex-wrap gap-1.5">
                           {hitos.map((hito) => (
                             <span
-                              key={hito}
-                              className="rounded-full bg-emerald-700 px-2 py-0.5 text-xs font-medium text-crema"
+                              key={hito.texto}
+                              className={cn(
+                                'rounded-full px-2 py-0.5 text-xs font-medium text-crema',
+                                hito.clase,
+                              )}
                             >
-                              {hito}
+                              {hito.texto}
                             </span>
                           ))}
                         </div>
@@ -530,7 +547,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                         <p
                           className={cn(
                             'text-xs',
-                            destacado ? 'mt-1 text-emerald-900/80' : 'text-muted-foreground',
+                            destacado ? 'mt-1 opacity-80' : 'text-muted-foreground',
                           )}
                         >
                           {pago.observacion}
