@@ -3,6 +3,7 @@ import type {
   FiltrosClientes,
   FiltrosHistorialCliente,
   HistorialCliente,
+  ModificarCliente,
 } from '@confluens/shared';
 
 import { ErrorApi } from '../../lib/errores.js';
@@ -110,4 +111,36 @@ export async function asignarEtiquetaACliente(
     throw ErrorApi.noEncontrado('No existe la etiqueta');
   }
   return conResumen(await repo.asignarEtiqueta(clienteId, etiquetaId));
+}
+
+/**
+ * HU-17: el personal corrige nombre, apellido y teléfono de cualquier cliente. El correo solo si el
+ * cliente no tiene cuenta: en uno con cuenta es su usuario para iniciar sesión y lo cambia él
+ * (decisión del PO, 16/10/2026). Mandar el mismo correo que ya tiene no cuenta como un cambio, así
+ * la web puede enviar el formulario entero. Un correo de otro cliente se rechaza con 409.
+ */
+export async function modificarCliente(
+  clienteId: number,
+  datos: ModificarCliente,
+  repo: ClientesRepositorio = clientesRepositorioReal,
+) {
+  const actual = await repo.buscarConResumen(clienteId);
+  if (!actual) throw ErrorApi.noEncontrado('No existe el cliente');
+
+  const nuevoCorreo = datos.correo;
+  const cambiaElCorreo = nuevoCorreo !== undefined && nuevoCorreo !== actual.correo.toLowerCase();
+  if (cambiaElCorreo) {
+    if (actual.usuarioId !== null) {
+      throw ErrorApi.reglaNegocio(
+        'El correo de un cliente con cuenta es su usuario para iniciar sesión: lo cambia él desde su cuenta',
+        [{ campo: 'correo', mensaje: 'El cliente tiene cuenta, no se puede cambiar su correo' }],
+      );
+    }
+    if (await repo.existeOtroClienteConCorreo(nuevoCorreo, clienteId)) {
+      throw ErrorApi.conflicto('Ese correo ya pertenece a otro cliente');
+    }
+  }
+
+  const correo = cambiaElCorreo ? nuevoCorreo : undefined;
+  return conResumen(await repo.modificarDatos(clienteId, { ...datos, correo }));
 }

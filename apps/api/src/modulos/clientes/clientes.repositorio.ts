@@ -1,4 +1,4 @@
-import type { FiltrosHistorialCliente } from '@confluens/shared';
+import type { FiltrosHistorialCliente, ModificarCliente } from '@confluens/shared';
 
 import { prisma } from '../../lib/prisma.js';
 
@@ -97,6 +97,31 @@ export async function asignarEtiqueta(clienteId: number, etiquetaId: number | nu
   });
 }
 
+// HU-17: el correo no tiene índice único (el personal puede cargar fichas a mano), así que la
+// unicidad se chequea acá. Sin distinguir mayúsculas: hay fichas viejas con el correo como se tipeó.
+export async function existeOtroClienteConCorreo(correo: string, excluirId: number) {
+  return (
+    (await prisma.cliente.count({
+      where: { correo: { equals: correo, mode: 'insensitive' }, id: { not: excluirId } },
+    })) > 0
+  );
+}
+
+// HU-17: actualiza solo los datos de contacto. Los eventos, presupuestos y pagos cuelgan del id de
+// la ficha, así que el historial no se toca. Devuelve el mismo shape que el listado.
+export async function modificarDatos(clienteId: number, datos: ModificarCliente) {
+  return prisma.cliente.update({
+    where: { id: clienteId },
+    data: {
+      nombre: datos.nombre,
+      apellido: datos.apellido ?? null,
+      telefono: datos.telefono,
+      correo: datos.correo,
+    },
+    include: CON_RESUMEN,
+  });
+}
+
 export type ClientesRepositorio = {
   listarConResumen: typeof listarConResumen;
   buscarConResumen: typeof buscarConResumen;
@@ -105,4 +130,6 @@ export type ClientesRepositorio = {
   existeCliente: typeof existeCliente;
   existeEtiqueta: typeof existeEtiqueta;
   asignarEtiqueta: typeof asignarEtiqueta;
+  existeOtroClienteConCorreo: typeof existeOtroClienteConCorreo;
+  modificarDatos: typeof modificarDatos;
 };

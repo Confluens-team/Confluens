@@ -4,6 +4,7 @@ import {
   esquemaFiltrosClientes,
   esquemaFiltrosHistorialCliente,
   esquemaHistorialCliente,
+  esquemaModificarCliente,
 } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -13,7 +14,7 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { asignarEtiqueta, historial, listar, obtener } from './clientes.controlador.js';
+import { asignarEtiqueta, historial, listar, modificar, obtener } from './clientes.controlador.js';
 
 // Detalle de la capa HTTP, no se comparte con el frontend (a diferencia de los esquemas de body).
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
@@ -79,6 +80,31 @@ registroOpenApi.registerPath({
 
 registroOpenApi.registerPath({
   method: 'patch',
+  path: '/clientes/{id}',
+  tags: ['Clientes'],
+  summary:
+    'Modifica los datos de contacto de un cliente (HU-17): nombre, apellido y teléfono de ' +
+    'cualquiera; el correo solo si el cliente no tiene cuenta',
+  request: {
+    params: esquemaIdParam,
+    body: { content: { 'application/json': { schema: esquemaModificarCliente } } },
+  },
+  responses: {
+    200: {
+      description: 'El cliente con sus datos actualizados',
+      content: { 'application/json': { schema: z.object({ data: esquemaClienteConResumen }) } },
+    },
+    400: { description: 'Falta un dato o es inválido; el detalle indica el campo' },
+    401: { description: 'Sin sesión' },
+    403: { description: 'La sesión no es del personal' },
+    404: { description: 'No existe el cliente' },
+    409: { description: 'El correo ya pertenece a otro cliente' },
+    422: { description: 'Se intentó cambiar el correo de un cliente con cuenta' },
+  },
+});
+
+registroOpenApi.registerPath({
+  method: 'patch',
   path: '/clientes/{id}/etiqueta',
   tags: ['Clientes'],
   summary: 'Le asigna una etiqueta al cliente, o se la quita con etiquetaId null',
@@ -123,6 +149,13 @@ rutasClientes.get(
   autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaIdParam, query: esquemaFiltrosHistorialCliente }),
   asincrono(historial),
+);
+rutasClientes.patch(
+  '/:id',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaIdParam, body: esquemaModificarCliente }),
+  asincrono(modificar),
 );
 rutasClientes.patch(
   '/:id/etiqueta',

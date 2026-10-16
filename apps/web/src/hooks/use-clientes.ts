@@ -4,6 +4,7 @@ import type {
   FiltrosClientes,
   FiltrosHistorialCliente,
   HistorialCliente,
+  ModificarCliente,
   RespuestaExito,
 } from '@confluens/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -73,6 +74,32 @@ export function useAsignarEtiqueta() {
     mutationFn: async ({ clienteId, ...datos }: AsignarEtiqueta & { clienteId: number }) => {
       const respuesta = await apiFetch<RespuestaExito<ClienteConResumen>>(
         `/clientes/${clienteId}/etiqueta`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(datos),
+        },
+      );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['clientes'] });
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
+    },
+  });
+}
+
+/**
+ * HU-17: corrige los datos de contacto de un cliente. El nombre y el teléfono se ven en el listado,
+ * en la agenda, en las consultas y en el historial, así que se invalidan todas esas listas.
+ */
+export function useModificarCliente() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ clienteId, ...datos }: ModificarCliente & { clienteId: number }) => {
+      const respuesta = await apiFetch<RespuestaExito<ClienteConResumen>>(
+        `/clientes/${clienteId}`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },

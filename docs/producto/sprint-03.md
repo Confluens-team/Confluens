@@ -78,7 +78,7 @@ Como Responsable de Eventos, quiero modificar los datos de contacto de un client
 - La modificación no altera el historial: los eventos, presupuestos y pagos del cliente siguen asociados a la misma ficha.
 - Solo el personal interno puede modificar los datos de un cliente; el rol Cliente no accede.
 
-**Implementación.** `PATCH /api/clientes/:id` (`409` si el correo ya es de otro cliente, `422` si se intenta cambiar el correo de un cliente con cuenta, `404` si no existe). El celular y el correo reusan la validación y la normalización del registro (`telefono.esquema.ts`, correo en minúsculas, `dominio.md`). En la ficha, el campo de correo se muestra solo lectura cuando el cliente tiene cuenta.
+**Hecho (16/10/2026).** `PATCH /api/clientes/:id` (`409` si el correo ya es de otro cliente, sin distinguir mayúsculas; `422` si se intenta cambiar el correo de un cliente con cuenta; `404` si no existe). El body lo valida `esquemaModificarCliente` (`packages/shared`): el celular reusa `esquemaCelular` y se guarda en E.164; el correo, opcional, se guarda en minúsculas y sin espacios; el apellido, opcional, queda `null` para una razón social. Mandar el mismo correo que ya tiene el cliente no cuenta como un cambio, así que la web puede enviar el formulario entero. En la web, `EditorDatosCliente.tsx` dentro de la ficha: el correo se muestra de solo lectura cuando el cliente tiene cuenta y no se envía.
 
 ## HU-18 — Consultar historial de eventos de un cliente
 
