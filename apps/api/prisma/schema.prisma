@@ -298,12 +298,15 @@ model LineaPresupuesto {
   horaEstimada   String?
 }
 
-// Catálogo de medios de pago (Efectivo, Tarjeta, A la habitación). Baja lógica con `activo`: no se
-// borra para no romper los pagos históricos que lo referencian. El ABM es del Sprint 3.
+// Catálogo de medios de pago (RN-14). Baja lógica con `activo`: no se borra para no romper los pagos
+// históricos que lo referencian. `conFactura` y `sinFactura` dicen en qué cobros se puede usar,
+// según el presupuesto requiera factura o no (al menos uno de los dos; lo controla el alta, HU-19).
 model MedioPago {
   id            Int      @id @default(autoincrement())
   nombre        String   @unique
   activo        Boolean  @default(true)
+  conFactura    Boolean  @default(false)
+  sinFactura    Boolean  @default(false)
   pagos         Pago[]
   creadoEn      DateTime @default(now())
   actualizadoEn DateTime @updatedAt

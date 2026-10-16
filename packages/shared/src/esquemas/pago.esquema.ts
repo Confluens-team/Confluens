@@ -3,15 +3,43 @@ import { z } from 'zod';
 import { esquemaFecha, esquemaFechaHora, esquemaId, esquemaImporte } from './comunes.esquema.js';
 import { esquemaEstadoEvento } from './evento.esquema.js';
 
-// Catálogo de medios de pago (Efectivo, Tarjeta, A la habitación). Baja lógica con `activo`: un
-// medio dado de baja no se borra, para no romper los pagos históricos que lo referencian.
-// El ABM es del Sprint 3 (HU-36 a HU-39); acá solo se leen los activos para poblar el formulario.
+// Catálogo de medios de pago (RN-14). Baja lógica con `activo`: un medio dado de baja no se borra,
+// para no romper los pagos históricos que lo referencian. `conFactura` y `sinFactura` dicen en qué
+// cobros se puede usar según el presupuesto requiera factura o no (dominio.md, RN-14).
 export const esquemaMedioPago = z.object({
   id: esquemaId,
   nombre: z.string(),
   activo: z.boolean(),
+  conFactura: z.boolean(),
+  sinFactura: z.boolean(),
 });
 export type MedioPago = z.infer<typeof esquemaMedioPago>;
+
+// Contrato de POST /medios-pago (HU-19). El nombre es único sin distinguir mayúsculas (lo controla
+// el servicio) y hay que habilitarlo para al menos uno de los dos casos. Lo completa el personal en
+// el panel, así que los mensajes van en español.
+export const esquemaCrearMedioPago = z
+  .object({
+    nombre: z
+      .string('Escribí el nombre del medio de pago')
+      .trim()
+      .min(1, 'Escribí el nombre del medio de pago')
+      .max(40, 'El nombre admite hasta 40 caracteres'),
+    conFactura: z.boolean().default(false),
+    sinFactura: z.boolean().default(false),
+  })
+  .refine((medio) => medio.conFactura || medio.sinFactura, {
+    path: ['conFactura'],
+    message: 'Elegí si se puede usar con factura, sin factura o en los dos casos',
+  });
+export type CrearMedioPago = z.infer<typeof esquemaCrearMedioPago>;
+
+// Filtro de GET /medios-pago. Sin parámetros devuelve solo los activos, que es lo que usa el
+// formulario de cobro; el listado de HU-20 pide también los dados de baja.
+export const esquemaFiltrosMediosPago = z.object({
+  incluirInactivos: z.stringbool().optional(),
+});
+export type FiltrosMediosPago = z.infer<typeof esquemaFiltrosMediosPago>;
 
 // OJO: a diferencia del resto de los importes del sistema, `monto` NO es un importe sin IVA
 // (RN-05). Es la plata que el cliente entregó, y se mide contra la base de cobro de RN-01, que

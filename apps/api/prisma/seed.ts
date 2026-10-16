@@ -2,7 +2,7 @@
 // Fuente única: docs/negocio/tarifario-2026.md. Todos los precios en pesos, sin IVA (RN-05).
 // Es idempotente: se puede correr varias veces (upsert por nombre/email).
 // Uso: npm run prisma:seed -w @confluens/api
-import { MEDIOS_PAGO } from '@confluens/shared';
+import { MEDIOS_PAGO_INICIALES } from '@confluens/shared';
 
 import { hashearContrasena } from '../src/lib/contrasena.js';
 import { prisma } from '../src/lib/prisma.js';
@@ -323,22 +323,26 @@ async function cargarServicios(): Promise<void> {
   }
 }
 
-// Los medios con los que hoy cobra el hotel (dominio.md, modelo-datos.md). Cuáles de ellos se
-// pueden elegir en cada cobro depende de si el presupuesto se factura (RN-14); la lista vive en
-// shared porque la aplican la web y la API. El ABM es del Sprint 3 (HU-36 a HU-39); acá solo la
-// precarga, sin la que no se puede registrar ningún pago.
+// El catálogo inicial de medios de pago (RN-14), con su habilitación para cobros con factura, sin
+// factura o los dos; vive en shared porque la regla la aplican la web y la API. Después el personal
+// da de alta otros desde el panel (HU-19); acá solo la precarga, sin la que no se puede cobrar.
 //
-// La precarga que vale es la de la migración 20261013201842_medios_de_pago_rn_14, porque el deploy
-// corre `prisma migrate deploy` y nunca el seed. Esto queda para la base que se levanta a mano y
-// para que el seed se describa solo; al ser idempotente, no choca con la migración. La misma
-// migración le da baja lógica a «Tarjeta», el medio de la versión anterior: los pagos históricos
-// que lo referencian quedan intactos y se siguen mostrando, pero ya no se ofrece ni se acepta.
+// La precarga que vale es la de las migraciones 20261013201842_medios_de_pago_rn_14 y
+// 20261016211752_medios_de_pago_habilitacion_factura, porque el deploy corre `prisma migrate
+// deploy` y nunca el seed. Esto queda para la base que se levanta a mano y para que el seed se
+// describa solo; al ser idempotente, no choca con las migraciones. «Tarjeta», el medio de la
+// versión anterior, queda dado de baja y sin habilitar: los pagos históricos que lo referencian
+// quedan intactos y se siguen mostrando, pero ya no se ofrece ni se acepta.
 
 async function cargarMediosPago(): Promise<void> {
-  for (const nombre of MEDIOS_PAGO) {
-    // Solo `create`: si el medio ya existe no se reactiva, porque pudo haberse dado de baja a
-    // propósito y el seed se corre varias veces sobre la misma base.
-    await prisma.medioPago.upsert({ where: { nombre }, create: { nombre }, update: {} });
+  for (const { nombre, conFactura, sinFactura } of MEDIOS_PAGO_INICIALES) {
+    // Solo `create`: si el medio ya existe no se toca, porque pudo haberse dado de baja a propósito
+    // y el seed se corre varias veces sobre la misma base.
+    await prisma.medioPago.upsert({
+      where: { nombre },
+      create: { nombre, conFactura, sinFactura },
+      update: {},
+    });
   }
 }
 
@@ -348,7 +352,7 @@ try {
   await cargarUsuarios();
   await cargarMediosPago();
   console.log(
-    `Seed completo: ${SALONES.length} salones, ${SERVICIOS.length} servicios, ${MEDIOS_PAGO.length} medios de pago y ${USUARIOS.length} usuarios de prueba (contraseña: "${CONTRASENA_DESARROLLO}").`,
+    `Seed completo: ${SALONES.length} salones, ${SERVICIOS.length} servicios, ${MEDIOS_PAGO_INICIALES.length} medios de pago y ${USUARIOS.length} usuarios de prueba (contraseña: "${CONTRASENA_DESARROLLO}").`,
   );
 } finally {
   await prisma.$disconnect();

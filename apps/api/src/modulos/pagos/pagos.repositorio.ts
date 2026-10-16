@@ -36,6 +36,27 @@ export async function listarMediosPagoActivos(tx: Prisma.TransactionClient = pri
   return tx.medioPago.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } });
 }
 
+// HU-20: el listado completo, activos y dados de baja, en orden alfabético.
+export async function listarTodosLosMediosPago(tx: Prisma.TransactionClient = prisma) {
+  return tx.medioPago.findMany({ orderBy: { nombre: 'asc' } });
+}
+
+// HU-19: el nombre es único sin distinguir mayúsculas. El índice de la base es exacto, así que
+// antes de crear se busca así, activo o no: un medio dado de baja también ocupa el nombre.
+export async function buscarMedioPagoPorNombre(
+  nombre: string,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.medioPago.findFirst({ where: { nombre: { equals: nombre, mode: 'insensitive' } } });
+}
+
+export async function crearMedioPago(
+  datos: { nombre: string; conFactura: boolean; sinFactura: boolean },
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.medioPago.create({ data: datos });
+}
+
 export async function crear(
   datos: {
     eventoId: number;
@@ -114,6 +135,9 @@ export type PagosRepositorio = {
   sumarPagos: typeof sumarPagos;
   buscarMedioPagoActivo: typeof buscarMedioPagoActivo;
   listarMediosPagoActivos: typeof listarMediosPagoActivos;
+  listarTodosLosMediosPago: typeof listarTodosLosMediosPago;
+  buscarMedioPagoPorNombre: typeof buscarMedioPagoPorNombre;
+  crearMedioPago: typeof crearMedioPago;
   crear: typeof crear;
   confirmarPresupuestoYReservar: typeof confirmarPresupuestoYReservar;
   marcarCobrado: typeof marcarCobrado;
