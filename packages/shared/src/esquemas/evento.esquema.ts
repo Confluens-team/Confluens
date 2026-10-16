@@ -118,3 +118,48 @@ export const esquemaFiltrosAgenda = z
     message: 'La fecha hasta no puede ser anterior a la fecha desde',
   });
 export type FiltrosAgenda = z.infer<typeof esquemaFiltrosAgenda>;
+
+// Filtros de GET /clientes/:id/eventos (HU-18). A diferencia de la agenda, sin `estado` se
+// devuelven los eventos en cualquier estado, Cancelado incluido: es el historial del cliente.
+export const esquemaFiltrosHistorialCliente = z
+  .object({
+    estado: z.preprocess(comoLista, z.array(esquemaEstadoEvento).optional()),
+    desde: z.preprocess(vacioComoAusente, esquemaFecha.optional()),
+    hasta: z.preprocess(vacioComoAusente, esquemaFecha.optional()),
+  })
+  .refine((filtros) => !filtros.desde || !filtros.hasta || filtros.desde <= filtros.hasta, {
+    path: ['hasta'],
+    message: 'La fecha hasta no puede ser anterior a la fecha desde',
+  });
+export type FiltrosHistorialCliente = z.infer<typeof esquemaFiltrosHistorialCliente>;
+
+// Una fila del historial de un cliente (HU-18 C1). `salones` vacío: consulta social todavía sin
+// salón. `total` es el del presupuesto del evento, sin IVA (RN-05); null si no tiene presupuesto.
+export const esquemaEventoHistorial = z.object({
+  id: esquemaId,
+  fecha: esquemaFecha,
+  inicio: esquemaFechaHora.nullable(),
+  fin: esquemaFechaHora.nullable(),
+  estado: esquemaEstadoEvento,
+  tipo: esquemaTipoEvento,
+  tipoSocial: esquemaTipoEventoSocial.nullable(),
+  tipoSocialDetalle: z.string().nullable(),
+  cantidadPersonas: z.number().int().positive(),
+  salones: z.array(z.object({ id: esquemaId, nombre: z.string() })),
+  presupuestoId: esquemaId.nullable(),
+  total: esquemaImporte.nullable(),
+});
+export type EventoHistorial = z.infer<typeof esquemaEventoHistorial>;
+
+// Respuesta de GET /clientes/:id/eventos. `resumen` cuenta todos los eventos del cliente por estado
+// (HU-18 C5), sin aplicar los filtros: es el panorama del cliente, no de la búsqueda.
+export const esquemaHistorialCliente = z.object({
+  eventos: z.array(esquemaEventoHistorial),
+  resumen: z.object({
+    EnConsulta: z.number().int().nonnegative(),
+    Reservado: z.number().int().nonnegative(),
+    Cobrado: z.number().int().nonnegative(),
+    Cancelado: z.number().int().nonnegative(),
+  }),
+});
+export type HistorialCliente = z.infer<typeof esquemaHistorialCliente>;

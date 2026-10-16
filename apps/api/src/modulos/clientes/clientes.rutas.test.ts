@@ -2,21 +2,33 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { crearApp } from '../../app.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 
 // Se mockea el repositorio, no la base: el CI no levanta Postgres (ADR 0003).
 vi.mock('./clientes.repositorio.js', () => ({
   listarConResumen: vi.fn(),
   buscarConResumen: vi.fn(),
+  listarEventosDeCliente: vi.fn(),
+  contarEventosPorEstado: vi.fn(),
   existeCliente: vi.fn(),
   existeEtiqueta: vi.fn(),
   asignarEtiqueta: vi.fn(),
 }));
 
-const { listarConResumen, buscarConResumen, existeCliente, existeEtiqueta, asignarEtiqueta } =
-  await import('./clientes.repositorio.js');
+const {
+  listarConResumen,
+  buscarConResumen,
+  listarEventosDeCliente,
+  contarEventosPorEstado,
+  existeCliente,
+  existeEtiqueta,
+  asignarEtiqueta,
+} = await import('./clientes.repositorio.js');
 const listarConResumenMock = vi.mocked(listarConResumen);
 const buscarConResumenMock = vi.mocked(buscarConResumen);
+const listarEventosDeClienteMock = vi.mocked(listarEventosDeCliente);
+const contarEventosPorEstadoMock = vi.mocked(contarEventosPorEstado);
 const existeClienteMock = vi.mocked(existeCliente);
 const existeEtiquetaMock = vi.mocked(existeEtiqueta);
 const asignarEtiquetaMock = vi.mocked(asignarEtiqueta);
@@ -215,6 +227,171 @@ describe('GET /api/clientes/:id', () => {
 
     expect(respuesta.status).toBe(403);
     expect(buscarConResumenMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/clientes/:id/eventos (HU-18)', () => {
+  const app = crearApp();
+
+  const evento = (
+    id: number,
+    estado: 'EnConsulta' | 'Reservado' | 'Cobrado' | 'Cancelado',
+    extra: Record<string, unknown> = {},
+  ) => ({
+    id,
+    fecha: new Date('2026-11-15T00:00:00.000Z'),
+    inicio: null,
+    fin: null,
+    estado,
+    tipo: 'Corporativo',
+    tipoSocial: null,
+    tipoSocialDetalle: null,
+    cantidadPersonas: 40,
+    salones: [{ salon: { id: 5, nombre: 'Paraná' } }],
+    presupuestos: [{ id: id * 10, total: new Prisma.Decimal('100000') }],
+    ...extra,
+  });
+
+  beforeEach(() => {
+    existeClienteMock.mockReset();
+    listarEventosDeClienteMock.mockReset();
+    contarEventosPorEstadoMock.mockReset();
+    existeClienteMock.mockResolvedValue(true);
+    listarEventosDeClienteMock.mockResolvedValue([]);
+    contarEventosPorEstadoMock.mockResolvedValue([]);
+  });
+
+  // CP-18-01: todos los estados, con fecha, tipo, salones, personas, estado y total de cada uno.
+  it('devuelve los eventos en cualquier estado con sus datos y el total del presupuesto', async () => {
+    listarEventosDeClienteMock.mockResolvedValue([
+      evento(4, 'Cancelado'),
+      evento(3, 'Cobrado'),
+      evento(2, 'Reservado'),
+      evento(1, 'EnConsulta'),
+    ] as never);
+
+    const respuesta = await request(app)
+      .get('/api/clientes/1/eventos')
+      .set('Cookie', [cookieDe('GERENTE_GENERAL')]);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.eventos.map((e: { estado: string }) => e.estado)).toEqual([
+      'Cancelado',
+      'Cobrado',
+      'Reservado',
+      'EnConsulta',
+    ]);
+    expect(respuesta.body.data.eventos[0]).toEqual({
+      id: 4,
+      fecha: '2026-11-15',
+      inicio: null,
+      fin: null,
+      estado: 'Cancelado',
+      tipo: 'Corporativo',
+      tipoSocial: null,
+      tipoSocialDetalle: null,
+      cantidadPersonas: 40,
+      salones: [{ id: 5, nombre: 'Paraná' }],
+      presupuestoId: 40,
+      total: '100000.00',
+    });
+  });
+
+  // CP-18-02: la web la muestra como «Sin salón asignado».
+  it('una consulta social sin salón viene con la lista de salones vacía', async () => {
+    listarEventosDeClienteMock.mockResolvedValue([
+      evento(1, 'EnConsulta', { tipo: 'Social', tipoSocial: 'Casamiento', salones: [] }),
+    ] as never);
+
+    const respuesta = await request(app)
+      .get('/api/clientes/1/eventos')
+      .set('Cookie', [cookieDe('GERENTE_GENERAL')]);
+
+    expect(respuesta.body.data.eventos[0]).toMatchObject({
+      tipo: 'Social',
+      tipoSocial: 'Casamiento',
+      salones: [],
+    });
+  });
+
+  // CP-18-04: los filtros llegan validados al repositorio, que arma la consulta.
+  it('pasa los filtros de estado y fechas al repositorio', async () => {
+    await request(app)
+      .get('/api/clientes/1/eventos?estado=Cobrado,Cancelado&desde=2026-01-01&hasta=2026-12-31')
+      .set('Cookie', [cookieDe('GERENTE_GENERAL')]);
+
+    expect(listarEventosDeClienteMock).toHaveBeenCalledWith(1, {
+      estado: ['Cobrado', 'Cancelado'],
+      desde: '2026-01-01',
+      hasta: '2026-12-31',
+    });
+  });
+
+  it('un estado inexistente o un rango invertido responde 400 VALIDATION_ERROR', async () => {
+    for (const consulta of ['estado=Confirmado', 'desde=2026-12-31&hasta=2026-01-01']) {
+      const respuesta = await request(app)
+        .get(`/api/clientes/1/eventos?${consulta}`)
+        .set('Cookie', [cookieDe('GERENTE_GENERAL')]);
+
+      expect(respuesta.status).toBe(400);
+      expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    }
+    expect(listarEventosDeClienteMock).not.toHaveBeenCalled();
+  });
+
+  // C5: el resumen cuenta todos los eventos del cliente, completa los estados sin eventos con 0.
+  it('devuelve el resumen por estado, con cero en los estados sin eventos', async () => {
+    contarEventosPorEstadoMock.mockResolvedValue([
+      { estado: 'Cobrado', _count: { _all: 2 } },
+      { estado: 'Cancelado', _count: { _all: 1 } },
+    ] as never);
+
+    const respuesta = await request(app)
+      .get('/api/clientes/1/eventos?estado=Cobrado')
+      .set('Cookie', [cookieDe('GERENTE_GENERAL')]);
+
+    expect(contarEventosPorEstadoMock).toHaveBeenCalledWith(1);
+    expect(respuesta.body.data.resumen).toEqual({
+      EnConsulta: 0,
+      Reservado: 0,
+      Cobrado: 2,
+      Cancelado: 1,
+    });
+  });
+
+  // C6: sin eventos la API responde 200 con la lista vacía; la web lo informa.
+  it('un cliente sin eventos responde 200 con la lista vacía', async () => {
+    const respuesta = await request(app)
+      .get('/api/clientes/1/eventos')
+      .set('Cookie', [cookieDe('GERENTE_GENERAL')]);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.eventos).toEqual([]);
+  });
+
+  // CP-18-08
+  it('si el cliente no existe responde 404 NOT_FOUND', async () => {
+    existeClienteMock.mockResolvedValue(false);
+
+    const respuesta = await request(app)
+      .get('/api/clientes/99/eventos')
+      .set('Cookie', [cookieDe('GERENTE_GENERAL')]);
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body.error.code).toBe('NOT_FOUND');
+    expect(listarEventosDeClienteMock).not.toHaveBeenCalled();
+  });
+
+  // CP-18-09
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app).get('/api/clientes/1/eventos');
+    const comoCliente = await request(app)
+      .get('/api/clientes/1/eventos')
+      .set('Cookie', [cookieDe('CLIENTE')]);
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
+    expect(listarEventosDeClienteMock).not.toHaveBeenCalled();
   });
 });
 

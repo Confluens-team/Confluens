@@ -1,21 +1,55 @@
 import { ArrowLeft, CalendarDays, Mail, Phone } from 'lucide-react';
+import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { useCliente } from '@/hooks/use-clientes';
 import { useEtiquetas } from '@/hooks/use-etiquetas';
 import { formatearFecha, nombreCompleto } from '@/lib/formato';
+import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
+import { EditarConsulta } from '@/paginas/presupuestos/EditarConsulta';
 
 import { EditorEtiqueta, ID_LISTA_ETIQUETAS } from './EditorEtiqueta';
+import { HistorialCliente } from './HistorialCliente';
 
 const cantidad = (n: number, singular: string, plural: string) =>
   `${n} ${n === 1 ? singular : plural}`;
 
 // HU-16 C4: la ficha de un cliente, que se abre desde el listado. Muestra sus datos de contacto, si
 // tiene cuenta en el canal público y su etiqueta interna, que se puede cambiar desde acá igual que
-// desde el listado.
+// desde el listado. Debajo, su historial de eventos (HU-18): cada evento abre su detalle y desde
+// ahí su presupuesto, y se vuelve a la ficha por el mismo camino, como en la agenda.
 export function FichaCliente({ clienteId, onVolver }: { clienteId: number; onVolver: () => void }) {
   const cliente = useCliente(clienteId);
   const etiquetas = useEtiquetas();
+  const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
+  const [presupuestoAbierto, setPresupuestoAbierto] = useState<number | null>(null);
+
+  if (eventoAbierto !== null && presupuestoAbierto !== null) {
+    const volverAlEvento = () => setPresupuestoAbierto(null);
+    return (
+      <EditarConsulta
+        key={presupuestoAbierto}
+        id={presupuestoAbierto}
+        textoVolver="Volver al evento"
+        textoVolverAlGuardar="Volver al evento"
+        onVolver={volverAlEvento}
+        onGuardada={volverAlEvento}
+        onDadaDeBaja={volverAlEvento}
+        onAbrirEvento={volverAlEvento}
+      />
+    );
+  }
+
+  if (eventoAbierto !== null) {
+    return (
+      <div className="space-y-2">
+        <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
+          <ArrowLeft /> Volver a la ficha del cliente
+        </Button>
+        <DetalleEvento eventoId={eventoAbierto} onVerPresupuesto={setPresupuestoAbierto} />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
@@ -85,6 +119,10 @@ export function FichaCliente({ clienteId, onVolver }: { clienteId: number; onVol
             </div>
           </dl>
         </section>
+      )}
+
+      {cliente.data && (
+        <HistorialCliente clienteId={cliente.data.id} onAbrirEvento={setEventoAbierto} />
       )}
     </div>
   );

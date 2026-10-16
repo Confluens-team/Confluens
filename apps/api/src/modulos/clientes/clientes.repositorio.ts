@@ -1,3 +1,5 @@
+import type { FiltrosHistorialCliente } from '@confluens/shared';
+
 import { prisma } from '../../lib/prisma.js';
 
 // Capa de acceso a datos del módulo. Separada del servicio para poder mockearla en
@@ -37,6 +39,47 @@ export async function buscarConResumen(id: number) {
   return prisma.cliente.findUnique({ where: { id }, include: CON_RESUMEN });
 }
 
+// HU-18: los eventos del cliente en cualquier estado, del más reciente al más antiguo por fecha
+// (el id desempata los del mismo día). `desde` y `hasta` acotan la fecha del evento, inclusive.
+// Cada evento tiene un solo presupuesto (PO, 06/10/2026); se toma el último por las dudas.
+export async function listarEventosDeCliente(
+  clienteId: number,
+  { estado, desde, hasta }: FiltrosHistorialCliente,
+) {
+  return prisma.evento.findMany({
+    where: {
+      clienteId,
+      estado: estado ? { in: estado } : undefined,
+      fecha: {
+        gte: desde ? new Date(desde) : undefined,
+        lte: hasta ? new Date(hasta) : undefined,
+      },
+    },
+    orderBy: [{ fecha: 'desc' }, { id: 'desc' }],
+    select: {
+      id: true,
+      fecha: true,
+      inicio: true,
+      fin: true,
+      estado: true,
+      tipo: true,
+      tipoSocial: true,
+      tipoSocialDetalle: true,
+      cantidadPersonas: true,
+      salones: {
+        select: { salon: { select: { id: true, nombre: true } } },
+        orderBy: { salonId: 'asc' },
+      },
+      presupuestos: { orderBy: { creadoEn: 'desc' }, take: 1, select: { id: true, total: true } },
+    },
+  });
+}
+
+// HU-18 C5: cuántos eventos tiene el cliente en cada estado, sin filtros.
+export async function contarEventosPorEstado(clienteId: number) {
+  return prisma.evento.groupBy({ by: ['estado'], where: { clienteId }, _count: { _all: true } });
+}
+
 export async function existeCliente(id: number) {
   return (await prisma.cliente.count({ where: { id } })) > 0;
 }
@@ -57,6 +100,8 @@ export async function asignarEtiqueta(clienteId: number, etiquetaId: number | nu
 export type ClientesRepositorio = {
   listarConResumen: typeof listarConResumen;
   buscarConResumen: typeof buscarConResumen;
+  listarEventosDeCliente: typeof listarEventosDeCliente;
+  contarEventosPorEstado: typeof contarEventosPorEstado;
   existeCliente: typeof existeCliente;
   existeEtiqueta: typeof existeEtiqueta;
   asignarEtiqueta: typeof asignarEtiqueta;

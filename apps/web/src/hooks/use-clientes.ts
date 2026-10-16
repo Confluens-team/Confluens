@@ -2,6 +2,8 @@ import type {
   AsignarEtiqueta,
   ClienteConResumen,
   FiltrosClientes,
+  FiltrosHistorialCliente,
+  HistorialCliente,
   RespuestaExito,
 } from '@confluens/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -35,6 +37,29 @@ export function useCliente(id: number) {
       const respuesta = await apiFetch<RespuestaExito<ClienteConResumen>>(`/clientes/${id}`);
       return respuesta.data;
     },
+  });
+}
+
+/**
+ * HU-18: el historial de eventos de un cliente y su resumen por estado. La clave empieza con
+ * 'eventos' para que se refresque sola cuando un pago, una cancelación o una modificación
+ * invalidan los eventos (use-eventos.ts, use-pagos.ts).
+ */
+export function useHistorialCliente(clienteId: number, filtros: FiltrosHistorialCliente = {}) {
+  return useQuery({
+    queryKey: ['eventos', 'cliente', clienteId, filtros],
+    queryFn: async () => {
+      const parametros = new URLSearchParams();
+      if (filtros.estado?.length) parametros.set('estado', filtros.estado.join(','));
+      if (filtros.desde) parametros.set('desde', filtros.desde);
+      if (filtros.hasta) parametros.set('hasta', filtros.hasta);
+      const consulta = parametros.size ? `?${parametros}` : '';
+      const respuesta = await apiFetch<RespuestaExito<HistorialCliente>>(
+        `/clientes/${clienteId}/eventos${consulta}`,
+      );
+      return respuesta.data;
+    },
+    placeholderData: keepPreviousData,
   });
 }
 
