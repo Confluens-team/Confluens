@@ -7,6 +7,7 @@ import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { IconoEstado } from '@/components/IconoEstado';
 import { usePresupuestos } from '@/hooks/use-presupuestos';
 import { fechaLocal, formatearPesos, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { COLORES_TIPO_EVENTO } from '@/lib/tipo-evento';
@@ -142,10 +143,11 @@ export function ListadoConsultas() {
               type="button"
               onClick={() => setEstado(valor)}
               className={cn(
-                'rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
+                'inline-flex items-center gap-1 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
                 estado === valor ? 'border-bordo bg-bordo text-crema' : 'border-border bg-card',
               )}
             >
+              <IconoEstado estado={valor} />
               {texto}
             </button>
           ))}
@@ -343,10 +345,11 @@ export function ListadoConsultas() {
                       <td className="px-3 py-3">
                         <span
                           className={cn(
-                            'inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                            'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
                             claseDeEstado(presupuesto.estado),
                           )}
                         >
+                          <IconoEstado estado={presupuesto.estado} />
                           {presupuesto.estado}
                         </span>
                         {expirado && (

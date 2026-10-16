@@ -32,6 +32,7 @@ import { InputEntero } from '@/components/InputEntero';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { IconoEstado } from '@/components/IconoEstado';
 import { useConsulta, useDarDeBajaConsulta, useModificarConsulta } from '@/hooks/use-presupuestos';
 import { useSalones } from '@/hooks/use-salones';
 import { useServicios } from '@/hooks/use-servicios';
@@ -473,10 +474,11 @@ function Formulario({
           <BadgeTipoEvento evento={consulta.evento} />
           <span
             className={cn(
-              'rounded-full px-3 py-1 text-xs font-semibold',
+              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold',
               ESTADOS[consulta.estado] ?? '',
             )}
           >
+            <IconoEstado estado={consulta.estado} />
             {consulta.estado}
           </span>
         </div>

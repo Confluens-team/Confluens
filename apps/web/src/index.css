@@ -44,9 +44,9 @@
   --color-estado-cancelado-texto: #5f574f;
 
   /* Tipo de evento (ADR 0008): dos tonos bien separados y sin relleno, para no competir con el
-     estado. Grafito para el corporativo y frambuesa para el social. */
-  --color-tipo-corporativo: #4a4540;
-  --color-tipo-corporativo-suave: #cfc6bb;
+     estado. Violeta apagado para el corporativo y frambuesa para el social. */
+  --color-tipo-corporativo: #5e4b8b;
+  --color-tipo-corporativo-suave: #d7cfe6;
   --color-tipo-social: #a3346a;
   --color-tipo-social-suave: #ecbdd3;
 }

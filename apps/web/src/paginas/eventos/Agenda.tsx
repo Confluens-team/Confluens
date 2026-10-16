@@ -11,6 +11,7 @@ import { type ReactNode, useState } from 'react';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
+import { IconoEstado } from '@/components/IconoEstado';
 import { useAgenda } from '@/hooks/use-eventos';
 import { useSalones } from '@/hooks/use-salones';
 import { fechaLocal, formatearPesos, hoyISO, nombreCompleto } from '@/lib/formato';
@@ -140,10 +141,11 @@ function ListaDeEventos({
                     <div className="shrink-0 text-right">
                       <span
                         className={cn(
-                          'inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
                           estado.clase,
                         )}
                       >
+                        <IconoEstado estado={evento.estado} />
                         {estado.etiqueta}
                       </span>
                       {evento.totalPresupuesto && (
@@ -352,6 +354,7 @@ export function Agenda() {
                   className="size-2 rounded-full ring-1 ring-crema"
                   style={{ backgroundColor: ESTADOS[valor].color }}
                 />
+                <IconoEstado estado={valor} />
                 {ESTADOS[valor].etiqueta}
               </Chip>
             ))}
