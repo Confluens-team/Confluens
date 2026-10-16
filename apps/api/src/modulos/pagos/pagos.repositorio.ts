@@ -36,6 +36,11 @@ export async function listarMediosPagoActivos(tx: Prisma.TransactionClient = pri
   return tx.medioPago.findMany({ where: { activo: true }, orderBy: { nombre: 'asc' } });
 }
 
+// HU-20: el listado completo, activos y dados de baja, en orden alfabético.
+export async function listarTodosLosMediosPago(tx: Prisma.TransactionClient = prisma) {
+  return tx.medioPago.findMany({ orderBy: { nombre: 'asc' } });
+}
+
 // HU-19: el nombre es único sin distinguir mayúsculas. El índice de la base es exacto, así que
 // antes de crear se busca así, activo o no: un medio dado de baja también ocupa el nombre.
 export async function buscarMedioPagoPorNombre(
@@ -130,6 +135,7 @@ export type PagosRepositorio = {
   sumarPagos: typeof sumarPagos;
   buscarMedioPagoActivo: typeof buscarMedioPagoActivo;
   listarMediosPagoActivos: typeof listarMediosPagoActivos;
+  listarTodosLosMediosPago: typeof listarTodosLosMediosPago;
   buscarMedioPagoPorNombre: typeof buscarMedioPagoPorNombre;
   crearMedioPago: typeof crearMedioPago;
   crear: typeof crear;

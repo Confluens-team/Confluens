@@ -9,6 +9,8 @@ import { Label } from '@/components/ui/label';
 import { useCrearMedioPago } from '@/hooks/use-pagos';
 import { ErrorApiCliente } from '@/lib/api';
 
+import { ListadoMediosPago } from './ListadoMediosPago';
+
 const valoresIniciales = { nombre: '', conFactura: false, sinFactura: false };
 
 // HU-19: alta de un medio de pago. Además del nombre se elige en qué cobros se puede usar: con
@@ -53,7 +55,7 @@ export function RegistrarMedioPago() {
         <h1 className="text-2xl font-semibold">Medios de pago</h1>
         <p className="text-sm text-muted-foreground">
           Registrá los medios con los que se puede cobrar un evento y en qué casos se pueden usar,
-          según el cliente requiera factura o no (HU-19).
+          según el cliente requiera factura o no (HU-19 y HU-20).
         </p>
       </div>
 
@@ -114,6 +116,8 @@ export function RegistrarMedioPago() {
           {crearMedioPago.isPending ? 'Registrando…' : 'Registrar medio de pago'}
         </Button>
       </form>
+
+      <ListadoMediosPago />
     </div>
   );
 }

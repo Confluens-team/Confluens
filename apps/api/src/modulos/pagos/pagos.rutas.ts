@@ -2,6 +2,7 @@ import {
   esquemaCrearMedioPago,
   esquemaCrearPago,
   esquemaCuentaEvento,
+  esquemaFiltrosMediosPago,
   esquemaMedioPago,
   esquemaResultadoPago,
 } from '@confluens/shared';
@@ -80,10 +81,11 @@ registroOpenApi.registerPath({
   path: '/medios-pago',
   tags: ['Pagos'],
   summary:
-    'Medios de pago activos, con su habilitación con o sin factura (RN-14), para el formulario de cobro',
+    'Medios de pago con su habilitación con o sin factura (RN-14), en orden alfabético. Sin parámetros, solo los activos (formulario de cobro); con incluirInactivos=true, también los dados de baja (HU-20)',
+  request: { query: esquemaFiltrosMediosPago },
   responses: {
     200: {
-      description: 'Medios de pago activos',
+      description: 'Medios de pago',
       content: { 'application/json': { schema: z.object({ data: z.array(esquemaMedioPago) }) } },
     },
     401: { description: 'Sin sesión activa' },
@@ -131,7 +133,13 @@ registroOpenApi.registerPath({
 
 export const rutasMediosPago = Router();
 
-rutasMediosPago.get('/', autenticar, autorizar(...ROLES_PERSONAL), asincrono(listarMedios));
+rutasMediosPago.get(
+  '/',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ query: esquemaFiltrosMediosPago }),
+  asincrono(listarMedios),
+);
 // HU-19: el actor es el Responsable de Finanzas, pero mientras no se dividan las funciones por rol
 // todo el personal ve y hace todo (decisión del PO, 06/10/2026).
 rutasMediosPago.post(

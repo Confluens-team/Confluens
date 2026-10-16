@@ -1,4 +1,4 @@
-import type { CrearMedioPago, CrearPago } from '@confluens/shared';
+import type { CrearMedioPago, CrearPago, FiltrosMediosPago } from '@confluens/shared';
 import { admiteMedioPago, mediosPagoHabilitados, PORCENTAJE_SENA } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
@@ -209,8 +209,13 @@ export async function obtenerCuenta(
   return { pagos, saldo: armarSaldo(base, pagado, presupuesto?.requiereFactura ?? false) };
 }
 
-export async function listarMediosPago(repo: PagosRepositorio = pagosRepositorioReal) {
-  return repo.listarMediosPagoActivos();
+// Sin filtros, los activos: es lo que usa el formulario de cobro. El listado de HU-20 pide también
+// los dados de baja, para mostrar el estado de cada medio.
+export async function listarMediosPago(
+  { incluirInactivos }: FiltrosMediosPago = {},
+  repo: PagosRepositorio = pagosRepositorioReal,
+) {
+  return incluirInactivos ? repo.listarTodosLosMediosPago() : repo.listarMediosPagoActivos();
 }
 
 /**

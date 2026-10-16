@@ -64,6 +64,20 @@ export function useMediosPago() {
   });
 }
 
+// HU-20: el listado completo del catálogo, con los dados de baja, en orden alfabético. Comparte el
+// prefijo de clave con useMediosPago, así el alta de un medio invalida los dos.
+export function useListadoMediosPago() {
+  return useQuery({
+    queryKey: ['medios-pago', 'todos'],
+    queryFn: async () => {
+      const respuesta = await apiFetch<RespuestaExito<MedioPago[]>>(
+        '/medios-pago?incluirInactivos=true',
+      );
+      return respuesta.data;
+    },
+  });
+}
+
 // HU-19: alta de un medio de pago con su habilitación. Al terminar se invalida el catálogo, así el
 // formulario de cobro ya lo ofrece en los presupuestos que correspondan.
 export function useCrearMedioPago() {
