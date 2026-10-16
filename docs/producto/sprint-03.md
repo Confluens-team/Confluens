@@ -160,7 +160,7 @@ Como Responsable de Eventos, quiero registrar la cancelación de un evento cuand
 
 **Bloqueante (S-01).** No está definido qué pasa con lo abonado por encima de la seña cuando el cliente cancela dentro del plazo. Hasta que el PO lo defina, la cancelación no registra ningún reintegro: los pagos solo se conservan para consulta.
 
-**Implementación.** Ya existe `POST /api/eventos/:id/cancelar` (Sprint 1): acepta EnConsulta y Reservado (`409` en los demás) y exige las 48 horas solo a un Reservado con horario (`422`, RN-07), que es lo decidido. CP-23-05 se prueba sobre un Reservado. «En conflicto» es una consulta de la aplicación, no un campo, así que deja de figurar sola al cancelarse el evento que la provocaba.
+**Hecho (16/10/2026).** `POST /api/eventos/:id/cancelar` ya existía desde el Sprint 1: acepta EnConsulta y Reservado (`409` en los demás), exige las 48 horas corridas solo a un Reservado con horario (`422`, RN-07; con exactamente 48 horas todavía se puede) y deja los pagos como están, sin reintegros (S-01 sigue abierto). Cancelar pasa a Cancelado el evento y sus presupuestos Estimado y Confirmado; el trigger de `EventoSalon` propaga el estado y el salón queda libre para otro evento (ADR 0011). «En conflicto» es una consulta de la aplicación, no un campo, así que deja de figurar sola al cancelarse el evento que la provocaba. Esta historia suma los tests de los criterios (CP-23-01 a CP-23-05 y los bordes del plazo) y, en la web, el botón **Cancelar consulta** en el detalle de un evento EnConsulta, que antes solo se podía dar de baja por su presupuesto; el aviso de confirmación de un evento confirmado dice que el salón queda libre y que lo abonado no se reintegra.
 
 ## HU-24 — Reutilizar configuración de un evento anterior
 
