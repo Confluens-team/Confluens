@@ -15,7 +15,7 @@ No leas esta carpeta entera. Abrí solo lo que la tarea necesita.
 |---|---|
 | Escribir cualquier código | `/AGENTS.md` (raíz) + `producto/dominio.md` |
 | Crear archivos, nombrar cosas o correr comandos | + `tecnico/convenciones.md` |
-| Implementar una historia del sprint en curso | + `producto/sprint-02.md` |
+| Implementar una historia del sprint en curso | + `producto/sprint-03.md` |
 | Tocar el modelo de datos o los enums | + `tecnico/modelo-datos.md` |
 | Cargar datos de prueba o precios | + `negocio/tarifario-2026.md` |
 | Entender por qué algo está hecho así | + `tecnico/adr/` |
@@ -33,7 +33,8 @@ docs/
 │   ├── dominio.md               Glosario, estados y reglas de negocio. El más importante.
 │   ├── backlog.md               Las 46 historias en una línea cada una, con Epic, RD y sprint.
 │   ├── sprint-01.md             Las 8 historias del Sprint 1, cerrado. Se conserva como referencia.
-│   ├── sprint-02.md             Las 7 historias del Sprint 2 (en curso), con criterios completos.
+│   ├── sprint-02.md             Las 7 historias del Sprint 2, cerrado. Se conserva como referencia.
+│   ├── sprint-03.md             Las 9 historias del Sprint 3 (en curso), con criterios completos.
 │   └── pendientes.md            Lo que todavía no definió el cliente. Qué NO asumir.
 ├── tecnico/
 │   ├── arquitectura.md          Monorepo, capas y límites entre workspaces.
