@@ -1,4 +1,5 @@
 import type {
+  CrearMedioPago,
   CrearPago,
   CuentaEvento,
   MedioPago,
@@ -49,8 +50,9 @@ export function useRegistrarPago(eventoId: number) {
   });
 }
 
-// Medios activos para poblar el <select> del formulario de cobro. El ABM es del Sprint 3 (HU-36 a
-// HU-39): acá solo se leen. Catálogo chico y estable, así que no se refetchea al volver a la vista.
+// Medios activos para poblar el <select> del formulario de cobro, con su habilitación con o sin
+// factura (RN-14). Catálogo chico y estable, así que no se refetchea al volver a la vista: solo se
+// invalida al dar de alta un medio (useCrearMedioPago).
 export function useMediosPago() {
   return useQuery({
     queryKey: ['medios-pago'],
@@ -59,5 +61,24 @@ export function useMediosPago() {
       return respuesta.data;
     },
     staleTime: Infinity,
+  });
+}
+
+// HU-19: alta de un medio de pago con su habilitación. Al terminar se invalida el catálogo, así el
+// formulario de cobro ya lo ofrece en los presupuestos que correspondan.
+export function useCrearMedioPago() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (datos: CrearMedioPago) => {
+      const respuesta = await apiFetch<RespuestaExito<MedioPago>>('/medios-pago', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
+      });
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['medios-pago'] });
+    },
   });
 }

@@ -2,6 +2,7 @@ import type { Rol, Sesion } from '@confluens/shared';
 import {
   Building2,
   CalendarDays,
+  CreditCard,
   Globe,
   Images,
   Inbox,
@@ -20,6 +21,7 @@ import { useCerrarSesion } from '@/hooks/use-sesion';
 import { cn } from '@/lib/utils';
 import { ListadoClientes } from '@/paginas/clientes/ListadoClientes';
 import { Agenda } from '@/paginas/eventos/Agenda';
+import { RegistrarMedioPago } from '@/paginas/medios-pago/RegistrarMedioPago';
 import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
 import { ConsultarSalones } from '@/paginas/salones/ConsultarSalones';
 import { ListadoConsultas } from '@/paginas/presupuestos/ListadoConsultas';
@@ -68,10 +70,12 @@ const NOMBRES_DE_ROL: Record<Rol, string> = {
   CLIENTE: 'Cliente',
 };
 
-// Todo lo que se consulta o se carga del catálogo: salones (HU-03), servicios (HU-02) y el contenido
-// de la landing (HU-08).
+// Todo lo que se consulta o se carga del catálogo: salones (HU-03), servicios (HU-02), medios de pago
+// (HU-19) y el contenido de la landing (HU-08).
 function CatalogoYLanding() {
-  const [seccion, setSeccion] = useState<'salones' | 'servicios' | 'landing'>('servicios');
+  const [seccion, setSeccion] = useState<'salones' | 'servicios' | 'medios' | 'landing'>(
+    'servicios',
+  );
   return (
     <div className="space-y-4">
       <div className="inline-flex flex-wrap rounded-lg bg-muted p-1">
@@ -79,6 +83,7 @@ function CatalogoYLanding() {
           [
             { valor: 'salones', texto: 'Salones', icono: Building2 },
             { valor: 'servicios', texto: 'Servicios', icono: UtensilsCrossed },
+            { valor: 'medios', texto: 'Medios de pago', icono: CreditCard },
             { valor: 'landing', texto: 'Fotos y visibilidad en la landing', icono: Images },
           ] as const
         ).map(({ valor, texto, icono: Icono }) => (
@@ -98,6 +103,7 @@ function CatalogoYLanding() {
       <div className="rounded-xl bg-card ring-1 ring-border">
         {seccion === 'salones' && <ConsultarSalones />}
         {seccion === 'servicios' && <RegistrarServicio />}
+        {seccion === 'medios' && <RegistrarMedioPago />}
         {seccion === 'landing' && <AdministrarLanding />}
       </div>
     </div>
