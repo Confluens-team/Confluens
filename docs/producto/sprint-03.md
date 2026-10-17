@@ -179,6 +179,14 @@ Como Responsable de Eventos, quiero generar una consulta nueva a partir de la co
 
 **Implementación.** `POST /api/eventos/:id/reutilizar` (`201` con el evento nuevo y los servicios que quedaron afuera; `400` sin fecha o con fecha pasada). Crea evento y presupuesto en una sola transacción, como `POST /api/presupuestos`, y copia la modalidad de cada línea recalculando el recargo sobre el precio vigente.
 
+**Cómo quedó (decisiones del equipo al implementar, 16/10/2026).**
+
+- Se reutiliza un evento en **cualquier estado**, también Cancelado (el cliente que canceló y vuelve).
+- El diálogo pide la **fecha** (futura, en hora de Córdoba) y una **hora aproximada opcional**, como el cotizador. La jornada es la del original y el horario exacto se carga al agendar (ADR 0007). Por eso «en conflicto» (RN-12) es un aviso **por día**: alguno de los salones ya tiene un evento Reservado o Cobrado esa fecha.
+- Se copian también los **adicionales** escritos a mano, con su descripción y su precio. No se copian pagos, estado, solicitud ni notas de la comanda.
+- **RN-13 se adelanta en parte desde HU-34** (avisar al PO): los precios del salón y de los servicios propios se proyectan a la fecha del evento con el porcentaje mensual de `ConfiguracionPrecios`, que arranca en 0% y edita el Responsable de Eventos en Catálogo. Vale en el cotizador, al armar o modificar un presupuesto y al reutilizar. Sigue en HU-34 aplicar el aumento al tarifario cada mes, los aumentos puntuales y su historial.
+- La modalidad es una columna de la línea (ADR 0012). Las variantes con recargo del seed se dieron de baja y sus líneas se convirtieron. Un mismo servicio puede repetirse en un presupuesto **con distinta modalidad** en cada línea.
+
 ## Casos de prueba
 
 El diseño de casos de prueba de cada historia (CP-16-01 en adelante) está en la Definición del Producto v0.4. Se automatizan con Vitest + Supertest sobre `crearApp()`, igual que en los sprints anteriores.
