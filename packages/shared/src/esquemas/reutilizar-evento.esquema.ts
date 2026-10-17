@@ -1,14 +1,17 @@
 import { z } from 'zod';
 
-import { esquemaFecha, esquemaId } from './comunes.esquema.js';
+import { esquemaCantidadPersonas, esquemaFecha, esquemaId } from './comunes.esquema.js';
 import { esquemaConsultaDetallada } from './modificar-presupuesto.esquema.js';
-import { esquemaHoraEstimada } from './tipo-evento.esquema.js';
+import { esquemaHoraEstimada, esquemaTipoJornada } from './tipo-evento.esquema.js';
 
-// Body de POST /eventos/:id/reutilizar (HU-24): la fecha del evento nuevo, obligatoria y futura (la
-// API la controla contra el día de hoy en Córdoba, ADR 0010), y una hora de inicio aproximada,
-// como en el cotizador. El horario exacto se carga después, al agendar (ADR 0007).
+// Body de POST /eventos/:id/reutilizar (HU-24). Lo propio del cliente nuevo no se copia del evento
+// original (equipo, 17/10/2026): se pide, como en el cotizador. La fecha es obligatoria y futura
+// (la API la controla contra el día de hoy en Córdoba, ADR 0010); la hora de inicio, aproximada y
+// opcional; el horario exacto se carga después, al agendar (ADR 0007).
 export const esquemaReutilizarEvento = z.object({
   fecha: esquemaFecha,
+  cantidadPersonas: esquemaCantidadPersonas,
+  tipoJornada: esquemaTipoJornada,
   horaInicioEstimada: esquemaHoraEstimada.optional(),
 });
 export type ReutilizarEvento = z.infer<typeof esquemaReutilizarEvento>;

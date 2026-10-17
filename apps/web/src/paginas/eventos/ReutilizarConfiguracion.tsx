@@ -1,8 +1,14 @@
-import { hoyEnZonaEventos, type EventoReutilizado } from '@confluens/shared';
+import {
+  hoyEnZonaEventos,
+  MAXIMO_PERSONAS_EVENTO,
+  type EventoReutilizado,
+  type TipoJornada,
+} from '@confluens/shared';
 import { AlertTriangle, CheckCircle2, Copy, X } from 'lucide-react';
 import { Dialog } from 'radix-ui';
 import { useState } from 'react';
 
+import { InputEntero } from '@/components/InputEntero';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,12 +23,13 @@ function manana(): string {
   return hoy.toISOString().slice(0, 10);
 }
 
-// HU-24: «Reutilizar configuración». Pide la fecha del evento nuevo y, si se quiere, una hora de
-// inicio aproximada, como el cotizador; el horario exacto se carga después, al agendar (ADR 0007).
-// La API crea una consulta nueva para el mismo cliente con los salones, la distribución, la
-// jornada, las personas, los servicios con su modalidad y los adicionales del evento, a precios
-// vigentes. Al terminar, el diálogo avisa lo que no se pudo copiar y los salones que ese día ya
-// están reservados (RN-12), y ofrece abrir la consulta nueva.
+// HU-24: «Reutilizar en una consulta nueva». Lo propio del cliente no se copia del evento original
+// (equipo, 17/10/2026): se pide, como en el cotizador, la fecha, las personas, la jornada y, si se
+// quiere, una hora de inicio aproximada; el horario exacto se carga después, al agendar (ADR 0007).
+// La API crea la consulta con los salones y su armado, el tipo de evento, los servicios con su
+// modalidad y los adicionales, a precios vigentes, con las cantidades por defecto y sin horas. Al
+// terminar, el diálogo avisa lo que no se pudo copiar y los salones que ese día ya están
+// reservados (RN-12), y ofrece abrir la consulta nueva.
 export function ReutilizarConfiguracion({
   eventoId,
   abierto,
@@ -37,8 +44,11 @@ export function ReutilizarConfiguracion({
   const reutilizar = useReutilizarEvento(eventoId);
   const [fecha, setFecha] = useState('');
   const [hora, setHora] = useState('');
+  const [personas, setPersonas] = useState('');
+  const [jornada, setJornada] = useState<TipoJornada>('completa');
   const minimo = manana();
   const fechaValida = !!fecha && fecha >= minimo;
+  const personasValidas = Number(personas) > 0;
 
   // Al abrir se arranca de cero: un resultado anterior ya se usó.
   function cambiarAbierto(abrir: boolean) {
@@ -46,14 +56,21 @@ export function ReutilizarConfiguracion({
       reutilizar.reset();
       setFecha('');
       setHora('');
+      setPersonas('');
+      setJornada('completa');
     }
     onCambiarAbierto(abrir);
   }
 
   function enviar(evento: React.FormEvent) {
     evento.preventDefault();
-    if (!fechaValida) return;
-    reutilizar.mutate({ fecha, horaInicioEstimada: hora || undefined });
+    if (!fechaValida || !personasValidas) return;
+    reutilizar.mutate({
+      fecha,
+      cantidadPersonas: Number(personas),
+      tipoJornada: jornada,
+      horaInicioEstimada: hora || undefined,
+    });
   }
 
   const resultado = reutilizar.data;
@@ -66,12 +83,12 @@ export function ReutilizarConfiguracion({
           <div className="flex items-start justify-between gap-4">
             <div>
               <Dialog.Title className="font-heading text-lg font-medium">
-                {resultado ? 'Consulta creada' : 'Reutilizar configuración'}
+                {resultado ? 'Consulta creada' : 'Reutilizar en una consulta nueva'}
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-muted-foreground">
                 {resultado
                   ? `La consulta ${resultado.consulta.id} quedó en consulta, con un presupuesto Estimado a precios vigentes. El evento #${eventoId} no cambió.`
-                  : `Se crea una consulta nueva para el mismo cliente con los salones, la distribución, las personas y los servicios del evento #${eventoId}, a precios vigentes. No se copian los pagos.`}
+                  : `Se crea una consulta nueva para el mismo cliente con los salones, el armado, el tipo de evento y los servicios del evento #${eventoId}, a precios vigentes. Los datos del evento nuevo los cargás acá.`}
               </Dialog.Description>
             </div>
             <Dialog.Close
@@ -117,9 +134,32 @@ export function ReutilizarConfiguracion({
                     onChange={(e) => setHora(e.target.value)}
                   />
                 </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="reutilizar-personas">Personas</Label>
+                  <InputEntero
+                    id="reutilizar-personas"
+                    max={MAXIMO_PERSONAS_EVENTO}
+                    required
+                    value={personas}
+                    onChangeValor={setPersonas}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="reutilizar-jornada">Jornada</Label>
+                  <select
+                    id="reutilizar-jornada"
+                    className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                    value={jornada}
+                    onChange={(e) => setJornada(e.target.value as TipoJornada)}
+                  >
+                    <option value="completa">Jornada completa</option>
+                    <option value="media">Media jornada (hasta 4 h)</option>
+                  </select>
+                </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                La jornada es la del evento original. El horario exacto se carga al agendar.
+                Los servicios entran para todas las personas (o 1 si no se cobra por persona) y sin
+                hora: después los ajustás en la consulta. El horario exacto se carga al agendar.
               </p>
 
               {reutilizar.isError && (
@@ -136,7 +176,10 @@ export function ReutilizarConfiguracion({
                     Cancelar
                   </Button>
                 </Dialog.Close>
-                <Button type="submit" disabled={!fechaValida || reutilizar.isPending}>
+                <Button
+                  type="submit"
+                  disabled={!fechaValida || !personasValidas || reutilizar.isPending}
+                >
                   <Copy /> {reutilizar.isPending ? 'Creando…' : 'Crear consulta'}
                 </Button>
               </div>

@@ -223,22 +223,25 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-const reutilizar = (body: Record<string, unknown> = { fecha: '2026-12-04' }, id = 20) =>
+// Lo propio del cliente nuevo viene en el pedido: 50 personas en media jornada, no las 30 en
+// jornada completa del original.
+const bodyBase = { fecha: '2026-12-04', cantidadPersonas: 50, tipoJornada: 'media' };
+const reutilizar = (body: Record<string, unknown> = bodyBase, id = 20) =>
   request(app).post(`/api/eventos/${id}/reutilizar`).set('Cookie', [cookieRE]).send(body);
 
 describe('POST /api/eventos/:id/reutilizar (HU-24)', () => {
   it('crea una consulta nueva para el mismo cliente con la configuración del evento', async () => {
-    const respuesta = await reutilizar({ fecha: '2026-12-04', horaInicioEstimada: '08:30' });
+    const respuesta = await reutilizar({ ...bodyBase, horaInicioEstimada: '08:30' });
 
     expect(respuesta.status).toBe(201);
     expect(datosDelEvento()).toEqual({
       clienteId: 10,
       fecha: new Date('2026-12-04'),
-      cantidadPersonas: 30,
+      cantidadPersonas: 50,
       tipo: 'Corporativo',
       tipoSocial: null,
       tipoSocialDetalle: null,
-      tipoJornada: 'completa',
+      tipoJornada: 'media',
       horaInicioEstimada: '08:30',
     });
     // El salón con la distribución que tenía armada.
@@ -253,27 +256,42 @@ describe('POST /api/eventos/:id/reutilizar (HU-24)', () => {
     await reutilizar();
 
     const [salon, coffeeNuevo] = lineasGuardadas();
-    expect(salon).toMatchObject({ salonId: 5, precioUnitario: '150000.00' });
+    // El alquiler de la jornada pedida (media), no la del original.
+    expect(salon).toMatchObject({ salonId: 5, precioUnitario: '110000.00' });
     // 9000 vigente + 20% del continuo, no los 8400 del original.
     expect(coffeeNuevo).toMatchObject({
       servicioId: 1,
-      cantidad: 30,
       modalidad: 'Continuo',
       precioBase: '9000.00',
       precioUnitario: '10800.00',
-      subtotal: '324000.00',
-      horaEstimada: '10:30',
+    });
+  });
+
+  it('las cantidades vuelven al valor por defecto y las horas quedan vacías', async () => {
+    await reutilizar();
+
+    const lineas = lineasGuardadas();
+    // Por persona: las 50 del pedido, no las 30 del original.
+    expect(lineas.find((l) => l.servicioId === 1)).toMatchObject({
+      cantidad: 50,
+      subtotal: '540000.00',
+      horaEstimada: null,
+    });
+    // El adicional escrito a mano, 1.
+    expect(lineas.find((l) => l.descripcion === 'Centros de mesa')).toMatchObject({
+      cantidad: 1,
+      horaEstimada: null,
     });
   });
 
   it('proyecta los precios a la fecha nueva con el incremento mensual (RN-13)', async () => {
     obtenerPorcentajeMock.mockResolvedValue('10');
 
-    await reutilizar({ fecha: '2026-12-04' });
+    await reutilizar();
 
     const [salon, coffeeNuevo] = lineasGuardadas();
     // Dos meses: × 1.1 × 1.1.
-    expect(salon).toMatchObject({ precioUnitario: '181500.00' });
+    expect(salon).toMatchObject({ precioUnitario: '133100.00' });
     expect(coffeeNuevo).toMatchObject({ precioBase: '10890.00', precioUnitario: '13068.00' });
   });
 
@@ -288,9 +306,8 @@ describe('POST /api/eventos/:id/reutilizar (HU-24)', () => {
     expect(lineas.find((l) => l.descripcion === 'Centros de mesa')).toMatchObject({
       servicioId: null,
       salonId: null,
-      cantidad: 6,
       precioUnitario: '2500.00',
-      subtotal: '15000.00',
+      subtotal: '2500.00',
     });
   });
 
@@ -306,8 +323,8 @@ describe('POST /api/eventos/:id/reutilizar (HU-24)', () => {
 
     const { venceEn, total } = datosDelPresupuesto();
     expect(venceEn).toEqual(new Date('2026-10-26T15:00:00.000Z'));
-    // 150000 + 324000 + 0 + 15000
-    expect(total).toBe('489000.00');
+    // 110000 + 540000 + 0 + 2500
+    expect(total).toBe('652500.00');
   });
 
   it('se puede reutilizar un evento cancelado', async () => {
@@ -352,8 +369,8 @@ describe('POST /api/eventos/:id/reutilizar (HU-24)', () => {
   });
 
   it('responde 400 si la fecha es hoy o ya pasó, sin crear nada', async () => {
-    const hoy = await reutilizar({ fecha: '2026-10-16' });
-    const pasada = await reutilizar({ fecha: '2026-09-01' });
+    const hoy = await reutilizar({ ...bodyBase, fecha: '2026-10-16' });
+    const pasada = await reutilizar({ ...bodyBase, fecha: '2026-09-01' });
 
     expect(hoy.status).toBe(400);
     expect(hoy.body.error.details).toEqual([
@@ -364,16 +381,25 @@ describe('POST /api/eventos/:id/reutilizar (HU-24)', () => {
   });
 
   it('responde 400 sin fecha', async () => {
-    const respuesta = await reutilizar({});
+    const respuesta = await reutilizar({ cantidadPersonas: 50, tipoJornada: 'media' });
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
   });
 
+  it('responde 400 sin personas o sin jornada', async () => {
+    const sinPersonas = await reutilizar({ fecha: '2026-12-04', tipoJornada: 'media' });
+    const sinJornada = await reutilizar({ fecha: '2026-12-04', cantidadPersonas: 50 });
+
+    expect(sinPersonas.status).toBe(400);
+    expect(sinJornada.status).toBe(400);
+    expect(crearEventoMock).not.toHaveBeenCalled();
+  });
+
   it('responde 404 si el evento no existe', async () => {
     buscarEventoMock.mockResolvedValue(null);
 
-    const respuesta = await reutilizar({ fecha: '2026-12-04' }, 404);
+    const respuesta = await reutilizar(bodyBase, 404);
 
     expect(respuesta.status).toBe(404);
   });
@@ -382,7 +408,7 @@ describe('POST /api/eventos/:id/reutilizar (HU-24)', () => {
     const respuesta = await request(app)
       .post('/api/eventos/20/reutilizar')
       .set('Cookie', [cookieDe('CLIENTE')])
-      .send({ fecha: '2026-12-04' });
+      .send(bodyBase);
 
     expect(respuesta.status).toBe(403);
     expect(crearEventoMock).not.toHaveBeenCalled();

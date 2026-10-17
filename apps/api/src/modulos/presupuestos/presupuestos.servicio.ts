@@ -853,13 +853,15 @@ export async function darDeBajaPresupuesto(
  *
  * - El original puede estar en cualquier estado (también Cancelado: el cliente que canceló y
  *   vuelve) y no se modifica.
+ * - Se copia lo que se reutiliza: el tipo de evento, los salones con su distribución, los
+ *   servicios con su modalidad y los adicionales escritos a mano con su precio. Lo propio de cada
+ *   cliente no viaja (equipo, 17/10/2026): la fecha, las personas y la jornada vienen en el pedido,
+ *   la cantidad de cada línea vuelve al valor por defecto (las personas nuevas si se cobra por
+ *   persona, 1 si no) y las horas quedan vacías. Tampoco se copian los pagos, el estado, la
+ *   solicitud ni las notas de la comanda.
  * - La fecha es obligatoria y futura, contra el día de hoy en Córdoba (ADR 0010). Como cualquier
- *   consulta, nace sin horario: lleva la jornada del original y, si viene, una hora de inicio
- *   aproximada; el horario exacto se carga al agendar (ADR 0007).
- * - Se copian el tipo de evento, la jornada, la cantidad de personas, los salones con su
- *   distribución, los servicios con su cantidad, modalidad y hora, y los adicionales escritos a
- *   mano con su precio. No se copian los pagos, el estado ni la solicitud, ni las notas de la
- *   comanda.
+ *   consulta, nace sin horario, con una hora de inicio aproximada si viene; el horario exacto se
+ *   carga al agendar (ADR 0007).
  * - Los precios son los vigentes del catálogo proyectados a la fecha nueva (RN-13), no los
  *   congelados del original: un ajuste comercial (RN-03) no se arrastra. Un servicio que ya no
  *   está activo no se copia y se informa; un tercerizado a cotizar se copia sin importe.
@@ -888,9 +890,8 @@ export async function reutilizarConfiguracion(
   const origen = presupuestos.find((p) => p.estado !== 'Cancelado') ?? presupuestos[0];
   const lineasOriginales = origen?.lineas ?? [];
 
-  // Los eventos anteriores a ADR 0008 no guardan la jornada: sale de la línea del salón.
-  const jornada =
-    original.tipoJornada ?? jornadaDeLineaSalon(lineaDelSalon(lineasOriginales)?.descripcion);
+  const jornada = datos.tipoJornada;
+  const personas = datos.cantidadPersonas;
   const proyeccion = await proyeccionHasta(datos.fecha, repo);
 
   const lineasSalones = original.salones.map(({ salon }) =>
@@ -903,15 +904,7 @@ export async function reutilizarConfiguracion(
   for (const linea of lineasOriginales) {
     if (linea.salonId !== null) continue;
     if (linea.servicio === null) {
-      adicionales.push(
-        calcularLinea(
-          null,
-          linea.descripcion,
-          linea.cantidad,
-          linea.precioUnitario,
-          linea.horaEstimada,
-        ),
-      );
+      adicionales.push(calcularLinea(null, linea.descripcion, 1, linea.precioUnitario));
       continue;
     }
     const { servicio } = linea;
@@ -924,11 +917,11 @@ export async function reutilizarConfiguracion(
     lineasServicios.push(
       lineaDeServicio(
         servicio,
-        linea.cantidad,
+        servicio.porPersona ? personas : 1,
         precioVigenteDeServicio(servicio, proyeccion),
         // Si el servicio dejó de admitir modalidad, el recargo ya no corresponde.
         servicio.admiteModalidad ? linea.modalidad : 'Normal',
-        linea.horaEstimada,
+        null,
       ),
     );
   }
@@ -951,7 +944,7 @@ export async function reutilizarConfiguracion(
       {
         clienteId: original.clienteId,
         fecha,
-        cantidadPersonas: original.cantidadPersonas,
+        cantidadPersonas: personas,
         tipo: original.tipo,
         tipoSocial: original.tipoSocial,
         tipoSocialDetalle: original.tipoSocialDetalle,

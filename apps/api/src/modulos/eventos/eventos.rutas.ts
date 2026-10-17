@@ -137,8 +137,9 @@ registroOpenApi.registerPath({
   tags: ['Eventos'],
   summary:
     'Crea una consulta nueva para el mismo cliente con la configuración del evento (HU-24): ' +
-    'salones, distribución, jornada, personas, servicios con su modalidad y adicionales, con los ' +
-    'precios vigentes proyectados a la fecha nueva. El evento original no se modifica',
+    'salones, distribución, tipo de evento, servicios con su modalidad y adicionales, con los ' +
+    'precios vigentes proyectados a la fecha nueva. Fecha, personas y jornada vienen en el ' +
+    'pedido; las cantidades van por defecto y sin hora. El evento original no se modifica',
   request: {
     params: esquemaIdParam,
     body: { content: { 'application/json': { schema: esquemaReutilizarEvento } } },
@@ -150,7 +151,7 @@ registroOpenApi.registerPath({
         'reservados ese día por otro evento (RN-12)',
       content: { 'application/json': { schema: z.object({ data: esquemaEventoReutilizado }) } },
     },
-    400: { description: 'Falta la fecha o no es futura' },
+    400: { description: 'Falta la fecha, las personas o la jornada, o la fecha no es futura' },
     404: { description: 'No existe el evento' },
     401: { description: 'Sin sesión activa' },
     403: { description: 'La sesión no es del personal' },
