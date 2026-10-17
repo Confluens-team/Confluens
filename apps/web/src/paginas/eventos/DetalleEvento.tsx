@@ -198,15 +198,7 @@ export function DetalleEvento({
             <BadgeTipoEvento evento={evento} />
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          {/* HU-24: desde cualquier estado, también uno cancelado (el cliente que vuelve). */}
-          {abrirReutilizada && (
-            <Button variant="outline" size="sm" onClick={() => setReutilizando(true)}>
-              <Copy /> Reutilizar configuración
-            </Button>
-          )}
-          <PasosDelEvento estado={evento.estado} />
-        </div>
+        <PasosDelEvento estado={evento.estado} />
       </div>
       {abrirReutilizada && (
         <ReutilizarConfiguracion
@@ -397,6 +389,13 @@ export function DetalleEvento({
                         onClick={() => onImprimirComanda(presupuestoVigente.id)}
                       >
                         <Printer /> Comanda de cocina
+                      </Button>
+                    )}
+                    {/* HU-24: junto a los salones, el armado y los servicios que se van a copiar.
+                        Desde cualquier estado, también uno cancelado (el cliente que vuelve). */}
+                    {abrirReutilizada && (
+                      <Button variant="outline" size="sm" onClick={() => setReutilizando(true)}>
+                        <Copy /> Reutilizar configuración
                       </Button>
                     )}
                   </div>

@@ -137,11 +137,7 @@ export function FichaCliente({ clienteId, onVolver }: { clienteId: number; onVol
       )}
 
       {cliente.data && (
-        <HistorialCliente
-          clienteId={cliente.data.id}
-          onAbrirEvento={setEventoAbierto}
-          onConsultaReutilizada={abrirReutilizada}
-        />
+        <HistorialCliente clienteId={cliente.data.id} onAbrirEvento={setEventoAbierto} />
       )}
     </div>
   );
