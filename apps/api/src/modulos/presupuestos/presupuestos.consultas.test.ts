@@ -86,6 +86,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
     venceEn: new Date('2026-09-30T15:00:00.000Z'),
     total: D('222200'),
     requiereFactura: false,
+    ocultoEn: null as Date | null,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     evento: {
@@ -1133,6 +1134,79 @@ describe('POST /api/presupuestos/:id/dar-de-baja (HU-22)', () => {
 
     expect(respuesta.status).toBe(409);
     expect(reemplazarLineasMock).not.toHaveBeenCalled();
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+});
+
+// El tacho del listado de consultas (decisión de Franco, 16/10/2026): saca del listado un
+// presupuesto Cancelado sin borrarlo, porque HU-22 pide conservarlo.
+describe('POST /api/presupuestos/:id/ocultar', () => {
+  function ocultar(cookie = cookieRE) {
+    return request(app).post('/api/presupuestos/31/ocultar').set('Cookie', [cookie]);
+  }
+
+  it('marca ocultoEn en un presupuesto Cancelado y responde 204 sin cuerpo', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
+    );
+
+    const respuesta = await ocultar();
+
+    expect(respuesta.status).toBe(204);
+    expect(respuesta.body).toEqual({});
+    expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, { ocultoEn: expect.any(Date) });
+  });
+
+  it('no borra nada: no toca el evento, las líneas ni los salones', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
+    );
+
+    await ocultar();
+
+    expect(actualizarEventoMock).not.toHaveBeenCalled();
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+    expect(reemplazarSalonesDelEventoMock).not.toHaveBeenCalled();
+  });
+
+  it('ocultar uno ya oculto responde 204 y no lo vuelve a escribir', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado', ocultoEn: new Date() }, { estado: 'Cancelado' }),
+    );
+
+    const respuesta = await ocultar();
+
+    expect(respuesta.status).toBe(204);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['Estimado', 'Expirado', 'Confirmado'])(
+    'responde 409 con un presupuesto %s: solo se ocultan los Cancelados',
+    async (estado) => {
+      buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({ estado }));
+
+      const respuesta = await ocultar();
+
+      expect(respuesta.status).toBe(409);
+      expect(respuesta.body.error.code).toBe('CONFLICT');
+      expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('responde 404 si el presupuesto no existe', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(null as never);
+
+    const respuesta = await ocultar();
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app).post('/api/presupuestos/31/ocultar');
+    const cliente = await ocultar(cookieDe('CLIENTE'));
+
+    expect(sinSesion.status).toBe(401);
+    expect(cliente.status).toBe(403);
     expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
   });
 });
