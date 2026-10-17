@@ -73,13 +73,25 @@ export type CrearPago = z.infer<typeof esquemaCrearPago>;
  * `baseDeCobro` es el total del presupuesto CON IVA si tiene requiereFactura, y el total tal cual
  * (sin IVA, RN-05) si no lo tiene. Es la resolución de S-08 para RN-01: el 20% de la seña se
  * calcula sobre esta base, no sobre el total del presupuesto.
+ *
+ * `saldo` puede ser negativo: si un presupuesto confirmado baja su total por debajo de lo pagado,
+ * la diferencia es un saldo a favor del cliente que se resuelve a mano (decisión del PO,
+ * 16/10/2026, HU-21).
+ *
+ * `montoSena` es el 20% de la base redondeado al centavo hacia arriba: nadie entrega fracciones de
+ * centavo, y redondear para abajo daría por cubierta una seña que la API todavía no considera
+ * alcanzada. `senaAlcanzada` queda en true una vez reservado el evento aunque después suba el total
+ * (RN-09): la seña no se vuelve a pedir.
  */
 export const esquemaSaldoEvento = z.object({
   baseDeCobro: esquemaImporte,
   incluyeIva: z.boolean(),
   pagado: esquemaImporte,
-  saldo: esquemaImporte,
+  // Como esquemaImporte, pero con signo: es el único importe del sistema que puede ser negativo.
+  saldo: z.string().regex(/^-?\d{1,10}(\.\d{1,2})?$/, 'Importe inválido'),
   porcentajeAbonado: z.number(),
+  montoSena: esquemaImporte,
+  senaAlcanzada: z.boolean(),
 });
 export type SaldoEvento = z.infer<typeof esquemaSaldoEvento>;
 
@@ -105,9 +117,18 @@ export const esquemaResultadoPago = z.object({
 });
 export type ResultadoPago = z.infer<typeof esquemaResultadoPago>;
 
-// Respuesta de GET /eventos/:id/pagos: el historial más el saldo actualizado (HU-14 C2).
+// Un pago dentro del estado de cuenta (HU-21), con los dos hitos que puede haber disparado: el que
+// completó la seña y reservó el salón (HU-13) y el que completó el total y dejó el evento Cobrado.
+// Un mismo pago puede tener los dos.
+export const esquemaPagoDeCuenta = esquemaPago.extend({
+  completaSena: z.boolean(),
+  completaPago: z.boolean(),
+});
+export type PagoDeCuenta = z.infer<typeof esquemaPagoDeCuenta>;
+
+// Respuesta de GET /eventos/:id/pagos: el historial más el saldo actualizado (HU-14 C2, HU-21).
 export const esquemaCuentaEvento = z.object({
-  pagos: z.array(esquemaPago),
+  pagos: z.array(esquemaPagoDeCuenta),
   saldo: esquemaSaldoEvento,
 });
 export type CuentaEvento = z.infer<typeof esquemaCuentaEvento>;
