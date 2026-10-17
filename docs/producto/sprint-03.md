@@ -130,7 +130,7 @@ Como Responsable de Finanzas, quiero consultar el estado de cuenta de un evento,
 - Si el evento no tiene pagos, el sistema lo informa y el saldo es igual a la base de cobro.
 - Solo el personal interno accede al estado de cuenta; el rol Cliente no.
 
-**Implementación.** Ya existe `GET /api/eventos/:id/pagos` (HU-14): devuelve los pagos y el saldo (`baseDeCobro`, `incluyeIva`, `pagado`, `saldo`, `porcentajeAbonado`), calculado y nunca guardado. Falta el importe de la seña y si fue alcanzada, y la pantalla del estado de cuenta con los datos del cliente y del evento.
+**Hecho (16/10/2026).** `GET /api/eventos/:id/pagos` suma al saldo `montoSena` (el 20% de la base, redondeado para arriba al centavo) y `senaAlcanzada` (en true también si el evento ya se reservó, aunque después suba el total, RN-09). `saldo` puede ser negativo: la web lo muestra como saldo a favor del cliente. Cada pago trae `completaSena` y `completaPago`: el que se registró más cerca de `senaRegistradaEn` y el último de un evento Cobrado. Un evento dado de baja se sigue midiendo contra su presupuesto Cancelado, así que conserva sus pagos y su base. En la web, el estado de cuenta sigue en la tarjeta «Cuenta del evento» del detalle, que ya muestra cliente, fecha, salón y estado: suma la seña en cualquier estado, el cartel del evento cancelado y los dos pagos destacados en verde («Seña completa» y «Evento con pago completo»).
 
 ## HU-22 — Registrar presupuesto cancelado
 

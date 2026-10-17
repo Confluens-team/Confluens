@@ -63,7 +63,8 @@ registroOpenApi.registerPath({
   method: 'get',
   path: '/eventos/{id}/pagos',
   tags: ['Pagos'],
-  summary: 'Historial de pagos del evento y su saldo actualizado (HU-14 C2)',
+  summary:
+    'Estado de cuenta del evento (HU-21): los pagos, con el que completó la seña y el que completó el total, y el saldo con la seña. Un evento Cancelado conserva sus pagos y su base',
   request: { params: esquemaIdParam },
   responses: {
     200: {
