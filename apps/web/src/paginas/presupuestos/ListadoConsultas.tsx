@@ -7,6 +7,7 @@ import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { IconoEstado } from '@/components/IconoEstado';
 import { usePresupuestos } from '@/hooks/use-presupuestos';
 import { fechaLocal, formatearPesos, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { COLORES_TIPO_EVENTO } from '@/lib/tipo-evento';
@@ -17,9 +18,9 @@ import { EditarConsulta } from './EditarConsulta';
 
 // Los Confirmado no aparecen: pasan a la agenda de eventos.
 const ESTADOS: { valor: EstadoConsulta; clase: string }[] = [
-  { valor: 'Estimado', clase: 'bg-muted text-foreground' },
-  { valor: 'Expirado', clase: 'bg-amber-100 text-amber-900' },
-  { valor: 'Cancelado', clase: 'bg-bordo/10 text-bordo' },
+  { valor: 'Estimado', clase: 'bg-estado-consulta-fondo text-estado-consulta-texto' },
+  { valor: 'Expirado', clase: 'bg-estado-expirado-fondo text-estado-expirado-texto' },
+  { valor: 'Cancelado', clase: 'bg-estado-cancelado-fondo text-estado-cancelado-texto' },
 ];
 
 const claseDeEstado = (estado: string) => ESTADOS.find((e) => e.valor === estado)?.clase ?? '';
@@ -142,10 +143,11 @@ export function ListadoConsultas() {
               type="button"
               onClick={() => setEstado(valor)}
               className={cn(
-                'rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
+                'inline-flex items-center gap-1 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
                 estado === valor ? 'border-bordo bg-bordo text-crema' : 'border-border bg-card',
               )}
             >
+              <IconoEstado estado={valor} />
               {texto}
             </button>
           ))}
@@ -273,7 +275,7 @@ export function ListadoConsultas() {
                       onClick={() => setAbierta(presupuesto.id)}
                       className={cn(
                         'cursor-pointer transition-colors hover:bg-muted/60',
-                        expirado && 'bg-amber-50/70',
+                        expirado && 'bg-estado-expirado-fondo/50',
                       )}
                     >
                       <td
@@ -343,14 +345,15 @@ export function ListadoConsultas() {
                       <td className="px-3 py-3">
                         <span
                           className={cn(
-                            'inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                            'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
                             claseDeEstado(presupuesto.estado),
                           )}
                         >
+                          <IconoEstado estado={presupuesto.estado} />
                           {presupuesto.estado}
                         </span>
                         {expirado && (
-                          <p className="mt-1 flex items-start gap-1 text-xs font-medium text-amber-900">
+                          <p className="mt-1 flex items-start gap-1 text-xs font-medium text-estado-expirado-texto">
                             <AlertTriangle className="mt-px size-3 shrink-0" />
                             Presupuesto vencido, recalcular
                           </p>

@@ -7,6 +7,7 @@ import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconoEstado } from '@/components/IconoEstado';
 import { useCancelarEvento, useEvento } from '@/hooks/use-eventos';
 import { useArmarPresupuestoDeEvento } from '@/hooks/use-presupuestos';
 import { ErrorApiCliente } from '@/lib/api';
@@ -54,7 +55,7 @@ function PasosDelEvento({ estado }: { estado: EstadoEvento }) {
               aria-current={actual ? 'step' : undefined}
               className={cn(
                 'inline-flex items-center gap-1 rounded-full px-2 py-0.5',
-                hecho && 'text-emerald-800',
+                hecho && 'text-estado-confirmado-texto',
                 actual && 'bg-bordo/10 font-medium text-bordo',
                 !hecho && !actual && 'text-muted-foreground',
               )}
@@ -176,8 +177,12 @@ export function DetalleEvento({
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <span
               title={estado.ayuda}
-              className={cn('rounded-full px-2 py-0.5 text-xs font-medium', estado.clase)}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+                estado.clase,
+              )}
             >
+              <IconoEstado estado={evento.estado} />
               {estado.etiqueta}
             </span>
             <BadgeTipoEvento evento={evento} />

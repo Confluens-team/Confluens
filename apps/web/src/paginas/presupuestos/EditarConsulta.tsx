@@ -32,6 +32,7 @@ import { InputEntero } from '@/components/InputEntero';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { IconoEstado } from '@/components/IconoEstado';
 import { useConsulta, useDarDeBajaConsulta, useModificarConsulta } from '@/hooks/use-presupuestos';
 import { useSalones } from '@/hooks/use-salones';
 import { useServicios } from '@/hooks/use-servicios';
@@ -83,10 +84,10 @@ const mensajeDeError = (error: unknown, porDefecto: string) =>
   error instanceof ErrorApiCliente ? error.message : porDefecto;
 
 const ESTADOS: Record<string, string> = {
-  Estimado: 'bg-muted text-foreground',
-  Expirado: 'bg-amber-100 text-amber-900',
-  Cancelado: 'bg-bordo/10 text-bordo',
-  Confirmado: 'bg-emerald-100 text-emerald-900',
+  Estimado: 'bg-estado-consulta-fondo text-estado-consulta-texto',
+  Expirado: 'bg-estado-expirado-fondo text-estado-expirado-texto',
+  Cancelado: 'bg-estado-cancelado-fondo text-estado-cancelado-texto',
+  Confirmado: 'bg-estado-confirmado-fondo text-estado-confirmado-texto',
 };
 
 const claseSelect = 'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm';
@@ -473,17 +474,18 @@ function Formulario({
           <BadgeTipoEvento evento={consulta.evento} />
           <span
             className={cn(
-              'rounded-full px-3 py-1 text-xs font-semibold',
+              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold',
               ESTADOS[consulta.estado] ?? '',
             )}
           >
+            <IconoEstado estado={consulta.estado} />
             {consulta.estado}
           </span>
         </div>
       </header>
 
       {expirado && enCurso && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900 ring-1 ring-amber-200">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-estado-expirado-fondo px-4 py-3 text-sm text-estado-expirado-texto ring-1 ring-estado-expirado/30">
           <p className="flex items-center gap-2 font-medium">
             <AlertTriangle className="size-4 shrink-0" />
             {recalculado
@@ -498,7 +500,7 @@ function Formulario({
         </div>
       )}
       {confirmado && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200">
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-estado-confirmado-fondo px-4 py-3 text-sm text-estado-confirmado-texto ring-1 ring-estado-confirmado-borde">
           <p>
             Evento confirmado: podés modificar todo y sigue confirmado. Si cambia el total, cambia
             el saldo a cobrar; si cambiás la fecha, el horario se corre al mismo día.
@@ -699,12 +701,12 @@ function Formulario({
         </section>
 
         {tipo === 'Social' && (
-          <section className="rounded-xl bg-card p-5 ring-1 ring-rose-200">
+          <section className="rounded-xl bg-card p-5 ring-1 ring-tipo-social-suave">
             <h3 className="flex items-center gap-2 text-sm font-semibold">
-              <ClipboardList className="size-4 text-rose-700" /> Detalle del evento social
+              <ClipboardList className="size-4 text-tipo-social" /> Detalle del evento social
             </h3>
             {/* Vacío a propósito: falta la plantilla de campos del evento social (pendientes.md). */}
-            <div className="mt-3 rounded-lg border border-dashed border-rose-200 px-4 py-8 text-center text-sm text-muted-foreground">
+            <div className="mt-3 rounded-lg border border-dashed border-tipo-social-suave px-4 py-8 text-center text-sm text-muted-foreground">
               Todavía no hay plantilla para los eventos sociales. Acá van a ir los datos propios del
               evento.
             </div>

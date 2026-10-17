@@ -20,6 +20,35 @@
   --color-bordo-oscuro: #3b1411;
   --color-crema: #f6f1ea;
   --color-papel: #fffdf9;
+
+  /* Estados (decisión de Franco, 16/10/2026). Un color por etapa, el mismo para el evento y para
+     su presupuesto, en tonos apagados que conviven con el crema y el bordó. Cada uno tiene el tono
+     pleno (puntos, calendario, rellenos), un -fondo claro para el badge y un -texto oscuro para
+     escribir sobre ese fondo. Solo los estados llevan relleno: el tipo de evento va en contorno. */
+  --color-estado-consulta: #b08d57;
+  --color-estado-consulta-fondo: #f3ead9;
+  --color-estado-consulta-texto: #7e5f26;
+  --color-estado-expirado: #b5562c;
+  --color-estado-expirado-fondo: #f6e3d8;
+  --color-estado-expirado-texto: #8a3a17;
+  --color-estado-confirmado: #3f7d58;
+  --color-estado-confirmado-fondo: #e3efe6;
+  --color-estado-confirmado-borde: #b9d6c2;
+  --color-estado-confirmado-texto: #24543a;
+  --color-estado-cobrado: #2f5d7c;
+  --color-estado-cobrado-fondo: #e2ebf2;
+  --color-estado-cobrado-borde: #b7cbdc;
+  --color-estado-cobrado-texto: #1d3d55;
+  --color-estado-cancelado: #8a8580;
+  --color-estado-cancelado-fondo: #ebe4da;
+  --color-estado-cancelado-texto: #5f574f;
+
+  /* Tipo de evento (ADR 0008): dos tonos bien separados y sin relleno, para no competir con el
+     estado. Violeta apagado para el corporativo y frambuesa para el social. */
+  --color-tipo-corporativo: #5e4b8b;
+  --color-tipo-corporativo-suave: #d7cfe6;
+  --color-tipo-social: #a3346a;
+  --color-tipo-social-suave: #ecbdd3;
 }
 
 @theme inline {

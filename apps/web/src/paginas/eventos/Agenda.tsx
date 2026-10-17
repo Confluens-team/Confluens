@@ -11,6 +11,7 @@ import { type ReactNode, useState } from 'react';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
+import { IconoEstado } from '@/components/IconoEstado';
 import { useAgenda } from '@/hooks/use-eventos';
 import { useSalones } from '@/hooks/use-salones';
 import { fechaLocal, formatearPesos, hoyISO, nombreCompleto } from '@/lib/formato';
@@ -140,10 +141,11 @@ function ListaDeEventos({
                     <div className="shrink-0 text-right">
                       <span
                         className={cn(
-                          'inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
                           estado.clase,
                         )}
                       >
+                        <IconoEstado estado={evento.estado} />
                         {estado.etiqueta}
                       </span>
                       {evento.totalPresupuesto && (
@@ -343,17 +345,16 @@ export function Agenda() {
                 onClick={() => alternarEstado(valor)}
                 title={ESTADOS[valor].ayuda}
               >
-                {/* El aro no es decorativo: el color de Cobrado es el mismo bordo que pinta el chip
-                    activo, así que sin él el punto desaparece justo cuando el filtro está puesto.
-                    Va en crema y no en negro porque el negro sobre el bordo da 1.57:1 y no se
-                    despega; el crema da cerca de 12:1. Sobre el chip inactivo el aro queda
-                    invisible contra la tarjeta, que es lo que se busca: ahí el punto ya se ve.
-                    Es `ring` y no `border` porque el borde le comería 2px al color dentro de un
-                    punto de 8px. */}
+                {/* Aro crema alrededor del punto: sobre el chip activo, que es bordó, un punto
+                    oscuro se pierde (el negro da 1.57:1) y el crema lo despega. Sobre el chip
+                    inactivo el aro queda invisible contra la tarjeta, que es lo que se busca. Es
+                    `ring` y no `border` porque el borde le comería 2px al color dentro de un punto
+                    de 8px. */}
                 <span
                   className="size-2 rounded-full ring-1 ring-crema"
                   style={{ backgroundColor: ESTADOS[valor].color }}
                 />
+                <IconoEstado estado={valor} />
                 {ESTADOS[valor].etiqueta}
               </Chip>
             ))}
