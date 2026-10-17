@@ -448,10 +448,15 @@ function Formulario({
     );
   }
 
+  // HU-22: la baja pide confirmación explícita y avisa lo que arrastra. Cada evento tiene un solo
+  // presupuesto, así que el evento también se cancela; los pagos que ya hubo no se reintegran
+  // (RN-06) y quedan en el estado de cuenta.
   function confirmarBaja() {
-    if (!window.confirm(`¿Dar de baja la consulta ${consulta.id}? Va a quedar como Cancelado.`)) {
-      return;
-    }
+    const mensaje =
+      `¿Dar de baja la consulta ${consulta.id}? El presupuesto y su evento van a quedar como ` +
+      'Cancelado y no se van a poder modificar. Si hubo pagos, se conservan en la cuenta del evento ' +
+      'y no se reintegran.';
+    if (!window.confirm(mensaje)) return;
     darDeBaja.mutate(undefined, { onSuccess: onDadaDeBaja });
   }
 

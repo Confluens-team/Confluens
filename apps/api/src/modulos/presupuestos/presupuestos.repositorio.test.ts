@@ -26,6 +26,14 @@ describe('presupuestos.repositorio: obtenerPresupuestos', () => {
     expect(findMany.mock.calls[0]![0].where.estado).toEqual({ not: 'Confirmado' });
   });
 
+  it('nunca lista los Cancelados que se sacaron con el tacho, aunque se filtre por Cancelado', async () => {
+    await obtenerPresupuestos({});
+    await obtenerPresupuestos({ estado: 'Cancelado' });
+
+    expect(findMany.mock.calls[0]![0].where.ocultoEn).toBeNull();
+    expect(findMany.mock.calls[1]![0].where.ocultoEn).toBeNull();
+  });
+
   it('cada palabra del cliente tiene que aparecer en el nombre, el apellido, el correo o la etiqueta', async () => {
     await obtenerPresupuestos({ cliente: 'Marina Gómez' });
 
