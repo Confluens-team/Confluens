@@ -1,6 +1,6 @@
 import { desglosarIva, type EstadoConsulta, type FiltrosPresupuestos } from '@confluens/shared';
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Search, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Search, Trash2, X } from 'lucide-react';
+import { type MouseEvent, useEffect, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { IconoEstado } from '@/components/IconoEstado';
-import { usePresupuestos } from '@/hooks/use-presupuestos';
+import { useOcultarConsulta, usePresupuestos } from '@/hooks/use-presupuestos';
+import { ErrorApiCliente } from '@/lib/api';
 import { fechaLocal, formatearPesos, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { COLORES_TIPO_EVENTO } from '@/lib/tipo-evento';
 import { cn } from '@/lib/utils';
@@ -61,6 +62,7 @@ export function ListadoConsultas() {
     ? { estado, cliente }
     : { estado, cliente, desde, hasta };
   const presupuestos = usePresupuestos(filtros);
+  const ocultarConsulta = useOcultarConsulta();
 
   const hayFiltros = !!estado || !!textoCliente.trim() || !!desde || !!hasta;
   function limpiarFiltros() {
@@ -69,6 +71,19 @@ export function ListadoConsultas() {
     setCliente('');
     setDesde('');
     setHasta('');
+  }
+
+  // El tacho de una consulta Cancelada: la saca del listado sin borrarla (HU-22 pide conservarla).
+  // stopPropagation porque toda la fila abre la consulta.
+  function ocultar(evento: MouseEvent, id: number) {
+    evento.stopPropagation();
+    const mensaje =
+      `¿Sacar la consulta ${id} del listado? No se borra: sigue en la ficha del cliente, en su ` +
+      'evento y en la cuenta de pagos.';
+    if (!window.confirm(mensaje)) return;
+    ocultarConsulta.mutate(id, {
+      onSuccess: () => setAviso(`Consulta ${id} sacada del listado.`),
+    });
   }
 
   // HU-12: cada fila abre la consulta para verla y editarla; al guardar o dar de baja se vuelve
@@ -131,6 +146,13 @@ export function ListadoConsultas() {
             <X className="size-4" />
           </button>
         </div>
+      )}
+      {ocultarConsulta.isError && (
+        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {ocultarConsulta.error instanceof ErrorApiCliente
+            ? ocultarConsulta.error.message
+            : 'No se pudo sacar la consulta del listado.'}
+        </p>
       )}
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
@@ -261,6 +283,9 @@ export function ListadoConsultas() {
                   <th className="px-3 py-3 font-medium">Vigencia</th>
                   <th className="px-3 py-3 text-right font-medium">Total</th>
                   <th className="w-40 px-3 py-3 font-medium">Estado</th>
+                  <th className="w-12 px-3 py-3">
+                    <span className="sr-only">Acciones</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -357,6 +382,22 @@ export function ListadoConsultas() {
                             <AlertTriangle className="mt-px size-3 shrink-0" />
                             Presupuesto vencido, recalcular
                           </p>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        {presupuesto.estado === 'Cancelado' && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            aria-label={`Sacar la consulta ${presupuesto.id} del listado`}
+                            title="Sacar del listado"
+                            disabled={ocultarConsulta.isPending}
+                            onClick={(evento) => ocultar(evento, presupuesto.id)}
+                          >
+                            <Trash2 />
+                          </Button>
                         )}
                       </td>
                     </tr>

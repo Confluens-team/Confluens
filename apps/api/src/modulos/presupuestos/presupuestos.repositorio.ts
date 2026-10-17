@@ -166,7 +166,8 @@ export async function crearEnTransaccion<T>(
 }
 
 // HU-10: listado de consultas del personal, del más reciente al más antiguo por emisión (el id
-// desempata los emitidos en el mismo instante). Los Confirmado no se listan: pasan a la agenda. Cada palabra de `cliente` tiene que aparecer en el nombre, el
+// desempata los emitidos en el mismo instante). Los Confirmado no se listan: pasan a la agenda.
+// Tampoco los Cancelados que se sacaron con el tacho (`ocultoEn`). Cada palabra de `cliente` tiene que aparecer en el nombre, el
 // apellido, el correo o la etiqueta, así "Marina Gómez" encuentra a quien tiene nombre y apellido
 // separados y "empresa1" a todos los clientes con esa etiqueta.
 export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
@@ -176,6 +177,7 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
   return prisma.presupuesto.findMany({
     where: {
       estado: estado ?? { not: 'Confirmado' },
+      ocultoEn: null,
       evento: {
         fecha: {
           gte: desde ? new Date(desde) : undefined,

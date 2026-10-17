@@ -130,7 +130,7 @@ Como Responsable de Finanzas, quiero consultar el estado de cuenta de un evento,
 - Si el evento no tiene pagos, el sistema lo informa y el saldo es igual a la base de cobro.
 - Solo el personal interno accede al estado de cuenta; el rol Cliente no.
 
-**Implementación.** Ya existe `GET /api/eventos/:id/pagos` (HU-14): devuelve los pagos y el saldo (`baseDeCobro`, `incluyeIva`, `pagado`, `saldo`, `porcentajeAbonado`), calculado y nunca guardado. Falta el importe de la seña y si fue alcanzada, y la pantalla del estado de cuenta con los datos del cliente y del evento.
+**Hecho (16/10/2026).** `GET /api/eventos/:id/pagos` suma al saldo `montoSena` (el 20% de la base, redondeado para arriba al centavo) y `senaAlcanzada` (en true también si el evento ya se reservó, aunque después suba el total, RN-09). `saldo` puede ser negativo: la web lo muestra como saldo a favor del cliente. Cada pago trae `completaSena` y `completaPago`: el que se registró más cerca de `senaRegistradaEn` y el último de un evento Cobrado. Un evento dado de baja se sigue midiendo contra su presupuesto Cancelado, así que conserva sus pagos y su base. En la web, el estado de cuenta sigue en la tarjeta «Cuenta del evento» del detalle, que ya muestra cliente, fecha, salón y estado: suma la seña en cualquier estado, el cartel del evento cancelado y los dos pagos destacados en verde («Seña completa» y «Evento con pago completo»).
 
 ## HU-22 — Registrar presupuesto cancelado
 
@@ -143,7 +143,7 @@ Como Responsable de Eventos, quiero dar de baja un presupuesto que el cliente no
 - Los pagos parciales registrados antes de la baja se conservan en el estado de cuenta (HU-21); lo abonado no se reintegra (RN-06).
 - Solo el personal interno puede dar de baja un presupuesto; el rol Cliente no accede.
 
-**Implementación.** La baja ya se construyó en el Sprint 2 como parte de HU-12: `POST /api/presupuestos/:id/dar-de-baja` cancela el presupuesto y su evento. Esta historia la formaliza: falta verificar el diálogo de confirmación en la web y cubrir con tests los casos CP-22-01 a CP-22-11.
+**Hecho (16/10/2026).** La baja ya se había construido en el Sprint 2 como parte de HU-12: `POST /api/presupuestos/:id/dar-de-baja` cancela el presupuesto y su evento en una sola transacción, y responde `409` si el presupuesto no está Estimado ni Expirado o si el evento ya no está EnConsulta, y `404` si no existe. Esta historia la cubre con tests por criterio: los CP-22-xx están en la Definición del Producto y no en el repo. Los tests prueban la baja de un Estimado y de un Expirado, el rechazo de un Confirmado y de un Cancelado, que no borra líneas ni pagos, que el detalle se sigue viendo, que un PATCH sobre un Cancelado da `409` y los permisos. En la web, la confirmación avisa que el evento también se cancela y que los pagos se conservan sin reintegro, y el formulario de un Cancelado queda deshabilitado. Los pagos del evento dado de baja se ven en su estado de cuenta (HU-21). Además, en el listado cada consulta Cancelada tiene un tacho que la saca del listado sin borrarla (`POST /api/presupuestos/:id/ocultar`, `204`; `409` si no está Cancelada): marca `Presupuesto.ocultoEn`, y el presupuesto sigue en su detalle, en el evento, en el historial del cliente y en la cuenta, como pide el criterio de no borrarlo (decisión de Franco, 16/10/2026).
 
 ## HU-23 — Registrar evento cancelado
 

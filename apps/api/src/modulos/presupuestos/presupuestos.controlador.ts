@@ -17,6 +17,7 @@ import {
   listarPresupuestos,
   modificarPresupuesto,
   obtenerConsulta,
+  ocultarPresupuesto,
   registrarConsultaSocial,
 } from './presupuestos.servicio.js';
 
@@ -79,4 +80,9 @@ export async function darDeBaja(req: Request, res: Response): Promise<void> {
     data: await darDeBajaPresupuesto(Number(req.params.id)),
   };
   res.status(200).json(cuerpo);
+}
+
+export async function ocultar(req: Request, res: Response): Promise<void> {
+  await ocultarPresupuesto(Number(req.params.id));
+  res.status(204).end();
 }

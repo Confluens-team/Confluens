@@ -153,6 +153,19 @@ export function useDarDeBajaConsulta(id: number) {
   });
 }
 
+// El tacho del listado: saca de Consultas un presupuesto Cancelado sin borrarlo (sigue en su
+// detalle, en el evento y en la cuenta). Solo cambia el listado, así que es lo único que se invalida.
+export function useOcultarConsulta() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      apiFetch<undefined>(`/presupuestos/${id}/ocultar`, { method: 'POST' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+    },
+  });
+}
+
 // Arma el presupuesto vacío de un evento que no tiene ninguno (el equivalente a lo que la consulta
 // social crea junto con el evento). Deja la consulta lista para cargarle salón y servicios, así que
 // invalida el listado y el evento, que pasa a tener base de cobro.

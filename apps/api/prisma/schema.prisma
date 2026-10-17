@@ -264,6 +264,10 @@ model Presupuesto {
   // Lo marca el Responsable de Eventos al recibir el presupuesto. Define la base de cobro de
   // RN-01: con factura, total + IVA; sin factura, total pelado. La base no se guarda, se calcula.
   requiereFactura Boolean            @default(false)
+  // Cuándo se sacó del listado de consultas un presupuesto Cancelado (el tacho del listado, decisión
+  // de Franco, 16/10/2026). No lo borra: sigue en el detalle, en el evento, en el historial del
+  // cliente y en la cuenta de pagos (HU-22). Null: se lista.
+  ocultoEn        DateTime?
   lineas          LineaPresupuesto[]
   creadoEn        DateTime           @default(now())
   actualizadoEn   DateTime           @updatedAt
