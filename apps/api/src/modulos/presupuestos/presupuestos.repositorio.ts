@@ -1,4 +1,9 @@
-import type { FiltrosPresupuestos, TipoEventoSocial, TipoJornada } from '@confluens/shared';
+import type {
+  FiltrosPresupuestos,
+  ModalidadServicio,
+  TipoEventoSocial,
+  TipoJornada,
+} from '@confluens/shared';
 
 import { prisma } from '../../lib/prisma.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -113,22 +118,27 @@ export async function crearEvento(
   return tx.evento.create({ data: datos });
 }
 
+// Una línea lista para guardar: el servicio ya resolvió precio, modalidad (RN-11) y subtotal.
+export interface LineaNueva {
+  servicioId: number | null;
+  salonId: number | null;
+  descripcion: string;
+  cantidad: number;
+  modalidad: ModalidadServicio;
+  precioBase: string | null;
+  precioUnitario: string;
+  subtotal: string;
+  aCotizar: boolean;
+  horaEstimada: string | null;
+}
+
 export async function crearPresupuestoConLineas(
   datos: {
     eventoId: number;
     fechaEmision: Date;
     venceEn: Date | null; // null: presupuesto sin armar de una consulta social (ADR 0008)
     total: string;
-    lineas: {
-      servicioId: number | null;
-      salonId: number | null;
-      descripcion: string;
-      cantidad: number;
-      precioUnitario: string;
-      subtotal: string;
-      aCotizar: boolean;
-      horaEstimada: string | null;
-    }[];
+    lineas: LineaNueva[];
   },
   tx: Prisma.TransactionClient = prisma,
 ) {
@@ -242,7 +252,10 @@ export async function buscarPresupuestoDetallado(
           salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
         },
       },
-      lineas: { include: { servicio: { select: { tercerizado: true } } }, orderBy: { id: 'asc' } },
+      lineas: {
+        include: { servicio: { select: { tercerizado: true, admiteModalidad: true } } },
+        orderBy: { id: 'asc' },
+      },
     },
   });
 }
@@ -267,16 +280,7 @@ export async function actualizarPresupuesto(
 // que el servicio ya resolvió.
 export async function reemplazarLineas(
   presupuestoId: number,
-  lineas: {
-    servicioId: number | null;
-    salonId: number | null;
-    descripcion: string;
-    cantidad: number;
-    precioUnitario: string;
-    subtotal: string;
-    aCotizar: boolean;
-    horaEstimada: string | null;
-  }[],
+  lineas: LineaNueva[],
   tx: Prisma.TransactionClient = prisma,
 ) {
   await tx.lineaPresupuesto.deleteMany({ where: { presupuestoId } });
@@ -302,6 +306,51 @@ export async function buscarDistribucionPorNombre(
   return tx.distribucion.findFirst({ where: { salonId, nombre } });
 }
 
+// RN-13: el porcentaje de incremento mensual. La fila la crea la migración; si faltara (una base
+// armada a mano), es 0 y no se proyecta nada.
+export async function obtenerPorcentajeMensual(tx: Prisma.TransactionClient = prisma) {
+  const configuracion = await tx.configuracionPrecios.findUnique({ where: { id: 1 } });
+  return configuracion?.porcentajeMensual.toString() ?? '0';
+}
+
+// HU-24: el evento que se reutiliza, con sus salones (y la distribución de cada uno) y sus
+// presupuestos con las líneas. De cada servicio se trae lo necesario para saber si sigue en el
+// catálogo y con qué precio.
+export async function buscarEventoParaReutilizar(
+  id: number,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.evento.findUnique({
+    where: { id },
+    include: {
+      salones: { include: { salon: true }, orderBy: { salonId: 'asc' } },
+      presupuestos: {
+        include: { lineas: { include: { servicio: true }, orderBy: { id: 'asc' } } },
+        orderBy: { id: 'asc' },
+      },
+    },
+  });
+}
+
+// RN-12 sobre una consulta que todavía no tiene horario: los salones que ese día ya tienen un
+// evento reservado o cobrado. Es un aviso, no un bloqueo.
+export async function buscarSalonesReservadosEseDia(
+  salonIds: number[],
+  fecha: Date,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  const filas = await tx.eventoSalon.findMany({
+    where: {
+      salonId: { in: salonIds },
+      evento: { fecha, estado: { in: ['Reservado', 'Cobrado'] } },
+    },
+    select: { salon: { select: { id: true, nombre: true } } },
+    distinct: ['salonId'],
+    orderBy: { salonId: 'asc' },
+  });
+  return filas.map((fila) => fila.salon);
+}
+
 export type PresupuestosRepositorio = {
   buscarClientePorCorreo: typeof buscarClientePorCorreo;
   buscarClientePorUsuarioId: typeof buscarClientePorUsuarioId;
@@ -323,4 +372,7 @@ export type PresupuestosRepositorio = {
   reemplazarLineas: typeof reemplazarLineas;
   sumarPagos: typeof sumarPagos;
   buscarDistribucionPorNombre: typeof buscarDistribucionPorNombre;
+  obtenerPorcentajeMensual: typeof obtenerPorcentajeMensual;
+  buscarEventoParaReutilizar: typeof buscarEventoParaReutilizar;
+  buscarSalonesReservadosEseDia: typeof buscarSalonesReservadosEseDia;
 };

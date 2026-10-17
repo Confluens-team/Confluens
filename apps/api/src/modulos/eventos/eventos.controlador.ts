@@ -2,12 +2,15 @@ import type {
   AgendarEvento,
   EventoAgenda,
   EventoDetallado,
+  EventoReutilizado,
   FiltrosAgenda,
   GuardarObservacionesComanda,
   RespuestaExito,
+  ReutilizarEvento,
 } from '@confluens/shared';
 import type { Request, Response } from 'express';
 
+import { reutilizarConfiguracion } from '../presupuestos/presupuestos.servicio.js';
 import {
   agendarEvento,
   cancelarEvento,
@@ -53,4 +56,13 @@ export async function cancelar(req: Request, res: Response): Promise<void> {
   const evento = await cancelarEvento(id);
   const cuerpo: RespuestaExito<EventoDetallado> = { data: evento as unknown as EventoDetallado };
   res.status(200).json(cuerpo);
+}
+
+// HU-24. La consulta nueva la arma el módulo de presupuestos: nace junto con su presupuesto, igual
+// que una consulta del cotizador. req.body ya validado por validar({ body: esquemaReutilizarEvento }).
+export async function reutilizar(req: Request, res: Response): Promise<void> {
+  const id = Number(req.params.id);
+  const resultado = await reutilizarConfiguracion(id, req.body as ReutilizarEvento);
+  const cuerpo: RespuestaExito<EventoReutilizado> = { data: resultado };
+  res.status(201).json(cuerpo);
 }
