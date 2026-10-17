@@ -1,6 +1,6 @@
 import type { Rol } from '@confluens/shared';
 import request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { crearApp } from '../../app.js';
 import { Prisma } from '../../generated/prisma/client.js';
@@ -101,6 +101,7 @@ const presupuestoEstimadoFixture = {
   venceEn: new Date(),
   total: new Prisma.Decimal('142200'),
   requiereFactura: false,
+  ocultoEn: null,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
 };
@@ -159,6 +160,9 @@ const cookiePersonal = `${NOMBRE_COOKIE_SESION}=${firmarToken({
   email: 're@confluens.test',
   rol: 'RESPONSABLE_EVENTOS',
 })}`;
+
+const cookiePersonalNueva = () =>
+  `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 1, email: 're@confluens.test', rol: 'RESPONSABLE_EVENTOS' })}`;
 
 describe('GET /api/eventos/:id', () => {
   beforeEach(() => {
@@ -529,16 +533,106 @@ describe('POST /api/eventos/:id/cancelar', () => {
     expect(cancelarMock).not.toHaveBeenCalled();
   });
 
-  it('responde 409 si el evento ya está Cobrado o Cancelado', async () => {
-    buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Cobrado' }));
+  it.each(['Cobrado', 'Cancelado'] as const)(
+    'responde 409 si el evento ya está %s (HU-23 C2)',
+    async (estado) => {
+      buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado }));
+
+      const respuesta = await request(app)
+        .post('/api/eventos/20/cancelar')
+        .set('Cookie', [cookiePersonal]);
+
+      expect(respuesta.status).toBe(409);
+      expect(respuesta.body.error.code).toBe('CONFLICT');
+      expect(cancelarMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('responde 404 si el evento no existe', async () => {
+    buscarDetalladoMock.mockResolvedValue(null);
+
+    const respuesta = await request(app)
+      .post('/api/eventos/99/cancelar')
+      .set('Cookie', [cookiePersonal]);
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body.error.code).toBe('NOT_FOUND');
+    expect(cancelarMock).not.toHaveBeenCalled();
+  });
+
+  // HU-23 C3 (decisión del PO, 16/10/2026): las 48 horas aplican solo a un evento confirmado. Una
+  // consulta sin seña se cancela en cualquier momento, aunque el evento sea mañana o ya haya pasado.
+  it.each([
+    ['dentro de una hora', 60 * 60 * 1000],
+    ['de mañana', 24 * 60 * 60 * 1000],
+    ['de ayer', -24 * 60 * 60 * 1000],
+  ])('cancela una consulta EnConsulta %s, sin plazo de 48 horas', async (_caso, desfase) => {
+    const inicio = new Date(Date.now() + desfase);
+    buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'EnConsulta', inicio }));
 
     const respuesta = await request(app)
       .post('/api/eventos/20/cancelar')
       .set('Cookie', [cookiePersonal]);
 
-    expect(respuesta.status).toBe(409);
-    expect(respuesta.body.error.code).toBe('CONFLICT');
-    expect(cancelarMock).not.toHaveBeenCalled();
+    expect(respuesta.status).toBe(200);
+    expect(cancelarMock).toHaveBeenCalledWith(20);
+  });
+
+  // RN-07: «hasta 48 horas corridas antes de su inicio». Con exactamente 48 horas todavía se puede;
+  // un segundo menos, no. Se congela solo Date para no trabar a supertest.
+  describe('en el límite de las 48 horas de un evento Reservado (CP-23-05)', () => {
+    const AHORA = new Date('2026-11-10T15:00:00.000Z');
+
+    // El token de sesión vence a las 2 horas: se firma con el reloj ya congelado.
+    let cookieAhora = '';
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'], now: AHORA });
+      cookieAhora = cookiePersonalNueva();
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('con exactamente 48 horas de anticipación cancela', async () => {
+      const inicio = new Date(AHORA.getTime() + 48 * 60 * 60 * 1000);
+      buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Reservado', inicio }));
+
+      const respuesta = await request(app)
+        .post('/api/eventos/20/cancelar')
+        .set('Cookie', [cookieAhora]);
+
+      expect(respuesta.status).toBe(200);
+      expect(cancelarMock).toHaveBeenCalledWith(20);
+    });
+
+    it('con un segundo menos de 48 horas responde 422 y no cancela', async () => {
+      const inicio = new Date(AHORA.getTime() + 48 * 60 * 60 * 1000 - 1000);
+      buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Reservado', inicio }));
+
+      const respuesta = await request(app)
+        .post('/api/eventos/20/cancelar')
+        .set('Cookie', [cookieAhora]);
+
+      expect(respuesta.status).toBe(422);
+      expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+      expect(cancelarMock).not.toHaveBeenCalled();
+    });
+
+    // RN-07: fines de semana y feriados cuentan, no hay calendario de feriados. Un evento del
+    // sábado a las 15 se cancela hasta el jueves a las 15, contando las horas corridas.
+    it('cuenta las horas corridas aunque el evento caiga en fin de semana', async () => {
+      const sabado = new Date('2026-11-14T15:00:00.000Z');
+      vi.setSystemTime(new Date('2026-11-12T15:00:00.000Z'));
+      cookieAhora = cookiePersonalNueva();
+      buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Reservado', inicio: sabado }));
+
+      const respuesta = await request(app)
+        .post('/api/eventos/20/cancelar')
+        .set('Cookie', [cookieAhora]);
+
+      expect(respuesta.status).toBe(200);
+    });
   });
 });
 

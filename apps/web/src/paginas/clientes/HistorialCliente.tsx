@@ -11,6 +11,7 @@ import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { IconoEstado } from '@/components/IconoEstado';
 import { useHistorialCliente } from '@/hooks/use-clientes';
 import { fechaLocal, formatearFecha, formatearPesos } from '@/lib/formato';
 import { cn } from '@/lib/utils';
@@ -73,6 +74,7 @@ export function HistorialCliente({
                 : 'bg-background text-muted-foreground ring-border hover:text-foreground',
             )}
           >
+            <IconoEstado estado={valor} className="-mr-1" />
             {ESTADOS[valor].etiqueta}
             <span className="tabular-nums">{resumen?.[valor] ?? '–'}</span>
           </button>
@@ -180,10 +182,11 @@ export function HistorialCliente({
                   <td className="px-3 py-2.5">
                     <span
                       className={cn(
-                        'rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                        'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
                         ESTADOS[evento.estado].clase,
                       )}
                     >
+                      <IconoEstado estado={evento.estado} />
                       {ESTADOS[evento.estado].etiqueta}
                     </span>
                   </td>

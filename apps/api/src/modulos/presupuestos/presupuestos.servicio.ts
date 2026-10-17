@@ -810,6 +810,26 @@ export async function modificarPresupuesto(
 }
 
 /**
+ * Saca del listado de consultas un presupuesto Cancelado (el tacho del listado, decisión de Franco,
+ * 16/10/2026). No borra nada: HU-22 pide que el cancelado se conserve, así que sigue en su detalle,
+ * en el evento, en el historial del cliente y en la cuenta de pagos. Solo se ocultan los Cancelados:
+ * los que siguen en gestión tienen que verse. Ocultar uno ya oculto no cambia nada.
+ */
+export async function ocultarPresupuesto(
+  id: number,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+): Promise<void> {
+  const presupuesto = await buscarOFallar(id, repo);
+  if (presupuesto.estado !== 'Cancelado') {
+    throw ErrorApi.conflicto(
+      `Solo se puede sacar del listado un presupuesto Cancelado (este está ${presupuesto.estado})`,
+    );
+  }
+  if (presupuesto.ocultoEn) return;
+  await repo.actualizarPresupuesto(id, { ocultoEn: new Date() });
+}
+
+/**
  * HU-12: dar de baja una consulta la pasa a Cancelado (RN-08: solo se da de baja a mano). El
  * evento también se cancela: cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026).
  */

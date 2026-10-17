@@ -90,6 +90,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
     venceEn: new Date('2026-09-30T15:00:00.000Z'),
     total: D('222200'),
     requiereFactura: false,
+    ocultoEn: null as Date | null,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     evento: {
@@ -1046,25 +1047,192 @@ describe('Consultas sociales (ADR 0008)', () => {
   });
 });
 
-describe('POST /api/presupuestos/:id/dar-de-baja (HU-12)', () => {
-  it('pasa la consulta a Cancelado y cancela su evento (un presupuesto por evento)', async () => {
-    const respuesta = await request(app)
-      .post('/api/presupuestos/31/dar-de-baja')
-      .set('Cookie', [cookieRE]);
+// HU-22 (construida en el Sprint 2 como parte de HU-12): dar de baja un presupuesto que el cliente
+// no va a confirmar. Los CP-22-xx de la Definición del Producto se cubren por criterio.
+describe('POST /api/presupuestos/:id/dar-de-baja (HU-22)', () => {
+  function darDeBaja(cookie = cookieRE) {
+    return request(app).post('/api/presupuestos/31/dar-de-baja').set('Cookie', [cookie]);
+  }
 
-    expect(respuesta.status).toBe(200);
-    expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, { estado: 'Cancelado' }, undefined);
-    expect(actualizarEventoMock).toHaveBeenCalledWith(20, { estado: 'Cancelado' }, undefined);
+  it.each(['Estimado', 'Expirado'])(
+    'pasa un presupuesto %s a Cancelado y cancela su evento (un presupuesto por evento)',
+    async (estado) => {
+      buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({ estado }));
+
+      const respuesta = await darDeBaja();
+
+      expect(respuesta.status).toBe(200);
+      expect(actualizarPresupuestoMock).toHaveBeenCalledWith(
+        31,
+        { estado: 'Cancelado' },
+        undefined,
+      );
+      expect(actualizarEventoMock).toHaveBeenCalledWith(20, { estado: 'Cancelado' }, undefined);
+    },
+  );
+
+  it('no borra nada: solo cambia los estados y deja las líneas y los pagos como estaban (RN-06)', async () => {
+    await darDeBaja();
+
+    expect(actualizarPresupuestoMock).toHaveBeenCalledTimes(1);
+    expect(actualizarEventoMock).toHaveBeenCalledTimes(1);
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+    expect(reemplazarSalonesDelEventoMock).not.toHaveBeenCalled();
   });
 
-  it('responde 409 si el presupuesto está Confirmado', async () => {
-    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({ estado: 'Confirmado' }));
+  it('responde 409 si el presupuesto está Confirmado: un evento reservado se cancela por HU-23', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Confirmado' }, { estado: 'Reservado' }),
+    );
 
-    const respuesta = await request(app)
-      .post('/api/presupuestos/31/dar-de-baja')
-      .set('Cookie', [cookieRE]);
+    const respuesta = await darDeBaja();
 
     expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 409 si el presupuesto ya está Cancelado', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
+    );
+
+    const respuesta = await darDeBaja();
+
+    expect(respuesta.status).toBe(409);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 409 si el evento ya no está en consulta', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({}, { estado: 'Cancelado' }));
+
+    const respuesta = await darDeBaja();
+
+    expect(respuesta.status).toBe(409);
+    expect(actualizarEventoMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 404 si el presupuesto no existe', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(null as never);
+
+    const respuesta = await darDeBaja();
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app).post('/api/presupuestos/31/dar-de-baja');
+    const cliente = await darDeBaja(cookieDe('CLIENTE'));
+
+    expect(sinSesion.status).toBe(401);
+    expect(cliente.status).toBe(403);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+
+  it('cualquier rol del personal puede dar de baja', async () => {
+    const respuesta = await darDeBaja(cookieDe('RESPONSABLE_FINANZAS'));
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('el presupuesto Cancelado se sigue consultando en su detalle', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
+    );
+
+    const respuesta = await request(app).get('/api/presupuestos/31').set('Cookie', [cookieRE]);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data).toMatchObject({ estado: 'Cancelado', total: '222200.00' });
+  });
+
+  it('el presupuesto Cancelado no se modifica ni se recalcula: responde 409', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
+    );
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send(bodyBase);
+
+    expect(respuesta.status).toBe(409);
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+});
+
+// El tacho del listado de consultas (decisión de Franco, 16/10/2026): saca del listado un
+// presupuesto Cancelado sin borrarlo, porque HU-22 pide conservarlo.
+describe('POST /api/presupuestos/:id/ocultar', () => {
+  function ocultar(cookie = cookieRE) {
+    return request(app).post('/api/presupuestos/31/ocultar').set('Cookie', [cookie]);
+  }
+
+  it('marca ocultoEn en un presupuesto Cancelado y responde 204 sin cuerpo', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
+    );
+
+    const respuesta = await ocultar();
+
+    expect(respuesta.status).toBe(204);
+    expect(respuesta.body).toEqual({});
+    expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, { ocultoEn: expect.any(Date) });
+  });
+
+  it('no borra nada: no toca el evento, las líneas ni los salones', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
+    );
+
+    await ocultar();
+
+    expect(actualizarEventoMock).not.toHaveBeenCalled();
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+    expect(reemplazarSalonesDelEventoMock).not.toHaveBeenCalled();
+  });
+
+  it('ocultar uno ya oculto responde 204 y no lo vuelve a escribir', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado', ocultoEn: new Date() }, { estado: 'Cancelado' }),
+    );
+
+    const respuesta = await ocultar();
+
+    expect(respuesta.status).toBe(204);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['Estimado', 'Expirado', 'Confirmado'])(
+    'responde 409 con un presupuesto %s: solo se ocultan los Cancelados',
+    async (estado) => {
+      buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({ estado }));
+
+      const respuesta = await ocultar();
+
+      expect(respuesta.status).toBe(409);
+      expect(respuesta.body.error.code).toBe('CONFLICT');
+      expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('responde 404 si el presupuesto no existe', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(null as never);
+
+    const respuesta = await ocultar();
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app).post('/api/presupuestos/31/ocultar');
+    const cliente = await ocultar(cookieDe('CLIENTE'));
+
+    expect(sinSesion.status).toBe(401);
+    expect(cliente.status).toBe(403);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
   });
 });
 

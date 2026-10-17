@@ -144,6 +144,7 @@ function presupuestoFixture(
     venceEn: new Date(),
     total: new Prisma.Decimal(TOTAL_SIN_IVA),
     requiereFactura: datos.requiereFactura ?? false,
+    ocultoEn: null,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     lineas: [lineaFixture],
@@ -726,6 +727,246 @@ describe('GET /api/eventos/:id/pagos', () => {
       .set('Cookie', [cookieResponsableEventos]);
 
     expect(respuesta.status).toBe(404);
+  });
+});
+
+// HU-21: el estado de cuenta. Todo se calcula en cada consulta, nada se guarda.
+describe('GET /api/eventos/:id/pagos — estado de cuenta (HU-21)', () => {
+  const instanteSena = new Date('2026-10-06T15:00:00.000Z');
+
+  // Un pago con id e instante de registro propios: las marcas de seña y de pago completo se
+  // deciden por el orden de registro y por senaRegistradaEn.
+  function pagoRegistrado(id: number, monto: string, creadoEn: Date) {
+    return { ...pagoFixture(monto), id, creadoEn };
+  }
+
+  function despues(fecha: Date, milisegundos: number) {
+    return new Date(fecha.getTime() + milisegundos);
+  }
+
+  const UN_DIA = 24 * 60 * 60 * 1000;
+
+  function consultarCuenta(cookie = cookieResponsableEventos) {
+    return request(app).get('/api/eventos/20/pagos').set('Cookie', [cookie]);
+  }
+
+  it('sin pagos el saldo es la base de cobro y la seña no está alcanzada', async () => {
+    listarDeEventoMock.mockResolvedValue([]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.pagos).toEqual([]);
+    expect(respuesta.body.data.saldo).toMatchObject({
+      baseDeCobro: '142200.00',
+      pagado: '0.00',
+      saldo: '142200.00',
+      montoSena: '28440.00',
+      senaAlcanzada: false,
+    });
+  });
+
+  it('la seña es el 20% de la base con IVA cuando el presupuesto requiere factura (RN-01)', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ presupuestos: [presupuestoFixture({ requiereFactura: true })] }),
+    );
+    listarDeEventoMock.mockResolvedValue([]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.saldo).toMatchObject({
+      baseDeCobro: BASE_CON_FACTURA,
+      incluyeIva: true,
+      montoSena: SENA_CON_FACTURA,
+    });
+  });
+
+  it('redondea la seña para arriba al centavo', async () => {
+    // 476436 × 1,21 = 576487,56 → 20% = 115297,512 → 115297,52.
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        presupuestos: [
+          {
+            ...presupuestoFixture({ requiereFactura: true }),
+            total: new Prisma.Decimal('476436'),
+          },
+        ],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.saldo.montoSena).toBe('115297.52');
+  });
+
+  it('da la seña por alcanzada cuando lo pagado llega al 20%', async () => {
+    listarDeEventoMock.mockResolvedValue([pagoRegistrado(1, SENA_SIN_FACTURA, instanteSena)]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.saldo.senaAlcanzada).toBe(true);
+  });
+
+  it('un evento reservado mantiene la seña alcanzada aunque después suba el total (RN-09)', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Reservado',
+        senaRegistradaEn: instanteSena,
+        presupuestos: [
+          { ...presupuestoFixture({ estado: 'Confirmado' }), total: new Prisma.Decimal('300000') },
+        ],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([pagoRegistrado(1, SENA_SIN_FACTURA, instanteSena)]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.saldo).toMatchObject({
+      montoSena: '60000.00',
+      senaAlcanzada: true,
+    });
+  });
+
+  it('si el total bajó por debajo de lo pagado, el saldo es negativo: saldo a favor del cliente', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Reservado',
+        senaRegistradaEn: instanteSena,
+        presupuestos: [presupuestoFixture({ estado: 'Confirmado' })],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([
+      pagoRegistrado(1, '50000', instanteSena),
+      pagoRegistrado(2, '100000', despues(instanteSena, UN_DIA)),
+    ]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.saldo.saldo).toBe('-7800.00');
+  });
+
+  it('un evento Cobrado queda con saldo cero y marca el pago de la seña y el que completó el total', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Cobrado',
+        senaRegistradaEn: instanteSena,
+        presupuestos: [presupuestoFixture({ estado: 'Confirmado' })],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([
+      pagoRegistrado(1, '10000', despues(instanteSena, -UN_DIA)),
+      pagoRegistrado(2, '18440', instanteSena),
+      pagoRegistrado(3, '113760', despues(instanteSena, 7 * UN_DIA)),
+    ]);
+
+    const respuesta = await consultarCuenta();
+    const { pagos, saldo } = respuesta.body.data;
+
+    expect(saldo.saldo).toBe('0.00');
+    expect(pagos.map((p: { completaSena: boolean }) => p.completaSena)).toEqual([
+      false,
+      true,
+      false,
+    ]);
+    expect(pagos.map((p: { completaPago: boolean }) => p.completaPago)).toEqual([
+      false,
+      false,
+      true,
+    ]);
+  });
+
+  it('un pago único que completó la seña y el total lleva las dos marcas', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Cobrado',
+        senaRegistradaEn: instanteSena,
+        presupuestos: [presupuestoFixture({ estado: 'Confirmado' })],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([pagoRegistrado(1, TOTAL_SIN_IVA, instanteSena)]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.pagos[0]).toMatchObject({ completaSena: true, completaPago: true });
+  });
+
+  it('la seña es el pago registrado más cerca de senaRegistradaEn aunque los relojes difieran', async () => {
+    // La base escribió creadoEn unos milisegundos después de que el servidor marcara la seña.
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Reservado',
+        senaRegistradaEn: instanteSena,
+        presupuestos: [presupuestoFixture({ estado: 'Confirmado' })],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([
+      pagoRegistrado(1, SENA_SIN_FACTURA, despues(instanteSena, 5)),
+      pagoRegistrado(2, '1000', despues(instanteSena, UN_DIA)),
+    ]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.pagos[0].completaSena).toBe(true);
+    expect(respuesta.body.data.pagos[1].completaSena).toBe(false);
+  });
+
+  it('un evento reservado sin senaRegistradaEn marca el pago con el que el acumulado llegó al 20%', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Reservado',
+        presupuestos: [presupuestoFixture({ estado: 'Confirmado' })],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([
+      pagoRegistrado(1, '10000', instanteSena),
+      pagoRegistrado(2, '20000', despues(instanteSena, UN_DIA)),
+      pagoRegistrado(3, '5000', despues(instanteSena, 2 * UN_DIA)),
+    ]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.pagos.map((p: { completaSena: boolean }) => p.completaSena)).toEqual(
+      [false, true, false],
+    );
+  });
+
+  it('un evento en consulta no tiene pago de seña ni de total', async () => {
+    listarDeEventoMock.mockResolvedValue([pagoRegistrado(1, '5000', instanteSena)]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.pagos[0]).toMatchObject({
+      completaSena: false,
+      completaPago: false,
+    });
+  });
+
+  it('un evento Cancelado conserva sus pagos y la base de su presupuesto dado de baja (RN-06)', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Cancelado',
+        presupuestos: [presupuestoFixture({ estado: 'Cancelado' })],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([pagoRegistrado(1, '14220', instanteSena)]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.pagos).toHaveLength(1);
+    expect(respuesta.body.data.saldo).toMatchObject({
+      baseDeCobro: '142200.00',
+      pagado: '14220.00',
+      saldo: '127980.00',
+    });
+  });
+
+  it('un Cliente no accede al estado de cuenta', async () => {
+    const respuesta = await consultarCuenta(cookieDe('CLIENTE', 'ana@empresa.com'));
+
+    expect(respuesta.status).toBe(403);
+    expect(listarDeEventoMock).not.toHaveBeenCalled();
   });
 });
 

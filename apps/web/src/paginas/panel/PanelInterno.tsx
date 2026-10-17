@@ -6,6 +6,7 @@ import {
   Globe,
   Images,
   Inbox,
+  List,
   LogOut,
   Settings,
   UserRound,
@@ -28,20 +29,27 @@ import { ListadoConsultas } from '@/paginas/presupuestos/ListadoConsultas';
 import { IncrementoMensual } from '@/paginas/servicios/IncrementoMensual';
 import { RegistrarServicio } from '@/paginas/servicios/RegistrarServicio';
 
-type Pestania = 'consultas' | 'agenda' | 'clientes' | 'catalogo' | 'cuenta';
+type Pestania = 'agenda' | 'eventos' | 'consultas' | 'clientes' | 'catalogo' | 'cuenta';
 
+// La agenda va primero: es la pestaña de inicio del panel (decisión de Franco, 16/10/2026).
 const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: string }[] = [
-  {
-    valor: 'consultas',
-    texto: 'Consultas',
-    icono: Inbox,
-    bajada: 'Presupuestos pedidos por los clientes que todavía no se confirmaron.',
-  },
   {
     valor: 'agenda',
     texto: 'Agenda',
     icono: CalendarDays,
     bajada: 'Calendario de eventos por mes, semana y día, con filtros por salón y por estado.',
+  },
+  {
+    valor: 'eventos',
+    texto: 'Eventos',
+    icono: List,
+    bajada: 'Todos los eventos agrupados por mes, con filtros por salón y por estado.',
+  },
+  {
+    valor: 'consultas',
+    texto: 'Consultas',
+    icono: Inbox,
+    bajada: 'Presupuestos pedidos por los clientes que todavía no se confirmaron.',
   },
   {
     valor: 'clientes',
@@ -162,7 +170,7 @@ function MiCuenta({ sesion, onCerrarSesion }: { sesion: Sesion; onCerrarSesion: 
   );
 }
 
-// Panel interno: una sola vista para todo el personal, con todo lo implementado en cinco pestañas.
+// Panel interno: una sola vista para todo el personal, con todo lo implementado en seis pestañas.
 // Por ahora todos los roles ven las mismas pestañas; qué ve cada uno se revisa más adelante, y
 // mientras tanto los permisos los aplica la API. Cada pestaña es una ruta: /admin/<pestaña>.
 export function PanelInterno({ sesion }: { sesion: Sesion }) {
@@ -185,7 +193,15 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
     <div className="fondo-papel min-h-screen text-foreground">
       <header className="sticky top-0 z-40 border-b border-border/70 bg-papel/90 backdrop-blur print:hidden">
         <div className="mx-auto flex h-16 max-w-[90rem] items-center justify-between gap-4 px-4 sm:px-6">
-          <Logo compacto />
+          {/* El logo vuelve al inicio del panel, que es la agenda. */}
+          <button
+            type="button"
+            onClick={() => navigate('/admin/agenda')}
+            aria-label="Ir a la agenda"
+            className="rounded-full focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+          >
+            <Logo compacto />
+          </button>
           <div className="flex items-center gap-2 text-sm">
             <span className="hidden text-muted-foreground sm:inline">{sesion.email}</span>
             <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
@@ -232,8 +248,11 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
           <h1 className="text-2xl font-semibold text-bordo">{activa.texto}</h1>
           <p className="text-sm text-muted-foreground">{activa.bajada}</p>
         </div>
+        {/* La key separa el estado de las dos pestañas: cada una conserva sus propios filtros y el
+            evento abierto en una no aparece en la otra. */}
+        {pestania === 'agenda' && <Agenda key="agenda" vista="calendario" />}
+        {pestania === 'eventos' && <Agenda key="eventos" vista="lista" />}
         {pestania === 'consultas' && <ListadoConsultas />}
-        {pestania === 'agenda' && <Agenda />}
         {pestania === 'clientes' && <ListadoClientes />}
         {pestania === 'catalogo' && <CatalogoYLanding />}
         {pestania === 'cuenta' && <MiCuenta sesion={sesion} onCerrarSesion={salir} />}

@@ -1,13 +1,15 @@
 import { desglosarIva, type EstadoConsulta, type FiltrosPresupuestos } from '@confluens/shared';
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Search, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Search, Trash2, X } from 'lucide-react';
+import { type MouseEvent, useEffect, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { usePresupuestos } from '@/hooks/use-presupuestos';
+import { IconoEstado } from '@/components/IconoEstado';
+import { useOcultarConsulta, usePresupuestos } from '@/hooks/use-presupuestos';
+import { ErrorApiCliente } from '@/lib/api';
 import { fechaLocal, formatearPesos, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { COLORES_TIPO_EVENTO } from '@/lib/tipo-evento';
 import { cn } from '@/lib/utils';
@@ -17,9 +19,9 @@ import { EditarConsulta } from './EditarConsulta';
 
 // Los Confirmado no aparecen: pasan a la agenda de eventos.
 const ESTADOS: { valor: EstadoConsulta; clase: string }[] = [
-  { valor: 'Estimado', clase: 'bg-muted text-foreground' },
-  { valor: 'Expirado', clase: 'bg-amber-100 text-amber-900' },
-  { valor: 'Cancelado', clase: 'bg-bordo/10 text-bordo' },
+  { valor: 'Estimado', clase: 'bg-estado-consulta-fondo text-estado-consulta-texto' },
+  { valor: 'Expirado', clase: 'bg-estado-expirado-fondo text-estado-expirado-texto' },
+  { valor: 'Cancelado', clase: 'bg-estado-cancelado-fondo text-estado-cancelado-texto' },
 ];
 
 const claseDeEstado = (estado: string) => ESTADOS.find((e) => e.valor === estado)?.clase ?? '';
@@ -60,6 +62,7 @@ export function ListadoConsultas() {
     ? { estado, cliente }
     : { estado, cliente, desde, hasta };
   const presupuestos = usePresupuestos(filtros);
+  const ocultarConsulta = useOcultarConsulta();
 
   const hayFiltros = !!estado || !!textoCliente.trim() || !!desde || !!hasta;
   function limpiarFiltros() {
@@ -68,6 +71,19 @@ export function ListadoConsultas() {
     setCliente('');
     setDesde('');
     setHasta('');
+  }
+
+  // El tacho de una consulta Cancelada: la saca del listado sin borrarla (HU-22 pide conservarla).
+  // stopPropagation porque toda la fila abre la consulta.
+  function ocultar(evento: MouseEvent, id: number) {
+    evento.stopPropagation();
+    const mensaje =
+      `¿Sacar la consulta ${id} del listado? No se borra: sigue en la ficha del cliente, en su ` +
+      'evento y en la cuenta de pagos.';
+    if (!window.confirm(mensaje)) return;
+    ocultarConsulta.mutate(id, {
+      onSuccess: () => setAviso(`Consulta ${id} sacada del listado.`),
+    });
   }
 
   // HU-12: cada fila abre la consulta para verla y editarla; al guardar o dar de baja se vuelve
@@ -131,6 +147,13 @@ export function ListadoConsultas() {
           </button>
         </div>
       )}
+      {ocultarConsulta.isError && (
+        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+          {ocultarConsulta.error instanceof ErrorApiCliente
+            ? ocultarConsulta.error.message
+            : 'No se pudo sacar la consulta del listado.'}
+        </p>
+      )}
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           {[
@@ -142,10 +165,11 @@ export function ListadoConsultas() {
               type="button"
               onClick={() => setEstado(valor)}
               className={cn(
-                'rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
+                'inline-flex items-center gap-1 rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
                 estado === valor ? 'border-bordo bg-bordo text-crema' : 'border-border bg-card',
               )}
             >
+              <IconoEstado estado={valor} />
               {texto}
             </button>
           ))}
@@ -259,6 +283,9 @@ export function ListadoConsultas() {
                   <th className="px-3 py-3 font-medium">Vigencia</th>
                   <th className="px-3 py-3 text-right font-medium">Total</th>
                   <th className="w-40 px-3 py-3 font-medium">Estado</th>
+                  <th className="w-12 px-3 py-3">
+                    <span className="sr-only">Acciones</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -273,7 +300,7 @@ export function ListadoConsultas() {
                       onClick={() => setAbierta(presupuesto.id)}
                       className={cn(
                         'cursor-pointer transition-colors hover:bg-muted/60',
-                        expirado && 'bg-amber-50/70',
+                        expirado && 'bg-estado-expirado-fondo/50',
                       )}
                     >
                       <td
@@ -343,17 +370,34 @@ export function ListadoConsultas() {
                       <td className="px-3 py-3">
                         <span
                           className={cn(
-                            'inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                            'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
                             claseDeEstado(presupuesto.estado),
                           )}
                         >
+                          <IconoEstado estado={presupuesto.estado} />
                           {presupuesto.estado}
                         </span>
                         {expirado && (
-                          <p className="mt-1 flex items-start gap-1 text-xs font-medium text-amber-900">
+                          <p className="mt-1 flex items-start gap-1 text-xs font-medium text-estado-expirado-texto">
                             <AlertTriangle className="mt-px size-3 shrink-0" />
                             Presupuesto vencido, recalcular
                           </p>
+                        )}
+                      </td>
+                      <td className="px-3 py-3 text-right">
+                        {presupuesto.estado === 'Cancelado' && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            aria-label={`Sacar la consulta ${presupuesto.id} del listado`}
+                            title="Sacar del listado"
+                            disabled={ocultarConsulta.isPending}
+                            onClick={(evento) => ocultar(evento, presupuesto.id)}
+                          >
+                            <Trash2 />
+                          </Button>
                         )}
                       </td>
                     </tr>

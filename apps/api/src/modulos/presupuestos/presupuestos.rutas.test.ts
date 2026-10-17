@@ -184,6 +184,7 @@ function prepararMocksDeCreacion() {
       venceEn: new Date(),
       total: new Prisma.Decimal(datos.total),
       requiereFactura: false,
+      ocultoEn: null,
       creadoEn: new Date(),
       actualizadoEn: new Date(),
       evento: eventoFixture,

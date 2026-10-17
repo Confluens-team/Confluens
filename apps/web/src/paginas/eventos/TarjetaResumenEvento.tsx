@@ -4,6 +4,7 @@ import { ArrowRight, CalendarDays, Clock, LayoutGrid, Users, X } from 'lucide-re
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
+import { IconoEstado } from '@/components/IconoEstado';
 import { fechaLocal, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { ESTADOS } from './estado-evento';
@@ -88,8 +89,12 @@ export function TarjetaResumenEvento({
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
             <span
               title={estado.ayuda}
-              className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', estado.clase)}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold',
+                estado.clase,
+              )}
             >
+              <IconoEstado estado={evento.estado} />
               {estado.etiqueta}
             </span>
             <BadgeTipoEvento evento={evento} />
