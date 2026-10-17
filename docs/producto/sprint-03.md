@@ -179,6 +179,8 @@ Como Responsable de Eventos, quiero generar una consulta nueva a partir de la co
 
 **Implementación.** `POST /api/eventos/:id/reutilizar` (`201` con el evento nuevo y los servicios que quedaron afuera; `400` sin fecha o con fecha pasada). Crea evento y presupuesto en una sola transacción, como `POST /api/presupuestos`, y copia la modalidad de cada línea recalculando el recargo sobre el precio vigente.
 
+> **A revisar con el equipo (17/10/2026).** Esta funcionalidad se definió sobre la marcha durante la implementación y todavía no la validó el resto del equipo ni el PO. Revisar en particular: (1) dónde viven las acciones (hoy, dentro del presupuesto), (2) la ampliación «Copiar configuración de otro evento» sobre una consulta existente, que la HU no pedía, (3) qué se copia y qué queda por defecto (personas, jornada, cantidades y horas), (4) el adelanto de la proyección de RN-13 desde HU-34 y (5) que un mismo servicio pueda repetirse con distinta modalidad (ADR 0012).
+
 **Cómo quedó (decisiones del equipo al implementar, 16/10/2026).**
 
 - Las dos acciones viven **dentro del presupuesto** (la pantalla de la consulta), junto a cliente, evento y servicios:
