@@ -1,4 +1,10 @@
-import { desglosarIva, type EstadoEvento, type FiltrosHistorialCliente } from '@confluens/shared';
+import {
+  desglosarIva,
+  type EstadoEvento,
+  type EventoReutilizado,
+  type FiltrosHistorialCliente,
+} from '@confluens/shared';
+import { Copy } from 'lucide-react';
 import { useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
@@ -9,6 +15,7 @@ import { useHistorialCliente } from '@/hooks/use-clientes';
 import { fechaLocal, formatearFecha, formatearPesos } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { ESTADOS, ESTADOS_DEL_FILTRO } from '@/paginas/eventos/estado-evento';
+import { ReutilizarConfiguracion } from '@/paginas/eventos/ReutilizarConfiguracion';
 
 // HU-18: el historial de eventos y consultas de un cliente, dentro de su ficha. Muestra todos los
 // estados (Cancelado incluido), del más reciente al más antiguo, con un resumen por estado que no
@@ -16,10 +23,14 @@ import { ESTADOS, ESTADOS_DEL_FILTRO } from '@/paginas/eventos/estado-evento';
 export function HistorialCliente({
   clienteId,
   onAbrirEvento,
+  onConsultaReutilizada,
 }: {
   clienteId: number;
   onAbrirEvento: (eventoId: number) => void;
+  // HU-24: abre la consulta nueva que se creó al reutilizar un evento de la lista.
+  onConsultaReutilizada: (resultado: EventoReutilizado) => void;
 }) {
+  const [aReutilizar, setAReutilizar] = useState<number | null>(null);
   const [estado, setEstado] = useState<EstadoEvento[]>([]);
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
@@ -136,6 +147,9 @@ export function HistorialCliente({
                 <th className="px-3 py-2 text-right font-semibold">Personas</th>
                 <th className="px-3 py-2 font-semibold">Estado</th>
                 <th className="px-3 py-2 text-right font-semibold">Total con IVA</th>
+                <th className="px-3 py-2">
+                  <span className="sr-only">Acciones</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -176,11 +190,31 @@ export function HistorialCliente({
                   <td className="px-3 py-2.5 text-right tabular-nums">
                     {evento.total === null ? '—' : formatearPesos(desglosarIva(evento.total).total)}
                   </td>
+                  <td className="px-3 py-2 text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setAReutilizar(evento.id)}
+                      aria-label={`Reutilizar la configuración del evento ${evento.id}`}
+                    >
+                      <Copy /> Reutilizar
+                    </Button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      )}
+
+      {aReutilizar !== null && (
+        <ReutilizarConfiguracion
+          key={aReutilizar}
+          eventoId={aReutilizar}
+          abierto
+          onCambiarAbierto={(abierto) => !abierto && setAReutilizar(null)}
+          onAbrirConsulta={onConsultaReutilizada}
+        />
       )}
     </section>
   );

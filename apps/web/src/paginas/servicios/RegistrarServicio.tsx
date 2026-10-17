@@ -23,6 +23,8 @@ const valoresIniciales = {
   precio: '',
   porPersona: false,
   tercerizado: false,
+  // RN-11: se puede pedir continuo en salón (+20%) o en mesas con mozo (+30%).
+  admiteModalidad: false,
   // HU-11: un tercerizado puede no tener precio fijo todavía. No viaja: se traduce a precio null.
   aCotizar: false,
 };
@@ -57,6 +59,7 @@ export function RegistrarServicio() {
     const resultado = esquemaCrearServicio.safeParse({
       ...cuerpo,
       precio: aCotizar && cuerpo.tercerizado ? null : cuerpo.precio,
+      admiteModalidad: cuerpo.porPersona && cuerpo.admiteModalidad,
     });
     if (!resultado.success) {
       const errores: Record<string, string> = {};
@@ -143,6 +146,20 @@ export function RegistrarServicio() {
           />
           <Label htmlFor="porPersona">Se cobra por persona</Label>
         </div>
+
+        {/* RN-11: el recargo va sobre el precio base por persona, así que solo aplica a esos. */}
+        {valores.porPersona && (
+          <div className="flex items-center gap-2 pl-6">
+            <Checkbox
+              id="admiteModalidad"
+              checked={valores.admiteModalidad}
+              onCheckedChange={(marcado) => actualizarCampo('admiteModalidad', marcado === true)}
+            />
+            <Label htmlFor="admiteModalidad">
+              Admite modalidad: continuo en salón (+20%) o en mesas con mozo (+30%)
+            </Label>
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <Checkbox

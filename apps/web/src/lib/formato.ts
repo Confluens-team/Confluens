@@ -1,4 +1,5 @@
 // Formatos de presentación compartidos por la landing y el cotizador del cliente.
+import { NOMBRE_MODALIDAD, RECARGO_MODALIDAD, type ModalidadServicio } from '@confluens/shared';
 
 const FORMATO_PESOS = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -64,4 +65,12 @@ export function armadoDeSalones(
   const nombres = new Set(armados.map((s) => s.distribucion!.nombre));
   if (nombres.size === 1 && armados.length === salones.length) return [...nombres][0]!;
   return armados.map((s) => `${s.nombre}: ${s.distribucion!.nombre}`).join(' · ');
+}
+
+// RN-11: «Continuo en salón (+20%)». Normal va sin recargo.
+export function textoModalidad(modalidad: ModalidadServicio): string {
+  const recargo = RECARGO_MODALIDAD[modalidad];
+  return recargo > 0
+    ? `${NOMBRE_MODALIDAD[modalidad]} (+${recargo}%)`
+    : NOMBRE_MODALIDAD[modalidad];
 }
