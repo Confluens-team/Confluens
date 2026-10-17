@@ -79,6 +79,7 @@ interface SeedServicio {
   descripcion: string;
   precio: number;
   porPersona: boolean;
+  admiteModalidad?: boolean;
 }
 
 const COFFEE_BREAKS: SeedServicio[] = [
@@ -116,28 +117,14 @@ const COFFEE_BREAKS: SeedServicio[] = [
   },
 ];
 
-// Recargos por persona sobre cada coffee break. Se cargan como variantes con el precio ya aplicado
-// porque Servicio tiene un precio fijo (decisión del Sprint 1).
-const RECARGOS_COFFEE = [
-  { sufijo: 'continuo en salón', detalle: 'Coffee continuo en salón', porcentaje: 20 },
-  {
-    sufijo: 'en mesas con mozo',
-    detalle: 'Servicio en mesas con mozo personalizado',
-    porcentaje: 30,
-  },
-];
-
-const VARIANTES_COFFEE: SeedServicio[] = COFFEE_BREAKS.flatMap((coffee) =>
-  RECARGOS_COFFEE.map((recargo) => ({
-    nombre: `${coffee.nombre} — ${recargo.sufijo}`,
-    // El porcentaje del recargo no va en la descripción: ya está aplicado en `precio`, y desde
-    // HU-07 la descripción viaja al canal público, que no publica ningún dato de precio.
-    descripcion: `${coffee.descripcion}. ${recargo.detalle}`,
-    // Los precios base son enteros y los porcentajes, múltiplos de 10: el resultado es exacto.
-    precio: (coffee.precio * (100 + recargo.porcentaje)) / 100,
-    porPersona: true,
-  })),
-);
+// Los recargos de los coffee breaks (continuo en salón +20%, en mesas con mozo +30%, RN-11) no son
+// servicios aparte: son la modalidad que se elige en cada línea del presupuesto (ADR 0012). Las
+// variantes con el recargo incluido del Sprint 1 las da de baja la migración
+// modalidad_y_configuracion_precios.
+const COFFEE_CON_MODALIDAD: SeedServicio[] = COFFEE_BREAKS.map((coffee) => ({
+  ...coffee,
+  admiteModalidad: true,
+}));
 
 const DISPENSER: SeedServicio = {
   nombre: 'Dispenser con vasos descartables',
@@ -251,7 +238,7 @@ function conCategoria(servicios: SeedServicio[], categoria: string): SeedServici
 type SeedServicioCargable = SeedServicio & { categoria: string };
 
 const SERVICIOS: SeedServicioCargable[] = [
-  ...conCategoria([...COFFEE_BREAKS, ...VARIANTES_COFFEE, DISPENSER], 'Coffee breaks'),
+  ...conCategoria([...COFFEE_CON_MODALIDAD, DISPENSER], 'Coffee breaks'),
   ...conCategoria(DESAYUNOS, 'Desayunos'),
   ...conCategoria(DEGUSTACION, 'Degustación'),
   ...conCategoria(LUNCH_COCKTAIL, 'Lunch y cocktail'),
@@ -314,6 +301,7 @@ async function cargarServicios(): Promise<void> {
       precio: String(servicio.precio),
       unidadMedida: servicio.porPersona ? 'persona' : 'unidad',
       tercerizado: false,
+      admiteModalidad: servicio.admiteModalidad ?? false,
     };
     await prisma.servicio.upsert({
       where: { nombre: servicio.nombre },
@@ -346,11 +334,22 @@ async function cargarMediosPago(): Promise<void> {
   }
 }
 
+// RN-13: la fila única de la configuración de precios, en 0%. La crea también la migración; acá
+// solo `create`, para no pisar el porcentaje que haya cargado el Responsable de Eventos.
+async function cargarConfiguracionPrecios(): Promise<void> {
+  await prisma.configuracionPrecios.upsert({
+    where: { id: 1 },
+    create: { id: 1, porcentajeMensual: '0' },
+    update: {},
+  });
+}
+
 try {
   await cargarSalones();
   await cargarServicios();
   await cargarUsuarios();
   await cargarMediosPago();
+  await cargarConfiguracionPrecios();
   console.log(
     `Seed completo: ${SALONES.length} salones, ${SERVICIOS.length} servicios, ${MEDIOS_PAGO_INICIALES.length} medios de pago y ${USUARIOS.length} usuarios de prueba (contraseña: "${CONTRASENA_DESARROLLO}").`,
   );

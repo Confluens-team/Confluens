@@ -53,6 +53,15 @@ enum TipoJornada {
   media
 }
 
+// Recargo opcional de un servicio (RN-11): normal, continuo en salón (+20%) o en mesas con mozo
+// (+30%). Un solo valor por línea mientras S-09 siga abierto. Solo lo admiten los servicios con
+// admiteModalidad (hoy los coffee breaks); el resto va siempre Normal.
+enum ModalidadServicio {
+  Normal
+  Continuo
+  EnMesa
+}
+
 enum Rol {
   RESPONSABLE_EVENTOS
   RESPONSABLE_FINANZAS
@@ -142,21 +151,24 @@ model Distribucion {
 // desayunos, degustación, lunch/cocktail, almuerzo/cena). Es nullable porque el alta de HU-02 no la
 // exige: un servicio sin categoría se muestra igual, agrupado aparte.
 model Servicio {
-  id            Int                @id @default(autoincrement())
-  nombre        String             @unique
-  descripcion   String
-  unidadMedida  String
+  id              Int                @id @default(autoincrement())
+  nombre          String             @unique
+  descripcion     String
+  unidadMedida    String
   // Sin IVA (RN-05). null = "a cotizar" (HU-11): solo un tercerizado puede no tener precio fijo
   // (CHECK servicio_a_cotizar_solo_tercerizado en la migración).
-  precio        Decimal?           @db.Decimal(12, 2)
-  porPersona    Boolean
-  tercerizado   Boolean            @default(false) // suma al total; no recibe el incremento mensual
-  activo        Boolean            @default(true)
-  categoria     String?
-  fotoUrl       String?
-  lineas        LineaPresupuesto[]
-  creadoEn      DateTime           @default(now())
-  actualizadoEn DateTime           @updatedAt
+  precio          Decimal?           @db.Decimal(12, 2)
+  porPersona      Boolean
+  tercerizado     Boolean            @default(false) // suma al total; no recibe el incremento mensual
+  // RN-11: habilita elegir la modalidad (continuo o en mesa) al presupuestarlo. Hoy, los coffee
+  // breaks. Reemplaza a las variantes con el recargo incluido del Sprint 1 (ADR 0012).
+  admiteModalidad Boolean            @default(false)
+  activo          Boolean            @default(true)
+  categoria       String?
+  fotoUrl         String?
+  lineas          LineaPresupuesto[]
+  creadoEn        DateTime           @default(now())
+  actualizadoEn   DateTime           @updatedAt
 }
 
 // Consulta del canal público. clienteId es nullable desde el día 1: en el Sprint 1 el formulario
@@ -272,30 +284,44 @@ model Presupuesto {
 // Guarda el precio unitario al emitir, no una referencia al precio actual (RN-03, HU-34).
 // La línea del salón no tiene servicio: servicioId es null y la descripción la identifica.
 model LineaPresupuesto {
-  id             Int         @id @default(autoincrement())
+  id             Int               @id @default(autoincrement())
   presupuestoId  Int
-  presupuesto    Presupuesto @relation(fields: [presupuestoId], references: [id])
+  presupuesto    Presupuesto       @relation(fields: [presupuestoId], references: [id])
   servicioId     Int?
-  servicio       Servicio?   @relation(fields: [servicioId], references: [id], onDelete: Restrict)
+  servicio       Servicio?         @relation(fields: [servicioId], references: [id], onDelete: Restrict)
   descripcion    String
   cantidad       Int
-  precioUnitario Decimal     @db.Decimal(12, 2) // congelado, sin IVA (RN-05)
-  subtotal       Decimal     @db.Decimal(12, 2) // sin IVA (RN-05)
+  precioUnitario Decimal           @db.Decimal(12, 2) // congelado, sin IVA (RN-05): base + recargo
+  // RN-11: la modalidad elegida y el precio antes del recargo, también congelado. precioUnitario
+  // es precioBase con el recargo de la modalidad aplicado. precioBase es null en las líneas de
+  // salón y en los adicionales, que no tienen modalidad.
+  modalidad      ModalidadServicio @default(Normal)
+  precioBase     Decimal?          @db.Decimal(12, 2)
+  subtotal       Decimal           @db.Decimal(12, 2) // sin IVA (RN-05)
   // HU-11: tercerizado sin precio todavía. Va con precio y subtotal en 0, así no suma al total;
   // deja de estar a cotizar cuando el personal completa el precio.
-  aCotizar       Boolean     @default(false)
+  aCotizar       Boolean           @default(false)
   // La línea del alquiler de un salón. Las de servicio tienen servicioId, los adicionales escritos
   // a mano no tienen ninguno de los dos. Antes la del salón se identificaba como "la primera sin
   // servicio" y la jornada se sacaba parseando su descripción; con varios salones por evento hay
   // varias líneas de salón y esa convención no alcanza.
   salonId        Int?
-  salon          Salon?      @relation(fields: [salonId], references: [id], onDelete: Restrict)
+  salon          Salon?            @relation(fields: [salonId], references: [id], onDelete: Restrict)
   // "HH:mm", opcional: a qué hora del evento se espera este servicio (un coffee a las 10:30). La
   // elige el cliente en el cotizador o el personal al armar el presupuesto. Solo la llevan los
   // servicios y los adicionales; la línea del salón no, su horario es el del evento. Mismo
   // formato que Evento.horaInicioEstimada. Si el evento ya está agendado, el servicio valida que
   // caiga entre inicio y fin; mientras está EnConsulta sin horario no hay contra qué validar.
   horaEstimada   String?
+}
+
+// RN-10 / RN-13: fila única (id 1, CHECK en la migración) con el porcentaje de incremento mensual
+// que edita el Responsable de Eventos. Los precios del salón y de los servicios propios se
+// proyectan a la fecha del evento con este porcentaje; los tercerizados no. Nace en 0.
+model ConfiguracionPrecios {
+  id                Int      @id @default(1)
+  porcentajeMensual Decimal  @default(0) @db.Decimal(5, 2)
+  actualizadoEn     DateTime @updatedAt
 }
 
 // Catálogo de medios de pago (RN-14). Baja lógica con `activo`: no se borra para no romper los pagos
