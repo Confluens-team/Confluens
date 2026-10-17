@@ -85,8 +85,6 @@ interface ConfiguracionEditable {
   tipo: TipoEvento;
   tipoSocial: TipoEventoSocial | '';
   detalleOtro: string;
-  jornada: TipoJornada;
-  personas: string;
   salonesSel: SalonEditable[];
   lineas: LineaEditable[];
 }
@@ -286,7 +284,6 @@ function Formulario({
   const [reutilizando, setReutilizando] = useState(false);
   const [copiado, setCopiado] = useState<{
     eventoId: number;
-    cliente: string;
     omitidos: string[];
     anterior: ConfiguracionEditable;
   } | null>(null);
@@ -367,20 +364,19 @@ function Formulario({
   }
 
   // HU-24: pega en el formulario la configuración de otro evento, de este cliente o de otro. Se
-  // copian el tipo de evento, la jornada, las personas, los salones, los servicios (con cantidad,
-  // modalidad y hora) y los adicionales; los precios son los vigentes del catálogo, proyectados a
-  // la fecha de ESTA consulta (RN-13), igual que al crear una consulta nueva. Se quedan la fecha,
-  // la hora, el cliente y la solicitud de esta consulta. El armado de los salones no se copia: se
-  // elige al agendar. Nada se guarda hasta «Guardar».
+  // copia lo que se reutiliza: el tipo de evento, los salones, los servicios con su modalidad y los
+  // adicionales. Lo que depende de cada cliente no viaja (pedido del equipo, 17/10/2026): la fecha,
+  // la hora, las personas y la jornada siguen siendo las de esta consulta, y en cada línea la
+  // cantidad vuelve al valor por defecto (las personas de esta consulta si se cobra por persona, 1
+  // si no) y la hora queda vacía. Los precios son los vigentes del catálogo, proyectados a la fecha
+  // de ESTA consulta (RN-13); los adicionales conservan el suyo. El armado de los salones no se
+  // copia: se elige al agendar. Nada se guarda hasta «Guardar».
   function copiarConfiguracion(origen: EventoDetallado) {
     const presupuestos = [...origen.presupuestos].reverse();
     const presupuesto = presupuestos.find((p) => p.estado !== 'Cancelado') ?? presupuestos[0];
     const lineasOrigen = presupuesto?.lineas ?? [];
-    const lineaSalon = lineasOrigen.find((l) => l.salonId !== null);
-    const nuevaJornada: TipoJornada =
-      origen.tipoJornada ??
-      (lineaSalon?.descripcion.endsWith('(media jornada)') ? 'media' : 'completa');
-    const nuevasPersonas = origen.cantidadPersonas;
+    const cantidadPorDefecto = (porPersona: boolean) =>
+      porPersona && esEntero(personas) ? personas : '1';
 
     const omitidos: string[] = [];
     const nuevasLineas: LineaEditable[] = [];
@@ -392,8 +388,8 @@ function Formulario({
           clave,
           servicioId: null,
           descripcion: linea.descripcion,
-          cantidad: String(linea.cantidad),
-          hora: linea.horaEstimada ?? '',
+          cantidad: '1',
+          hora: '',
           precio: linea.precioUnitario,
           tercerizado: false,
           modalidad: 'Normal',
@@ -410,8 +406,8 @@ function Formulario({
         clave,
         servicioId: servicio.id,
         descripcion: servicio.nombre,
-        cantidad: String(linea.cantidad),
-        hora: linea.horaEstimada ?? '',
+        cantidad: cantidadPorDefecto(servicio.porPersona),
+        hora: '',
         precio: precioVigente(servicio) ?? '',
         tercerizado: servicio.tercerizado,
         modalidad: servicio.admiteModalidad ? linea.modalidad : 'Normal',
@@ -421,21 +417,19 @@ function Formulario({
 
     setCopiado({
       eventoId: origen.id,
-      cliente: nombreCompleto(origen.cliente),
       omitidos,
-      anterior: { tipo, tipoSocial, detalleOtro, jornada, personas, salonesSel, lineas },
+      anterior: { tipo, tipoSocial, detalleOtro, salonesSel, lineas },
     });
     setTipo(origen.tipo);
     setTipoSocial(origen.tipoSocial ?? '');
     setDetalleOtro(origen.tipoSocialDetalle ?? '');
-    setJornada(nuevaJornada);
-    setPersonas(String(nuevasPersonas));
+    // Con la jornada de esta consulta: el alquiler depende de ella.
     setSalonesSel(
       origen.salones.map((s) => {
         const salon = salonDe(s.id);
         return {
           salonId: s.id,
-          precio: salon ? proyectar(precioDeSalon(salon, nuevaJornada)) : '0.00',
+          precio: salon ? proyectar(precioDeSalon(salon, jornada)) : '0.00',
         };
       }),
     );
@@ -449,8 +443,6 @@ function Formulario({
     setTipo(anterior.tipo);
     setTipoSocial(anterior.tipoSocial);
     setDetalleOtro(anterior.detalleOtro);
-    setJornada(anterior.jornada);
-    setPersonas(anterior.personas);
     setSalonesSel(anterior.salonesSel);
     setLineas(anterior.lineas);
     setCopiado(null);
@@ -699,16 +691,17 @@ function Formulario({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="flex items-center gap-2 font-medium">
               <ClipboardPaste className="size-4 shrink-0" />
-              Se copió la configuración del evento #{copiado.eventoId} ({copiado.cliente}), a
-              precios vigentes. Revisala y tocá «Guardar».
+              Se copiaron los salones, el tipo de evento y los servicios del evento #
+              {copiado.eventoId}, a precios vigentes. Revisalos y tocá «Guardar».
             </p>
             <Button type="button" size="sm" variant="ghost" onClick={deshacerCopia}>
               <Undo2 /> Deshacer
             </Button>
           </div>
           <p className="text-xs">
-            Se mantienen la fecha, la hora y el cliente de esta consulta. El armado de los salones
-            se elige al agendar.
+            La fecha, la hora, las personas y la jornada siguen siendo las de esta consulta. Las
+            cantidades quedan para todas las personas (o 1 si no se cobra por persona) y sin hora:
+            ajustalas a lo que pidió el cliente. El armado de los salones se elige al agendar.
           </p>
           {copiado.omitidos.length > 0 && (
             <p className="flex items-start gap-1.5 text-xs font-medium text-amber-900">

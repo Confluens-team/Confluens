@@ -96,9 +96,9 @@ export function CopiarConfiguracion({
                 Copiar configuración de otro evento
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-                Se copian los salones, la jornada, las personas, los servicios y los adicionales, a
-                precios vigentes. La fecha, la hora y el cliente de esta consulta no cambian, y nada
-                se guarda hasta que toques «Guardar».
+                Se copian los salones, el tipo de evento y los servicios con su modalidad, a precios
+                vigentes. Lo propio de este cliente (fecha, hora, personas y jornada) no cambia, y
+                nada se guarda hasta que toques «Guardar».
               </Dialog.Description>
             </div>
             <Dialog.Close
