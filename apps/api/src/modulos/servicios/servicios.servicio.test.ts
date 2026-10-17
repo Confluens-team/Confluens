@@ -54,6 +54,7 @@ const servicioBase: Servicio = {
   precio: new Decimal('4500'),
   porPersona: true,
   tercerizado: false,
+  admiteModalidad: false,
   activo: true,
   categoria: 'Coffee breaks',
   fotoUrl: null,
@@ -83,6 +84,7 @@ describe('servicios.servicio: crearServicio', () => {
         precio: '4500',
         porPersona: true,
         tercerizado: false,
+        admiteModalidad: false,
       },
       repo,
     );
@@ -103,6 +105,7 @@ describe('servicios.servicio: crearServicio', () => {
           precio: '5000',
           porPersona: true,
           tercerizado: false,
+          admiteModalidad: false,
         },
         repo,
       ),

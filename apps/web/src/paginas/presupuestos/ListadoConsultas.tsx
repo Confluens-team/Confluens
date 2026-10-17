@@ -129,6 +129,8 @@ export function ListadoConsultas() {
         }
         onDadaDeBaja={(consulta) => cerrar(`Consulta ${consulta.id} dada de baja.`)}
         onAbrirEvento={setEventoAbierto}
+        // HU-24: la consulta nueva creada al reutilizar se abre en su lugar.
+        onAbrirConsulta={setAbierta}
       />
     );
   }

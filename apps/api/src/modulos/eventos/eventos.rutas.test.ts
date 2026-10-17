@@ -88,6 +88,8 @@ const lineaFixture = {
   precioUnitario: new Prisma.Decimal('142200'),
   subtotal: new Prisma.Decimal('142200'),
   aCotizar: false,
+  modalidad: 'Normal' as const,
+  precioBase: null,
   horaEstimada: null,
 };
 

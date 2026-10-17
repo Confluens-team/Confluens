@@ -24,6 +24,12 @@ export function FichaCliente({ clienteId, onVolver }: { clienteId: number; onVol
   const etiquetas = useEtiquetas();
   const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
   const [presupuestoAbierto, setPresupuestoAbierto] = useState<number | null>(null);
+  // HU-24: la consulta nueva que se crea al reutilizar un evento se abre en su lugar, y «Volver»
+  // lleva al evento nuevo.
+  const abrirConsulta = (presupuestoId: number, eventoId: number) => {
+    setEventoAbierto(eventoId);
+    setPresupuestoAbierto(presupuestoId);
+  };
 
   if (eventoAbierto !== null && presupuestoAbierto !== null) {
     const volverAlEvento = () => setPresupuestoAbierto(null);
@@ -37,6 +43,7 @@ export function FichaCliente({ clienteId, onVolver }: { clienteId: number; onVol
         onGuardada={volverAlEvento}
         onDadaDeBaja={volverAlEvento}
         onAbrirEvento={volverAlEvento}
+        onAbrirConsulta={abrirConsulta}
       />
     );
   }

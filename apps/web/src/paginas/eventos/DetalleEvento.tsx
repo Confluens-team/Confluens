@@ -2,7 +2,7 @@ import type { EstadoEvento } from '@confluens/shared';
 import { Check, ChevronDown, ChevronUp, Printer } from 'lucide-react';
 import { useState } from 'react';
 
-import { armadoDeSalones, nombresDeSalones } from '@/lib/formato';
+import { armadoDeSalones, nombresDeSalones, textoModalidad } from '@/lib/formato';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
@@ -315,6 +315,8 @@ export function DetalleEvento({
                         {linea.descripcion}{' '}
                         <span className="text-muted-foreground">
                           ×{linea.cantidad}
+                          {/* RN-11: continuo o en mesa, si el servicio la lleva. */}
+                          {linea.modalidad !== 'Normal' && ` · ${textoModalidad(linea.modalidad)}`}
                           {/* La hora a la que se espera el servicio, si se pidió una. */}
                           {linea.horaEstimada && ` · ${linea.horaEstimada}`}
                         </span>

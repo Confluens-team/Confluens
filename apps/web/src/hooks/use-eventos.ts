@@ -2,8 +2,10 @@ import type {
   AgendarEvento,
   EventoAgenda,
   EventoDetallado,
+  EventoReutilizado,
   FiltrosAgenda,
   RespuestaExito,
+  ReutilizarEvento,
 } from '@confluens/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
@@ -104,6 +106,30 @@ export function useCancelarEvento(id: number) {
       // ['eventos'] alcanza al detalle y a la agenda del administrador, que cambia con el estado.
       void queryClient.invalidateQueries({ queryKey: ['eventos'] });
       // Reservar o cancelar cambia el estado del presupuesto (HU-10).
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+    },
+  });
+}
+
+// HU-24: crea una consulta nueva para el mismo cliente con la configuración de este evento. La
+// respuesta trae la consulta y los avisos (servicios que ya no están, salones reservados ese día).
+export function useReutilizarEvento(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (datos: ReutilizarEvento) => {
+      const respuesta = await apiFetch<RespuestaExito<EventoReutilizado>>(
+        `/eventos/${id}/reutilizar`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(datos),
+        },
+      );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      // El historial del cliente cuelga de ['eventos'] y el listado de consultas de ['presupuestos'].
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
       void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
     },
   });

@@ -179,6 +179,20 @@ Como Responsable de Eventos, quiero generar una consulta nueva a partir de la co
 
 **Implementación.** `POST /api/eventos/:id/reutilizar` (`201` con el evento nuevo y los servicios que quedaron afuera; `400` sin fecha o con fecha pasada). Crea evento y presupuesto en una sola transacción, como `POST /api/presupuestos`, y copia la modalidad de cada línea recalculando el recargo sobre el precio vigente.
 
+> **A revisar con el equipo (17/10/2026).** Esta funcionalidad se definió sobre la marcha durante la implementación y todavía no la validó el resto del equipo ni el PO. Revisar en particular: (1) dónde viven las acciones (hoy, dentro del presupuesto), (2) la ampliación «Copiar configuración de otro evento» sobre una consulta existente, que la HU no pedía, (3) qué se copia y qué queda por defecto (personas, jornada, cantidades y horas), (4) el adelanto de la proyección de RN-13 desde HU-34 y (5) que un mismo servicio pueda repetirse con distinta modalidad (ADR 0012).
+
+**Cómo quedó (decisiones del equipo al implementar, 16/10/2026).**
+
+- Las dos acciones viven **dentro del presupuesto** (la pantalla de la consulta), junto a cliente, evento y servicios:
+  - **«Reutilizar en una consulta nueva»**: lo que pide la HU. Crea una consulta nueva con la configuración de este evento.
+  - **«Copiar configuración de otro evento»** (ampliación, avisar al PO): en una consulta que todavía se puede modificar, trae la configuración de **cualquier evento** (de este cliente o de otro, con un buscador por cliente, salón o armado) al formulario. Se copian solo los salones, el tipo de evento, los servicios con su modalidad y los adicionales; lo propio de cada cliente no viaja: la fecha, la hora, las personas, la jornada, el cliente y la solicitud siguen siendo los de la consulta, las cantidades vuelven al valor por defecto (las personas de la consulta, o 1) y las horas quedan vacías (equipo, 17/10/2026). El armado no se copia (se elige al agendar). No se guarda nada hasta «Guardar» y se puede deshacer. Sirve para no duplicar consultas cuando el cliente ya mandó la suya desde el cotizador.
+- Se reutiliza un evento en **cualquier estado**, también Cancelado (el cliente que canceló y vuelve).
+- En las dos acciones se copia solo lo reutilizable (equipo, 17/10/2026): salones, tipo de evento, servicios con su modalidad y adicionales; «Reutilizar en una consulta nueva» copia también el armado de los salones. Lo propio del cliente no viaja: las cantidades vuelven al valor por defecto (las personas del evento, o 1) y las horas quedan vacías.
+- El diálogo de «Reutilizar en una consulta nueva» pide, como el cotizador, la **fecha** (futura, en hora de Córdoba), las **personas**, la **jornada** y una **hora aproximada opcional**. El horario exacto se carga al agendar (ADR 0007). Por eso «en conflicto» (RN-12) es un aviso **por día**: alguno de los salones ya tiene un evento Reservado o Cobrado esa fecha.
+- Se copian también los **adicionales** escritos a mano, con su descripción y su precio. No se copian pagos, estado, solicitud ni notas de la comanda.
+- **RN-13 se adelanta en parte desde HU-34** (avisar al PO): los precios del salón y de los servicios propios se proyectan a la fecha del evento con el porcentaje mensual de `ConfiguracionPrecios`, que arranca en 0% y edita el Responsable de Eventos en Catálogo. Vale en el cotizador, al armar o modificar un presupuesto y al reutilizar. Sigue en HU-34 aplicar el aumento al tarifario cada mes, los aumentos puntuales y su historial.
+- La modalidad es una columna de la línea (ADR 0012). Las variantes con recargo del seed se dieron de baja y sus líneas se convirtieron. Un mismo servicio puede repetirse en un presupuesto **con distinta modalidad** en cada línea.
+
 ## Casos de prueba
 
 El diseño de casos de prueba de cada historia (CP-16-01 en adelante) está en la Definición del Producto v0.4. Se automatizan con Vitest + Supertest sobre `crearApp()`, igual que en los sprints anteriores.

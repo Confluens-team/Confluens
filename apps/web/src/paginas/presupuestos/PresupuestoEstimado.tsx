@@ -3,7 +3,13 @@ import { CheckCircle2, Home, Printer, RotateCcw } from 'lucide-react';
 
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
-import { fechaLocal, formatearFecha, formatearPesos, nombresDeSalones } from '@/lib/formato';
+import {
+  fechaLocal,
+  formatearFecha,
+  formatearPesos,
+  nombresDeSalones,
+  textoModalidad,
+} from '@/lib/formato';
 import { UBICACION } from '@/paginas/solicitudes/datos-institucionales';
 import type { PresupuestoGenerado } from './CotizarEvento';
 
@@ -110,6 +116,12 @@ export function PresupuestoEstimado({
                 <tr key={linea.id}>
                   <td className="py-3 pr-3">
                     {linea.descripcion}
+                    {/* RN-11: la modalidad elegida, con su recargo ya sumado al unitario. */}
+                    {linea.modalidad !== 'Normal' && (
+                      <span className="block text-xs text-muted-foreground">
+                        {textoModalidad(linea.modalidad)}
+                      </span>
+                    )}
                     {/* La hora a la que se espera el servicio, si se pidió una. */}
                     {linea.horaEstimada && (
                       <span className="ml-2 text-xs whitespace-nowrap text-muted-foreground">

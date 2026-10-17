@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { crearApp } from '../../app.js';
 import { Prisma } from '../../generated/prisma/client.js';
@@ -13,6 +13,9 @@ vi.mock('./presupuestos.repositorio.js', () => ({
   reemplazarSalonesDelEvento: vi.fn(),
   buscarServiciosPorIds: vi.fn(),
   crearEnTransaccion: vi.fn((ejecutar: (tx: undefined) => unknown) => ejecutar(undefined)),
+  obtenerPorcentajeMensual: vi.fn(() => Promise.resolve('0')),
+  buscarEventoParaReutilizar: vi.fn(),
+  buscarSalonesReservadosEseDia: vi.fn(() => Promise.resolve([])),
   buscarPresupuestoDetallado: vi.fn(),
   actualizarEvento: vi.fn(),
   actualizarPresupuesto: vi.fn(),
@@ -65,6 +68,7 @@ function servicio(
     unidadMedida: 'persona',
     porPersona: true,
     tercerizado: false,
+    admiteModalidad: false,
     activo: true,
     categoria: null,
     fotoUrl: null,
@@ -146,6 +150,8 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         precioUnitario: D('142200'),
         subtotal: D('142200'),
         aCotizar: false,
+        modalidad: 'Normal' as const,
+        precioBase: null,
         horaEstimada: null,
         servicio: null,
       },
@@ -159,6 +165,8 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         precioUnitario: D('8000'),
         subtotal: D('80000'),
         aCotizar: false,
+        modalidad: 'Normal' as const,
+        precioBase: null,
         horaEstimada: '10:30',
         servicio: { tercerizado: false },
       },
@@ -210,10 +218,13 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       precioUnitario: '8000.00',
       subtotal: '80000.00',
       aCotizar: false,
+      modalidad: 'Normal' as const,
+      precioBase: null,
       horaEstimada: '10:30',
       salonId: null,
       tipo: 'servicio',
       tercerizado: false,
+      admiteModalidad: false,
     });
   });
 
@@ -237,6 +248,8 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
             precioUnitario: D('25000'),
             subtotal: D('25000'),
             aCotizar: false,
+            modalidad: 'Normal' as const,
+            precioBase: null,
             horaEstimada: null,
             servicio: null,
           },
@@ -271,6 +284,8 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
             precioUnitario: D('25000'),
             subtotal: D('25000'),
             aCotizar: false,
+            modalidad: 'Normal' as const,
+            precioBase: null,
             servicio: null,
           },
         ],
@@ -395,6 +410,8 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
         precioUnitario: '142200.00',
         subtotal: '142200.00',
         aCotizar: false,
+        modalidad: 'Normal' as const,
+        precioBase: null,
         horaEstimada: null,
       },
       {
@@ -405,6 +422,8 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
         precioUnitario: '8000.00',
         subtotal: '96000.00',
         aCotizar: false,
+        modalidad: 'Normal' as const,
+        precioBase: '8000.00',
         horaEstimada: null,
       },
     ]);
@@ -459,6 +478,8 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       precioUnitario: '0.00',
       subtotal: '0.00',
       aCotizar: true,
+      modalidad: 'Normal' as const,
+      precioBase: null,
       horaEstimada: null,
     });
     expect((datosDelPresupuesto() as { total: string }).total).toBe('238200.00');
@@ -480,6 +501,8 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
           precioUnitario: D('0'),
           subtotal: D('0'),
           aCotizar: true,
+          modalidad: 'Normal' as const,
+          precioBase: null,
           servicio: { tercerizado: true },
         },
       ],
@@ -553,6 +576,8 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       precioUnitario: '12500.00',
       subtotal: '25000.00',
       aCotizar: false,
+      modalidad: 'Normal' as const,
+      precioBase: null,
       horaEstimada: null,
     });
     // 142200 + 12 × 8000 + 2 × 12500
@@ -1360,5 +1385,132 @@ describe('PATCH /api/presupuestos/:id — varios salones', () => {
 
     expect(respuesta.status).toBe(400);
     expect(reemplazarSalonesDelEventoMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/presupuestos/:id — modalidad (RN-11) y proyección (RN-13)', () => {
+  const lineasGuardadas = () => reemplazarLineasMock.mock.calls[0]![1];
+  const obtenerPorcentajeMensualMock = vi.mocked(repo.obtenerPorcentajeMensual);
+  const coffeeConModalidad = servicio({
+    id: 1,
+    nombre: 'Coffee Refresh',
+    precio: '8730',
+    admiteModalidad: true,
+  });
+  const lunch = servicio({ id: 3, nombre: 'Lunch', precio: '1000' });
+  const audiovisual = servicio({ id: 4, nombre: 'Audiovisual', precio: '1000', tercerizado: true });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-16T15:00:00.000Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rechaza con 422 una modalidad en un servicio que no la admite', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, modalidad: 'Continuo' }] });
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+  });
+
+  it('suma el recargo sobre el precio base congelado al cambiar la modalidad', async () => {
+    buscarServiciosPorIdsMock.mockResolvedValue([coffeeConModalidad]);
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, modalidad: 'EnMesa' }] });
+
+    expect(respuesta.status).toBe(200);
+    // 8000 congelado + 30% = 10400, no los 8730 del catálogo.
+    expect(lineasGuardadas()[1]).toMatchObject({
+      modalidad: 'EnMesa',
+      precioBase: '8000.00',
+      precioUnitario: '10400.00',
+      subtotal: '124800.00',
+    });
+  });
+
+  it('proyecta a la fecha del evento el precio de un servicio nuevo, pero no el de un tercerizado', async () => {
+    obtenerPorcentajeMensualMock.mockResolvedValue('10');
+    buscarServiciosPorIdsMock.mockResolvedValue([lunch, audiovisual]);
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        // Dos meses después del actual: 1000 × 1.1 × 1.1.
+        fecha: '2026-12-05',
+        servicios: [
+          { servicioId: 3, cantidad: 5 },
+          { servicioId: 4, cantidad: 1 },
+        ],
+      });
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas()[1]).toMatchObject({ servicioId: 3, precioUnitario: '1210.00' });
+    expect(lineasGuardadas()[2]).toMatchObject({ servicioId: 4, precioUnitario: '1000.00' });
+    obtenerPorcentajeMensualMock.mockResolvedValue('0');
+  });
+
+  it('acepta el mismo servicio dos veces con distinta modalidad y cada línea conserva su base', async () => {
+    buscarServiciosPorIdsMock.mockResolvedValue([coffeeConModalidad]);
+    const base = consulta() as unknown as { lineas: Record<string, unknown>[] };
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({
+        lineas: [
+          ...base.lineas,
+          {
+            ...base.lineas[1],
+            id: 3,
+            modalidad: 'Continuo',
+            precioBase: D('7000'),
+            precioUnitario: D('8400'),
+            subtotal: D('84000'),
+          },
+        ],
+      }),
+    );
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        servicios: [
+          { servicioId: 1, cantidad: 12 },
+          { servicioId: 1, cantidad: 12, modalidad: 'Continuo' },
+        ],
+      });
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas()[1]).toMatchObject({ modalidad: 'Normal', precioUnitario: '8000.00' });
+    expect(lineasGuardadas()[2]).toMatchObject({
+      modalidad: 'Continuo',
+      precioBase: '7000.00',
+      precioUnitario: '8400.00',
+    });
+  });
+
+  it('responde 400 si el mismo servicio viene dos veces con la misma modalidad', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        servicios: [
+          { servicioId: 1, cantidad: 12, modalidad: 'Continuo' },
+          { servicioId: 1, cantidad: 5, modalidad: 'Continuo' },
+        ],
+      });
+
+    expect(respuesta.status).toBe(400);
   });
 });

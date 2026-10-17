@@ -1,17 +1,23 @@
 import type {
+  ModalidadServicio,
   PresupuestoDetallado,
   SalonConDistribuciones,
+  Servicio,
   TipoEvento,
   TipoEventoSocial,
   TipoJornada,
 } from '@confluens/shared';
 import {
+  aplicarModalidad,
   DIAS_VIGENCIA_PRESUPUESTO,
   desglosarIva,
   ETIQUETAS_TIPO_EVENTO_SOCIAL,
   etiquetaTipoEvento,
+  hoyEnZonaEventos,
   MAXIMO_PERSONAS_EVENTO,
+  mesesHastaEvento,
   PORCENTAJE_SENA,
+  proyectarPrecio,
 } from '@confluens/shared';
 import {
   AlertTriangle,
@@ -26,17 +32,19 @@ import {
 import { useState } from 'react';
 
 import { InputEntero } from '@/components/InputEntero';
+import { SelectorModalidad } from '@/components/SelectorModalidad';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useConfiguracionPrecios } from '@/hooks/use-configuracion-precios';
 import { useEnviarConsultaSocial, useSolicitarPresupuesto } from '@/hooks/use-presupuestos';
 import { useSalones } from '@/hooks/use-salones';
 import { useServicios } from '@/hooks/use-servicios';
 import { usePerfilCliente } from '@/hooks/use-sesion';
 import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
-import { formatearPesos, hoyISO, nombreCompleto } from '@/lib/formato';
+import { formatearPesos, hoyISO, nombreCompleto, textoModalidad } from '@/lib/formato';
 import { FOTOS, fotoDeSalon } from '@/lib/fotos';
 import { cn } from '@/lib/utils';
 
@@ -124,7 +132,7 @@ function Paso({
 }
 
 function precioSalon(salon: SalonConDistribuciones, jornada: TipoJornada) {
-  return Number(jornada === 'completa' ? salon.precioJornadaCompleta : salon.precioMediaJornada);
+  return jornada === 'completa' ? salon.precioJornadaCompleta : salon.precioMediaJornada;
 }
 
 // Cotizador del cliente registrado: la vista con precios de la landing. Primero el evento (fecha,
@@ -143,6 +151,7 @@ export function CotizarEvento({
   const perfil = usePerfilCliente(true);
   const salones = useSalones();
   const servicios = useServicios();
+  const configuracion = useConfiguracionPrecios();
   const solicitar = useSolicitarPresupuesto();
   const enviarSocial = useEnviarConsultaSocial();
 
@@ -165,6 +174,8 @@ export function CotizarEvento({
   // Hora "HH:mm" a la que el cliente espera cada servicio dentro del evento (un coffee a las
   // 10:30). Va aparte de `elegidos` porque es opcional: la mayoría de los servicios no la lleva.
   const [horas, setHoras] = useState<Map<number, string>>(new Map());
+  // RN-11: la modalidad de cada servicio que la admite (hoy, los coffee breaks). Sin entrada, Normal.
+  const [modalidades, setModalidades] = useState<Map<number, ModalidadServicio>>(new Map());
   const [categoria, setCategoria] = useState<string | null>(null);
   const [errores, setErrores] = useState<Record<string, string>>({});
 
@@ -190,6 +201,22 @@ export function CotizarEvento({
       : undefined;
   const masGrande = [...salonesVisibles].sort((a, b) => b.capacidadMaxima - a.capacidadMaxima)[0];
 
+  // RN-13: los precios se proyectan a la fecha del evento con el incremento mensual, con la misma
+  // cuenta que hace la API al generar el presupuesto. Sin fecha todavía, se muestran los de hoy.
+  const meses = fecha ? mesesHastaEvento(hoyEnZonaEventos(), fecha) : 0;
+  const porcentajeMensual = configuracion.data?.porcentajeMensual ?? '0';
+  const proyectar = (precio: string) => proyectarPrecio(precio, porcentajeMensual, meses);
+  const precioDeSalon = (salon: SalonConDistribuciones) =>
+    Number(proyectar(precioSalon(salon, jornada)));
+  // El unitario de un servicio: el vigente (sin proyectar si es tercerizado) con el recargo de su
+  // modalidad (RN-11). null = a cotizar.
+  const modalidadDe = (servicioId: number) => modalidades.get(servicioId) ?? 'Normal';
+  const precioDeServicio = (servicio: Servicio): number | null => {
+    if (servicio.precio === null) return null;
+    const base = servicio.tercerizado ? servicio.precio : proyectar(servicio.precio);
+    return Number(aplicarModalidad(base, modalidadDe(servicio.id)));
+  };
+
   const catalogo = servicios.data ?? [];
   const grupos = agruparPorCategoria(catalogo);
   const categoriaActiva = categoria ?? grupos[0]?.[0];
@@ -210,7 +237,7 @@ export function CotizarEvento({
       clave: `salon-${salon.id}`,
       descripcion: `Salón ${salon.nombre}`,
       detalle: jornada === 'completa' ? 'Jornada completa' : 'Media jornada',
-      subtotal: precioSalon(salon, jornada),
+      subtotal: precioDeSalon(salon),
       aCotizar: false,
     })),
     ...catalogo
@@ -218,8 +245,11 @@ export function CotizarEvento({
       .map((s) => {
         const cantidad = cantidadDe(s.id, s.porPersona);
         const aLas = horas.get(s.id) ? ` · a las ${horas.get(s.id)}` : '';
+        const modalidad = modalidadDe(s.id);
+        const conModalidad = modalidad === 'Normal' ? '' : ` · ${textoModalidad(modalidad)}`;
+        const precio = precioDeServicio(s);
         // HU-11: un tercerizado sin precio fijo entra "a cotizar": sin importe y sin sumar.
-        if (s.precio === null) {
+        if (precio === null) {
           return {
             clave: `servicio-${s.id}`,
             descripcion: s.nombre,
@@ -233,9 +263,11 @@ export function CotizarEvento({
           descripcion: s.nombre,
           detalle:
             (s.porPersona
-              ? `${cantidad} × ${formatearPesos(s.precio)}`
-              : `Precio fijo · ${formatearPesos(s.precio)}`) + aLas,
-          subtotal: Number(s.precio) * cantidad,
+              ? `${cantidad} × ${formatearPesos(precio)}`
+              : `Precio fijo · ${formatearPesos(precio)}`) +
+            conModalidad +
+            aLas,
+          subtotal: precio * cantidad,
           aCotizar: false,
         };
       }),
@@ -252,12 +284,22 @@ export function CotizarEvento({
       else siguientes.set(servicioId, null);
       return siguientes;
     });
-    // Un servicio que se destilda se lleva su hora: si vuelve a elegirse, arranca sin hora.
+    // Un servicio que se destilda se lleva su hora y su modalidad: si vuelve a elegirse, arranca
+    // sin hora y en Normal.
     setHoras((anteriores) => {
       const siguientes = new Map(anteriores);
       siguientes.delete(servicioId);
       return siguientes;
     });
+    setModalidades((anteriores) => {
+      const siguientes = new Map(anteriores);
+      siguientes.delete(servicioId);
+      return siguientes;
+    });
+  }
+
+  function cambiarModalidad(servicioId: number, modalidad: ModalidadServicio) {
+    setModalidades((anteriores) => new Map(anteriores).set(servicioId, modalidad));
   }
 
   function cambiarHora(servicioId: number, valor: string) {
@@ -353,6 +395,7 @@ export function CotizarEvento({
             servicioId: s.id,
             cantidad: cantidadDe(s.id, s.porPersona),
             horaEstimada: horas.get(s.id) || undefined,
+            modalidad: modalidadDe(s.id),
           })),
       },
       {
@@ -640,7 +683,7 @@ export function CotizarEvento({
                       </div>
                       <div className="text-right">
                         <p className="font-serif text-lg font-semibold">
-                          {formatearPesos(precioSalon(salon, jornada))}
+                          {formatearPesos(precioDeSalon(salon))}
                         </p>
                         <p className="text-[0.65rem] text-muted-foreground uppercase">+ IVA</p>
                       </div>
@@ -735,7 +778,11 @@ export function CotizarEvento({
                             <p className="font-semibold">
                               {servicio.precio === null
                                 ? 'A cotizar'
-                                : formatearPesos(servicio.precio)}
+                                : formatearPesos(
+                                    servicio.tercerizado
+                                      ? servicio.precio
+                                      : proyectar(servicio.precio),
+                                  )}
                             </p>
                             <p className="text-[0.65rem] text-muted-foreground">
                               {servicio.porPersona ? 'por persona' : 'precio fijo'}
@@ -777,10 +824,22 @@ export function CotizarEvento({
                               className="h-8 w-28"
                             />
                             <span>(opcional)</span>
+                            {servicio.admiteModalidad && (
+                              <>
+                                <label htmlFor={`modalidad-${servicio.id}`} className="ml-2">
+                                  Servicio
+                                </label>
+                                <SelectorModalidad
+                                  id={`modalidad-${servicio.id}`}
+                                  value={modalidadDe(servicio.id)}
+                                  onChange={(modalidad) => cambiarModalidad(servicio.id, modalidad)}
+                                />
+                              </>
+                            )}
                             {cantidadPersonas > 0 && servicio.precio !== null && (
                               <span className="ml-auto font-medium text-foreground">
                                 {formatearPesos(
-                                  Number(servicio.precio) *
+                                  (precioDeServicio(servicio) ?? 0) *
                                     cantidadDe(servicio.id, servicio.porPersona),
                                 )}
                               </span>
@@ -869,7 +928,9 @@ export function CotizarEvento({
                   </div>
                 </dl>
                 <p className="mt-1 text-right text-xs text-muted-foreground">
-                  Precios de {mesVigente}
+                  {meses > 0 && Number(porcentajeMensual) > 0
+                    ? `Precios proyectados a la fecha del evento (+${porcentajeMensual}% por mes)`
+                    : `Precios de ${mesVigente}`}
                 </p>
                 {total > 0 && (
                   <p className="mt-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
