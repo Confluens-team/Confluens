@@ -181,6 +181,9 @@ Como Responsable de Eventos, quiero generar una consulta nueva a partir de la co
 
 **Cómo quedó (decisiones del equipo al implementar, 16/10/2026).**
 
+- Las dos acciones viven **dentro del presupuesto** (la pantalla de la consulta), junto a cliente, evento y servicios:
+  - **«Reutilizar en una consulta nueva»**: lo que pide la HU. Crea una consulta nueva con la configuración de este evento.
+  - **«Copiar configuración de otro evento»** (ampliación, avisar al PO): en una consulta que todavía se puede modificar, trae la configuración de **cualquier evento** (de este cliente o de otro, con un buscador por cliente, salón o armado) al formulario. Se quedan la fecha, la hora, el cliente y la solicitud de la consulta; el armado no se copia (se elige al agendar). No se guarda nada hasta «Guardar» y se puede deshacer. Sirve para no duplicar consultas cuando el cliente ya mandó la suya desde el cotizador.
 - Se reutiliza un evento en **cualquier estado**, también Cancelado (el cliente que canceló y vuelve).
 - El diálogo pide la **fecha** (futura, en hora de Córdoba) y una **hora aproximada opcional**, como el cotizador. La jornada es la del original y el horario exacto se carga al agendar (ADR 0007). Por eso «en conflicto» (RN-12) es un aviso **por día**: alguno de los salones ya tiene un evento Reservado o Cobrado esa fecha.
 - Se copian también los **adicionales** escritos a mano, con su descripción y su precio. No se copian pagos, estado, solicitud ni notas de la comanda.

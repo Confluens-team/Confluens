@@ -1,5 +1,5 @@
-import type { EstadoEvento, EventoReutilizado } from '@confluens/shared';
-import { Check, ChevronDown, ChevronUp, Copy, Printer } from 'lucide-react';
+import type { EstadoEvento } from '@confluens/shared';
+import { Check, ChevronDown, ChevronUp, Printer } from 'lucide-react';
 import { useState } from 'react';
 
 import { armadoDeSalones, nombresDeSalones, textoModalidad } from '@/lib/formato';
@@ -14,7 +14,6 @@ import { ErrorApiCliente } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { CuentaDelEvento } from './CuentaDelEvento';
 import { ESTADOS } from './estado-evento';
-import { ReutilizarConfiguracion } from './ReutilizarConfiguracion';
 
 // En 24 horas, como la agenda de la que se viene y como la tarjeta de resumen: "6:00 a. m." al
 // lado de "06:00" se lee como dos horarios distintos.
@@ -86,9 +85,6 @@ interface DetalleEventoProps {
   onVerPresupuesto?: (presupuestoId: number) => void;
   // Comanda de cocina del evento confirmado: la hoja sin precios que se imprime y se cuelga.
   onImprimirComanda?: (presupuestoId: number) => void;
-  // HU-24: qué hacer con la consulta nueva al reutilizar la configuración. Sin esto se abre su
-  // presupuesto con onVerPresupuesto; sin ninguno de los dos, el botón no aparece.
-  onConsultaReutilizada?: (resultado: EventoReutilizado) => void;
 }
 
 // Vista central del evento: datos, presupuesto, cuenta y cancelación (criterio 5 / RN-07). No hay
@@ -103,17 +99,11 @@ export function DetalleEvento({
   eventoId,
   onVerPresupuesto,
   onImprimirComanda,
-  onConsultaReutilizada,
 }: DetalleEventoProps) {
   const { data: evento, isLoading, isError } = useEvento(eventoId);
   const cancelarEvento = useCancelarEvento(eventoId);
   const armarPresupuesto = useArmarPresupuestoDeEvento(eventoId);
   const [presupuestoDesplegado, setPresupuestoDesplegado] = useState(false);
-  const [reutilizando, setReutilizando] = useState(false);
-  const abrirReutilizada =
-    onConsultaReutilizada ??
-    (onVerPresupuesto &&
-      ((resultado: EventoReutilizado) => onVerPresupuesto(resultado.consulta.id)));
 
   if (isLoading) return <p className="py-6 text-sm text-muted-foreground">Cargando…</p>;
   if (isError || !evento) {
@@ -200,14 +190,6 @@ export function DetalleEvento({
         </div>
         <PasosDelEvento estado={evento.estado} />
       </div>
-      {abrirReutilizada && (
-        <ReutilizarConfiguracion
-          eventoId={evento.id}
-          abierto={reutilizando}
-          onCambiarAbierto={setReutilizando}
-          onAbrirConsulta={abrirReutilizada}
-        />
-      )}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] lg:items-start">
         {/* Columna de la cuenta. Va primero en el DOM para quedar arriba en mobile; en lg pasa a la
@@ -389,13 +371,6 @@ export function DetalleEvento({
                         onClick={() => onImprimirComanda(presupuestoVigente.id)}
                       >
                         <Printer /> Comanda de cocina
-                      </Button>
-                    )}
-                    {/* HU-24: junto a los salones, el armado y los servicios que se van a copiar.
-                        Desde cualquier estado, también uno cancelado (el cliente que vuelve). */}
-                    {abrirReutilizada && (
-                      <Button variant="outline" size="sm" onClick={() => setReutilizando(true)}>
-                        <Copy /> Reutilizar configuración
                       </Button>
                     )}
                   </div>

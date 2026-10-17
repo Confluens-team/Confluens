@@ -10,6 +10,7 @@ import {
   mesesHastaEvento,
   proyectarPrecio,
   type ConsultaDetallada,
+  type EventoDetallado,
   type ModalidadServicio,
   type SalonConDistribuciones,
   type Servicio,
@@ -24,10 +25,13 @@ import {
   Check,
   CheckCircle2,
   ClipboardList,
+  ClipboardPaste,
+  Copy,
   Plus,
   Printer,
   RefreshCw,
   Trash2,
+  Undo2,
   X,
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -48,6 +52,9 @@ import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
 import { armadoDeSalones, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
+import { ReutilizarConfiguracion } from '@/paginas/eventos/ReutilizarConfiguracion';
+
+import { CopiarConfiguracion } from './CopiarConfiguracion';
 
 // Una línea del detalle mientras se edita. servicioId null = adicional escrito a mano. Un
 // tercerizado puede quedar con el precio vacío: "a cotizar" (HU-11).
@@ -71,6 +78,17 @@ interface LineaEditable {
 interface SalonEditable {
   salonId: number;
   precio: string;
+}
+
+// Lo que pisa «Copiar configuración de otro evento» (HU-24), para poder deshacerlo.
+interface ConfiguracionEditable {
+  tipo: TipoEvento;
+  tipoSocial: TipoEventoSocial | '';
+  detalleOtro: string;
+  jornada: TipoJornada;
+  personas: string;
+  salonesSel: SalonEditable[];
+  lineas: LineaEditable[];
 }
 
 const OTRO = 'otro';
@@ -124,6 +142,7 @@ export function EditarConsulta({
   onDadaDeBaja,
   onAbrirEvento,
   onImprimirComanda,
+  onAbrirConsulta,
   textoVolver = 'Volver a las consultas',
   textoVolverAlGuardar = 'Volver al inicio',
 }: {
@@ -137,6 +156,9 @@ export function EditarConsulta({
   // Comanda de cocina del evento confirmado. Sin esto el botón no aparece: desde Consultas no se
   // llega a un presupuesto Confirmado, solo desde la agenda.
   onImprimirComanda?: (presupuestoId: number) => void;
+  // HU-24: abre otra consulta, la que se crea al reutilizar esta configuración. Sin esto, el botón
+  // «Reutilizar en una consulta nueva» no aparece.
+  onAbrirConsulta?: (presupuestoId: number, eventoId: number) => void;
   // Se abre desde Consultas o desde un evento de la agenda (HU-15).
   textoVolver?: string;
   // El botón del aviso de guardado; arma también la pregunta («¿Querés volver al inicio?»).
@@ -173,6 +195,7 @@ export function EditarConsulta({
           onDadaDeBaja={onDadaDeBaja}
           onAbrirEvento={onAbrirEvento}
           onImprimirComanda={onImprimirComanda}
+          onAbrirConsulta={onAbrirConsulta}
           textoVolverAlGuardar={textoVolverAlGuardar}
         />
       )}
@@ -189,6 +212,7 @@ function Formulario({
   onDadaDeBaja,
   onAbrirEvento,
   onImprimirComanda,
+  onAbrirConsulta,
   textoVolverAlGuardar,
 }: {
   consulta: ConsultaDetallada;
@@ -199,6 +223,7 @@ function Formulario({
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onAbrirEvento: (eventoId: number) => void;
   onImprimirComanda?: (presupuestoId: number) => void;
+  onAbrirConsulta?: (presupuestoId: number, eventoId: number) => void;
   textoVolverAlGuardar: string;
 }) {
   const modificar = useModificarConsulta(consulta.id);
@@ -255,6 +280,16 @@ function Formulario({
   const [agregar, setAgregar] = useState('');
   const [otro, setOtro] = useState({ descripcion: '', cantidad: '1', precio: '' });
   const [recalculado, setRecalculado] = useState(false);
+  // HU-24: los dos diálogos de reutilizar, y lo que se copió de otro evento (con lo que había antes,
+  // para poder deshacerlo sin salir de la consulta).
+  const [eligiendoOrigen, setEligiendoOrigen] = useState(false);
+  const [reutilizando, setReutilizando] = useState(false);
+  const [copiado, setCopiado] = useState<{
+    eventoId: number;
+    cliente: string;
+    omitidos: string[];
+    anterior: ConfiguracionEditable;
+  } | null>(null);
 
   const enCurso =
     (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
@@ -329,6 +364,96 @@ function Formulario({
       }),
     );
     setRecalculado(true);
+  }
+
+  // HU-24: pega en el formulario la configuración de otro evento, de este cliente o de otro. Se
+  // copian el tipo de evento, la jornada, las personas, los salones, los servicios (con cantidad,
+  // modalidad y hora) y los adicionales; los precios son los vigentes del catálogo, proyectados a
+  // la fecha de ESTA consulta (RN-13), igual que al crear una consulta nueva. Se quedan la fecha,
+  // la hora, el cliente y la solicitud de esta consulta. El armado de los salones no se copia: se
+  // elige al agendar. Nada se guarda hasta «Guardar».
+  function copiarConfiguracion(origen: EventoDetallado) {
+    const presupuestos = [...origen.presupuestos].reverse();
+    const presupuesto = presupuestos.find((p) => p.estado !== 'Cancelado') ?? presupuestos[0];
+    const lineasOrigen = presupuesto?.lineas ?? [];
+    const lineaSalon = lineasOrigen.find((l) => l.salonId !== null);
+    const nuevaJornada: TipoJornada =
+      origen.tipoJornada ??
+      (lineaSalon?.descripcion.endsWith('(media jornada)') ? 'media' : 'completa');
+    const nuevasPersonas = origen.cantidadPersonas;
+
+    const omitidos: string[] = [];
+    const nuevasLineas: LineaEditable[] = [];
+    for (const linea of lineasOrigen) {
+      if (linea.salonId !== null) continue;
+      const clave = `copia-${origen.id}-${linea.id}`;
+      if (linea.servicioId === null) {
+        nuevasLineas.push({
+          clave,
+          servicioId: null,
+          descripcion: linea.descripcion,
+          cantidad: String(linea.cantidad),
+          hora: linea.horaEstimada ?? '',
+          precio: linea.precioUnitario,
+          tercerizado: false,
+          modalidad: 'Normal',
+          admiteModalidad: false,
+        });
+        continue;
+      }
+      const servicio = catalogo.find((s) => s.id === linea.servicioId);
+      if (!servicio?.activo) {
+        omitidos.push(linea.descripcion);
+        continue;
+      }
+      nuevasLineas.push({
+        clave,
+        servicioId: servicio.id,
+        descripcion: servicio.nombre,
+        cantidad: String(linea.cantidad),
+        hora: linea.horaEstimada ?? '',
+        precio: precioVigente(servicio) ?? '',
+        tercerizado: servicio.tercerizado,
+        modalidad: servicio.admiteModalidad ? linea.modalidad : 'Normal',
+        admiteModalidad: servicio.admiteModalidad,
+      });
+    }
+
+    setCopiado({
+      eventoId: origen.id,
+      cliente: nombreCompleto(origen.cliente),
+      omitidos,
+      anterior: { tipo, tipoSocial, detalleOtro, jornada, personas, salonesSel, lineas },
+    });
+    setTipo(origen.tipo);
+    setTipoSocial(origen.tipoSocial ?? '');
+    setDetalleOtro(origen.tipoSocialDetalle ?? '');
+    setJornada(nuevaJornada);
+    setPersonas(String(nuevasPersonas));
+    setSalonesSel(
+      origen.salones.map((s) => {
+        const salon = salonDe(s.id);
+        return {
+          salonId: s.id,
+          precio: salon ? proyectar(precioDeSalon(salon, nuevaJornada)) : '0.00',
+        };
+      }),
+    );
+    setLineas(nuevasLineas);
+    setGuardada(null);
+  }
+
+  function deshacerCopia() {
+    if (!copiado) return;
+    const { anterior } = copiado;
+    setTipo(anterior.tipo);
+    setTipoSocial(anterior.tipoSocial);
+    setDetalleOtro(anterior.detalleOtro);
+    setJornada(anterior.jornada);
+    setPersonas(anterior.personas);
+    setSalonesSel(anterior.salonesSel);
+    setLineas(anterior.lineas);
+    setCopiado(null);
   }
 
   function actualizarLinea(clave: string, cambios: Partial<LineaEditable>) {
@@ -546,6 +671,67 @@ function Formulario({
           </span>
         </div>
       </header>
+
+      {/* HU-24: reutilizar una configuración, en las dos direcciones. Traer la de otro evento a
+          esta consulta solo mientras se puede modificar como consulta; llevar esta a una consulta
+          nueva, desde cualquier estado (también un cancelado: el cliente que vuelve). */}
+      {((enCurso && !copiado) || onAbrirConsulta) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {enCurso && !copiado && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setEligiendoOrigen(true)}
+            >
+              <ClipboardPaste /> Copiar configuración de otro evento
+            </Button>
+          )}
+          {onAbrirConsulta && (
+            <Button type="button" variant="outline" size="sm" onClick={() => setReutilizando(true)}>
+              <Copy /> Reutilizar en una consulta nueva
+            </Button>
+          )}
+        </div>
+      )}
+      {copiado && (
+        <div className="space-y-2 rounded-xl bg-sky-50 px-4 py-3 text-sm text-sky-950 ring-1 ring-sky-200">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="flex items-center gap-2 font-medium">
+              <ClipboardPaste className="size-4 shrink-0" />
+              Se copió la configuración del evento #{copiado.eventoId} ({copiado.cliente}), a
+              precios vigentes. Revisala y tocá «Guardar».
+            </p>
+            <Button type="button" size="sm" variant="ghost" onClick={deshacerCopia}>
+              <Undo2 /> Deshacer
+            </Button>
+          </div>
+          <p className="text-xs">
+            Se mantienen la fecha, la hora y el cliente de esta consulta. El armado de los salones
+            se elige al agendar.
+          </p>
+          {copiado.omitidos.length > 0 && (
+            <p className="flex items-start gap-1.5 text-xs font-medium text-amber-900">
+              <AlertTriangle className="mt-px size-3.5 shrink-0" />
+              No se copiaron porque ya no están en el catálogo: {copiado.omitidos.join(', ')}.
+            </p>
+          )}
+        </div>
+      )}
+      <CopiarConfiguracion
+        eventoActualId={consulta.evento.id}
+        abierto={eligiendoOrigen}
+        onCambiarAbierto={setEligiendoOrigen}
+        onElegido={copiarConfiguracion}
+      />
+      {onAbrirConsulta && (
+        <ReutilizarConfiguracion
+          eventoId={consulta.evento.id}
+          abierto={reutilizando}
+          onCambiarAbierto={setReutilizando}
+          onAbrirConsulta={({ consulta: nueva }) => onAbrirConsulta(nueva.id, nueva.evento.id)}
+        />
+      )}
 
       {expirado && enCurso && (
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-estado-expirado-fondo px-4 py-3 text-sm text-estado-expirado-texto ring-1 ring-estado-expirado/30">

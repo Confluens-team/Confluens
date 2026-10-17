@@ -1,4 +1,3 @@
-import type { EventoReutilizado } from '@confluens/shared';
 import { ArrowLeft, CalendarDays, Mail, Phone } from 'lucide-react';
 import { useState } from 'react';
 
@@ -25,11 +24,11 @@ export function FichaCliente({ clienteId, onVolver }: { clienteId: number; onVol
   const etiquetas = useEtiquetas();
   const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
   const [presupuestoAbierto, setPresupuestoAbierto] = useState<number | null>(null);
-  // HU-24: la consulta nueva se abre como cualquier presupuesto del historial, y «Volver» lleva al
-  // evento nuevo.
-  const abrirReutilizada = ({ consulta }: EventoReutilizado) => {
-    setEventoAbierto(consulta.evento.id);
-    setPresupuestoAbierto(consulta.id);
+  // HU-24: la consulta nueva que se crea al reutilizar un evento se abre en su lugar, y «Volver»
+  // lleva al evento nuevo.
+  const abrirConsulta = (presupuestoId: number, eventoId: number) => {
+    setEventoAbierto(eventoId);
+    setPresupuestoAbierto(presupuestoId);
   };
 
   if (eventoAbierto !== null && presupuestoAbierto !== null) {
@@ -44,6 +43,7 @@ export function FichaCliente({ clienteId, onVolver }: { clienteId: number; onVol
         onGuardada={volverAlEvento}
         onDadaDeBaja={volverAlEvento}
         onAbrirEvento={volverAlEvento}
+        onAbrirConsulta={abrirConsulta}
       />
     );
   }
@@ -54,12 +54,7 @@ export function FichaCliente({ clienteId, onVolver }: { clienteId: number; onVol
         <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
           <ArrowLeft /> Volver a la ficha del cliente
         </Button>
-        <DetalleEvento
-          key={eventoAbierto}
-          eventoId={eventoAbierto}
-          onVerPresupuesto={setPresupuestoAbierto}
-          onConsultaReutilizada={abrirReutilizada}
-        />
+        <DetalleEvento eventoId={eventoAbierto} onVerPresupuesto={setPresupuestoAbierto} />
       </div>
     );
   }
