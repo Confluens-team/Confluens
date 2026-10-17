@@ -140,12 +140,17 @@ export const esquemaModificarPresupuesto = z
     // RN-01: si el cliente pide factura, la base de cobro de la seña y el saldo incluye el IVA. Sin
     // el campo, se mantiene lo que estaba.
     requiereFactura: z.boolean().optional(),
+    // Un mismo servicio puede ir más de una vez, con una modalidad distinta en cada línea (un coffee
+    // normal a la mañana y uno continuo a la tarde; decisión del equipo, 16/10/2026). Lo que sigue
+    // abierto (S-09) es si una sola línea puede llevar los dos recargos.
     servicios: z
       .array(esquemaServicioModificado)
       .default([])
       .refine(
-        (servicios) => new Set(servicios.map((s) => s.servicioId)).size === servicios.length,
-        'Un servicio no puede aparecer dos veces',
+        (servicios) =>
+          new Set(servicios.map((s) => `${s.servicioId}:${s.modalidad ?? 'Normal'}`)).size ===
+          servicios.length,
+        'Un servicio no puede aparecer dos veces con la misma modalidad',
       ),
     adicionales: z.array(esquemaAdicional).default([]),
   })

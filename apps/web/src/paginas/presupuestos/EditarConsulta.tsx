@@ -1,5 +1,6 @@
 import {
   aplicarModalidad,
+  MODALIDADES_SERVICIO,
   DIAS_VIGENCIA_PRESUPUESTO,
   desglosarIva,
   ETIQUETAS_TIPO_EVENTO_SOCIAL,
@@ -360,14 +361,15 @@ function Formulario({
       setLineas((anteriores) => [
         ...anteriores,
         {
-          clave: `servicio-${servicio.id}`,
+          clave: `servicio-${servicio.id}-${Date.now()}`,
           servicioId: servicio.id,
           descripcion: servicio.nombre,
           cantidad: servicio.porPersona && esEntero(personas) ? personas : '1',
           hora: '',
           precio: precioVigente(servicio) ?? '',
           tercerizado: servicio.tercerizado,
-          modalidad: 'Normal',
+          // Si el servicio ya está, entra con la primera modalidad que todavía no usa.
+          modalidad: modalidadesLibres(servicio.id)[0] ?? 'Normal',
           admiteModalidad: servicio.admiteModalidad,
         },
       ]);
@@ -383,9 +385,26 @@ function Formulario({
       ? Number(personas) || undefined
       : undefined;
 
+  // Un servicio puede repetirse con otra modalidad (un coffee normal a la mañana y uno continuo a
+  // la tarde), pero no con la misma: la API lo rechaza.
+  const modalidadesLibres = (servicioId: number) =>
+    MODALIDADES_SERVICIO.filter(
+      (modalidad) => !lineas.some((l) => l.servicioId === servicioId && l.modalidad === modalidad),
+    );
   const disponibles = catalogo.filter(
-    (s) => s.activo && !lineas.some((l) => l.servicioId === s.id),
+    (s) =>
+      s.activo &&
+      (!lineas.some((l) => l.servicioId === s.id) ||
+        (s.admiteModalidad && modalidadesLibres(s.id).length > 0)),
   );
+  const repetida = (linea: LineaEditable) =>
+    linea.servicioId !== null &&
+    lineas.some(
+      (otra) =>
+        otra.clave !== linea.clave &&
+        otra.servicioId === linea.servicioId &&
+        otra.modalidad === linea.modalidad,
+    );
   const otroValido =
     otro.descripcion.trim().length > 0 && esEntero(otro.cantidad) && esImporte(otro.precio);
   const puedeAgregar = agregar === OTRO ? otroValido : !!agregar;
@@ -424,6 +443,7 @@ function Formulario({
       (l) =>
         esEntero(l.cantidad) &&
         cantidadPosible(l) &&
+        !repetida(l) &&
         precioValido(l) &&
         horaValida(l) &&
         l.descripcion.trim(),
@@ -841,6 +861,11 @@ function Formulario({
                               value={linea.modalidad}
                               onChange={(modalidad) => actualizarLinea(linea.clave, { modalidad })}
                             />
+                          )}
+                          {repetida(linea) && (
+                            <span className="mt-1 block text-xs text-destructive">
+                              Ya está con esta modalidad: elegí otra o quitá una de las dos.
+                            </span>
                           )}
                         </>
                       )}

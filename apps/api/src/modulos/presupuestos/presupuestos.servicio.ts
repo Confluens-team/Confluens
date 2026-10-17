@@ -665,11 +665,17 @@ export async function modificarPresupuesto(
     if (!encontrados.has(id)) throw ErrorApi.noEncontrado(`No existe el salón ${id}`);
   }
 
-  const lineasAnteriores = new Map(
-    presupuesto.lineas
-      .filter((linea) => linea.servicioId !== null)
-      .map((linea) => [linea.servicioId!, linea]),
-  );
+  // Un servicio puede estar más de una vez, una por modalidad (RN-11). La línea anterior de un
+  // servicio elegido es la de su misma modalidad; si no la hay pero el servicio tenía una sola
+  // línea, es esa con la modalidad cambiada, y conserva su precio base.
+  const lineasDeServicio = presupuesto.lineas.filter((linea) => linea.servicioId !== null);
+  const lineaAnterior = (servicioId: number, modalidad: ModalidadServicio) => {
+    const delServicio = lineasDeServicio.filter((linea) => linea.servicioId === servicioId);
+    return (
+      delServicio.find((linea) => linea.modalidad === modalidad) ??
+      (delServicio.length === 1 ? delServicio[0] : undefined)
+    );
+  };
   const ids = datos.servicios.map((s) => s.servicioId);
   const catalogo = new Map(
     (ids.length > 0 ? await repo.buscarServiciosPorIds(ids) : []).map((s) => [s.id, s]),
@@ -679,12 +685,12 @@ export async function modificarPresupuesto(
   const lineasServicios = datos.servicios.map((elegido) => {
     const servicio = catalogo.get(elegido.servicioId);
     if (!servicio) throw ErrorApi.noEncontrado(`No existe el servicio ${elegido.servicioId}`);
-    const anterior = lineasAnteriores.get(elegido.servicioId);
+    const modalidad = elegido.modalidad ?? 'Normal';
+    const anterior = lineaAnterior(elegido.servicioId, modalidad);
     if (!anterior && !servicio.activo) {
       throw ErrorApi.reglaNegocio(`El servicio "${servicio.nombre}" no está activo`);
     }
     exigirCantidadPosible(servicio, elegido.cantidad, datos.cantidadPersonas);
-    const modalidad = elegido.modalidad ?? 'Normal';
     exigirModalidadAdmitida(servicio, modalidad, anterior?.modalidad);
     // Lo que ya tenía precio conserva su precio base; lo nuevo, y lo que seguía a cotizar, toma el
     // del catálogo proyectado a la fecha (RN-13), que también puede ser null (sigue a cotizar).

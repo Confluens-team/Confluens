@@ -1291,4 +1291,58 @@ describe('PATCH /api/presupuestos/:id — modalidad (RN-11) y proyección (RN-13
     expect(lineasGuardadas()[2]).toMatchObject({ servicioId: 4, precioUnitario: '1000.00' });
     obtenerPorcentajeMensualMock.mockResolvedValue('0');
   });
+
+  it('acepta el mismo servicio dos veces con distinta modalidad y cada línea conserva su base', async () => {
+    buscarServiciosPorIdsMock.mockResolvedValue([coffeeConModalidad]);
+    const base = consulta() as unknown as { lineas: Record<string, unknown>[] };
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({
+        lineas: [
+          ...base.lineas,
+          {
+            ...base.lineas[1],
+            id: 3,
+            modalidad: 'Continuo',
+            precioBase: D('7000'),
+            precioUnitario: D('8400'),
+            subtotal: D('84000'),
+          },
+        ],
+      }),
+    );
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        servicios: [
+          { servicioId: 1, cantidad: 12 },
+          { servicioId: 1, cantidad: 12, modalidad: 'Continuo' },
+        ],
+      });
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas()[1]).toMatchObject({ modalidad: 'Normal', precioUnitario: '8000.00' });
+    expect(lineasGuardadas()[2]).toMatchObject({
+      modalidad: 'Continuo',
+      precioBase: '7000.00',
+      precioUnitario: '8400.00',
+    });
+  });
+
+  it('responde 400 si el mismo servicio viene dos veces con la misma modalidad', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        servicios: [
+          { servicioId: 1, cantidad: 12, modalidad: 'Continuo' },
+          { servicioId: 1, cantidad: 5, modalidad: 'Continuo' },
+        ],
+      });
+
+    expect(respuesta.status).toBe(400);
+  });
 });
