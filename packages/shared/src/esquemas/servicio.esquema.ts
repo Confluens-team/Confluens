@@ -10,6 +10,7 @@ export const esquemaServicio = z.object({
   precio: esquemaImporte.nullable(), // null = "a cotizar": solo tercerizados (HU-11)
   porPersona: z.boolean(),
   tercerizado: z.boolean(), // suma al total; no recibe el incremento mensual (RN-10)
+  admiteModalidad: z.boolean(), // RN-11: se puede pedir continuo o en mesa (hoy, los coffee breaks)
   activo: z.boolean(),
   categoria: z.string().nullable(), // agrupa el catálogo en la landing (HU-07)
   fotoUrl: z.url().nullable(),
@@ -32,6 +33,8 @@ export const esquemaCrearServicio = esquemaServicio
     creadoEn: true,
     actualizadoEn: true,
   })
+  // Sin el campo, el servicio no admite modalidad (RN-11).
+  .extend({ admiteModalidad: z.boolean().default(false) })
   // HU-11: "a cotizar" (precio null) es solo para tercerizados (dominio.md).
   .refine((servicio) => servicio.precio !== null || servicio.tercerizado, {
     path: ['precio'],

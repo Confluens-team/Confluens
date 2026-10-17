@@ -9,7 +9,7 @@ import {
 } from './comunes.esquema.js';
 import { esquemaEtiqueta } from './etiqueta.esquema.js';
 import { esquemaEstadoEvento } from './evento.esquema.js';
-import { esquemaLineaPresupuesto } from './linea-presupuesto.esquema.js';
+import { esquemaLineaPresupuesto, esquemaModalidadServicio } from './linea-presupuesto.esquema.js';
 import { esquemaEstadoPresupuesto } from './presupuesto.esquema.js';
 import {
   esquemaHoraEstimada,
@@ -73,7 +73,12 @@ export const esquemaConsultaDetallada = z.object({
     }),
   ),
   lineas: z.array(
-    esquemaLineaPresupuesto.extend({ tipo: esquemaTipoLinea, tercerizado: z.boolean() }),
+    esquemaLineaPresupuesto.extend({
+      tipo: esquemaTipoLinea,
+      tercerizado: z.boolean(),
+      // Si el servicio de la línea admite modalidad hoy (RN-11): la pantalla ofrece el selector.
+      admiteModalidad: z.boolean(),
+    }),
   ),
 });
 export type ConsultaDetallada = z.infer<typeof esquemaConsultaDetallada>;
@@ -92,11 +97,14 @@ export type SalonModificado = z.infer<typeof esquemaSalonModificado>;
 // Un tercerizado a cotizar sin `precioUnitario` sigue a cotizar; con él, queda con ese precio.
 // Como el PATCH manda el estado completo de la consulta, `horaEstimada` ausente borra la hora que
 // tuviera la línea.
+// RN-11: `precioUnitario` es el precio base, antes del recargo de la modalidad; el recargo lo suma
+// la API. Sin `modalidad`, Normal.
 export const esquemaServicioModificado = z.object({
   servicioId: esquemaId,
   cantidad: z.number().int().positive(),
   precioUnitario: esquemaImporte.optional(),
   horaEstimada: esquemaHoraEstimada.optional(),
+  modalidad: esquemaModalidadServicio.optional(),
 });
 export type ServicioModificado = z.infer<typeof esquemaServicioModificado>;
 
