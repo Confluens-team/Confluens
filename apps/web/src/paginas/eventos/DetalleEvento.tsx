@@ -1,5 +1,5 @@
 import type { EstadoEvento } from '@confluens/shared';
-import { Check, ChevronDown, ChevronUp, Printer } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Printer, Repeat2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { armadoDeSalones, nombresDeSalones, textoModalidad } from '@/lib/formato';
@@ -14,6 +14,7 @@ import { ErrorApiCliente } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { CuentaDelEvento } from './CuentaDelEvento';
 import { ESTADOS } from './estado-evento';
+import { ReutilizarConfiguracion } from './ReutilizarConfiguracion';
 
 // En 24 horas, como la agenda de la que se viene y como la tarjeta de resumen: "6:00 a. m." al
 // lado de "06:00" se lee como dos horarios distintos.
@@ -85,6 +86,8 @@ interface DetalleEventoProps {
   onVerPresupuesto?: (presupuestoId: number) => void;
   // Comanda de cocina del evento confirmado: la hoja sin precios que se imprime y se cuelga.
   onImprimirComanda?: (presupuestoId: number) => void;
+  // HU-24: abre la consulta nueva creada con «Repetir evento». Sin esto, el botón no aparece.
+  onAbrirConsulta?: (presupuestoId: number, eventoId: number) => void;
 }
 
 // Vista central del evento: datos, presupuesto, cuenta y cancelación (criterio 5 / RN-07). No hay
@@ -99,11 +102,13 @@ export function DetalleEvento({
   eventoId,
   onVerPresupuesto,
   onImprimirComanda,
+  onAbrirConsulta,
 }: DetalleEventoProps) {
   const { data: evento, isLoading, isError } = useEvento(eventoId);
   const cancelarEvento = useCancelarEvento(eventoId);
   const armarPresupuesto = useArmarPresupuestoDeEvento(eventoId);
   const [presupuestoDesplegado, setPresupuestoDesplegado] = useState(false);
+  const [repitiendo, setRepitiendo] = useState(false);
 
   if (isLoading) return <p className="py-6 text-sm text-muted-foreground">Cargando…</p>;
   if (isError || !evento) {
@@ -173,7 +178,15 @@ export function DetalleEvento({
     <div className="space-y-5 rounded-2xl bg-secondary/80 p-4 ring-1 ring-dorado/25 sm:p-6">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-dorado/25 pb-4">
         <div>
-          <h1 className="text-xl font-semibold text-bordo">Evento #{evento.id}</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-xl font-semibold text-bordo">Evento #{evento.id}</h1>
+            {/* HU-24: solo se repite un evento Cobrado (decisión de Franco, 17/10/2026). */}
+            {onAbrirConsulta && evento.estado === 'Cobrado' && (
+              <Button variant="outline" size="sm" onClick={() => setRepitiendo(true)}>
+                <Repeat2 /> Repetir evento
+              </Button>
+            )}
+          </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <span
               title={estado.ayuda}
@@ -190,6 +203,14 @@ export function DetalleEvento({
         </div>
         <PasosDelEvento estado={evento.estado} />
       </div>
+      {onAbrirConsulta && evento.estado === 'Cobrado' && (
+        <ReutilizarConfiguracion
+          eventoId={evento.id}
+          abierto={repitiendo}
+          onCambiarAbierto={setRepitiendo}
+          onAbrirConsulta={({ consulta }) => onAbrirConsulta(consulta.id, consulta.evento.id)}
+        />
+      )}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] lg:items-start">
         {/* Columna de la cuenta. Va primero en el DOM para quedar arriba en mobile; en lg pasa a la

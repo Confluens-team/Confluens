@@ -4,7 +4,7 @@ import {
   type EventoReutilizado,
   type TipoJornada,
 } from '@confluens/shared';
-import { AlertTriangle, CheckCircle2, Copy, X } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Repeat2, X } from 'lucide-react';
 import { Dialog } from 'radix-ui';
 import { useState } from 'react';
 
@@ -23,7 +23,8 @@ function manana(): string {
   return hoy.toISOString().slice(0, 10);
 }
 
-// HU-24: «Reutilizar en una consulta nueva». Lo propio del cliente no se copia del evento original
+// HU-24: «Repetir evento», desde la vista de un evento Cobrado (decisión de Franco, 17/10/2026).
+// Lo propio del cliente no se copia del evento original
 // (equipo, 17/10/2026): se pide, como en el cotizador, la fecha, las personas, la jornada y, si se
 // quiere, una hora de inicio aproximada; el horario exacto se carga después, al agendar (ADR 0007).
 // La API crea la consulta con los salones y su armado, el tipo de evento, los servicios con su
@@ -83,7 +84,7 @@ export function ReutilizarConfiguracion({
           <div className="flex items-start justify-between gap-4">
             <div>
               <Dialog.Title className="font-heading text-lg font-medium">
-                {resultado ? 'Consulta creada' : 'Reutilizar en una consulta nueva'}
+                {resultado ? 'Consulta creada' : `Repetir el evento #${eventoId}`}
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-muted-foreground">
                 {resultado
@@ -180,7 +181,7 @@ export function ReutilizarConfiguracion({
                   type="submit"
                   disabled={!fechaValida || !personasValidas || reutilizar.isPending}
                 >
-                  <Copy /> {reutilizar.isPending ? 'Creando…' : 'Crear consulta'}
+                  <Repeat2 /> {reutilizar.isPending ? 'Creando…' : 'Crear consulta'}
                 </Button>
               </div>
             </form>

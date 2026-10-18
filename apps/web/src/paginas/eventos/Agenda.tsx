@@ -257,11 +257,6 @@ export function Agenda({ vista }: { vista: VistaAgenda }) {
         onDadaDeBaja={volverAlEvento}
         onAbrirEvento={volverAlEvento}
         onImprimirComanda={setComandaAbierta}
-        // HU-24: la consulta nueva creada al reutilizar se abre en su lugar.
-        onAbrirConsulta={(presupuestoId, eventoId) => {
-          setEventoAbierto(eventoId);
-          setPresupuestoAbierto(presupuestoId);
-        }}
       />
     );
   }
@@ -276,6 +271,11 @@ export function Agenda({ vista }: { vista: VistaAgenda }) {
           eventoId={eventoAbierto}
           onVerPresupuesto={setPresupuestoAbierto}
           onImprimirComanda={setComandaAbierta}
+          // HU-24: la consulta nueva creada con «Repetir evento» se abre en su lugar.
+          onAbrirConsulta={(presupuestoId, eventoId) => {
+            setEventoAbierto(eventoId);
+            setPresupuestoAbierto(presupuestoId);
+          }}
         />
       </div>
     );
