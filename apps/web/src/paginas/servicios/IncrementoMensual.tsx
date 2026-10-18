@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { VentanaFormulario } from '@/components/VentanaFormulario';
 import {
   useConfiguracionPrecios,
   useGuardarConfiguracionPrecios,
@@ -17,23 +18,45 @@ import { ErrorApiCliente } from '@/lib/api';
 // es HU-34.
 export function IncrementoMensual() {
   const configuracion = useConfiguracionPrecios();
+  const [abierto, setAbierto] = useState(false);
   if (configuracion.isLoading) return null;
   if (configuracion.isError || !configuracion.data) {
     return (
-      <p className="mx-6 mt-6 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+      <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
         No se pudo cargar el incremento mensual.
       </p>
     );
   }
-  // Mismo ancho y margen que el formulario de servicios que va debajo.
+  const porcentajeActual = configuracion.data.porcentajeMensual;
   return (
-    <div className="mx-auto max-w-2xl px-6 pt-6">
-      <Formulario porcentajeActual={configuracion.data.porcentajeMensual} />
-    </div>
+    <>
+      <Button variant="outline" onClick={() => setAbierto(true)}>
+        <TrendingUp /> Incremento mensual: {Number(porcentajeActual)}%
+      </Button>
+      <VentanaFormulario
+        abierto={abierto}
+        onCambiarAbierto={setAbierto}
+        titulo="Incremento mensual de precios"
+        descripcion="Los precios del salón y de los servicios propios se proyectan a la fecha del evento, sumando este porcentaje por cada mes. Los tercerizados no se proyectan y los presupuestos ya emitidos no cambian."
+      >
+        {/* La key reinicia el campo con el valor guardado cada vez que se abre la ventana. */}
+        <Formulario
+          key={String(abierto)}
+          porcentajeActual={porcentajeActual}
+          onGuardado={() => setAbierto(false)}
+        />
+      </VentanaFormulario>
+    </>
   );
 }
 
-function Formulario({ porcentajeActual }: { porcentajeActual: string }) {
+function Formulario({
+  porcentajeActual,
+  onGuardado,
+}: {
+  porcentajeActual: string;
+  onGuardado: () => void;
+}) {
   const guardar = useGuardarConfiguracionPrecios();
   const [porcentaje, setPorcentaje] = useState(String(Number(porcentajeActual)));
   const [error, setError] = useState<string | null>(null);
@@ -49,21 +72,13 @@ function Formulario({ porcentajeActual }: { porcentajeActual: string }) {
       return;
     }
     setError(null);
-    guardar.mutate(resultado.data);
+    guardar.mutate(resultado.data, { onSuccess: onGuardado });
   }
 
   const sinCambios = Number(porcentaje.replace(',', '.')) === Number(porcentajeActual);
 
   return (
-    <form onSubmit={manejarEnvio} className="space-y-3 rounded-lg border p-4">
-      <h2 className="flex items-center gap-2 text-sm font-semibold">
-        <TrendingUp className="size-4 text-bordo" /> Incremento mensual de precios
-      </h2>
-      <p className="text-xs text-muted-foreground">
-        Los precios del salón y de los servicios propios se proyectan a la fecha del evento, sumando
-        este porcentaje por cada mes. Los tercerizados no se proyectan y los presupuestos ya
-        emitidos no cambian.
-      </p>
+    <form onSubmit={manejarEnvio} className="space-y-3">
       <div className="flex flex-wrap items-end gap-2">
         <div className="space-y-1.5">
           <Label htmlFor="incremento-mensual">Porcentaje por mes</Label>
@@ -82,9 +97,6 @@ function Formulario({ porcentajeActual }: { porcentajeActual: string }) {
         <Button type="submit" size="sm" disabled={guardar.isPending || sinCambios}>
           {guardar.isPending ? 'Guardando…' : 'Guardar'}
         </Button>
-        {guardar.isSuccess && sinCambios && (
-          <span className="text-xs text-emerald-700">Guardado</span>
-        )}
       </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       {guardar.isError && (
