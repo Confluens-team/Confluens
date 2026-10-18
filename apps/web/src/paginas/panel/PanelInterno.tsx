@@ -28,7 +28,7 @@ import { ConsultarSalones } from '@/paginas/salones/ConsultarSalones';
 import { ListadoConsultas } from '@/paginas/presupuestos/ListadoConsultas';
 import { RegistrarServicio } from '@/paginas/servicios/RegistrarServicio';
 
-type Pestania = 'agenda' | 'eventos' | 'consultas' | 'clientes' | 'catalogo' | 'cuenta';
+type Pestania = 'agenda' | 'eventos' | 'consultas' | 'clientes' | 'configuracion' | 'cuenta';
 
 // La agenda va primero: es la pestaña de inicio del panel (decisión de Franco, 16/10/2026).
 const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: string }[] = [
@@ -57,10 +57,10 @@ const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: 
     bajada: 'Clientes registrados y cargados por el equipo.',
   },
   {
-    valor: 'catalogo',
-    texto: 'Catálogo y landing',
-    icono: UtensilsCrossed,
-    bajada: 'Salones, servicios y contenido publicado en la landing.',
+    valor: 'configuracion',
+    texto: 'Configuración de negocio',
+    icono: Settings,
+    bajada: 'Salones, servicios, medios de pago y contenido publicado en la landing.',
   },
   {
     valor: 'cuenta',
@@ -78,36 +78,62 @@ const NOMBRES_DE_ROL: Record<Rol, string> = {
   CLIENTE: 'Cliente',
 };
 
+type SeccionConfiguracion = 'salones' | 'servicios' | 'medios' | 'landing';
+
+// Las secciones de la configuración, agrupadas como en el sidebar.
+const GRUPOS_DE_CONFIGURACION: {
+  titulo: string;
+  secciones: { valor: SeccionConfiguracion; texto: string; icono: typeof Inbox }[];
+}[] = [
+  { titulo: 'Negocio', secciones: [{ valor: 'salones', texto: 'Salones', icono: Building2 }] },
+  {
+    titulo: 'Catálogo',
+    secciones: [{ valor: 'servicios', texto: 'Servicios y precios', icono: UtensilsCrossed }],
+  },
+  {
+    titulo: 'Cobros',
+    secciones: [{ valor: 'medios', texto: 'Medios de pago', icono: CreditCard }],
+  },
+  {
+    titulo: 'Sitio web',
+    secciones: [{ valor: 'landing', texto: 'Landing y fotos', icono: Images }],
+  },
+];
+
 // Todo lo que se consulta o se carga del catálogo: salones (HU-03), servicios (HU-02), medios de pago
-// (HU-19) y el contenido de la landing (HU-08).
-function CatalogoYLanding() {
-  const [seccion, setSeccion] = useState<'salones' | 'servicios' | 'medios' | 'landing'>(
-    'servicios',
-  );
+// (HU-19) y el contenido de la landing (HU-08). Cada sección se elige desde el sidebar de la
+// izquierda; en pantallas angostas el sidebar va arriba.
+function ConfiguracionDeNegocio() {
+  const [seccion, setSeccion] = useState<SeccionConfiguracion>('servicios');
   return (
-    <div className="space-y-4">
-      <div className="inline-flex flex-wrap rounded-lg bg-muted p-1">
-        {(
-          [
-            { valor: 'salones', texto: 'Salones', icono: Building2 },
-            { valor: 'servicios', texto: 'Servicios', icono: UtensilsCrossed },
-            { valor: 'medios', texto: 'Medios de pago', icono: CreditCard },
-            { valor: 'landing', texto: 'Fotos y visibilidad en la landing', icono: Images },
-          ] as const
-        ).map(({ valor, texto, icono: Icono }) => (
-          <button
-            key={valor}
-            type="button"
-            onClick={() => setSeccion(valor)}
-            className={cn(
-              'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-              seccion === valor ? 'bg-card shadow-sm' : 'text-muted-foreground',
-            )}
-          >
-            <Icono className="size-4" /> {texto}
-          </button>
+    <div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start">
+      {/* top-32: deja libre el encabezado fijo del panel con sus pestañas. */}
+      <nav
+        aria-label="Secciones de la configuración"
+        className="space-y-4 rounded-xl bg-card p-2 ring-1 ring-border md:sticky md:top-32"
+      >
+        {GRUPOS_DE_CONFIGURACION.map(({ titulo, secciones }) => (
+          <div key={titulo} className="space-y-1">
+            <p className="px-3 pt-2 text-[0.65rem] font-semibold tracking-[0.15em] text-dorado-texto uppercase">
+              {titulo}
+            </p>
+            {secciones.map(({ valor, texto, icono: Icono }) => (
+              <button
+                key={valor}
+                type="button"
+                aria-current={seccion === valor ? 'page' : undefined}
+                onClick={() => setSeccion(valor)}
+                className={cn(
+                  'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors',
+                  seccion === valor ? 'bg-secondary text-bordo' : 'text-foreground hover:bg-muted',
+                )}
+              >
+                <Icono className="size-4 shrink-0" /> {texto}
+              </button>
+            ))}
+          </div>
         ))}
-      </div>
+      </nav>
       <div className="rounded-xl bg-card ring-1 ring-border">
         {seccion === 'salones' && <ConsultarSalones />}
         {seccion === 'servicios' && <RegistrarServicio />}
@@ -248,7 +274,7 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
         {pestania === 'eventos' && <Agenda key="eventos" vista="lista" />}
         {pestania === 'consultas' && <ListadoConsultas />}
         {pestania === 'clientes' && <ListadoClientes />}
-        {pestania === 'catalogo' && <CatalogoYLanding />}
+        {pestania === 'configuracion' && <ConfiguracionDeNegocio />}
         {pestania === 'cuenta' && <MiCuenta sesion={sesion} onCerrarSesion={salir} />}
       </main>
     </div>
