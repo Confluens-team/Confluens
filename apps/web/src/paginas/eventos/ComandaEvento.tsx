@@ -1,4 +1,4 @@
-import { horaDelEvento, type ConsultaDetallada } from '@confluens/shared';
+import { horaDelEvento, NOMBRE_MODALIDAD, type ConsultaDetallada } from '@confluens/shared';
 import { ArrowLeft, Printer, Save } from 'lucide-react';
 import { useState } from 'react';
 
@@ -137,7 +137,15 @@ function TablaServicios({
               {/* Sin hora pedida: el guion deja la columna pareja y se nota que falta definirla. */}
               {linea.horaEstimada ?? '—'}
             </td>
-            <td className={cn('pr-3', densidad.descripcion)}>{linea.descripcion}</td>
+            <td className={cn('pr-3', densidad.descripcion)}>
+              {linea.descripcion}
+              {/* RN-11: cocina y salón tienen que saber si el coffee es continuo o en mesas. */}
+              {linea.modalidad !== 'Normal' && (
+                <span className="ml-2 text-sm font-semibold">
+                  · {NOMBRE_MODALIDAD[linea.modalidad]}
+                </span>
+              )}
+            </td>
             <td
               className={cn('text-right font-serif font-semibold tabular-nums', densidad.cantidad)}
             >

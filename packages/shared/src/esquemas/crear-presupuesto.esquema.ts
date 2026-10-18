@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { esquemaCantidadPersonas, esquemaFecha, esquemaId } from './comunes.esquema.js';
 import { esquemaEvento } from './evento.esquema.js';
-import { esquemaLineaPresupuesto } from './linea-presupuesto.esquema.js';
+import { esquemaLineaPresupuesto, esquemaModalidadServicio } from './linea-presupuesto.esquema.js';
 import { esquemaPresupuesto } from './presupuesto.esquema.js';
 import {
   esquemaHoraEstimada,
@@ -19,6 +19,8 @@ export const esquemaServicioSeleccionado = z.object({
   servicioId: esquemaId,
   cantidad: z.number().int().positive(),
   horaEstimada: esquemaHoraEstimada.optional(),
+  // RN-11: sin el campo, Normal. Continuo o en mesa solo en un servicio que admite modalidad.
+  modalidad: esquemaModalidadServicio.optional(),
 });
 export type ServicioSeleccionado = z.infer<typeof esquemaServicioSeleccionado>;
 

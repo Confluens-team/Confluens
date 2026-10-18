@@ -2,8 +2,10 @@ import {
   esquemaAgendarEvento,
   esquemaEventoAgenda,
   esquemaEventoDetallado,
+  esquemaEventoReutilizado,
   esquemaFiltrosAgenda,
   esquemaGuardarObservacionesComanda,
+  esquemaReutilizarEvento,
 } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -12,6 +14,7 @@ import { registroOpenApi } from '../../docs/openapi.js';
 import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
+import { limitadorEscrituras } from '../../middlewares/limitadores.js';
 import { validar } from '../../middlewares/validar.js';
 import {
   agendar,
@@ -19,6 +22,7 @@ import {
   guardarObservacionesComanda,
   listar,
   obtener,
+  reutilizar,
 } from './eventos.controlador.js';
 
 // Detalle de la capa HTTP, no se comparte con el frontend (a diferencia de los esquemas de body).
@@ -127,6 +131,33 @@ registroOpenApi.registerPath({
   },
 });
 
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/eventos/{id}/reutilizar',
+  tags: ['Eventos'],
+  summary:
+    'Crea una consulta nueva para el mismo cliente con la configuración del evento (HU-24): ' +
+    'salones, distribución, tipo de evento, servicios con su modalidad y adicionales, con los ' +
+    'precios vigentes proyectados a la fecha nueva. Fecha, personas y jornada vienen en el ' +
+    'pedido; las cantidades van por defecto y sin hora. El evento original no se modifica',
+  request: {
+    params: esquemaIdParam,
+    body: { content: { 'application/json': { schema: esquemaReutilizarEvento } } },
+  },
+  responses: {
+    201: {
+      description:
+        'Consulta creada. Informa los servicios que ya no están en el catálogo y los salones ' +
+        'reservados ese día por otro evento (RN-12)',
+      content: { 'application/json': { schema: z.object({ data: esquemaEventoReutilizado }) } },
+    },
+    400: { description: 'Falta la fecha, las personas o la jornada, o la fecha no es futura' },
+    404: { description: 'No existe el evento' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
+  },
+});
+
 export const rutasEventos = Router();
 
 // HU-15: la agenda era solo del Administrador del Sistema; la historia es del Responsable de
@@ -167,4 +198,13 @@ rutasEventos.post(
   autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaIdParam }),
   asincrono(cancelar),
+);
+// HU-24: solo el personal interno; el Cliente no reutiliza eventos.
+rutasEventos.post(
+  '/:id/reutilizar',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  limitadorEscrituras,
+  validar({ params: esquemaIdParam, body: esquemaReutilizarEvento }),
+  asincrono(reutilizar),
 );

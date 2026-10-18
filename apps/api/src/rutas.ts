@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import { rutasAuth } from './modulos/auth/auth.rutas.js';
 import { rutasClientes } from './modulos/clientes/clientes.rutas.js';
+import { rutasConfiguracionPrecios } from './modulos/configuracion-precios/configuracion-precios.rutas.js';
 import { rutasEtiquetas } from './modulos/etiquetas/etiquetas.rutas.js';
 import { rutasEventos } from './modulos/eventos/eventos.rutas.js';
 import { rutasFotos } from './modulos/fotos/fotos.rutas.js';
@@ -16,6 +17,7 @@ import { rutasSolicitudes } from './modulos/solicitudes/solicitudes.rutas.js';
 export const rutasApi = Router();
 
 rutasApi.use('/clientes', rutasClientes);
+rutasApi.use('/configuracion-precios', rutasConfiguracionPrecios);
 rutasApi.use('/etiquetas', rutasEtiquetas);
 rutasApi.use('/eventos', rutasEventos);
 // Los pagos son un recurso anidado del evento (/eventos/:id/pagos), pero son un módulo aparte: se

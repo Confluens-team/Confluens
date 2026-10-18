@@ -179,6 +179,18 @@ Como Responsable de Eventos, quiero generar una consulta nueva a partir de la co
 
 **Implementación.** `POST /api/eventos/:id/reutilizar` (`201` con el evento nuevo y los servicios que quedaron afuera; `400` sin fecha o con fecha pasada). Crea evento y presupuesto en una sola transacción, como `POST /api/presupuestos`, y copia la modalidad de cada línea recalculando el recargo sobre el precio vigente.
 
+> **A revisar con el equipo (17/10/2026).** Esta funcionalidad se definió sobre la marcha durante la implementación y todavía no la validó el resto del equipo ni el PO. Revisar en particular: (1) dónde viven las acciones (hoy, dentro del presupuesto), (2) la ampliación «Copiar configuración de otro evento» sobre una consulta existente, que la HU no pedía, (3) qué se copia y qué queda por defecto (personas, jornada, cantidades y horas), (4) el adelanto de la proyección de RN-13 desde HU-34 y (5) que un mismo servicio pueda repetirse con distinta modalidad (ADR 0012).
+
+**Cómo quedó (decisiones del equipo al implementar, 16/10/2026).**
+
+- **«Repetir evento»** (decisión de Franco, 17/10/2026): el botón vive en la vista del evento, al lado del «Evento #N», y aparece **solo en eventos Cobrado**. Crea una consulta nueva con la configuración de ese evento y la abre. Se llega desde la agenda, la lista de eventos y la ficha del cliente. La API todavía acepta reutilizar un evento en cualquier estado; la restricción está en la web.
+- Se sacó **«Copiar configuración de otro evento»** (la ampliación que traía la configuración de cualquier evento a una consulta existente): podía traer muchos problemas (Franco, 17/10/2026).
+- Se copia solo lo reutilizable (equipo, 17/10/2026): salones con su armado, tipo de evento, servicios con su modalidad y adicionales. Lo propio del cliente no viaja: las cantidades vuelven al valor por defecto (las personas del evento, o 1) y las horas quedan vacías.
+- El diálogo de «Repetir evento» pide, como el cotizador, la **fecha** (futura, en hora de Córdoba), las **personas**, la **jornada** y una **hora aproximada opcional**. El horario exacto se carga al agendar (ADR 0007). Por eso «en conflicto» (RN-12) es un aviso **por día**: alguno de los salones ya tiene un evento Reservado o Cobrado esa fecha.
+- Se copian también los **adicionales** escritos a mano, con su descripción y su precio. No se copian pagos, estado, solicitud ni notas de la comanda.
+- **RN-13 se adelanta en parte desde HU-34** (avisar al PO): los precios del salón y de los servicios propios se proyectan a la fecha del evento con el porcentaje mensual de `ConfiguracionPrecios`, que arranca en 0% y edita el Responsable de Eventos en Catálogo. Vale en el cotizador, al armar o modificar un presupuesto y al reutilizar. Sigue en HU-34 aplicar el aumento al tarifario cada mes, los aumentos puntuales y su historial.
+- La modalidad es una columna de la línea (ADR 0012). Las variantes con recargo del seed se dieron de baja y sus líneas se convirtieron. Un mismo servicio puede repetirse en un presupuesto **con distinta modalidad** en cada línea.
+
 ## Casos de prueba
 
 El diseño de casos de prueba de cada historia (CP-16-01 en adelante) está en la Definición del Producto v0.4. Se automatizan con Vitest + Supertest sobre `crearApp()`, igual que en los sprints anteriores.

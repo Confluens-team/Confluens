@@ -26,6 +26,7 @@ import { RegistrarMedioPago } from '@/paginas/medios-pago/RegistrarMedioPago';
 import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
 import { ConsultarSalones } from '@/paginas/salones/ConsultarSalones';
 import { ListadoConsultas } from '@/paginas/presupuestos/ListadoConsultas';
+import { IncrementoMensual } from '@/paginas/servicios/IncrementoMensual';
 import { RegistrarServicio } from '@/paginas/servicios/RegistrarServicio';
 
 type Pestania = 'agenda' | 'eventos' | 'consultas' | 'clientes' | 'catalogo' | 'cuenta';
@@ -110,7 +111,12 @@ function CatalogoYLanding() {
       </div>
       <div className="rounded-xl bg-card ring-1 ring-border">
         {seccion === 'salones' && <ConsultarSalones />}
-        {seccion === 'servicios' && <RegistrarServicio />}
+        {seccion === 'servicios' && (
+          <>
+            <IncrementoMensual />
+            <RegistrarServicio />
+          </>
+        )}
         {seccion === 'medios' && <RegistrarMedioPago />}
         {seccion === 'landing' && <AdministrarLanding />}
       </div>

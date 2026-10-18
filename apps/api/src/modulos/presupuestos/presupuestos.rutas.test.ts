@@ -21,6 +21,9 @@ vi.mock('./presupuestos.repositorio.js', () => ({
   // No hay transacción real en el test: se ejecuta el callback tal cual, cada función interna
   // que llama ya está mockeada arriba y no usa el `tx` que recibiría de una transacción real.
   crearEnTransaccion: vi.fn((ejecutar: (tx: undefined) => unknown) => ejecutar(undefined)),
+  obtenerPorcentajeMensual: vi.fn(() => Promise.resolve('0')),
+  buscarEventoParaReutilizar: vi.fn(),
+  buscarSalonesReservadosEseDia: vi.fn(() => Promise.resolve([])),
   obtenerPresupuestos: vi.fn(),
 }));
 
@@ -83,6 +86,7 @@ const servicioFixtureBase = {
   precio: new Prisma.Decimal('8730') as Prisma.Decimal | null,
   porPersona: true,
   tercerizado: false,
+  admiteModalidad: false,
   activo: true,
   categoria: 'Coffee breaks',
   fotoUrl: null,
@@ -190,6 +194,7 @@ function prepararMocksDeCreacion() {
         ...linea,
         precioUnitario: new Prisma.Decimal(linea.precioUnitario),
         subtotal: new Prisma.Decimal(linea.subtotal),
+        precioBase: linea.precioBase === null ? null : new Prisma.Decimal(linea.precioBase),
       })),
     }),
   );
@@ -281,6 +286,7 @@ describe('POST /api/presupuestos', () => {
         nombre: 'Catering externo',
         precio: new Prisma.Decimal('20000'),
         tercerizado: true,
+        admiteModalidad: false,
       }),
     ]);
 
@@ -326,6 +332,8 @@ describe('POST /api/presupuestos', () => {
       precioUnitario: '0.00',
       subtotal: '0.00',
       aCotizar: true,
+      modalidad: 'Normal' as const,
+      precioBase: null,
       horaEstimada: null,
     });
     expect(datos.total).toBe('142200.00'); // solo el salón
@@ -1127,5 +1135,63 @@ describe('POST /api/presupuestos — varios salones', () => {
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('POST /api/presupuestos — modalidad de servicio (RN-11)', () => {
+  beforeEach(prepararMocksDeCreacion);
+  const lineaDelCoffee = () => crearPresupuestoConLineasMock.mock.calls[0]![0].lineas[1]!;
+
+  it('suma el recargo de la modalidad al precio base del servicio', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+    buscarServiciosPorIdsMock.mockResolvedValue([servicioFixture({ admiteModalidad: true })]);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 10, modalidad: 'Continuo' }] });
+
+    expect(respuesta.status).toBe(201);
+    // 8730 + 20% = 10476
+    expect(lineaDelCoffee()).toMatchObject({
+      modalidad: 'Continuo',
+      precioBase: '8730.00',
+      precioUnitario: '10476.00',
+      subtotal: '104760.00',
+    });
+  });
+
+  it('sin modalidad la línea va Normal, con el precio base igual al unitario', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+
+    await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(bodyBase);
+
+    expect(lineaDelCoffee()).toMatchObject({
+      modalidad: 'Normal',
+      precioBase: '8730.00',
+      precioUnitario: '8730.00',
+    });
+  });
+
+  it('responde 422 si el servicio no admite modalidad', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 10, modalidad: 'EnMesa' }] });
+
+    expect(respuesta.status).toBe(422);
+    expect(crearPresupuestoConLineasMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 400 con una modalidad que no existe', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 10, modalidad: 'Buffet' }] });
+
+    expect(respuesta.status).toBe(400);
   });
 });

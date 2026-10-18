@@ -1,10 +1,16 @@
 import {
+  aplicarModalidad,
+  MODALIDADES_SERVICIO,
   DIAS_VIGENCIA_PRESUPUESTO,
   desglosarIva,
   ETIQUETAS_TIPO_EVENTO_SOCIAL,
   horaDelEvento,
+  hoyEnZonaEventos,
   MAXIMO_PERSONAS_EVENTO,
+  mesesHastaEvento,
+  proyectarPrecio,
   type ConsultaDetallada,
+  type ModalidadServicio,
   type SalonConDistribuciones,
   type Servicio,
   type TipoEvento,
@@ -28,11 +34,13 @@ import { useEffect, useRef, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
+import { IconoEstado } from '@/components/IconoEstado';
 import { InputEntero } from '@/components/InputEntero';
+import { SelectorModalidad } from '@/components/SelectorModalidad';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { IconoEstado } from '@/components/IconoEstado';
+import { useConfiguracionPrecios } from '@/hooks/use-configuracion-precios';
 import { useConsulta, useDarDeBajaConsulta, useModificarConsulta } from '@/hooks/use-presupuestos';
 import { useSalones } from '@/hooks/use-salones';
 import { useServicios } from '@/hooks/use-servicios';
@@ -51,8 +59,12 @@ interface LineaEditable {
   // "HH:mm" o '': a qué hora del evento se espera el servicio. Es opcional, y si el evento ya está
   // agendado la API rechaza con 422 una hora fuera de su horario.
   hora: string;
+  // En un servicio del catálogo es el precio base, sin el recargo de la modalidad (RN-11): el
+  // recargo se suma al mostrar el subtotal y lo vuelve a sumar la API al guardar.
   precio: string;
   tercerizado: boolean;
+  modalidad: ModalidadServicio;
+  admiteModalidad: boolean;
 }
 
 // Un salón del evento mientras se edita: su precio se puede ajustar a mano (RN-03).
@@ -73,6 +85,10 @@ const esEntero = (valor: string) => /^\d+$/.test(valor) && Number(valor) > 0;
 const esImporte = (valor: string) => /^\d{1,10}(\.\d{1,2})?$/.test(valor);
 const subtotal = (cantidad: string, precio: string) =>
   esEntero(cantidad) && esImporte(precio) ? Number(cantidad) * Number(precio) : 0;
+// RN-11: el unitario de la línea es el base con el recargo de su modalidad.
+const precioConRecargo = (linea: LineaEditable) =>
+  esImporte(linea.precio) ? aplicarModalidad(linea.precio, linea.modalidad) : linea.precio;
+const subtotalDeLinea = (linea: LineaEditable) => subtotal(linea.cantidad, precioConRecargo(linea));
 // HU-11: solo un tercerizado del catálogo puede quedar sin precio, a cotizar.
 const aCotizar = (linea: LineaEditable) =>
   linea.precio === '' && linea.servicioId !== null && linea.tercerizado;
@@ -129,25 +145,30 @@ export function EditarConsulta({
   const consulta = useConsulta(id);
   const salones = useSalones();
   const servicios = useServicios();
+  const configuracion = useConfiguracionPrecios();
 
   return (
     <div className="space-y-4">
       <Button variant="ghost" size="sm" onClick={onVolver}>
         <ArrowLeft /> {textoVolver}
       </Button>
-      {(consulta.isLoading || salones.isLoading || servicios.isLoading) && (
+      {(consulta.isLoading ||
+        salones.isLoading ||
+        servicios.isLoading ||
+        configuracion.isLoading) && (
         <p className="text-sm text-muted-foreground">Cargando la consulta…</p>
       )}
-      {(consulta.isError || salones.isError || servicios.isError) && (
+      {(consulta.isError || salones.isError || servicios.isError || configuracion.isError) && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           No se pudo cargar la consulta.
         </p>
       )}
-      {consulta.data && salones.data && servicios.data && (
+      {consulta.data && salones.data && servicios.data && configuracion.data && (
         <Formulario
           consulta={consulta.data}
           salones={salones.data}
           catalogo={servicios.data}
+          porcentajeMensual={configuracion.data.porcentajeMensual}
           onGuardada={onGuardada}
           onDadaDeBaja={onDadaDeBaja}
           onAbrirEvento={onAbrirEvento}
@@ -163,6 +184,7 @@ function Formulario({
   consulta,
   salones,
   catalogo,
+  porcentajeMensual,
   onGuardada,
   onDadaDeBaja,
   onAbrirEvento,
@@ -172,6 +194,7 @@ function Formulario({
   consulta: ConsultaDetallada;
   salones: SalonConDistribuciones[];
   catalogo: Servicio[];
+  porcentajeMensual: string;
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onAbrirEvento: (eventoId: number) => void;
@@ -223,8 +246,10 @@ function Formulario({
         descripcion: linea.descripcion,
         cantidad: String(linea.cantidad),
         hora: linea.horaEstimada ?? '',
-        precio: linea.aCotizar ? '' : linea.precioUnitario,
+        precio: linea.aCotizar ? '' : (linea.precioBase ?? linea.precioUnitario),
         tercerizado: linea.tercerizado,
+        modalidad: linea.modalidad,
+        admiteModalidad: linea.admiteModalidad,
       })),
   );
   const [agregar, setAgregar] = useState('');
@@ -248,13 +273,20 @@ function Formulario({
     0,
   );
 
+  // RN-13: el precio vigente del catálogo, proyectado a la fecha del evento con el incremento
+  // mensual. Es la misma cuenta que hace la API. Los tercerizados no se proyectan.
+  const proyectar = (precio: string) =>
+    proyectarPrecio(precio, porcentajeMensual, mesesHastaEvento(hoyEnZonaEventos(), fecha));
+  const precioVigente = (servicio: Servicio) =>
+    servicio.precio === null || servicio.tercerizado ? servicio.precio : proyectar(servicio.precio);
+
   // Un salón vuelve a su precio congelado si estaba en el presupuesto y la jornada es la
   // original; si no, toma el vigente. Después se puede ajustar a mano (RN-03).
   function precioInicial(salonId: number, conJornada: TipoJornada): string {
     const congelado = preciosOriginales.get(salonId);
     if (congelado && conJornada === consulta.tipoJornada && !recalculado) return congelado;
     const salon = salonDe(salonId);
-    return salon ? precioDeSalon(salon, conJornada) : '0.00';
+    return salon ? proyectar(precioDeSalon(salon, conJornada)) : '0.00';
   }
 
   function alternarSalon(salonId: number) {
@@ -285,14 +317,15 @@ function Formulario({
     setSalonesSel((anteriores) =>
       anteriores.map((s) => {
         const salon = salonDe(s.salonId);
-        return salon ? { ...s, precio: precioDeSalon(salon, jornada) } : s;
+        return salon ? { ...s, precio: proyectar(precioDeSalon(salon, jornada)) } : s;
       }),
     );
     setLineas((anteriores) =>
       anteriores.map((linea) => {
         const servicio = catalogo.find((s) => s.id === linea.servicioId);
+        const vigente = servicio ? precioVigente(servicio) : null;
         // Un tercerizado que sigue a cotizar en el catálogo conserva lo que tenía.
-        return servicio?.precio != null ? { ...linea, precio: servicio.precio } : linea;
+        return vigente != null ? { ...linea, precio: vigente } : linea;
       }),
     );
     setRecalculado(true);
@@ -318,6 +351,8 @@ function Formulario({
           hora: '',
           precio: otro.precio,
           tercerizado: false,
+          modalidad: 'Normal',
+          admiteModalidad: false,
         },
       ]);
       setOtro({ descripcion: '', cantidad: '1', precio: '' });
@@ -327,13 +362,16 @@ function Formulario({
       setLineas((anteriores) => [
         ...anteriores,
         {
-          clave: `servicio-${servicio.id}`,
+          clave: `servicio-${servicio.id}-${Date.now()}`,
           servicioId: servicio.id,
           descripcion: servicio.nombre,
           cantidad: servicio.porPersona && esEntero(personas) ? personas : '1',
           hora: '',
-          precio: servicio.precio ?? '',
+          precio: precioVigente(servicio) ?? '',
           tercerizado: servicio.tercerizado,
+          // Si el servicio ya está, entra con la primera modalidad que todavía no usa.
+          modalidad: modalidadesLibres(servicio.id)[0] ?? 'Normal',
+          admiteModalidad: servicio.admiteModalidad,
         },
       ]);
     }
@@ -348,9 +386,26 @@ function Formulario({
       ? Number(personas) || undefined
       : undefined;
 
+  // Un servicio puede repetirse con otra modalidad (un coffee normal a la mañana y uno continuo a
+  // la tarde), pero no con la misma: la API lo rechaza.
+  const modalidadesLibres = (servicioId: number) =>
+    MODALIDADES_SERVICIO.filter(
+      (modalidad) => !lineas.some((l) => l.servicioId === servicioId && l.modalidad === modalidad),
+    );
   const disponibles = catalogo.filter(
-    (s) => s.activo && !lineas.some((l) => l.servicioId === s.id),
+    (s) =>
+      s.activo &&
+      (!lineas.some((l) => l.servicioId === s.id) ||
+        (s.admiteModalidad && modalidadesLibres(s.id).length > 0)),
   );
+  const repetida = (linea: LineaEditable) =>
+    linea.servicioId !== null &&
+    lineas.some(
+      (otra) =>
+        otra.clave !== linea.clave &&
+        otra.servicioId === linea.servicioId &&
+        otra.modalidad === linea.modalidad,
+    );
   const otroValido =
     otro.descripcion.trim().length > 0 && esEntero(otro.cantidad) && esImporte(otro.precio);
   const puedeAgregar = agregar === OTRO ? otroValido : !!agregar;
@@ -389,6 +444,7 @@ function Formulario({
       (l) =>
         esEntero(l.cantidad) &&
         cantidadPosible(l) &&
+        !repetida(l) &&
         precioValido(l) &&
         horaValida(l) &&
         l.descripcion.trim(),
@@ -400,7 +456,7 @@ function Formulario({
   // RN-05: los importes se cargan sin IVA y el resumen muestra el desglose.
   const importes = desglosarIva(
     salonesSel.reduce((suma, s) => suma + (esImporte(s.precio) ? Number(s.precio) : 0), 0) +
-      lineas.reduce((suma, l) => suma + subtotal(l.cantidad, l.precio), 0),
+      lineas.reduce((suma, l) => suma + subtotalDeLinea(l), 0),
   );
   // Es un dato, no un tope: la capacidad no bloquea (ADR 0011). Con varios salones cuenta la suma.
   const excedeCapacidad =
@@ -432,8 +488,10 @@ function Formulario({
             servicioId: l.servicioId!,
             cantidad: Number(l.cantidad),
             horaEstimada: l.hora || undefined,
-            // Sin precio, el tercerizado queda a cotizar (HU-11).
+            // Sin precio, el tercerizado queda a cotizar (HU-11). Es el base: la API suma el
+            // recargo de la modalidad (RN-11).
             precioUnitario: aCotizar(l) ? undefined : aImporte(l.precio),
+            modalidad: l.modalidad,
           })),
         adicionales: lineas
           .filter((l) => l.servicioId === null)
@@ -722,7 +780,8 @@ function Formulario({
           <h3 className="text-sm font-semibold">Detalle</h3>
           <p className="text-xs text-muted-foreground">
             Precios unitarios sin IVA. Lo que ya estaba conserva su precio; lo nuevo entra con el
-            vigente. Se pueden ajustar a mano.
+            vigente, proyectado a la fecha del evento. Se pueden ajustar a mano. En los servicios
+            con modalidad, el precio es el base y el recargo se suma solo.
           </p>
           <div className="mt-4 overflow-x-auto">
             <table className="w-full min-w-[36rem] text-sm">
@@ -800,6 +859,21 @@ function Formulario({
                               (tercerizado)
                             </span>
                           )}
+                          {/* RN-11: una línea que ya tenía recargo lo muestra aunque el servicio
+                              haya dejado de admitir modalidad. */}
+                          {(linea.admiteModalidad || linea.modalidad !== 'Normal') && (
+                            <SelectorModalidad
+                              id={`modalidad-${linea.clave}`}
+                              className="mt-1 block w-full"
+                              value={linea.modalidad}
+                              onChange={(modalidad) => actualizarLinea(linea.clave, { modalidad })}
+                            />
+                          )}
+                          {repetida(linea) && (
+                            <span className="mt-1 block text-xs text-destructive">
+                              Ya está con esta modalidad: elegí otra o quitá una de las dos.
+                            </span>
+                          )}
                         </>
                       )}
                     </td>
@@ -834,12 +908,17 @@ function Formulario({
                         aria-invalid={!precioValido(linea)}
                         onChange={(e) => actualizarLinea(linea.clave, { precio: e.target.value })}
                       />
+                      {linea.modalidad !== 'Normal' && esImporte(linea.precio) && (
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          Con recargo: {formatearPesos(precioConRecargo(linea))}
+                        </span>
+                      )}
                     </td>
                     <td className="py-2 text-right whitespace-nowrap">
                       {aCotizar(linea) ? (
                         <span className="text-xs font-medium text-amber-900">A cotizar</span>
                       ) : esEntero(linea.cantidad) && esImporte(linea.precio) ? (
-                        formatearPesos(subtotal(linea.cantidad, linea.precio))
+                        formatearPesos(subtotalDeLinea(linea))
                       ) : (
                         '—'
                       )}
