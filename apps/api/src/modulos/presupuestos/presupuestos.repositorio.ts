@@ -91,13 +91,18 @@ export async function buscarSolicitud(id: number, tx: Prisma.TransactionClient =
 }
 
 // Vincula la Solicitud original al Evento recién creado, para que el RE vea en el detalle los
-// datos de contacto y del formulario con los que el cliente pidió la consulta.
+// datos de contacto y del formulario con los que el cliente pidió la consulta. Solo vincula si
+// sigue libre (eventoId null) y devuelve cuántas filas tocó: 0 = otra transacción la tomó antes.
 export async function vincularSolicitudAEvento(
   solicitudId: number,
   eventoId: number,
   tx: Prisma.TransactionClient = prisma,
-) {
-  return tx.solicitud.update({ where: { id: solicitudId }, data: { eventoId } });
+): Promise<number> {
+  const { count } = await tx.solicitud.updateMany({
+    where: { id: solicitudId, eventoId: null },
+    data: { eventoId },
+  });
+  return count;
 }
 
 // Un evento corporativo llega con salón; uno social, sin salón y con su tipo social (ADR 0008).
