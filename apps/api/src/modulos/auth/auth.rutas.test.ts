@@ -4,7 +4,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { crearApp } from '../../app.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { compararContrasena, hashearContrasena } from '../../lib/contrasena.js';
-import { firmarToken, firmarTokenRestablecimiento, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
+import {
+  firmarToken,
+  firmarTokenRestablecimiento,
+  NOMBRE_COOKIE_SESION,
+  versionDelToken,
+} from '../../lib/jwt.js';
 
 // Se mockea el repositorio (no el servicio): así se ejercita la cadena real
 // rutas → controlador → servicio, y solo se reemplaza el punto de contacto con
@@ -17,6 +22,7 @@ vi.mock('./auth.repositorio.js', () => ({
   buscarClientePorUsuarioId: vi.fn(),
   buscarUsuarioPorId: vi.fn(),
   actualizarContrasena: vi.fn(),
+  invalidarSesiones: vi.fn(),
 }));
 // El envío de correo también se mockea: los tests no llaman a Resend.
 vi.mock('../../lib/correo.js', () => ({ enviarCorreo: vi.fn() }));
@@ -28,8 +34,10 @@ const {
   buscarClientePorUsuarioId,
   buscarUsuarioPorId,
   actualizarContrasena,
+  invalidarSesiones,
 } = await import('./auth.repositorio.js');
 const { enviarCorreo } = await import('../../lib/correo.js');
+const invalidarSesionesMock = vi.mocked(invalidarSesiones);
 const buscarUsuarioPorIdMock = vi.mocked(buscarUsuarioPorId);
 const actualizarContrasenaMock = vi.mocked(actualizarContrasena);
 const enviarCorreoMock = vi.mocked(enviarCorreo);
@@ -51,6 +59,7 @@ describe('POST /api/auth/login', () => {
       id: 1,
       email: 'ge@confluens.test',
       hashContrasena: hash,
+      versionSesion: 0,
       rol: 'GERENTE_GENERAL',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -76,6 +85,7 @@ describe('POST /api/auth/login', () => {
       id: 7,
       email: 'ana@empresa.com',
       hashContrasena: await hashearContrasena('secreta123'),
+      versionSesion: 0,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -96,6 +106,7 @@ describe('POST /api/auth/login', () => {
       id: 1,
       email: 'ge@confluens.test',
       hashContrasena: hash,
+      versionSesion: 0,
       rol: 'GERENTE_GENERAL',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -133,6 +144,10 @@ describe('POST /api/auth/login', () => {
 });
 
 describe('POST /api/auth/logout', () => {
+  beforeEach(() => {
+    invalidarSesionesMock.mockReset();
+  });
+
   it('responde 204 y limpia la cookie de sesión', async () => {
     const respuesta = await request(app).post('/api/auth/logout');
 
@@ -140,6 +155,28 @@ describe('POST /api/auth/logout', () => {
     const cookies = respuesta.headers['set-cookie'] as unknown as string[];
     // clearCookie fija la cookie vacía con fecha de expiración en el pasado.
     expect(cookies.some((c) => c.startsWith(`${NOMBRE_COOKIE_SESION}=;`))).toBe(true);
+    // Sin cookie no hay sesión que invalidar.
+    expect(invalidarSesionesMock).not.toHaveBeenCalled();
+  });
+
+  it('con sesión invalida en la base todos los tokens del usuario (M2)', async () => {
+    const token = firmarToken({ id: 9, email: 'ge@confluens.test', rol: 'GERENTE_GENERAL' }, 2);
+
+    const respuesta = await request(app)
+      .post('/api/auth/logout')
+      .set('Cookie', [`${NOMBRE_COOKIE_SESION}=${token}`]);
+
+    expect(respuesta.status).toBe(204);
+    expect(invalidarSesionesMock).toHaveBeenCalledWith(9);
+  });
+
+  it('con una cookie adulterada responde 204 sin tocar la base', async () => {
+    const respuesta = await request(app)
+      .post('/api/auth/logout')
+      .set('Cookie', [`${NOMBRE_COOKIE_SESION}=token-forjado`]);
+
+    expect(respuesta.status).toBe(204);
+    expect(invalidarSesionesMock).not.toHaveBeenCalled();
   });
 });
 
@@ -201,6 +238,7 @@ describe('POST /api/auth/registro', () => {
       id: 7,
       email: datos.email,
       hashContrasena: datos.hashContrasena,
+      versionSesion: 0,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -229,6 +267,7 @@ describe('POST /api/auth/registro', () => {
       id: 1,
       email: 'ana@empresa.com',
       hashContrasena: 'x',
+      versionSesion: 0,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -265,6 +304,7 @@ describe('POST /api/auth/registro', () => {
       id: 7,
       email: datos.email,
       hashContrasena: datos.hashContrasena,
+      versionSesion: 0,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -343,6 +383,7 @@ describe('POST /api/auth/registro', () => {
       id: 7,
       email: datos.email,
       hashContrasena: datos.hashContrasena,
+      versionSesion: 0,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -427,6 +468,7 @@ describe('POST /api/auth/contrasena/olvido', () => {
       id: 1,
       email: 're@confluens.test',
       hashContrasena: await hashearContrasena('x'),
+      versionSesion: 0,
       rol: 'RESPONSABLE_EVENTOS',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -477,16 +519,24 @@ describe('POST /api/auth/contrasena/restablecer', () => {
       id: 1,
       email: 're@confluens.test',
       hashContrasena: hashActual,
+      versionSesion: 0,
       rol: 'RESPONSABLE_EVENTOS',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
     });
+    // El repositorio sube la versión de sesión (M2): las sesiones abiertas caen.
+    actualizarContrasenaMock.mockResolvedValue(1);
 
     const respuesta = await request(app)
       .post('/api/auth/contrasena/restablecer')
       .send({ token: firmarTokenRestablecimiento(1, hashActual), contrasena: 'nueva-456' });
 
     expect(respuesta.status).toBe(200);
+    const cookieSesion = (respuesta.headers['set-cookie'] as unknown as string[])
+      .find((c) => c.startsWith(`${NOMBRE_COOKIE_SESION}=`))!
+      .split(';')[0]!
+      .slice(NOMBRE_COOKIE_SESION.length + 1);
+    expect(versionDelToken(cookieSesion)).toBe(1);
     expect(respuesta.body).toEqual({
       data: { id: 1, email: 're@confluens.test', rol: 'RESPONSABLE_EVENTOS' },
     });

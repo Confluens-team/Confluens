@@ -7,6 +7,7 @@ import {
   opcionesLimpiarCookieSesion,
 } from '../../lib/jwt.js';
 import {
+  cerrarSesion,
   iniciarSesion,
   obtenerPerfilCliente,
   registrarCliente,
@@ -26,7 +27,8 @@ export async function login(req: Request, res: Response): Promise<void> {
   res.json(cuerpo);
 }
 
-export function logout(_req: Request, res: Response): void {
+export async function logout(req: Request, res: Response): Promise<void> {
+  await cerrarSesion(req.cookies?.[NOMBRE_COOKIE_SESION] as string | undefined);
   res.clearCookie(NOMBRE_COOKIE_SESION, opcionesLimpiarCookieSesion());
   res.status(204).send();
 }

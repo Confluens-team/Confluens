@@ -1,7 +1,6 @@
 import { esquemaSesion, type Sesion } from '@confluens/shared';
 import type { CookieOptions } from 'express';
 import jwt from 'jsonwebtoken';
-import { createHash } from 'node:crypto';
 
 // Nombre de la cookie httpOnly donde viaja el JWT de sesión (HU-27).
 export const NOMBRE_COOKIE_SESION = 'confluens_sesion';
@@ -28,17 +27,12 @@ function obtenerSecreto(): string {
   return 'clave-de-desarrollo-confluens-no-usar-en-produccion';
 }
 
-// M2 de la auditoría de seguridad: el token lleva una huella del hash de la contraseña vigente al
-// firmarlo (claim `hc`). autenticar.ts la compara con la de la base en cada request: si la
-// contraseña cambió (restablecimiento), la huella deja de coincidir y todas las sesiones abiertas
-// con la contraseña anterior caen. Es un sha256 recortado del hash bcrypt: no sirve para atacar la
-// contraseña, y la cookie es httpOnly igual.
-export function huellaDe(hashContrasena: string): string {
-  return createHash('sha256').update(hashContrasena).digest('hex').slice(0, 16);
-}
-
-export function firmarToken(sesion: Sesion, huella?: string): string {
-  const payload = huella === undefined ? sesion : { ...sesion, hc: huella };
+// M2 de la auditoría de seguridad: el token lleva la versión de sesión del usuario al firmarlo
+// (claim `v`, Usuario.versionSesion). autenticar.ts la compara con la de la base en cada request:
+// cerrar sesión o restablecer la contraseña incrementa la versión, y todos los tokens emitidos
+// antes —incluido uno robado— dejan de servir.
+export function firmarToken(sesion: Sesion, version?: number): string {
+  const payload = version === undefined ? sesion : { ...sesion, v: version };
   return jwt.sign(payload, obtenerSecreto(), { expiresIn: `${JWT_EXPIRA_MINUTOS}m` });
 }
 
@@ -121,11 +115,10 @@ export function verificarToken(token: string): Sesion | null {
   }
 }
 
-// Huella de contraseña (claim `hc`) de un token que ya pasó verificarToken(). null si el token no
-// la trae: los firmados antes de M2 no la tienen, y autenticar.ts los rechaza.
-export function huellaDelToken(token: string): string | null {
+// Versión de sesión (claim `v`) de un token que ya pasó verificarToken(). null si el token no la
+// trae: los firmados antes de M2 no la tienen, y autenticar.ts los rechaza.
+export function versionDelToken(token: string): number | null {
   const payload = jwt.decode(token);
-  return typeof payload === 'object' && payload && typeof payload['hc'] === 'string'
-    ? payload['hc']
-    : null;
+  const version = typeof payload === 'object' && payload ? payload['v'] : undefined;
+  return Number.isInteger(version) ? (version as number) : null;
 }

@@ -43,7 +43,7 @@ describe('middlewares/autenticar', () => {
   it('con cookie válida setea req.usuario, renueva la cookie y llama a next sin error', async () => {
     const sesion: Sesion = { id: 1, email: 'ge@confluens.test', rol: 'GERENTE_GENERAL' };
     const req = {
-      cookies: { [NOMBRE_COOKIE_SESION]: firmarToken(sesion, 'huella') },
+      cookies: { [NOMBRE_COOKIE_SESION]: firmarToken(sesion, 4) },
     } as unknown as Request;
     const res = resFake();
     const next = vi.fn();
@@ -51,7 +51,7 @@ describe('middlewares/autenticar', () => {
     autenticar(req, res, next as NextFunction);
     await vi.waitFor(() => expect(next).toHaveBeenCalled());
 
-    expect(sesionVigenteMock).toHaveBeenCalledWith(sesion, 'huella');
+    expect(sesionVigenteMock).toHaveBeenCalledWith(sesion, 4);
     expect(req.usuario).toEqual(sesion);
     expect(res.cookie).toHaveBeenCalledWith(
       NOMBRE_COOKIE_SESION,
@@ -65,7 +65,7 @@ describe('middlewares/autenticar', () => {
     sesionVigenteMock.mockResolvedValueOnce(null);
     const sesion: Sesion = { id: 1, email: 'ge@confluens.test', rol: 'GERENTE_GENERAL' };
     const req = {
-      cookies: { [NOMBRE_COOKIE_SESION]: firmarToken(sesion, 'huella-vieja') },
+      cookies: { [NOMBRE_COOKIE_SESION]: firmarToken(sesion, 3) },
     } as unknown as Request;
     const res = resFake();
     const next = vi.fn();

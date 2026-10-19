@@ -3,7 +3,7 @@ import type { RequestHandler } from 'express';
 import { ErrorApi } from '../lib/errores.js';
 import {
   firmarToken,
-  huellaDelToken,
+  versionDelToken,
   NOMBRE_COOKIE_SESION,
   opcionesCookieSesion,
   verificarToken,
@@ -18,7 +18,7 @@ import { sesionVigente } from '../lib/sesion-vigente.js';
  *
  * Antes de renovar, contrasta la sesión con la base (M2 de la auditoría, ver
  * lib/sesion-vigente.ts): el rol que rige es el actual, y un usuario borrado o con
- * la contraseña cambiada queda afuera.
+ * una sesión ya cerrada (logout o contraseña restablecida) queda afuera.
  */
 export const autenticar: RequestHandler = (req, res, next) => {
   const token = req.cookies?.[NOMBRE_COOKIE_SESION] as string | undefined;
@@ -29,8 +29,8 @@ export const autenticar: RequestHandler = (req, res, next) => {
     return;
   }
 
-  const huella = huellaDelToken(token);
-  sesionVigente(delToken, huella)
+  const version = versionDelToken(token);
+  sesionVigente(delToken, version)
     .then((sesion) => {
       if (!sesion) {
         next(ErrorApi.noAutenticado());
@@ -38,7 +38,7 @@ export const autenticar: RequestHandler = (req, res, next) => {
       }
       res.cookie(
         NOMBRE_COOKIE_SESION,
-        firmarToken(sesion, huella ?? undefined),
+        firmarToken(sesion, version ?? undefined),
         opcionesCookieSesion(),
       );
       req.usuario = sesion;

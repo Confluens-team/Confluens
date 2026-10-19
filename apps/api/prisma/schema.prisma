@@ -76,6 +76,9 @@ model Usuario {
   email          String     @unique
   hashContrasena String
   rol            Rol
+  // Versión de las sesiones (M2 de la auditoría de seguridad). Viaja en el JWT; cerrar sesión o
+  // restablecer la contraseña la incrementa y todos los tokens emitidos antes dejan de servir.
+  versionSesion  Int        @default(0)
   cliente        Cliente?
   auditorias     AuditLog[]
   creadoEn       DateTime   @default(now())

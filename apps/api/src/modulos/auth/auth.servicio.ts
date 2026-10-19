@@ -13,13 +13,14 @@ import { ErrorApi } from '../../lib/errores.js';
 import {
   firmarToken,
   firmarTokenRestablecimiento,
-  huellaDe,
   usuarioDelTokenRestablecimiento,
+  verificarToken,
   verificarTokenRestablecimiento,
 } from '../../lib/jwt.js';
 import * as authRepositorioReal from './auth.repositorio.js';
 import type {
   AuthRepositorio,
+  CierreSesionRepositorio,
   RegistroRepositorio,
   RestablecimientoRepositorio,
 } from './auth.repositorio.js';
@@ -53,7 +54,7 @@ export async function iniciarSesion(
   }
 
   const sesion: Sesion = { id: usuario.id, email: usuario.email, rol: usuario.rol };
-  const token = firmarToken(sesion, huellaDe(usuario.hashContrasena));
+  const token = firmarToken(sesion, usuario.versionSesion);
   return { sesion, token };
 }
 
@@ -108,7 +109,7 @@ export async function registrarCliente(
   }
 
   const sesion: Sesion = { id: usuario.id, email: usuario.email, rol: usuario.rol };
-  return { sesion, token: firmarToken(sesion, huellaDe(hashContrasena)) };
+  return { sesion, token: firmarToken(sesion, usuario.versionSesion) };
 }
 
 // Datos comerciales del Cliente de la sesión. 404 si el usuario no tiene ficha de Cliente (por
@@ -177,10 +178,26 @@ export async function restablecerContrasena(
     throw ErrorApi.reglaNegocio(MENSAJE_ENLACE_INVALIDO);
   }
 
-  // El hash nuevo cambia la huella: las sesiones abiertas con la contraseña anterior caen (M2) y
-  // solo queda viva la que se emite acá.
-  const hashNuevo = await hashearContrasena(contrasena);
-  await repositorio.actualizarContrasena(usuario.id, hashNuevo);
+  // Cambiar la contraseña sube la versión de sesión: las sesiones abiertas con la contraseña
+  // anterior caen (M2) y solo queda viva la que se emite acá.
+  const version = await repositorio.actualizarContrasena(
+    usuario.id,
+    await hashearContrasena(contrasena),
+  );
   const sesion: Sesion = { id: usuario.id, email: usuario.email, rol: usuario.rol };
-  return { sesion, token: firmarToken(sesion, huellaDe(hashNuevo)) };
+  return { sesion, token: firmarToken(sesion, version) };
+}
+
+/**
+ * Cierra la sesión del lado del servidor (M2 de la auditoría de seguridad). Borrar la cookie no
+ * alcanza: un token copiado seguiría sirviendo hasta vencer. Subir la versión de sesión del usuario
+ * invalida todos sus tokens emitidos, en todos sus dispositivos. Sin token válido no hay a quién
+ * cerrarle la sesión y no hace nada: el logout responde igual (204) en los dos casos.
+ */
+export async function cerrarSesion(
+  token: string | undefined,
+  repositorio: CierreSesionRepositorio = authRepositorioReal,
+): Promise<void> {
+  const sesion = token ? verificarToken(token) : null;
+  if (sesion) await repositorio.invalidarSesiones(sesion.id);
 }
