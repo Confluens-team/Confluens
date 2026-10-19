@@ -28,8 +28,9 @@ export type ServicioSeleccionado = z.infer<typeof esquemaServicioSeleccionado>;
 // el canal público, así que a diferencia de esquemaCrearSolicitud no hace falta un mensaje de Zod
 // en español por campo.
 export const esquemaCrearPresupuesto = z.object({
-  // Datos de contacto del cliente: si ya existe un Cliente con este correo se reutiliza (estos
-  // campos no lo actualizan); si no existe, se crea con estos valores.
+  // Datos de contacto del cliente. Cuando cotiza el personal: si ya existe un Cliente con este
+  // correo se reutiliza (estos campos no lo actualizan); si no existe, se crea con estos valores.
+  // Cuando cotiza un CLIENTE se ignoran y se usa la ficha de su sesión (A1 de la auditoría).
   // Topes de largo: M1 de la auditoría de seguridad, igual que esquemaCrearSolicitud.
   nombre: z.string().min(1).max(100),
   telefono: z.string().min(1).max(30),

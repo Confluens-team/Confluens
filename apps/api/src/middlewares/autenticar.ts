@@ -3,10 +3,10 @@ import type { RequestHandler } from 'express';
 import { ErrorApi } from '../lib/errores.js';
 import {
   firmarToken,
-  versionDelToken,
   NOMBRE_COOKIE_SESION,
   opcionesCookieSesion,
   verificarToken,
+  versionDelToken,
 } from '../lib/jwt.js';
 import { sesionVigente } from '../lib/sesion-vigente.js';
 

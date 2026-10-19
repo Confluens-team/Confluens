@@ -89,12 +89,11 @@ export async function registrarCliente(
     throw ErrorApi.conflicto(MENSAJE_TELEFONO_REGISTRADO);
   }
 
-  const hashContrasena = await hashearContrasena(datos.contrasena);
   let usuario: Awaited<ReturnType<RegistroRepositorio['crearUsuarioCliente']>>;
   try {
     usuario = await repositorio.crearUsuarioCliente({
       email: datos.email,
-      hashContrasena,
+      hashContrasena: await hashearContrasena(datos.contrasena),
       nombre: datos.nombre,
       apellido: datos.apellido,
       telefono: datos.telefono,

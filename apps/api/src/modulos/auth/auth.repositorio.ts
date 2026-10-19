@@ -95,11 +95,11 @@ export type RestablecimientoRepositorio = AuthRepositorio & {
 
 // Tipo aparte (y no más campos en AuthRepositorio) para que los fakes de iniciarSesion en
 // auth.servicio.test.ts no tengan que implementar funciones que ese flujo no usa.
-export type CierreSesionRepositorio = {
-  invalidarSesiones: typeof invalidarSesiones;
-};
-
 export type RegistroRepositorio = AuthRepositorio & {
   buscarClientePorTelefono: typeof buscarClientePorTelefono;
   crearUsuarioCliente: typeof crearUsuarioCliente;
+};
+
+export type CierreSesionRepositorio = {
+  invalidarSesiones: typeof invalidarSesiones;
 };
