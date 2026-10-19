@@ -18,7 +18,8 @@ export async function listar(_req: Request, res: Response): Promise<void> {
 // Sin autenticación (criterio 2 de HU-14): cualquiera puede enviar una solicitud desde el
 // formulario público.
 export async function crear(req: Request, res: Response): Promise<void> {
-  const solicitud = await registrarSolicitud(req.body as CrearSolicitud);
+  const usuarioCliente = req.usuario!.rol === 'CLIENTE' ? req.usuario!.id : undefined;
+  const solicitud = await registrarSolicitud(req.body as CrearSolicitud, undefined, usuarioCliente);
   const cuerpo: RespuestaExito<Solicitud> = { data: solicitud as unknown as Solicitud };
   res.status(201).json(cuerpo);
 }
