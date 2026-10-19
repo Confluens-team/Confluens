@@ -13,6 +13,7 @@ import { ErrorApi } from '../../lib/errores.js';
 import {
   firmarToken,
   firmarTokenRestablecimiento,
+  huellaDe,
   usuarioDelTokenRestablecimiento,
   verificarTokenRestablecimiento,
 } from '../../lib/jwt.js';
@@ -52,7 +53,7 @@ export async function iniciarSesion(
   }
 
   const sesion: Sesion = { id: usuario.id, email: usuario.email, rol: usuario.rol };
-  const token = firmarToken(sesion);
+  const token = firmarToken(sesion, huellaDe(usuario.hashContrasena));
   return { sesion, token };
 }
 
@@ -87,11 +88,12 @@ export async function registrarCliente(
     throw ErrorApi.conflicto(MENSAJE_TELEFONO_REGISTRADO);
   }
 
+  const hashContrasena = await hashearContrasena(datos.contrasena);
   let usuario: Awaited<ReturnType<RegistroRepositorio['crearUsuarioCliente']>>;
   try {
     usuario = await repositorio.crearUsuarioCliente({
       email: datos.email,
-      hashContrasena: await hashearContrasena(datos.contrasena),
+      hashContrasena,
       nombre: datos.nombre,
       apellido: datos.apellido,
       telefono: datos.telefono,
@@ -106,7 +108,7 @@ export async function registrarCliente(
   }
 
   const sesion: Sesion = { id: usuario.id, email: usuario.email, rol: usuario.rol };
-  return { sesion, token: firmarToken(sesion) };
+  return { sesion, token: firmarToken(sesion, huellaDe(hashContrasena)) };
 }
 
 // Datos comerciales del Cliente de la sesión. 404 si el usuario no tiene ficha de Cliente (por
@@ -175,7 +177,10 @@ export async function restablecerContrasena(
     throw ErrorApi.reglaNegocio(MENSAJE_ENLACE_INVALIDO);
   }
 
-  await repositorio.actualizarContrasena(usuario.id, await hashearContrasena(contrasena));
+  // El hash nuevo cambia la huella: las sesiones abiertas con la contraseña anterior caen (M2) y
+  // solo queda viva la que se emite acá.
+  const hashNuevo = await hashearContrasena(contrasena);
+  await repositorio.actualizarContrasena(usuario.id, hashNuevo);
   const sesion: Sesion = { id: usuario.id, email: usuario.email, rol: usuario.rol };
-  return { sesion, token: firmarToken(sesion) };
+  return { sesion, token: firmarToken(sesion, huellaDe(hashNuevo)) };
 }

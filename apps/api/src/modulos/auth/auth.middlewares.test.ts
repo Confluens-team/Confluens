@@ -4,12 +4,16 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { ErrorApi } from '../../lib/errores.js';
 import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
+import { sesionVigente } from '../../lib/sesion-vigente.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar } from '../../middlewares/autorizar.js';
 
 // req/res/next simulados a mano: alcanza para probar la lógica de los middlewares
 // sin levantar un servidor HTTP real (ver arquitectura.md: "la lógica de negocio
 // tiene que poder testearse sin levantar el servidor", extendido acá a middlewares).
+// Mockeado en src/test/preparar.ts: por defecto da la sesión del token por vigente.
+const sesionVigenteMock = vi.mocked(sesionVigente);
+
 function resFake(): Response {
   return { cookie: vi.fn() } as unknown as Response;
 }
@@ -36,16 +40,18 @@ describe('middlewares/autenticar', () => {
     expect((next.mock.calls[0]?.[0] as ErrorApi).status).toBe(401);
   });
 
-  it('con cookie válida setea req.usuario, renueva la cookie y llama a next sin error', () => {
+  it('con cookie válida setea req.usuario, renueva la cookie y llama a next sin error', async () => {
     const sesion: Sesion = { id: 1, email: 'ge@confluens.test', rol: 'GERENTE_GENERAL' };
     const req = {
-      cookies: { [NOMBRE_COOKIE_SESION]: firmarToken(sesion) },
+      cookies: { [NOMBRE_COOKIE_SESION]: firmarToken(sesion, 'huella') },
     } as unknown as Request;
     const res = resFake();
     const next = vi.fn();
 
     autenticar(req, res, next as NextFunction);
+    await vi.waitFor(() => expect(next).toHaveBeenCalled());
 
+    expect(sesionVigenteMock).toHaveBeenCalledWith(sesion, 'huella');
     expect(req.usuario).toEqual(sesion);
     expect(res.cookie).toHaveBeenCalledWith(
       NOMBRE_COOKIE_SESION,
@@ -53,6 +59,23 @@ describe('middlewares/autenticar', () => {
       expect.any(Object),
     );
     expect(next).toHaveBeenCalledWith(); // sin argumentos: no hay error
+  });
+
+  it('con firma válida pero sesión ya no vigente en la base responde 401 sin renovar (M2)', async () => {
+    sesionVigenteMock.mockResolvedValueOnce(null);
+    const sesion: Sesion = { id: 1, email: 'ge@confluens.test', rol: 'GERENTE_GENERAL' };
+    const req = {
+      cookies: { [NOMBRE_COOKIE_SESION]: firmarToken(sesion, 'huella-vieja') },
+    } as unknown as Request;
+    const res = resFake();
+    const next = vi.fn();
+
+    autenticar(req, res, next as NextFunction);
+    await vi.waitFor(() => expect(next).toHaveBeenCalled());
+
+    expect((next.mock.calls[0]?.[0] as ErrorApi).status).toBe(401);
+    expect(res.cookie).not.toHaveBeenCalled();
+    expect(req.usuario).toBeUndefined();
   });
 });
 
