@@ -7,6 +7,7 @@ import type {
   PresupuestoDetallado,
   PresupuestoListado,
   RespuestaExito,
+  SeguimientoConsulta,
 } from '@confluens/shared';
 import type { Request, Response } from 'express';
 
@@ -19,6 +20,7 @@ import {
   obtenerConsulta,
   ocultarPresupuesto,
   registrarConsultaSocial,
+  registrarSeguimiento,
 } from './presupuestos.servicio.js';
 
 // req.body ya validado por validar({ body: esquemaCrearPresupuesto }) en presupuestos.rutas.ts.
@@ -91,4 +93,12 @@ export async function darDeBaja(req: Request, res: Response): Promise<void> {
 export async function ocultar(req: Request, res: Response): Promise<void> {
   await ocultarPresupuesto(Number(req.params.id));
   res.status(204).end();
+}
+
+// req.body ya validado por validar({ body: esquemaSeguimientoConsulta }).
+export async function seguimiento(req: Request, res: Response): Promise<void> {
+  const cuerpo: RespuestaExito<ConsultaDetallada> = {
+    data: await registrarSeguimiento(Number(req.params.id), req.body as SeguimientoConsulta),
+  };
+  res.status(200).json(cuerpo);
 }

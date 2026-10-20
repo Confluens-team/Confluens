@@ -91,6 +91,8 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
     total: D('222200'),
     requiereFactura: false,
     ocultoEn: null as Date | null,
+    avisoRecepcionEn: null as Date | null,
+    envioFormalEn: null as Date | null,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     evento: {
@@ -1229,6 +1231,81 @@ describe('POST /api/presupuestos/:id/ocultar', () => {
   it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
     const sinSesion = await request(app).post('/api/presupuestos/31/ocultar');
     const cliente = await ocultar(cookieDe('CLIENTE'));
+
+    expect(sinSesion.status).toBe(401);
+    expect(cliente.status).toBe(403);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+});
+
+// Seguimiento con el cliente: el aviso de recepción por WhatsApp y el envío formal del PDF. Sin
+// aviso, la consulta se lista como «Nuevo».
+describe('PATCH /api/presupuestos/:id/seguimiento', () => {
+  function seguimiento(cuerpo: object, cookie = cookieRE) {
+    return request(app)
+      .patch('/api/presupuestos/31/seguimiento')
+      .set('Cookie', [cookie])
+      .send(cuerpo);
+  }
+
+  it('tilda el aviso con la fecha de ahora y devuelve la consulta', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta());
+
+    const respuesta = await seguimiento({ avisoRecepcion: true });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.id).toBe(31);
+    expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, {
+      avisoRecepcionEn: expect.any(Date),
+      envioFormalEn: undefined,
+    });
+  });
+
+  it('tildar algo ya tildado conserva la fecha original', async () => {
+    const avisadoEn = new Date('2026-10-18T13:00:00.000Z');
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({ avisoRecepcionEn: avisadoEn }));
+
+    await seguimiento({ avisoRecepcion: true, envioFormal: true });
+
+    expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, {
+      avisoRecepcionEn: avisadoEn,
+      envioFormalEn: expect.any(Date),
+    });
+  });
+
+  it('destildar lo deja en null', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ envioFormalEn: new Date('2026-10-18T13:00:00.000Z') }),
+    );
+
+    await seguimiento({ envioFormal: false });
+
+    expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, {
+      avisoRecepcionEn: undefined,
+      envioFormalEn: null,
+    });
+  });
+
+  it('responde 400 si no viene ningún cambio', async () => {
+    const respuesta = await seguimiento({});
+
+    expect(respuesta.status).toBe(400);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 404 si el presupuesto no existe', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(null);
+
+    const respuesta = await seguimiento({ avisoRecepcion: true });
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app)
+      .patch('/api/presupuestos/31/seguimiento')
+      .send({ avisoRecepcion: true });
+    const cliente = await seguimiento({ avisoRecepcion: true }, cookieDe('CLIENTE'));
 
     expect(sinSesion.status).toBe(401);
     expect(cliente.status).toBe(403);

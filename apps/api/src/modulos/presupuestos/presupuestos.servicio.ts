@@ -16,6 +16,7 @@ import {
   type ModificarPresupuesto,
   type PresupuestoListado,
   type ReutilizarEvento,
+  type SeguimientoConsulta,
   type TipoJornada,
 } from '@confluens/shared';
 
@@ -488,6 +489,8 @@ export async function listarPresupuestos(
     tipoSocialDetalle: evento.tipoSocialDetalle,
     cliente: evento.cliente,
     salones: evento.salones.map(({ salon }) => salon),
+    avisoRecepcionEn: presupuesto.avisoRecepcionEn?.toISOString() ?? null,
+    envioFormalEn: presupuesto.envioFormalEn?.toISOString() ?? null,
   }));
 }
 
@@ -507,6 +510,8 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
     requiereFactura: presupuesto.requiereFactura,
     // Los eventos anteriores a ADR 0008 no guardan la jornada: sale de la línea del salón.
     tipoJornada: evento.tipoJornada ?? jornadaDeLineaSalon(lineaSalon?.descripcion),
+    avisoRecepcionEn: presupuesto.avisoRecepcionEn?.toISOString() ?? null,
+    envioFormalEn: presupuesto.envioFormalEn?.toISOString() ?? null,
     evento: {
       id: evento.id,
       estado: evento.estado,
@@ -869,6 +874,31 @@ export async function ocultarPresupuesto(
   }
   if (presupuesto.ocultoEn) return;
   await repo.actualizarPresupuesto(id, { ocultoEn: new Date() });
+}
+
+// Tildar conserva la fecha si ya estaba marcado: es el registro de cuándo se hizo por primera vez.
+function fechaDeSeguimiento(marcar: boolean | undefined, actual: Date | null) {
+  if (marcar === undefined) return undefined;
+  return marcar ? (actual ?? new Date()) : null;
+}
+
+/**
+ * Seguimiento de la consulta con el cliente: el aviso de recepción por WhatsApp (se tilda solo al
+ * tocar el botón o a mano) y el envío formal del presupuesto en PDF (al descargarlo o a mano). Es
+ * un registro del Responsable de Eventos: se puede tildar y destildar en cualquier estado. Sin
+ * aviso, la consulta se lista como «Nuevo».
+ */
+export async function registrarSeguimiento(
+  id: number,
+  cambios: SeguimientoConsulta,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+): Promise<ConsultaDetallada> {
+  const presupuesto = await buscarOFallar(id, repo);
+  await repo.actualizarPresupuesto(id, {
+    avisoRecepcionEn: fechaDeSeguimiento(cambios.avisoRecepcion, presupuesto.avisoRecepcionEn),
+    envioFormalEn: fechaDeSeguimiento(cambios.envioFormal, presupuesto.envioFormalEn),
+  });
+  return obtenerConsulta(id, repo);
 }
 
 /**

@@ -37,6 +37,9 @@ export const esquemaConsultaDetallada = z.object({
   total: esquemaImporte,
   requiereFactura: z.boolean(),
   tipoJornada: esquemaTipoJornada,
+  // Seguimiento con el cliente: aviso de recepción por WhatsApp y envío formal del PDF. Null: no.
+  avisoRecepcionEn: esquemaFechaHora.nullable(),
+  envioFormalEn: esquemaFechaHora.nullable(),
   evento: z.object({
     id: esquemaId,
     estado: esquemaEstadoEvento,

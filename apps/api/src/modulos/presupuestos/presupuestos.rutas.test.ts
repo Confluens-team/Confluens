@@ -190,6 +190,8 @@ function prepararMocksDeCreacion() {
       total: new Prisma.Decimal(datos.total),
       requiereFactura: false,
       ocultoEn: null,
+      avisoRecepcionEn: null,
+      envioFormalEn: null,
       creadoEn: new Date(),
       actualizadoEn: new Date(),
       evento: eventoFixture,
@@ -712,6 +714,8 @@ const presupuestoDelListado = {
   fechaEmision: new Date('2026-09-20T15:00:00.000Z'),
   venceEn: new Date('2026-09-30T15:00:00.000Z'),
   total: new Prisma.Decimal('229500'),
+  avisoRecepcionEn: null as Date | null,
+  envioFormalEn: new Date('2026-09-21T12:00:00.000Z') as Date | null,
   evento: {
     fecha: new Date('2026-11-15T00:00:00.000Z'),
     tipo: 'Corporativo' as 'Social' | 'Corporativo',
@@ -755,6 +759,8 @@ describe('GET /api/presupuestos (HU-10)', () => {
           tipo: 'Corporativo',
           tipoSocial: null,
           tipoSocialDetalle: null,
+          avisoRecepcionEn: null,
+          envioFormalEn: '2026-09-21T12:00:00.000Z',
           cliente: {
             id: 10,
             nombre: 'Marina',

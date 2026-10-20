@@ -217,6 +217,8 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
       fechaEmision: true,
       venceEn: true,
       total: true,
+      avisoRecepcionEn: true,
+      envioFormalEn: true,
       evento: {
         select: {
           fecha: true,

@@ -102,6 +102,8 @@ const presupuestoEstimadoFixture = {
   total: new Prisma.Decimal('142200'),
   requiereFactura: false,
   ocultoEn: null,
+  avisoRecepcionEn: null,
+  envioFormalEn: null,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
 };

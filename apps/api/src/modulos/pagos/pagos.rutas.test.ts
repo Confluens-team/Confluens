@@ -145,6 +145,8 @@ function presupuestoFixture(
     total: new Prisma.Decimal(TOTAL_SIN_IVA),
     requiereFactura: datos.requiereFactura ?? false,
     ocultoEn: null,
+    avisoRecepcionEn: null,
+    envioFormalEn: null,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     lineas: [lineaFixture],

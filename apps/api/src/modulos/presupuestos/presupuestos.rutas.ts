@@ -6,6 +6,7 @@ import {
   esquemaModificarPresupuesto,
   esquemaPresupuestoDetallado,
   esquemaPresupuestoListado,
+  esquemaSeguimientoConsulta,
 } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -25,6 +26,7 @@ import {
   modificar,
   obtener,
   ocultar,
+  seguimiento,
 } from './presupuestos.controlador.js';
 
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
@@ -190,6 +192,24 @@ registroOpenApi.registerPath({
   },
 });
 
+registroOpenApi.registerPath({
+  method: 'patch',
+  path: '/presupuestos/{id}/seguimiento',
+  tags: ['Presupuestos'],
+  summary:
+    'Tilda o destilda el aviso de recepción por WhatsApp y el envío formal del presupuesto en PDF. Sin aviso, la consulta se lista como «Nuevo»',
+  request: {
+    params: esquemaIdParam,
+    body: { content: { 'application/json': { schema: esquemaSeguimientoConsulta } } },
+  },
+  responses: {
+    200: { description: 'Consulta con su seguimiento actualizado', content: respuestaConsulta },
+    400: { description: 'Datos inválidos o sin ningún cambio' },
+    404: { description: 'No existe el presupuesto' },
+    ...erroresDeSesion,
+  },
+});
+
 export const rutasPresupuestos = Router();
 
 // H1 de la auditoría de seguridad (OWASP A01): este POST estaba montado solo con validar(), sin
@@ -248,6 +268,12 @@ rutasPresupuestos.post(
   ...personalDeConsultas,
   validar({ params: esquemaIdParam }),
   asincrono(darDeBaja),
+);
+rutasPresupuestos.patch(
+  '/:id/seguimiento',
+  ...personalDeConsultas,
+  validar({ params: esquemaIdParam, body: esquemaSeguimientoConsulta }),
+  asincrono(seguimiento),
 );
 rutasPresupuestos.post(
   '/:id/ocultar',
