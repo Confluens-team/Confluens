@@ -143,7 +143,7 @@ rutasAuth.post(
   validar({ body: esquemaCredenciales }),
   asincrono(login),
 );
-rutasAuth.post('/logout', logout);
+rutasAuth.post('/logout', asincrono(logout));
 rutasAuth.get('/yo', autenticar, yo);
 rutasAuth.post(
   '/registro',

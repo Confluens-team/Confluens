@@ -67,7 +67,7 @@ enum TipoJornada {
 
 | Entidad | Notas |
 |---|---|
-| `Usuario` | Credenciales: email único, hash de contraseña, rol. **Separada de `Cliente`.** |
+| `Usuario` | Credenciales: email único, hash de contraseña, rol. **Separada de `Cliente`.** `versionSesion` (default 0): viaja en el JWT y la API la compara en cada request; cerrar sesión o restablecer la contraseña la incrementa e invalida todos los tokens emitidos antes. |
 | `Cliente` | Datos comerciales: nombre, apellido (nullable, para razón social), teléfono, correo. Relación 1-1 opcional con `Usuario`. **No hay baja por inactividad**: `activo` no lo cambia ninguna tarea programada. En el autorregistro se crean juntos el `Usuario` (rol `CLIENTE`) y su `Cliente`. `etiquetaId` (nullable, `onDelete: SetNull`): la `Etiqueta` interna del cliente, solo para el personal (`dominio.md`). |
 | `Etiqueta` | Nombre (`@unique`) que el personal le pone a un cliente, típicamente la empresa en cuyo nombre reserva. Lista reutilizable: uno a muchos con `Cliente`. La unicidad sin distinguir mayúsculas la controla el servicio; la base solo tiene el índice exacto. |
 | `Salon` | Nombre, capacidad máxima, superficie, precio de referencia jornada completa y media jornada. Contenido de la landing (HU-08): `visibleEnLanding` (booleano, default `true`) y `fotoUrl` (nullable): la URL de la foto en Cloudinary, que se sube desde el panel; la base guarda solo la URL, nunca la imagen (ADR 0009). Un salón no visible sigue disponible para uso interno. |

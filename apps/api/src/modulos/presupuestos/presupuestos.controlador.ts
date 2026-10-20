@@ -23,7 +23,13 @@ import {
 
 // req.body ya validado por validar({ body: esquemaCrearPresupuesto }) en presupuestos.rutas.ts.
 export async function crear(req: Request, res: Response): Promise<void> {
-  const presupuesto = await generarPresupuesto(req.body as CrearPresupuesto);
+  // A1 de la auditoría: un CLIENTE cotiza siempre para su propia ficha (ver generarPresupuesto).
+  const usuarioCliente = req.usuario!.rol === 'CLIENTE' ? req.usuario!.id : undefined;
+  const presupuesto = await generarPresupuesto(
+    req.body as CrearPresupuesto,
+    undefined,
+    usuarioCliente,
+  );
   const cuerpo: RespuestaExito<PresupuestoDetallado> = {
     data: presupuesto as unknown as PresupuestoDetallado,
   };

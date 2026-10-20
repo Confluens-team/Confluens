@@ -171,6 +171,11 @@ function prepararMocksDeCreacion() {
   crearPresupuestoConLineasMock.mockReset();
   buscarEventoConPresupuestosMock.mockReset();
   crearEnTransaccionMock.mockClear();
+  buscarClientePorUsuarioIdMock.mockReset();
+
+  // Un CLIENTE cotiza para la ficha de su sesión (A1 de la auditoría), no para la del correo.
+  buscarClientePorUsuarioIdMock.mockResolvedValue({ ...clienteFixture, usuarioId: 1 });
+  vincularSolicitudAEventoMock.mockResolvedValue(1);
 
   buscarSalonesPorIdsMock.mockResolvedValue([salonFixture]);
   buscarServiciosPorIdsMock.mockResolvedValue([servicioFixture()]);
@@ -207,9 +212,10 @@ describe('POST /api/presupuestos', () => {
     buscarClientePorCorreoMock.mockResolvedValue(null);
     crearClienteMock.mockResolvedValue(clienteFixture);
 
+    // Solo el personal crea fichas por correo; un CLIENTE usa la suya (A1).
     const respuesta = await request(app)
       .post('/api/presupuestos')
-      .set('Cookie', [cookieDe('CLIENTE')])
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')])
       .send(bodyBase);
 
     expect(respuesta.status).toBe(201);
@@ -266,7 +272,7 @@ describe('POST /api/presupuestos', () => {
 
     const respuesta = await request(app)
       .post('/api/presupuestos')
-      .set('Cookie', [cookieDe('CLIENTE')])
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')])
       .send(bodyBase);
 
     expect(respuesta.status).toBe(201);
@@ -493,11 +499,7 @@ describe('POST /api/presupuestos', () => {
 
   it('vincula la solicitud al evento creado cuando viene solicitudId (HU-15)', async () => {
     buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
-    buscarSolicitudMock.mockResolvedValue(solicitudFixture);
-    vincularSolicitudAEventoMock.mockResolvedValue({
-      ...solicitudFixture,
-      eventoId: eventoFixture.id,
-    });
+    buscarSolicitudMock.mockResolvedValue({ ...solicitudFixture, clienteId: clienteFixture.id });
 
     const respuesta = await request(app)
       .post('/api/presupuestos')
@@ -514,7 +516,11 @@ describe('POST /api/presupuestos', () => {
   });
 
   it('responde 409 si la solicitud indicada ya fue tomada', async () => {
-    buscarSolicitudMock.mockResolvedValue({ ...solicitudFixture, eventoId: 999 });
+    buscarSolicitudMock.mockResolvedValue({
+      ...solicitudFixture,
+      clienteId: clienteFixture.id,
+      eventoId: 999,
+    });
 
     const respuesta = await request(app)
       .post('/api/presupuestos')
@@ -524,6 +530,78 @@ describe('POST /api/presupuestos', () => {
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
     expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+});
+
+// A1 y A2 de la auditoría de seguridad: un CLIENTE cotiza para su propia ficha y solo vincula sus
+// propias solicitudes; el personal sigue cargando consultas para cualquier cliente.
+describe('POST /api/presupuestos — identidad del cliente (A1, A2)', () => {
+  beforeEach(prepararMocksDeCreacion);
+
+  it('un CLIENTE cotiza para la ficha de su sesión e ignora el correo del body', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, correo: 'otra.persona@example.com' });
+
+    expect(respuesta.status).toBe(201);
+    expect(buscarClientePorUsuarioIdMock).toHaveBeenCalledWith(1);
+    expect(buscarClientePorCorreoMock).not.toHaveBeenCalled();
+    expect(crearClienteMock).not.toHaveBeenCalled();
+    expect(crearEventoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ clienteId: clienteFixture.id }),
+      undefined,
+    );
+  });
+
+  it('responde 404 si la sesión CLIENTE no tiene ficha, sin crear nada', async () => {
+    buscarClientePorUsuarioIdMock.mockResolvedValue(null);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(bodyBase);
+
+    expect(respuesta.status).toBe(404);
+    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+
+  it('un CLIENTE no puede vincular una solicitud ajena: 404, igual que una inexistente', async () => {
+    buscarSolicitudMock.mockResolvedValue({ ...solicitudFixture, clienteId: 999 });
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, solicitudId: solicitudFixture.id });
+
+    expect(respuesta.status).toBe(404);
+    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+
+  it('el personal puede vincular cualquier solicitud libre', async () => {
+    buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+    buscarSolicitudMock.mockResolvedValue({ ...solicitudFixture, clienteId: 999 });
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')])
+      .send({ ...bodyBase, solicitudId: solicitudFixture.id });
+
+    expect(respuesta.status).toBe(201);
+    expect(buscarClientePorUsuarioIdMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 409 si otra transacción tomó la solicitud entre la validación y el vínculo', async () => {
+    buscarSolicitudMock.mockResolvedValue({ ...solicitudFixture, clienteId: clienteFixture.id });
+    vincularSolicitudAEventoMock.mockResolvedValue(0);
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodyBase, solicitudId: solicitudFixture.id });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
   });
 });
 
@@ -897,7 +975,8 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
   });
 
   it('vincula la solicitud del formulario al evento', async () => {
-    buscarSolicitudMock.mockResolvedValue(solicitudFixture);
+    buscarSolicitudMock.mockResolvedValue({ ...solicitudFixture, clienteId: clienteConCuenta.id });
+    vincularSolicitudAEventoMock.mockResolvedValue(1);
 
     await request(app)
       .post('/api/presupuestos/social')
@@ -909,6 +988,18 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
       eventoFixture.id,
       undefined,
     );
+  });
+
+  it('responde 404 si la solicitud es de otro cliente (A2)', async () => {
+    buscarSolicitudMock.mockResolvedValue({ ...solicitudFixture, clienteId: 999 });
+
+    const respuesta = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodySocial, solicitudId: solicitudFixture.id });
+
+    expect(respuesta.status).toBe(404);
+    expect(crearEventoMock).not.toHaveBeenCalled();
   });
 
   it('responde 400 si el tipo es Otro y no cuenta qué evento es', async () => {

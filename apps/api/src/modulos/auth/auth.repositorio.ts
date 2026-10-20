@@ -63,8 +63,21 @@ export async function buscarUsuarioPorId(id: number) {
   return prisma.usuario.findUnique({ where: { id } });
 }
 
-export async function actualizarContrasena(id: number, hashContrasena: string) {
-  return prisma.usuario.update({ where: { id }, data: { hashContrasena } });
+// Cambia la contraseña y sube la versión de sesión (M2): devuelve la versión nueva, con la que se
+// firma la única sesión que queda viva.
+export async function actualizarContrasena(id: number, hashContrasena: string): Promise<number> {
+  const usuario = await prisma.usuario.update({
+    where: { id },
+    data: { hashContrasena, versionSesion: { increment: 1 } },
+    select: { versionSesion: true },
+  });
+  return usuario.versionSesion;
+}
+
+// Cierre de sesión (M2): subir la versión invalida todos los tokens emitidos hasta ahora para ese
+// usuario, en todos sus dispositivos. updateMany para no fallar si el usuario ya no existe.
+export async function invalidarSesiones(id: number): Promise<void> {
+  await prisma.usuario.updateMany({ where: { id }, data: { versionSesion: { increment: 1 } } });
 }
 
 export async function buscarClientePorUsuarioId(usuarioId: number) {
@@ -85,4 +98,8 @@ export type RestablecimientoRepositorio = AuthRepositorio & {
 export type RegistroRepositorio = AuthRepositorio & {
   buscarClientePorTelefono: typeof buscarClientePorTelefono;
   crearUsuarioCliente: typeof crearUsuarioCliente;
+};
+
+export type CierreSesionRepositorio = {
+  invalidarSesiones: typeof invalidarSesiones;
 };

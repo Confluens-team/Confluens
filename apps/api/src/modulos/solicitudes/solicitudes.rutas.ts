@@ -6,6 +6,7 @@ import { registroOpenApi } from '../../docs/openapi.js';
 import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
+import { limitadorEscrituras } from '../../middlewares/limitadores.js';
 import { validar } from '../../middlewares/validar.js';
 import { crear, listar } from './solicitudes.controlador.js';
 
@@ -46,4 +47,12 @@ export const rutasSolicitudes = Router();
 rutasSolicitudes.get('/', autenticar, autorizar(...ROLES_PERSONAL), asincrono(listar));
 // Desde HU-07 consultar exige cuenta, así que crear una solicitud pide sesión. Qué roles pueden
 // hacerlo y cómo se asocia al cliente de la sesión lo define HU-49.
-rutasSolicitudes.post('/', autenticar, validar({ body: esquemaCrearSolicitud }), asincrono(crear));
+// M1 de la auditoría de seguridad: el registro es libre, así que sin tope cualquiera podía llenar
+// la base de solicitudes con una cuenta recién creada.
+rutasSolicitudes.post(
+  '/',
+  autenticar,
+  limitadorEscrituras,
+  validar({ body: esquemaCrearSolicitud }),
+  asincrono(crear),
+);

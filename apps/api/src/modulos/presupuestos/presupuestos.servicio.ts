@@ -228,11 +228,22 @@ function exigirCantidadPosible(
  * - HU-15: si `datos.solicitudId` viene, se vincula `Solicitud.eventoId` al evento recién creado
  *   (el RE "tomó" esa solicitud), para que el detalle del evento muestre los datos originales del
  *   formulario. Se valida antes de escribir nada que la solicitud exista y no esté ya tomada.
+ *
+ * `usuarioCliente` es el id de usuario de la sesión cuando quien cotiza es un CLIENTE (A1 de la
+ * auditoría de seguridad): el cliente es el de su sesión y los datos de contacto del body se
+ * ignoran. Sin eso, un cliente podía cargar eventos en la ficha de cualquier otro con solo saber
+ * su correo, y crear fichas nuevas, que solo nacen por autorregistro (dominio.md). Además solo
+ * puede vincular sus propias solicitudes (A2). Para el personal, sin `usuarioCliente`, se busca o
+ * crea el Cliente por correo como siempre.
  */
 export async function generarPresupuesto(
   datos: CrearPresupuesto,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+  usuarioCliente?: number,
 ) {
+  const clienteDeSesion =
+    usuarioCliente === undefined ? null : await clienteDeLaSesion(usuarioCliente, repo);
+
   // Validaciones de catálogo primero, sin escribir nada: si el pedido es inválido, no se crea un
   // Cliente ni un Evento huérfanos.
   // Un evento puede ocupar varios salones (ADR 0011). Se respeta el orden en que llegaron: la
@@ -247,11 +258,7 @@ export async function generarPresupuesto(
   });
 
   if (datos.solicitudId !== undefined) {
-    const solicitud = await repo.buscarSolicitud(datos.solicitudId);
-    if (!solicitud) throw ErrorApi.noEncontrado(`No existe la solicitud ${datos.solicitudId}`);
-    if (solicitud.eventoId !== null) {
-      throw ErrorApi.conflicto(`La solicitud ${datos.solicitudId} ya fue tomada`);
-    }
+    await exigirSolicitudDisponible(datos.solicitudId, clienteDeSesion?.id ?? null, repo);
   }
 
   const idsServicios = datos.servicios.map((s) => s.servicioId);
@@ -297,7 +304,7 @@ export async function generarPresupuesto(
   const fechaEmision = new Date();
 
   return repo.crearEnTransaccion(async (tx) => {
-    let cliente = await repo.buscarClientePorCorreo(datos.correo, tx);
+    let cliente = clienteDeSesion ?? (await repo.buscarClientePorCorreo(datos.correo, tx));
     if (!cliente) {
       cliente = await repo.crearCliente(
         { nombre: datos.nombre, telefono: datos.telefono, correo: datos.correo },
@@ -320,7 +327,7 @@ export async function generarPresupuesto(
     await repo.reemplazarSalonesDelEvento(evento.id, datos.salonIds, tx);
 
     if (datos.solicitudId !== undefined) {
-      await repo.vincularSolicitudAEvento(datos.solicitudId, evento.id, tx);
+      await vincularSolicitud(datos.solicitudId, evento.id, repo, tx);
     }
 
     return repo.crearPresupuestoConLineas(
@@ -352,15 +359,10 @@ export async function registrarConsultaSocial(
   datos: CrearConsultaSocial,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
 ) {
-  const cliente = await repo.buscarClientePorUsuarioId(usuarioId);
-  if (!cliente) throw ErrorApi.noEncontrado('La sesión no corresponde a un cliente');
+  const cliente = await clienteDeLaSesion(usuarioId, repo);
 
   if (datos.solicitudId !== undefined) {
-    const solicitud = await repo.buscarSolicitud(datos.solicitudId);
-    if (!solicitud) throw ErrorApi.noEncontrado(`No existe la solicitud ${datos.solicitudId}`);
-    if (solicitud.eventoId !== null) {
-      throw ErrorApi.conflicto(`La solicitud ${datos.solicitudId} ya fue tomada`);
-    }
+    await exigirSolicitudDisponible(datos.solicitudId, cliente.id, repo);
   }
 
   return repo.crearEnTransaccion(async (tx) => {
@@ -379,7 +381,7 @@ export async function registrarConsultaSocial(
     );
 
     if (datos.solicitudId !== undefined) {
-      await repo.vincularSolicitudAEvento(datos.solicitudId, evento.id, tx);
+      await vincularSolicitud(datos.solicitudId, evento.id, repo, tx);
     }
 
     return repo.crearPresupuestoConLineas(
@@ -387,6 +389,46 @@ export async function registrarConsultaSocial(
       tx,
     );
   });
+}
+
+async function clienteDeLaSesion(usuarioId: number, repo: PresupuestosRepositorio) {
+  const cliente = await repo.buscarClientePorUsuarioId(usuarioId);
+  if (!cliente) throw ErrorApi.noEncontrado('La sesión no corresponde a un cliente');
+  return cliente;
+}
+
+/**
+ * La solicitud tiene que existir y no estar tomada. Si quien la vincula es un cliente
+ * (`clienteId`), además tiene que ser suya (A2 de la auditoría de seguridad): si no, un cliente
+ * podía recorrer ids y quedarse con solicitudes ajenas. Una ajena responde lo mismo que una
+ * inexistente, para no confirmar que el id existe.
+ */
+async function exigirSolicitudDisponible(
+  solicitudId: number,
+  clienteId: number | null,
+  repo: PresupuestosRepositorio,
+) {
+  const solicitud = await repo.buscarSolicitud(solicitudId);
+  if (!solicitud || (clienteId !== null && solicitud.clienteId !== clienteId)) {
+    throw ErrorApi.noEncontrado(`No existe la solicitud ${solicitudId}`);
+  }
+  if (solicitud.eventoId !== null) {
+    throw ErrorApi.conflicto(`La solicitud ${solicitudId} ya fue tomada`);
+  }
+}
+
+// La vinculación solo toca solicitudes todavía libres: si otra transacción la tomó entre la
+// validación de arriba y este punto, no se pisa su evento y se responde el mismo 409.
+async function vincularSolicitud(
+  solicitudId: number,
+  eventoId: number,
+  repo: PresupuestosRepositorio,
+  tx: Prisma.TransactionClient,
+) {
+  const vinculadas = await repo.vincularSolicitudAEvento(solicitudId, eventoId, tx);
+  if (vinculadas === 0) {
+    throw ErrorApi.conflicto(`La solicitud ${solicitudId} ya fue tomada`);
+  }
 }
 
 /**
