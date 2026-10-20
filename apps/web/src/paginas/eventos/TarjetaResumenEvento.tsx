@@ -2,6 +2,7 @@ import type { EventoAgenda } from '@confluens/shared';
 import { ArrowRight, CalendarDays, Clock, LayoutGrid, Users, X } from 'lucide-react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { BotonWhatsApp } from '@/components/BotonWhatsApp';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { IconoEstado } from '@/components/IconoEstado';
@@ -117,13 +118,14 @@ export function TarjetaResumenEvento({
         >
           {iniciales(evento.cliente)}
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{nombreCompleto(evento.cliente)}</p>
           <p className="truncate text-xs text-muted-foreground">
             {evento.cliente.telefono} · {evento.cliente.correo}
           </p>
           <EtiquetaCliente etiqueta={evento.cliente.etiqueta} className="mt-1" />
         </div>
+        <BotonWhatsApp telefono={evento.cliente.telefono} />
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t pt-3">

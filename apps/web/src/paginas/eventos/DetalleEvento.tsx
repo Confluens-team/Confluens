@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import { armadoDeSalones, nombresDeSalones, textoModalidad } from '@/lib/formato';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { BotonWhatsApp } from '@/components/BotonWhatsApp';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -299,6 +300,7 @@ export function DetalleEvento({
                     {evento.cliente.telefono} · {evento.cliente.correo}
                   </span>
                   <EtiquetaCliente etiqueta={evento.cliente.etiqueta} className="mt-1" />
+                  <BotonWhatsApp telefono={evento.cliente.telefono} className="mt-2" />
                 </Dato>
                 <Dato etiqueta="Salón">
                   {nombresDeSalones(evento.salones)} · {evento.cantidadPersonas} personas

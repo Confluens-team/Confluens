@@ -33,6 +33,7 @@ import {
 import { useEffect, useRef, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { BotonWhatsApp } from '@/components/BotonWhatsApp';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { IconoEstado } from '@/components/IconoEstado';
 import { InputEntero } from '@/components/InputEntero';
@@ -592,7 +593,19 @@ function Formulario({
       )}
 
       <section className="rounded-xl bg-card p-5 ring-1 ring-border">
-        <h3 className="text-sm font-semibold">Cliente</h3>
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-semibold">Cliente</h3>
+          {/* Mientras la consulta está abierta, el chat arranca con el aviso de recepción
+              (dominio.md, paso 6): no manda el presupuesto. */}
+          <BotonWhatsApp
+            telefono={consulta.cliente.telefono}
+            mensaje={
+              consulta.estado === 'Estimado'
+                ? `Hola ${consulta.cliente.nombre}, te escribimos de Los Abuelos Servicios Gastronómicos. Recibimos tu consulta y en breve nos vamos a comunicar con vos para seguir con la organización del evento.`
+                : undefined
+            }
+          />
+        </div>
         <p className="mt-2 flex flex-wrap items-center gap-2 font-medium">
           {nombreCompleto(consulta.cliente)}
           <EtiquetaCliente etiqueta={consulta.cliente.etiqueta} />
