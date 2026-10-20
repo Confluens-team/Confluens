@@ -49,6 +49,7 @@ import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
 import { armadoDeSalones, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
+import { mensajeWhatsApp } from '@/lib/whatsapp';
 
 // Una línea del detalle mientras se edita. servicioId null = adicional escrito a mano. Un
 // tercerizado puede quedar con el precio vacío: "a cotizar" (HU-11).
@@ -595,15 +596,9 @@ function Formulario({
       <section className="rounded-xl bg-card p-5 ring-1 ring-border">
         <div className="flex items-center justify-between gap-3">
           <h3 className="text-sm font-semibold">Cliente</h3>
-          {/* Mientras la consulta está abierta, el chat arranca con el aviso de recepción
-              (dominio.md, paso 6): no manda el presupuesto. */}
           <BotonWhatsApp
             telefono={consulta.cliente.telefono}
-            mensaje={
-              consulta.estado === 'Estimado'
-                ? `Hola ${consulta.cliente.nombre}, te escribimos de Los Abuelos Servicios Gastronómicos. Recibimos tu consulta y en breve nos vamos a comunicar con vos para seguir con la organización del evento.`
-                : undefined
-            }
+            mensaje={mensajeWhatsApp(consulta.cliente.nombre, consulta.evento.estado)}
           />
         </div>
         <p className="mt-2 flex flex-wrap items-center gap-2 font-medium">

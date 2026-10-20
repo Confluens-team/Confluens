@@ -1,6 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { enlaceWhatsApp } from './whatsapp';
+import { enlaceWhatsApp, mensajeWhatsApp } from './whatsapp';
+
+describe('mensajeWhatsApp', () => {
+  it('con el evento en consulta avisa que se recibió la consulta', () => {
+    expect(mensajeWhatsApp('Ana', 'EnConsulta')).toBe(
+      'Hola, Ana, somos Los Abuelos Servicios Gastronómicos y recibimos tu consulta. A la brevedad nos estaremos comunicando para enviarte el presupuesto.',
+    );
+  });
+
+  it('en cualquier otro estado el chat se abre vacío', () => {
+    expect(mensajeWhatsApp('Ana', 'Reservado')).toBeUndefined();
+    expect(mensajeWhatsApp('Ana', 'Cobrado')).toBeUndefined();
+    expect(mensajeWhatsApp('Ana', 'Cancelado')).toBeUndefined();
+  });
+});
 
 describe('enlaceWhatsApp', () => {
   it('usa el celular en formato internacional sin el +', () => {
