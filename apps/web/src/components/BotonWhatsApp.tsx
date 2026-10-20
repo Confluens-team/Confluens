@@ -12,14 +12,17 @@ function IconoWhatsApp() {
 
 // Abre el chat de WhatsApp con el celular del cliente en otra pestaña. `mensaje` deja el texto
 // escrito en el chat para que el Responsable de Eventos lo revise antes de mandarlo. Si el
-// teléfono guardado no es un celular válido, el botón queda deshabilitado y lo explica.
+// teléfono guardado no es un celular válido, el botón queda deshabilitado y lo explica. `onClick`
+// avisa que se abrió el chat (la consulta lo registra como aviso de recepción).
 export function BotonWhatsApp({
   telefono,
   mensaje,
+  onClick,
   className,
 }: {
   telefono: string;
   mensaje?: string;
+  onClick?: () => void;
   className?: string;
 }) {
   const enlace = enlaceWhatsApp(telefono, mensaje);
@@ -41,7 +44,7 @@ export function BotonWhatsApp({
 
   return (
     <Button asChild size="sm" variant="outline" className={className}>
-      <a href={enlace} target="_blank" rel="noopener noreferrer">
+      <a href={enlace} target="_blank" rel="noopener noreferrer" onClick={onClick}>
         <IconoWhatsApp /> WhatsApp
       </a>
     </Button>

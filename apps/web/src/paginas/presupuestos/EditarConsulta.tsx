@@ -33,7 +33,6 @@ import {
 import { useEffect, useRef, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
-import { BotonWhatsApp } from '@/components/BotonWhatsApp';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { IconoEstado } from '@/components/IconoEstado';
 import { InputEntero } from '@/components/InputEntero';
@@ -49,7 +48,8 @@ import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
 import { armadoDeSalones, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
-import { mensajeWhatsApp } from '@/lib/whatsapp';
+import { PresupuestoFormal } from './PresupuestoFormal';
+import { AvisoAlCliente, EnvioFormal } from './SeguimientoConsulta';
 
 // Una línea del detalle mientras se edita. servicioId null = adicional escrito a mano. Un
 // tercerizado puede quedar con el precio vacío: "a cotizar" (HU-11).
@@ -148,37 +148,54 @@ export function EditarConsulta({
   const salones = useSalones();
   const servicios = useServicios();
   const configuracion = useConfiguracionPrecios();
+  // El presupuesto en PDF para el envío formal. El formulario queda montado (oculto) para no perder
+  // lo que se estaba editando.
+  const [documentoAbierto, setDocumentoAbierto] = useState(false);
+  function alternarDocumento(abierto: boolean) {
+    setDocumentoAbierto(abierto);
+    window.scrollTo({ top: 0 });
+  }
 
+  const formulario = consulta.data && salones.data && servicios.data && configuracion.data && (
+    <Formulario
+      consulta={consulta.data}
+      salones={salones.data}
+      catalogo={servicios.data}
+      porcentajeMensual={configuracion.data.porcentajeMensual}
+      onGuardada={onGuardada}
+      onDadaDeBaja={onDadaDeBaja}
+      onAbrirEvento={onAbrirEvento}
+      onImprimirComanda={onImprimirComanda}
+      onDescargarPresupuesto={() => alternarDocumento(true)}
+      textoVolverAlGuardar={textoVolverAlGuardar}
+    />
+  );
+
+  // El formulario no cambia de lugar en el árbol al abrir el documento: si cambiara, React lo
+  // volvería a montar y se perdería lo editado.
   return (
-    <div className="space-y-4">
-      <Button variant="ghost" size="sm" onClick={onVolver}>
-        <ArrowLeft /> {textoVolver}
-      </Button>
-      {(consulta.isLoading ||
-        salones.isLoading ||
-        servicios.isLoading ||
-        configuracion.isLoading) && (
-        <p className="text-sm text-muted-foreground">Cargando la consulta…</p>
+    <>
+      {documentoAbierto && consulta.data && (
+        <PresupuestoFormal consulta={consulta.data} onVolver={() => alternarDocumento(false)} />
       )}
-      {(consulta.isError || salones.isError || servicios.isError || configuracion.isError) && (
-        <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          No se pudo cargar la consulta.
-        </p>
-      )}
-      {consulta.data && salones.data && servicios.data && configuracion.data && (
-        <Formulario
-          consulta={consulta.data}
-          salones={salones.data}
-          catalogo={servicios.data}
-          porcentajeMensual={configuracion.data.porcentajeMensual}
-          onGuardada={onGuardada}
-          onDadaDeBaja={onDadaDeBaja}
-          onAbrirEvento={onAbrirEvento}
-          onImprimirComanda={onImprimirComanda}
-          textoVolverAlGuardar={textoVolverAlGuardar}
-        />
-      )}
-    </div>
+      <div className={documentoAbierto ? 'hidden' : 'space-y-4'}>
+        <Button variant="ghost" size="sm" onClick={onVolver}>
+          <ArrowLeft /> {textoVolver}
+        </Button>
+        {(consulta.isLoading ||
+          salones.isLoading ||
+          servicios.isLoading ||
+          configuracion.isLoading) && (
+          <p className="text-sm text-muted-foreground">Cargando la consulta…</p>
+        )}
+        {(consulta.isError || salones.isError || servicios.isError || configuracion.isError) && (
+          <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            No se pudo cargar la consulta.
+          </p>
+        )}
+        {formulario}
+      </div>
+    </>
   );
 }
 
@@ -191,6 +208,7 @@ function Formulario({
   onDadaDeBaja,
   onAbrirEvento,
   onImprimirComanda,
+  onDescargarPresupuesto,
   textoVolverAlGuardar,
 }: {
   consulta: ConsultaDetallada;
@@ -201,6 +219,7 @@ function Formulario({
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onAbrirEvento: (eventoId: number) => void;
   onImprimirComanda?: (presupuestoId: number) => void;
+  onDescargarPresupuesto: () => void;
   textoVolverAlGuardar: string;
 }) {
   const modificar = useModificarConsulta(consulta.id);
@@ -594,12 +613,9 @@ function Formulario({
       )}
 
       <section className="rounded-xl bg-card p-5 ring-1 ring-border">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-start justify-between gap-3">
           <h3 className="text-sm font-semibold">Cliente</h3>
-          <BotonWhatsApp
-            telefono={consulta.cliente.telefono}
-            mensaje={mensajeWhatsApp(consulta.cliente.nombre, consulta.evento.estado)}
-          />
+          <AvisoAlCliente consulta={consulta} />
         </div>
         <p className="mt-2 flex flex-wrap items-center gap-2 font-medium">
           {nombreCompleto(consulta.cliente)}
@@ -612,6 +628,8 @@ function Formulario({
           Los datos de contacto los mantiene el cliente desde su cuenta.
         </p>
       </section>
+
+      <EnvioFormal consulta={consulta} onDescargar={onDescargarPresupuesto} />
 
       <fieldset disabled={!editable} className="space-y-6">
         <section className="rounded-xl bg-card p-5 ring-1 ring-border">
