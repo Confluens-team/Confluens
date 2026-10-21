@@ -7,7 +7,16 @@ import { type EstadoEvento, normalizarCelular } from '@confluens/shared';
  */
 export function mensajeWhatsApp(nombre: string, estadoEvento: EstadoEvento): string | undefined {
   if (estadoEvento !== 'EnConsulta') return undefined;
-  return `Hola, ${nombre}, somos Los Abuelos Servicios Gastronómicos y recibimos tu consulta. A la brevedad nos estaremos comunicando para enviarte el presupuesto.`;
+  return [
+    `Hola, ${nombre}, gracias por comunicarse con LA Eventos.`,
+    'Le confirmamos que hemos recibido correctamente su solicitud de presupuesto y estaremos dando seguimiento a su requerimiento para avanzar con la propuesta correspondiente.',
+    '',
+    'A la brevedad nos pondremos en contacto con usted.',
+    'Agradecemos su interés en nuestros servicios.',
+    '',
+    'LA Eventos',
+    'Experiencias que nacen en cada detalle.',
+  ].join('\n');
 }
 
 /**
