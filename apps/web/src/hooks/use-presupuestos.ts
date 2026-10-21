@@ -8,6 +8,7 @@ import type {
   PresupuestoDetallado,
   PresupuestoListado,
   RespuestaExito,
+  SeguimientoConsulta,
   Solicitud,
 } from '@confluens/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -150,6 +151,42 @@ export function useDarDeBajaConsulta(id: number) {
       { method: 'POST' },
     );
     return respuesta.data;
+  });
+}
+
+// Tilda o destilda el aviso de recepción y el envío formal. La consulta se actualiza con la
+// respuesta y el listado se vuelve a pedir: el cartel «Nuevo» depende del aviso.
+export function useSeguimientoConsulta(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (cambios: SeguimientoConsulta) => {
+      const respuesta = await apiFetch<RespuestaExito<ConsultaDetallada>>(
+        `/presupuestos/${id}/seguimiento`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cambios),
+        },
+      );
+      return respuesta.data;
+    },
+    onSuccess: (consulta) => {
+      queryClient.setQueryData(['presupuestos', 'consulta', id], consulta);
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+    },
+  });
+}
+
+// El tacho del listado: saca de Consultas un presupuesto Cancelado sin borrarlo (sigue en su
+// detalle, en el evento y en la cuenta). Solo cambia el listado, así que es lo único que se invalida.
+export function useOcultarConsulta() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      apiFetch<undefined>(`/presupuestos/${id}/ocultar`, { method: 'POST' }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+    },
   });
 }
 

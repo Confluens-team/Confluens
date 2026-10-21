@@ -1,4 +1,5 @@
 import { esquemaCrearServicio } from '@confluens/shared';
+import { Plus } from 'lucide-react';
 import { useState } from 'react';
 
 import { ErrorApiCliente } from '@/lib/api';
@@ -7,7 +8,10 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { VentanaFormulario } from '@/components/VentanaFormulario';
 import { useCrearServicio, useServicios } from '@/hooks/use-servicios';
+
+import { IncrementoMensual } from './IncrementoMensual';
 
 const formateadorPrecio = new Intl.NumberFormat('es-AR', {
   style: 'currency',
@@ -23,6 +27,8 @@ const valoresIniciales = {
   precio: '',
   porPersona: false,
   tercerizado: false,
+  // RN-11: se puede pedir continuo en salón (+20%) o en mesas con mozo (+30%).
+  admiteModalidad: false,
   // HU-11: un tercerizado puede no tener precio fijo todavía. No viaja: se traduce a precio null.
   aCotizar: false,
 };
@@ -34,8 +40,7 @@ const valoresIniciales = {
 // usan, así que migrar esto a RHF es posible, pero no hace falta para HU-13/HU-14. Acá además se
 // valida el body a mano con esquemaCrearServicio antes de enviarlo, para dar el mismo mensaje de
 // error que devolvería el servidor sin esperar el round-trip.
-export function RegistrarServicio() {
-  const { data: servicios, isLoading, isError } = useServicios();
+function FormularioServicio({ onRegistrado }: { onRegistrado: () => void }) {
   const crearServicio = useCrearServicio();
 
   const [valores, setValores] = useState(valoresIniciales);
@@ -57,6 +62,7 @@ export function RegistrarServicio() {
     const resultado = esquemaCrearServicio.safeParse({
       ...cuerpo,
       precio: aCotizar && cuerpo.tercerizado ? null : cuerpo.precio,
+      admiteModalidad: cuerpo.porPersona && cuerpo.admiteModalidad,
     });
     if (!resultado.success) {
       const errores: Record<string, string> = {};
@@ -69,9 +75,134 @@ export function RegistrarServicio() {
 
     setErroresCampos({});
     crearServicio.mutate(resultado.data, {
-      onSuccess: () => setValores(valoresIniciales),
+      onSuccess: onRegistrado,
     });
   }
+
+  return (
+    <form onSubmit={manejarEnvio} className="space-y-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="nombre">Nombre</Label>
+        <Input
+          id="nombre"
+          value={valores.nombre}
+          onChange={(e) => actualizarCampo('nombre', e.target.value)}
+        />
+        {erroresCampos['nombre'] && (
+          <p className="text-sm text-destructive">{erroresCampos['nombre']}</p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="descripcion">Descripción</Label>
+        <Textarea
+          id="descripcion"
+          value={valores.descripcion}
+          onChange={(e) => actualizarCampo('descripcion', e.target.value)}
+        />
+        {erroresCampos['descripcion'] && (
+          <p className="text-sm text-destructive">{erroresCampos['descripcion']}</p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="unidadMedida">Unidad de medida</Label>
+        <Input
+          id="unidadMedida"
+          placeholder="persona, unidad, etc."
+          value={valores.unidadMedida}
+          onChange={(e) => actualizarCampo('unidadMedida', e.target.value)}
+        />
+        {erroresCampos['unidadMedida'] && (
+          <p className="text-sm text-destructive">{erroresCampos['unidadMedida']}</p>
+        )}
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="precio">Precio (sin IVA)</Label>
+        <Input
+          id="precio"
+          inputMode="decimal"
+          placeholder={valores.aCotizar ? 'A cotizar' : '0.00'}
+          disabled={valores.aCotizar}
+          value={valores.aCotizar ? '' : valores.precio}
+          onChange={(e) => actualizarCampo('precio', e.target.value)}
+        />
+        {erroresCampos['precio'] && (
+          <p className="text-sm text-destructive">{erroresCampos['precio']}</p>
+        )}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="porPersona"
+          checked={valores.porPersona}
+          onCheckedChange={(marcado) => actualizarCampo('porPersona', marcado === true)}
+        />
+        <Label htmlFor="porPersona">Se cobra por persona</Label>
+      </div>
+
+      {/* RN-11: el recargo va sobre el precio base por persona, así que solo aplica a esos. */}
+      {valores.porPersona && (
+        <div className="flex items-center gap-2 pl-6">
+          <Checkbox
+            id="admiteModalidad"
+            checked={valores.admiteModalidad}
+            onCheckedChange={(marcado) => actualizarCampo('admiteModalidad', marcado === true)}
+          />
+          <Label htmlFor="admiteModalidad">
+            Admite modalidad: continuo en salón (+20%) o en mesas con mozo (+30%)
+          </Label>
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="tercerizado"
+          checked={valores.tercerizado}
+          onCheckedChange={(marcado) => {
+            actualizarCampo('tercerizado', marcado === true);
+            if (marcado !== true) actualizarCampo('aCotizar', false);
+          }}
+        />
+        <Label htmlFor="tercerizado">
+          Tercerizado (suma al total, pero no recibe el incremento mensual)
+        </Label>
+      </div>
+
+      {valores.tercerizado && (
+        <div className="flex items-center gap-2 pl-6">
+          <Checkbox
+            id="aCotizar"
+            checked={valores.aCotizar}
+            onCheckedChange={(marcado) => actualizarCampo('aCotizar', marcado === true)}
+          />
+          <Label htmlFor="aCotizar">
+            A cotizar (sin precio fijo: en el presupuesto va sin importe y no suma)
+          </Label>
+        </div>
+      )}
+
+      {crearServicio.isError && (
+        <p className="text-sm text-destructive">
+          {crearServicio.error instanceof ErrorApiCliente
+            ? crearServicio.error.message
+            : 'No se pudo registrar el servicio.'}
+        </p>
+      )}
+
+      <Button type="submit" disabled={crearServicio.isPending}>
+        {crearServicio.isPending ? 'Guardando…' : 'Registrar servicio'}
+      </Button>
+    </form>
+  );
+}
+
+// El catálogo de servicios. El alta y el incremento mensual se abren desde sus botones, en
+// una ventana sobre el listado.
+export function RegistrarServicio() {
+  const { data: servicios, isLoading, isError } = useServicios();
+  const [abierto, setAbierto] = useState(false);
 
   return (
     <div className="mx-auto max-w-2xl space-y-8 p-6">
@@ -80,109 +211,23 @@ export function RegistrarServicio() {
         <p className="text-sm text-muted-foreground">
           Registrá los servicios del catálogo para poder incorporarlos a los presupuestos (HU-32).
         </p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button onClick={() => setAbierto(true)}>
+            <Plus /> Nuevo servicio
+          </Button>
+          <IncrementoMensual />
+        </div>
       </div>
 
-      <form onSubmit={manejarEnvio} className="space-y-4 rounded-lg border p-4">
-        <div className="space-y-1.5">
-          <Label htmlFor="nombre">Nombre</Label>
-          <Input
-            id="nombre"
-            value={valores.nombre}
-            onChange={(e) => actualizarCampo('nombre', e.target.value)}
-          />
-          {erroresCampos['nombre'] && (
-            <p className="text-sm text-destructive">{erroresCampos['nombre']}</p>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="descripcion">Descripción</Label>
-          <Textarea
-            id="descripcion"
-            value={valores.descripcion}
-            onChange={(e) => actualizarCampo('descripcion', e.target.value)}
-          />
-          {erroresCampos['descripcion'] && (
-            <p className="text-sm text-destructive">{erroresCampos['descripcion']}</p>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="unidadMedida">Unidad de medida</Label>
-          <Input
-            id="unidadMedida"
-            placeholder="persona, unidad, etc."
-            value={valores.unidadMedida}
-            onChange={(e) => actualizarCampo('unidadMedida', e.target.value)}
-          />
-          {erroresCampos['unidadMedida'] && (
-            <p className="text-sm text-destructive">{erroresCampos['unidadMedida']}</p>
-          )}
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="precio">Precio (sin IVA)</Label>
-          <Input
-            id="precio"
-            inputMode="decimal"
-            placeholder={valores.aCotizar ? 'A cotizar' : '0.00'}
-            disabled={valores.aCotizar}
-            value={valores.aCotizar ? '' : valores.precio}
-            onChange={(e) => actualizarCampo('precio', e.target.value)}
-          />
-          {erroresCampos['precio'] && (
-            <p className="text-sm text-destructive">{erroresCampos['precio']}</p>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="porPersona"
-            checked={valores.porPersona}
-            onCheckedChange={(marcado) => actualizarCampo('porPersona', marcado === true)}
-          />
-          <Label htmlFor="porPersona">Se cobra por persona</Label>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="tercerizado"
-            checked={valores.tercerizado}
-            onCheckedChange={(marcado) => {
-              actualizarCampo('tercerizado', marcado === true);
-              if (marcado !== true) actualizarCampo('aCotizar', false);
-            }}
-          />
-          <Label htmlFor="tercerizado">
-            Tercerizado (suma al total, pero no recibe el incremento mensual)
-          </Label>
-        </div>
-
-        {valores.tercerizado && (
-          <div className="flex items-center gap-2 pl-6">
-            <Checkbox
-              id="aCotizar"
-              checked={valores.aCotizar}
-              onCheckedChange={(marcado) => actualizarCampo('aCotizar', marcado === true)}
-            />
-            <Label htmlFor="aCotizar">
-              A cotizar (sin precio fijo: en el presupuesto va sin importe y no suma)
-            </Label>
-          </div>
-        )}
-
-        {crearServicio.isError && (
-          <p className="text-sm text-destructive">
-            {crearServicio.error instanceof ErrorApiCliente
-              ? crearServicio.error.message
-              : 'No se pudo registrar el servicio.'}
-          </p>
-        )}
-
-        <Button type="submit" disabled={crearServicio.isPending}>
-          {crearServicio.isPending ? 'Guardando…' : 'Registrar servicio'}
-        </Button>
-      </form>
+      <VentanaFormulario
+        abierto={abierto}
+        onCambiarAbierto={setAbierto}
+        titulo="Nuevo servicio"
+        descripcion="El servicio queda en el catálogo y se puede incorporar a los presupuestos."
+      >
+        {/* La key vacía el formulario cada vez que se abre la ventana. */}
+        <FormularioServicio key={String(abierto)} onRegistrado={() => setAbierto(false)} />
+      </VentanaFormulario>
 
       <div className="space-y-2">
         <h2 className="text-lg font-medium">Catálogo actual</h2>

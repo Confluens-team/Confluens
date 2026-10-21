@@ -1,13 +1,22 @@
 import {
+  aplicarModalidad,
+  CODIGOS_ERROR,
   DIAS_VIGENCIA_PRESUPUESTO,
   horaDelEvento,
+  hoyEnZonaEventos,
+  mesesHastaEvento,
   minutosDeHora,
+  proyectarPrecio,
   type ConsultaDetallada,
   type CrearConsultaSocial,
   type CrearPresupuesto,
+  type EventoReutilizado,
   type FiltrosPresupuestos,
+  type ModalidadServicio,
   type ModificarPresupuesto,
   type PresupuestoListado,
+  type ReutilizarEvento,
+  type SeguimientoConsulta,
   type TipoJornada,
 } from '@confluens/shared';
 
@@ -16,7 +25,7 @@ import { alcanza, calcularBaseDeCobro, PORCENTAJE_TOTAL } from '../../lib/base-d
 import { ErrorApi } from '../../lib/errores.js';
 import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
 import * as presupuestosRepositorioReal from './presupuestos.repositorio.js';
-import type { PresupuestosRepositorio } from './presupuestos.repositorio.js';
+import type { LineaNueva, PresupuestosRepositorio } from './presupuestos.repositorio.js';
 
 // RN-08: el presupuesto tiene una vigencia de 10 días desde su emisión. Vencido, lo pasa a
 // Expirado el trabajo de trabajos/vigencia.trabajo.ts.
@@ -31,16 +40,7 @@ function sumarLineas(lineas: LineaCalculada[]): Prisma.Decimal {
   return lineas.reduce((acumulado, linea) => acumulado.plus(linea.subtotal), new Prisma.Decimal(0));
 }
 
-interface LineaCalculada {
-  servicioId: number | null;
-  salonId: number | null;
-  descripcion: string;
-  cantidad: number;
-  precioUnitario: string;
-  subtotal: string;
-  aCotizar: boolean;
-  horaEstimada: string | null;
-}
+type LineaCalculada = LineaNueva;
 
 // Sin precio (null) la línea queda "a cotizar" (HU-11): va en 0, así no suma al total, hasta que el
 // personal complete el precio. `horaEstimada` ("HH:mm") es a qué hora del evento se espera el
@@ -59,11 +59,77 @@ function calcularLinea(
     salonId,
     descripcion,
     cantidad,
+    modalidad: 'Normal',
+    precioBase: null,
     precioUnitario: precio.toFixed(2),
     subtotal: precio.times(cantidad).toFixed(2),
     aCotizar: precioUnitario === null,
     horaEstimada,
   };
+}
+
+// RN-11: la línea de un servicio del catálogo guarda el precio base y la modalidad; el unitario es
+// el base con el recargo. Sin precio base (tercerizado a cotizar) no hay recargo que aplicar.
+function lineaDeServicio(
+  servicio: { id: number; nombre: string },
+  cantidad: number,
+  precioBase: Prisma.Decimal | string | null,
+  modalidad: ModalidadServicio,
+  horaEstimada: string | null,
+  descripcion: string = servicio.nombre,
+): LineaCalculada {
+  const base = precioBase === null ? null : new Prisma.Decimal(precioBase).toFixed(2);
+  const unitario = base === null ? null : aplicarModalidad(base, modalidad);
+  return {
+    ...calcularLinea(servicio.id, descripcion, cantidad, unitario, horaEstimada),
+    modalidad,
+    precioBase: base,
+  };
+}
+
+// RN-11: continuo o en mesa solo en los servicios que la admiten (hoy, los coffee breaks). Una
+// línea que ya tenía esa modalidad la conserva aunque el servicio haya dejado de admitirla.
+function exigirModalidadAdmitida(
+  servicio: { nombre: string; admiteModalidad: boolean },
+  modalidad: ModalidadServicio,
+  modalidadAnterior?: ModalidadServicio,
+) {
+  if (modalidad !== 'Normal' && !servicio.admiteModalidad && modalidad !== modalidadAnterior) {
+    throw ErrorApi.reglaNegocio(`"${servicio.nombre}" no admite elegir modalidad`);
+  }
+}
+
+/**
+ * RN-13: los precios del catálogo se proyectan a la fecha del evento con el porcentaje mensual,
+ * compuesto, una vez por cada mes entre el actual y el del evento. Los tercerizados no se proyectan
+ * (RN-10) y uno a cotizar sigue sin precio. La cuenta es la de @confluens/shared, la misma que
+ * muestran el cotizador y el editor.
+ */
+interface Proyeccion {
+  porcentaje: string;
+  meses: number;
+}
+
+async function proyeccionHasta(
+  fechaEvento: string,
+  repo: PresupuestosRepositorio,
+): Promise<Proyeccion> {
+  return {
+    porcentaje: await repo.obtenerPorcentajeMensual(),
+    meses: mesesHastaEvento(hoyEnZonaEventos(), fechaEvento),
+  };
+}
+
+function precioProyectado(precio: Prisma.Decimal, proyeccion: Proyeccion): string {
+  return proyectarPrecio(precio.toFixed(2), proyeccion.porcentaje, proyeccion.meses);
+}
+
+function precioVigenteDeServicio(
+  servicio: { precio: Prisma.Decimal | null; tercerizado: boolean },
+  proyeccion: Proyeccion,
+): Prisma.Decimal | string | null {
+  if (servicio.precio === null || servicio.tercerizado) return servicio.precio;
+  return precioProyectado(servicio.precio, proyeccion);
 }
 
 /**
@@ -156,17 +222,29 @@ function exigirCantidadPosible(
  *   como cualquier otro; lo que no reciben es el incremento mensual. Un tercerizado sin precio
  *   entra "a cotizar" (HU-11): sin importe y sin sumar.
  * - Criterio 5: se toman Salon.precioJornadaCompleta/precioMediaJornada y Servicio.precio
- *   vigentes al momento del pedido (no hay versionado de precios en el Sprint 1).
+ *   vigentes al momento del pedido, proyectados a la fecha del evento (RN-13).
+ * - RN-11: cada servicio lleva su modalidad; continuo o en mesa suman el recargo al precio base.
  * - Criterio 6: el Presupuesto nace en Estimado (default del schema, no se fija acá).
  * - HU-10 / RN-08: vence a los 10 días de la emisión (`venceEn`).
  * - HU-15: si `datos.solicitudId` viene, se vincula `Solicitud.eventoId` al evento recién creado
  *   (el RE "tomó" esa solicitud), para que el detalle del evento muestre los datos originales del
  *   formulario. Se valida antes de escribir nada que la solicitud exista y no esté ya tomada.
+ *
+ * `usuarioCliente` es el id de usuario de la sesión cuando quien cotiza es un CLIENTE (A1 de la
+ * auditoría de seguridad): el cliente es el de su sesión y los datos de contacto del body se
+ * ignoran. Sin eso, un cliente podía cargar eventos en la ficha de cualquier otro con solo saber
+ * su correo, y crear fichas nuevas, que solo nacen por autorregistro (dominio.md). Además solo
+ * puede vincular sus propias solicitudes (A2). Para el personal, sin `usuarioCliente`, se busca o
+ * crea el Cliente por correo como siempre.
  */
 export async function generarPresupuesto(
   datos: CrearPresupuesto,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+  usuarioCliente?: number,
 ) {
+  const clienteDeSesion =
+    usuarioCliente === undefined ? null : await clienteDeLaSesion(usuarioCliente, repo);
+
   // Validaciones de catálogo primero, sin escribir nada: si el pedido es inválido, no se crea un
   // Cliente ni un Evento huérfanos.
   // Un evento puede ocupar varios salones (ADR 0011). Se respeta el orden en que llegaron: la
@@ -181,11 +259,7 @@ export async function generarPresupuesto(
   });
 
   if (datos.solicitudId !== undefined) {
-    const solicitud = await repo.buscarSolicitud(datos.solicitudId);
-    if (!solicitud) throw ErrorApi.noEncontrado(`No existe la solicitud ${datos.solicitudId}`);
-    if (solicitud.eventoId !== null) {
-      throw ErrorApi.conflicto(`La solicitud ${datos.solicitudId} ya fue tomada`);
-    }
+    await exigirSolicitudDisponible(datos.solicitudId, clienteDeSesion?.id ?? null, repo);
   }
 
   const idsServicios = datos.servicios.map((s) => s.servicioId);
@@ -201,20 +275,26 @@ export async function generarPresupuesto(
       throw ErrorApi.reglaNegocio(`El servicio "${servicio.nombre}" no está activo`);
     }
     exigirCantidadPosible(servicio, seleccionado.cantidad, datos.cantidadPersonas);
+    exigirModalidadAdmitida(servicio, seleccionado.modalidad ?? 'Normal');
   }
 
+  const proyeccion = await proyeccionHasta(datos.fecha, repo);
   const lineasSalones = salones.map((salon) =>
-    lineaDeSalon(salon, datos.tipoJornada, precioDeSalon(salon, datos.tipoJornada)),
+    lineaDeSalon(
+      salon,
+      datos.tipoJornada,
+      precioProyectado(precioDeSalon(salon, datos.tipoJornada), proyeccion),
+    ),
   );
 
   const lineasServicios = datos.servicios.map((seleccionado) => {
     // El bucle de validación de arriba ya garantizó que existe.
     const servicio = serviciosPorId.get(seleccionado.servicioId)!;
-    return calcularLinea(
-      servicio.id,
-      servicio.nombre,
+    return lineaDeServicio(
+      servicio,
       seleccionado.cantidad,
-      servicio.precio,
+      precioVigenteDeServicio(servicio, proyeccion),
+      seleccionado.modalidad ?? 'Normal',
       seleccionado.horaEstimada ?? null,
     );
   });
@@ -225,7 +305,7 @@ export async function generarPresupuesto(
   const fechaEmision = new Date();
 
   return repo.crearEnTransaccion(async (tx) => {
-    let cliente = await repo.buscarClientePorCorreo(datos.correo, tx);
+    let cliente = clienteDeSesion ?? (await repo.buscarClientePorCorreo(datos.correo, tx));
     if (!cliente) {
       cliente = await repo.crearCliente(
         { nombre: datos.nombre, telefono: datos.telefono, correo: datos.correo },
@@ -248,7 +328,7 @@ export async function generarPresupuesto(
     await repo.reemplazarSalonesDelEvento(evento.id, datos.salonIds, tx);
 
     if (datos.solicitudId !== undefined) {
-      await repo.vincularSolicitudAEvento(datos.solicitudId, evento.id, tx);
+      await vincularSolicitud(datos.solicitudId, evento.id, repo, tx);
     }
 
     return repo.crearPresupuestoConLineas(
@@ -280,15 +360,10 @@ export async function registrarConsultaSocial(
   datos: CrearConsultaSocial,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
 ) {
-  const cliente = await repo.buscarClientePorUsuarioId(usuarioId);
-  if (!cliente) throw ErrorApi.noEncontrado('La sesión no corresponde a un cliente');
+  const cliente = await clienteDeLaSesion(usuarioId, repo);
 
   if (datos.solicitudId !== undefined) {
-    const solicitud = await repo.buscarSolicitud(datos.solicitudId);
-    if (!solicitud) throw ErrorApi.noEncontrado(`No existe la solicitud ${datos.solicitudId}`);
-    if (solicitud.eventoId !== null) {
-      throw ErrorApi.conflicto(`La solicitud ${datos.solicitudId} ya fue tomada`);
-    }
+    await exigirSolicitudDisponible(datos.solicitudId, cliente.id, repo);
   }
 
   return repo.crearEnTransaccion(async (tx) => {
@@ -307,7 +382,7 @@ export async function registrarConsultaSocial(
     );
 
     if (datos.solicitudId !== undefined) {
-      await repo.vincularSolicitudAEvento(datos.solicitudId, evento.id, tx);
+      await vincularSolicitud(datos.solicitudId, evento.id, repo, tx);
     }
 
     return repo.crearPresupuestoConLineas(
@@ -315,6 +390,46 @@ export async function registrarConsultaSocial(
       tx,
     );
   });
+}
+
+async function clienteDeLaSesion(usuarioId: number, repo: PresupuestosRepositorio) {
+  const cliente = await repo.buscarClientePorUsuarioId(usuarioId);
+  if (!cliente) throw ErrorApi.noEncontrado('La sesión no corresponde a un cliente');
+  return cliente;
+}
+
+/**
+ * La solicitud tiene que existir y no estar tomada. Si quien la vincula es un cliente
+ * (`clienteId`), además tiene que ser suya (A2 de la auditoría de seguridad): si no, un cliente
+ * podía recorrer ids y quedarse con solicitudes ajenas. Una ajena responde lo mismo que una
+ * inexistente, para no confirmar que el id existe.
+ */
+async function exigirSolicitudDisponible(
+  solicitudId: number,
+  clienteId: number | null,
+  repo: PresupuestosRepositorio,
+) {
+  const solicitud = await repo.buscarSolicitud(solicitudId);
+  if (!solicitud || (clienteId !== null && solicitud.clienteId !== clienteId)) {
+    throw ErrorApi.noEncontrado(`No existe la solicitud ${solicitudId}`);
+  }
+  if (solicitud.eventoId !== null) {
+    throw ErrorApi.conflicto(`La solicitud ${solicitudId} ya fue tomada`);
+  }
+}
+
+// La vinculación solo toca solicitudes todavía libres: si otra transacción la tomó entre la
+// validación de arriba y este punto, no se pisa su evento y se responde el mismo 409.
+async function vincularSolicitud(
+  solicitudId: number,
+  eventoId: number,
+  repo: PresupuestosRepositorio,
+  tx: Prisma.TransactionClient,
+) {
+  const vinculadas = await repo.vincularSolicitudAEvento(solicitudId, eventoId, tx);
+  if (vinculadas === 0) {
+    throw ErrorApi.conflicto(`La solicitud ${solicitudId} ya fue tomada`);
+  }
 }
 
 /**
@@ -374,6 +489,8 @@ export async function listarPresupuestos(
     tipoSocialDetalle: evento.tipoSocialDetalle,
     cliente: evento.cliente,
     salones: evento.salones.map(({ salon }) => salon),
+    avisoRecepcionEn: presupuesto.avisoRecepcionEn?.toISOString() ?? null,
+    envioFormalEn: presupuesto.envioFormalEn?.toISOString() ?? null,
   }));
 }
 
@@ -393,6 +510,8 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
     requiereFactura: presupuesto.requiereFactura,
     // Los eventos anteriores a ADR 0008 no guardan la jornada: sale de la línea del salón.
     tipoJornada: evento.tipoJornada ?? jornadaDeLineaSalon(lineaSalon?.descripcion),
+    avisoRecepcionEn: presupuesto.avisoRecepcionEn?.toISOString() ?? null,
+    envioFormalEn: presupuesto.envioFormalEn?.toISOString() ?? null,
     evento: {
       id: evento.id,
       estado: evento.estado,
@@ -429,11 +548,14 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       cantidad: linea.cantidad,
       precioUnitario: linea.precioUnitario.toFixed(2),
       subtotal: linea.subtotal.toFixed(2),
+      modalidad: linea.modalidad,
+      precioBase: linea.precioBase?.toFixed(2) ?? null,
       aCotizar: linea.aCotizar,
       horaEstimada: linea.horaEstimada,
       salonId: linea.salonId,
       tipo: linea.salonId !== null ? 'salon' : linea.servicioId === null ? 'adicional' : 'servicio',
       tercerizado: servicio?.tercerizado ?? false,
+      admiteModalidad: servicio?.admiteModalidad ?? false,
     })),
   };
 }
@@ -548,8 +670,9 @@ function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoR
  *
  * - Estimado o Expirado con el evento EnConsulta, o Confirmado con el evento Reservado o Cobrado
  *   (RN-09). Cualquier otro caso, 409.
- * - Un servicio que ya estaba conserva su precio congelado; uno nuevo toma el vigente y tiene que
- *   estar activo. Un `precioUnitario` explícito es un ajuste comercial (RN-03) y manda.
+ * - Un servicio que ya estaba conserva su precio congelado; uno nuevo toma el vigente, proyectado a
+ *   la fecha del evento (RN-13), y tiene que estar activo. Un `precioUnitario` explícito es un
+ *   ajuste comercial (RN-03) y manda. Los precios son el base: la modalidad suma su recargo (RN-11).
  * - La línea del salón conserva su precio si no cambian el salón ni la jornada; si cambian, toma
  *   el vigente. `precioSalon` la ajusta a mano.
  * - Los adicionales escritos a mano entran con la descripción y el precio que se cargaron.
@@ -589,34 +712,47 @@ export async function modificarPresupuesto(
     if (!encontrados.has(id)) throw ErrorApi.noEncontrado(`No existe el salón ${id}`);
   }
 
-  const lineasAnteriores = new Map(
-    presupuesto.lineas
-      .filter((linea) => linea.servicioId !== null)
-      .map((linea) => [linea.servicioId!, linea]),
-  );
+  // Un servicio puede estar más de una vez, una por modalidad (RN-11). La línea anterior de un
+  // servicio elegido es la de su misma modalidad; si no la hay pero el servicio tenía una sola
+  // línea, es esa con la modalidad cambiada, y conserva su precio base.
+  const lineasDeServicio = presupuesto.lineas.filter((linea) => linea.servicioId !== null);
+  const lineaAnterior = (servicioId: number, modalidad: ModalidadServicio) => {
+    const delServicio = lineasDeServicio.filter((linea) => linea.servicioId === servicioId);
+    return (
+      delServicio.find((linea) => linea.modalidad === modalidad) ??
+      (delServicio.length === 1 ? delServicio[0] : undefined)
+    );
+  };
   const ids = datos.servicios.map((s) => s.servicioId);
   const catalogo = new Map(
     (ids.length > 0 ? await repo.buscarServiciosPorIds(ids) : []).map((s) => [s.id, s]),
   );
 
+  const proyeccion = await proyeccionHasta(datos.fecha, repo);
   const lineasServicios = datos.servicios.map((elegido) => {
     const servicio = catalogo.get(elegido.servicioId);
     if (!servicio) throw ErrorApi.noEncontrado(`No existe el servicio ${elegido.servicioId}`);
-    const anterior = lineasAnteriores.get(elegido.servicioId);
+    const modalidad = elegido.modalidad ?? 'Normal';
+    const anterior = lineaAnterior(elegido.servicioId, modalidad);
     if (!anterior && !servicio.activo) {
       throw ErrorApi.reglaNegocio(`El servicio "${servicio.nombre}" no está activo`);
     }
     exigirCantidadPosible(servicio, elegido.cantidad, datos.cantidadPersonas);
-    // Lo que ya tenía precio lo conserva; lo nuevo, y lo que seguía a cotizar, toma el del catálogo,
-    // que también puede ser null (sigue a cotizar).
-    const congelado = anterior && !anterior.aCotizar ? anterior.precioUnitario : undefined;
-    const precio = elegido.precioUnitario ?? congelado ?? servicio.precio;
-    return calcularLinea(
-      servicio.id,
-      anterior?.descripcion ?? servicio.nombre,
+    exigirModalidadAdmitida(servicio, modalidad, anterior?.modalidad);
+    // Lo que ya tenía precio conserva su precio base; lo nuevo, y lo que seguía a cotizar, toma el
+    // del catálogo proyectado a la fecha (RN-13), que también puede ser null (sigue a cotizar).
+    // Cambiar la modalidad no cambia el base: el recargo se vuelve a calcular sobre él (RN-11).
+    const congelado =
+      anterior && !anterior.aCotizar ? (anterior.precioBase ?? anterior.precioUnitario) : undefined;
+    const precioBase =
+      elegido.precioUnitario ?? congelado ?? precioVigenteDeServicio(servicio, proyeccion);
+    return lineaDeServicio(
+      servicio,
       elegido.cantidad,
-      precio,
+      precioBase,
+      modalidad,
       elegido.horaEstimada ?? null,
+      anterior?.descripcion ?? servicio.nombre,
     );
   });
 
@@ -636,7 +772,9 @@ export async function modificarPresupuesto(
     return lineaDeSalon(
       salon,
       datos.tipoJornada,
-      elegido.precioUnitario ?? congelado ?? precioDeSalon(salon, datos.tipoJornada),
+      elegido.precioUnitario ??
+        congelado ??
+        precioProyectado(precioDeSalon(salon, datos.tipoJornada), proyeccion),
     );
   });
 
@@ -719,6 +857,51 @@ export async function modificarPresupuesto(
 }
 
 /**
+ * Saca del listado de consultas un presupuesto Cancelado (el tacho del listado, decisión de Franco,
+ * 16/10/2026). No borra nada: HU-22 pide que el cancelado se conserve, así que sigue en su detalle,
+ * en el evento, en el historial del cliente y en la cuenta de pagos. Solo se ocultan los Cancelados:
+ * los que siguen en gestión tienen que verse. Ocultar uno ya oculto no cambia nada.
+ */
+export async function ocultarPresupuesto(
+  id: number,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+): Promise<void> {
+  const presupuesto = await buscarOFallar(id, repo);
+  if (presupuesto.estado !== 'Cancelado') {
+    throw ErrorApi.conflicto(
+      `Solo se puede sacar del listado un presupuesto Cancelado (este está ${presupuesto.estado})`,
+    );
+  }
+  if (presupuesto.ocultoEn) return;
+  await repo.actualizarPresupuesto(id, { ocultoEn: new Date() });
+}
+
+// Tildar conserva la fecha si ya estaba marcado: es el registro de cuándo se hizo por primera vez.
+function fechaDeSeguimiento(marcar: boolean | undefined, actual: Date | null) {
+  if (marcar === undefined) return undefined;
+  return marcar ? (actual ?? new Date()) : null;
+}
+
+/**
+ * Seguimiento de la consulta con el cliente: el aviso de recepción por WhatsApp (se tilda solo al
+ * tocar el botón o a mano) y el envío formal del presupuesto en PDF (al descargarlo o a mano). Es
+ * un registro del Responsable de Eventos: se puede tildar y destildar en cualquier estado. Sin
+ * aviso, la consulta se lista como «Nuevo».
+ */
+export async function registrarSeguimiento(
+  id: number,
+  cambios: SeguimientoConsulta,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+): Promise<ConsultaDetallada> {
+  const presupuesto = await buscarOFallar(id, repo);
+  await repo.actualizarPresupuesto(id, {
+    avisoRecepcionEn: fechaDeSeguimiento(cambios.avisoRecepcion, presupuesto.avisoRecepcionEn),
+    envioFormalEn: fechaDeSeguimiento(cambios.envioFormal, presupuesto.envioFormalEn),
+  });
+  return obtenerConsulta(id, repo);
+}
+
+/**
  * HU-12: dar de baja una consulta la pasa a Cancelado (RN-08: solo se da de baja a mano). El
  * evento también se cancela: cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026).
  */
@@ -734,4 +917,130 @@ export async function darDeBajaPresupuesto(
     await repo.actualizarEvento(presupuesto.eventoId, { estado: 'Cancelado' }, tx);
   });
   return obtenerConsulta(id, repo);
+}
+
+/**
+ * HU-24: una consulta nueva para el mismo cliente con la configuración de un evento anterior, para
+ * no volver a cargarla cuando un cliente recurrente repite su evento.
+ *
+ * - El original puede estar en cualquier estado (también Cancelado: el cliente que canceló y
+ *   vuelve) y no se modifica.
+ * - Se copia lo que se reutiliza: el tipo de evento, los salones con su distribución, los
+ *   servicios con su modalidad y los adicionales escritos a mano con su precio. Lo propio de cada
+ *   cliente no viaja (equipo, 17/10/2026): la fecha, las personas y la jornada vienen en el pedido,
+ *   la cantidad de cada línea vuelve al valor por defecto (las personas nuevas si se cobra por
+ *   persona, 1 si no) y las horas quedan vacías. Tampoco se copian los pagos, el estado, la
+ *   solicitud ni las notas de la comanda.
+ * - La fecha es obligatoria y futura, contra el día de hoy en Córdoba (ADR 0010). Como cualquier
+ *   consulta, nace sin horario, con una hora de inicio aproximada si viene; el horario exacto se
+ *   carga al agendar (ADR 0007).
+ * - Los precios son los vigentes del catálogo proyectados a la fecha nueva (RN-13), no los
+ *   congelados del original: un ajuste comercial (RN-03) no se arrastra. Un servicio que ya no
+ *   está activo no se copia y se informa; un tercerizado a cotizar se copia sin importe.
+ * - El presupuesto nace Estimado, con 10 días de vigencia (RN-08). Si no queda ninguna línea (una
+ *   consulta social sin armar) nace sin armar y sin vencimiento, como la consulta social.
+ * - Una consulta no bloquea el salón (RN-12): si ese día algún salón ya tiene un evento reservado,
+ *   la consulta se crea igual y se informa el conflicto.
+ */
+export async function reutilizarConfiguracion(
+  eventoId: number,
+  datos: ReutilizarEvento,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+): Promise<EventoReutilizado> {
+  const original = await repo.buscarEventoParaReutilizar(eventoId);
+  if (!original) throw ErrorApi.noEncontrado(`No existe el evento ${eventoId}`);
+
+  if (datos.fecha <= hoyEnZonaEventos()) {
+    throw new ErrorApi(400, CODIGOS_ERROR.VALIDACION, 'Los datos enviados no son válidos', [
+      { campo: 'fecha', mensaje: 'La fecha del evento nuevo tiene que ser futura' },
+    ]);
+  }
+
+  // El presupuesto del evento: el último que no se dio de baja, o el último si todos se cancelaron
+  // (un evento cancelado tiene su presupuesto cancelado y es justo el que se quiere reutilizar).
+  const presupuestos = [...original.presupuestos].reverse();
+  const origen = presupuestos.find((p) => p.estado !== 'Cancelado') ?? presupuestos[0];
+  const lineasOriginales = origen?.lineas ?? [];
+
+  const jornada = datos.tipoJornada;
+  const personas = datos.cantidadPersonas;
+  const proyeccion = await proyeccionHasta(datos.fecha, repo);
+
+  const lineasSalones = original.salones.map(({ salon }) =>
+    lineaDeSalon(salon, jornada, precioProyectado(precioDeSalon(salon, jornada), proyeccion)),
+  );
+
+  const serviciosOmitidos: EventoReutilizado['serviciosOmitidos'] = [];
+  const lineasServicios: LineaCalculada[] = [];
+  const adicionales: LineaCalculada[] = [];
+  for (const linea of lineasOriginales) {
+    if (linea.salonId !== null) continue;
+    if (linea.servicio === null) {
+      adicionales.push(calcularLinea(null, linea.descripcion, 1, linea.precioUnitario));
+      continue;
+    }
+    const { servicio } = linea;
+    if (!servicio.activo) {
+      if (!serviciosOmitidos.some((omitido) => omitido.id === servicio.id)) {
+        serviciosOmitidos.push({ id: servicio.id, nombre: servicio.nombre });
+      }
+      continue;
+    }
+    lineasServicios.push(
+      lineaDeServicio(
+        servicio,
+        servicio.porPersona ? personas : 1,
+        precioVigenteDeServicio(servicio, proyeccion),
+        // Si el servicio dejó de admitir modalidad, el recargo ya no corresponde.
+        servicio.admiteModalidad ? linea.modalidad : 'Normal',
+        null,
+      ),
+    );
+  }
+
+  const lineas = [...lineasSalones, ...lineasServicios, ...adicionales];
+  const total = sumarLineas(lineas);
+  const salonIds = original.salones.map((s) => s.salonId);
+  const distribuciones = new Map(
+    original.salones.flatMap((s) =>
+      s.distribucionId === null ? [] : [[s.salonId, s.distribucionId] as const],
+    ),
+  );
+  const fecha = new Date(datos.fecha);
+  const salonesEnConflicto =
+    salonIds.length > 0 ? await repo.buscarSalonesReservadosEseDia(salonIds, fecha) : [];
+
+  const fechaEmision = new Date();
+  const creado = await repo.crearEnTransaccion(async (tx) => {
+    const evento = await repo.crearEvento(
+      {
+        clienteId: original.clienteId,
+        fecha,
+        cantidadPersonas: personas,
+        tipo: original.tipo,
+        tipoSocial: original.tipoSocial,
+        tipoSocialDetalle: original.tipoSocialDetalle,
+        tipoJornada: jornada,
+        horaInicioEstimada: datos.horaInicioEstimada ?? null,
+      },
+      tx,
+    );
+    await repo.reemplazarSalonesDelEvento(evento.id, salonIds, tx, distribuciones);
+    return repo.crearPresupuestoConLineas(
+      {
+        eventoId: evento.id,
+        fechaEmision,
+        venceEn: lineas.length > 0 ? calcularVencimiento(fechaEmision) : null,
+        total: total.toFixed(2),
+        lineas,
+      },
+      tx,
+    );
+  });
+
+  return {
+    consulta: await obtenerConsulta(creado.id, repo),
+    serviciosOmitidos,
+    salonesEnConflicto,
+  };
 }

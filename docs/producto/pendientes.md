@@ -9,9 +9,9 @@ El Product Owner los valida con el cliente antes del sprint en que se aborda la 
 
 | ID | Tema | Situación | Bloquea |
 |---|---|---|---|
-| S-01 | Reintegro parcial | RN-06 dice que lo abonado no se reintegra. No está definido qué pasa con lo abonado **por encima** de la seña si el cliente cancela dentro del plazo de 48 hs de RN-07. | HU-44 (S3) |
+| S-01 | Reintegro parcial | RN-06 dice que lo abonado no se reintegra. No está definido qué pasa con lo abonado **por encima** de la seña si el cliente cancela dentro del plazo de 48 hs de RN-07. Hasta definirlo, cancelar no registra ningún reintegro: los pagos solo se conservan para consulta. | HU-44 (S3; HU-23 en `sprint-03.md`) |
 | S-05 | Vencimiento del saldo | RD-06.1 exige alertar el próximo vencimiento, pero no está definida la fecha de vencimiento del saldo de un evento. | HU-23 (S6) |
-| S-09 | Recargos combinables | RN-11 define continuo (+20%) y en mesa (+30%) por servicio, pero no se aclaró si un mismo servicio puede llevar **las dos** modalidades a la vez. Modelar la modalidad como un valor único por línea (normal / continuo / mesa) hasta que se confirme. | HU-49 |
+| S-09 | Recargos combinables | RN-11 define continuo (+20%) y en mesa (+30%) por servicio, pero no se aclaró si un mismo servicio puede llevar **las dos** modalidades a la vez. Modelar la modalidad como un valor único por línea (normal / continuo / mesa) hasta que se confirme. La modalidad se construye en el Sprint 3 con ese criterio (PO, 16/10/2026). | HU-49, HU-24 (S3) |
 | S-10 | Día de aplicación del incremento mensual | El cliente dijo que el porcentaje impacta "cada 31, mes a mes". Falta confirmar si es el último día de cada mes o el primero del mes siguiente. Hasta confirmar, usar el primer día de cada mes (misma fecha que usa RN-13 para contar meses). | HU-34 (S5) |
 | S-12 | Precios de audiovisual y pantallas LED | Las pantallas LED del Auditorio no tienen precio fijo. El Responsable de Eventos va a pedirle al proveedor precios fijos por 6 meses. Mientras tanto se cargan como servicio tercerizado "a cotizar" (ver `dominio.md`). | Seeds, HU-49 |
 | S-14 | Plantilla del evento social | Los eventos sociales son muy personalizables y el Responsable de Eventos todavía no pasó la plantilla con los datos que suele tomar (ADR 0008). Mientras tanto, el detalle de una consulta social muestra ese bloque vacío y no se guarda ningún dato propio del evento social. | Detalle de la consulta social (PO, 07/10/2026) |
@@ -21,6 +21,7 @@ El Product Owner los valida con el cliente antes del sprint en que se aborda la 
 
 | ID | Tema | Resolución | Fuente |
 |---|---|---|---|
+| S-15 | Correo de un cliente con cuenta | El personal edita nombre, apellido y teléfono de cualquier cliente, pero **el correo solo de los clientes sin cuenta**: el de un cliente con cuenta es su usuario para iniciar sesión y lo cambia él. Ver «Datos de contacto del cliente» en `dominio.md`. | PO, 16/10/2026 |
 | S-08 | Base de la seña y de los pagos | **Depende de si el cliente requiere factura.** El Responsable de Eventos lo marca en el presupuesto al recibirlo. Con factura, el 20% de la seña se calcula sobre el **total con IVA**; sin factura, sobre el **subtotal sin IVA**. El saldo y el umbral del 100% se miden contra esa misma base. Ver RN-01. | PO, 05/10/2026 |
 | S-11 | Envío de correos | Resend, por su API HTTP (ADR 0006). Falta verificar un dominio propio en Resend antes de publicar: sin él, solo se puede enviar al correo del dueño de la cuenta. | Equipo, 04/10/2026 |
 | S-02 | Alta de clientes en el canal público | Autorregistro abierto con nombre, apellido, correo, contraseña y teléfono. Sin aprobación previa. Validación de correo: no se pidió. | Entrevista 24/09 |

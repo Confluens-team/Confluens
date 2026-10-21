@@ -1,6 +1,8 @@
 import {
+  esquemaCrearMedioPago,
   esquemaCrearPago,
   esquemaCuentaEvento,
+  esquemaFiltrosMediosPago,
   esquemaMedioPago,
   esquemaResultadoPago,
 } from '@confluens/shared';
@@ -12,7 +14,7 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { listarCuenta, listarMedios, registrar } from './pagos.controlador.js';
+import { crearMedio, listarCuenta, listarMedios, registrar } from './pagos.controlador.js';
 
 // Detalle de la capa HTTP, no se comparte con el frontend (igual que en eventos.rutas.ts).
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
@@ -61,7 +63,8 @@ registroOpenApi.registerPath({
   method: 'get',
   path: '/eventos/{id}/pagos',
   tags: ['Pagos'],
-  summary: 'Historial de pagos del evento y su saldo actualizado (HU-14 C2)',
+  summary:
+    'Estado de cuenta del evento (HU-21): los pagos, con el que completó la seña y el que completó el total, y el saldo con la seña. Un evento Cancelado conserva sus pagos y su base',
   request: { params: esquemaIdParam },
   responses: {
     200: {
@@ -78,10 +81,12 @@ registroOpenApi.registerPath({
   method: 'get',
   path: '/medios-pago',
   tags: ['Pagos'],
-  summary: 'Medios de pago activos, para el formulario de cobro. El ABM es del Sprint 3',
+  summary:
+    'Medios de pago con su habilitación con o sin factura (RN-14), en orden alfabético. Sin parámetros, solo los activos (formulario de cobro); con incluirInactivos=true, también los dados de baja (HU-20)',
+  request: { query: esquemaFiltrosMediosPago },
   responses: {
     200: {
-      description: 'Medios de pago activos',
+      description: 'Medios de pago',
       content: { 'application/json': { schema: z.object({ data: z.array(esquemaMedioPago) }) } },
     },
     401: { description: 'Sin sesión activa' },
@@ -108,6 +113,40 @@ rutasPagos.get(
   asincrono(listarCuenta),
 );
 
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/medios-pago',
+  tags: ['Pagos'],
+  summary:
+    'Da de alta un medio de pago, eligiendo si se puede usar con factura, sin factura o en los dos casos (HU-19, RN-14)',
+  request: { body: { content: { 'application/json': { schema: esquemaCrearMedioPago } } } },
+  responses: {
+    201: {
+      description: 'Medio de pago creado, activo',
+      content: { 'application/json': { schema: z.object({ data: esquemaMedioPago }) } },
+    },
+    400: { description: 'Nombre vacío o de más de 40 caracteres, o sin habilitar en ningún caso' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
+    409: { description: 'Ya existe un medio con ese nombre (sin distinguir mayúsculas)' },
+  },
+});
+
 export const rutasMediosPago = Router();
 
-rutasMediosPago.get('/', autenticar, autorizar(...ROLES_PERSONAL), asincrono(listarMedios));
+rutasMediosPago.get(
+  '/',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ query: esquemaFiltrosMediosPago }),
+  asincrono(listarMedios),
+);
+// HU-19: el actor es el Responsable de Finanzas, pero mientras no se dividan las funciones por rol
+// todo el personal ve y hace todo (decisión del PO, 06/10/2026).
+rutasMediosPago.post(
+  '/',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ body: esquemaCrearMedioPago }),
+  asincrono(crearMedio),
+);

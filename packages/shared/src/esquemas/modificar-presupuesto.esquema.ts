@@ -9,7 +9,7 @@ import {
 } from './comunes.esquema.js';
 import { esquemaEtiqueta } from './etiqueta.esquema.js';
 import { esquemaEstadoEvento } from './evento.esquema.js';
-import { esquemaLineaPresupuesto } from './linea-presupuesto.esquema.js';
+import { esquemaLineaPresupuesto, esquemaModalidadServicio } from './linea-presupuesto.esquema.js';
 import { esquemaEstadoPresupuesto } from './presupuesto.esquema.js';
 import {
   esquemaHoraEstimada,
@@ -37,6 +37,9 @@ export const esquemaConsultaDetallada = z.object({
   total: esquemaImporte,
   requiereFactura: z.boolean(),
   tipoJornada: esquemaTipoJornada,
+  // Seguimiento con el cliente: aviso de recepción por WhatsApp y envío formal del PDF. Null: no.
+  avisoRecepcionEn: esquemaFechaHora.nullable(),
+  envioFormalEn: esquemaFechaHora.nullable(),
   evento: z.object({
     id: esquemaId,
     estado: esquemaEstadoEvento,
@@ -73,7 +76,12 @@ export const esquemaConsultaDetallada = z.object({
     }),
   ),
   lineas: z.array(
-    esquemaLineaPresupuesto.extend({ tipo: esquemaTipoLinea, tercerizado: z.boolean() }),
+    esquemaLineaPresupuesto.extend({
+      tipo: esquemaTipoLinea,
+      tercerizado: z.boolean(),
+      // Si el servicio de la línea admite modalidad hoy (RN-11): la pantalla ofrece el selector.
+      admiteModalidad: z.boolean(),
+    }),
   ),
 });
 export type ConsultaDetallada = z.infer<typeof esquemaConsultaDetallada>;
@@ -92,11 +100,14 @@ export type SalonModificado = z.infer<typeof esquemaSalonModificado>;
 // Un tercerizado a cotizar sin `precioUnitario` sigue a cotizar; con él, queda con ese precio.
 // Como el PATCH manda el estado completo de la consulta, `horaEstimada` ausente borra la hora que
 // tuviera la línea.
+// RN-11: `precioUnitario` es el precio base, antes del recargo de la modalidad; el recargo lo suma
+// la API. Sin `modalidad`, Normal.
 export const esquemaServicioModificado = z.object({
   servicioId: esquemaId,
   cantidad: z.number().int().positive(),
   precioUnitario: esquemaImporte.optional(),
   horaEstimada: esquemaHoraEstimada.optional(),
+  modalidad: esquemaModalidadServicio.optional(),
 });
 export type ServicioModificado = z.infer<typeof esquemaServicioModificado>;
 
@@ -132,12 +143,17 @@ export const esquemaModificarPresupuesto = z
     // RN-01: si el cliente pide factura, la base de cobro de la seña y el saldo incluye el IVA. Sin
     // el campo, se mantiene lo que estaba.
     requiereFactura: z.boolean().optional(),
+    // Un mismo servicio puede ir más de una vez, con una modalidad distinta en cada línea (un coffee
+    // normal a la mañana y uno continuo a la tarde; decisión del equipo, 16/10/2026). Lo que sigue
+    // abierto (S-09) es si una sola línea puede llevar los dos recargos.
     servicios: z
       .array(esquemaServicioModificado)
       .default([])
       .refine(
-        (servicios) => new Set(servicios.map((s) => s.servicioId)).size === servicios.length,
-        'Un servicio no puede aparecer dos veces',
+        (servicios) =>
+          new Set(servicios.map((s) => `${s.servicioId}:${s.modalidad ?? 'Normal'}`)).size ===
+          servicios.length,
+        'Un servicio no puede aparecer dos veces con la misma modalidad',
       ),
     adicionales: z.array(esquemaAdicional).default([]),
   })

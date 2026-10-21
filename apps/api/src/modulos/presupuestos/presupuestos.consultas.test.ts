@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { crearApp } from '../../app.js';
 import { Prisma } from '../../generated/prisma/client.js';
@@ -13,6 +13,9 @@ vi.mock('./presupuestos.repositorio.js', () => ({
   reemplazarSalonesDelEvento: vi.fn(),
   buscarServiciosPorIds: vi.fn(),
   crearEnTransaccion: vi.fn((ejecutar: (tx: undefined) => unknown) => ejecutar(undefined)),
+  obtenerPorcentajeMensual: vi.fn(() => Promise.resolve('0')),
+  buscarEventoParaReutilizar: vi.fn(),
+  buscarSalonesReservadosEseDia: vi.fn(() => Promise.resolve([])),
   buscarPresupuestoDetallado: vi.fn(),
   actualizarEvento: vi.fn(),
   actualizarPresupuesto: vi.fn(),
@@ -65,6 +68,7 @@ function servicio(
     unidadMedida: 'persona',
     porPersona: true,
     tercerizado: false,
+    admiteModalidad: false,
     activo: true,
     categoria: null,
     fotoUrl: null,
@@ -86,6 +90,9 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
     venceEn: new Date('2026-09-30T15:00:00.000Z'),
     total: D('222200'),
     requiereFactura: false,
+    ocultoEn: null as Date | null,
+    avisoRecepcionEn: null as Date | null,
+    envioFormalEn: null as Date | null,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     evento: {
@@ -145,6 +152,8 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         precioUnitario: D('142200'),
         subtotal: D('142200'),
         aCotizar: false,
+        modalidad: 'Normal' as const,
+        precioBase: null,
         horaEstimada: null,
         servicio: null,
       },
@@ -158,6 +167,8 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
         precioUnitario: D('8000'),
         subtotal: D('80000'),
         aCotizar: false,
+        modalidad: 'Normal' as const,
+        precioBase: null,
         horaEstimada: '10:30',
         servicio: { tercerizado: false },
       },
@@ -209,10 +220,13 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       precioUnitario: '8000.00',
       subtotal: '80000.00',
       aCotizar: false,
+      modalidad: 'Normal' as const,
+      precioBase: null,
       horaEstimada: '10:30',
       salonId: null,
       tipo: 'servicio',
       tercerizado: false,
+      admiteModalidad: false,
     });
   });
 
@@ -236,6 +250,8 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
             precioUnitario: D('25000'),
             subtotal: D('25000'),
             aCotizar: false,
+            modalidad: 'Normal' as const,
+            precioBase: null,
             horaEstimada: null,
             servicio: null,
           },
@@ -270,6 +286,8 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
             precioUnitario: D('25000'),
             subtotal: D('25000'),
             aCotizar: false,
+            modalidad: 'Normal' as const,
+            precioBase: null,
             servicio: null,
           },
         ],
@@ -394,6 +412,8 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
         precioUnitario: '142200.00',
         subtotal: '142200.00',
         aCotizar: false,
+        modalidad: 'Normal' as const,
+        precioBase: null,
         horaEstimada: null,
       },
       {
@@ -404,6 +424,8 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
         precioUnitario: '8000.00',
         subtotal: '96000.00',
         aCotizar: false,
+        modalidad: 'Normal' as const,
+        precioBase: '8000.00',
         horaEstimada: null,
       },
     ]);
@@ -458,6 +480,8 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       precioUnitario: '0.00',
       subtotal: '0.00',
       aCotizar: true,
+      modalidad: 'Normal' as const,
+      precioBase: null,
       horaEstimada: null,
     });
     expect((datosDelPresupuesto() as { total: string }).total).toBe('238200.00');
@@ -479,6 +503,8 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
           precioUnitario: D('0'),
           subtotal: D('0'),
           aCotizar: true,
+          modalidad: 'Normal' as const,
+          precioBase: null,
           servicio: { tercerizado: true },
         },
       ],
@@ -552,6 +578,8 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
       precioUnitario: '12500.00',
       subtotal: '25000.00',
       aCotizar: false,
+      modalidad: 'Normal' as const,
+      precioBase: null,
       horaEstimada: null,
     });
     // 142200 + 12 × 8000 + 2 × 12500
@@ -1021,25 +1049,267 @@ describe('Consultas sociales (ADR 0008)', () => {
   });
 });
 
-describe('POST /api/presupuestos/:id/dar-de-baja (HU-12)', () => {
-  it('pasa la consulta a Cancelado y cancela su evento (un presupuesto por evento)', async () => {
-    const respuesta = await request(app)
-      .post('/api/presupuestos/31/dar-de-baja')
-      .set('Cookie', [cookieRE]);
+// HU-22 (construida en el Sprint 2 como parte de HU-12): dar de baja un presupuesto que el cliente
+// no va a confirmar. Los CP-22-xx de la Definición del Producto se cubren por criterio.
+describe('POST /api/presupuestos/:id/dar-de-baja (HU-22)', () => {
+  function darDeBaja(cookie = cookieRE) {
+    return request(app).post('/api/presupuestos/31/dar-de-baja').set('Cookie', [cookie]);
+  }
 
-    expect(respuesta.status).toBe(200);
-    expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, { estado: 'Cancelado' }, undefined);
-    expect(actualizarEventoMock).toHaveBeenCalledWith(20, { estado: 'Cancelado' }, undefined);
+  it.each(['Estimado', 'Expirado'])(
+    'pasa un presupuesto %s a Cancelado y cancela su evento (un presupuesto por evento)',
+    async (estado) => {
+      buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({ estado }));
+
+      const respuesta = await darDeBaja();
+
+      expect(respuesta.status).toBe(200);
+      expect(actualizarPresupuestoMock).toHaveBeenCalledWith(
+        31,
+        { estado: 'Cancelado' },
+        undefined,
+      );
+      expect(actualizarEventoMock).toHaveBeenCalledWith(20, { estado: 'Cancelado' }, undefined);
+    },
+  );
+
+  it('no borra nada: solo cambia los estados y deja las líneas y los pagos como estaban (RN-06)', async () => {
+    await darDeBaja();
+
+    expect(actualizarPresupuestoMock).toHaveBeenCalledTimes(1);
+    expect(actualizarEventoMock).toHaveBeenCalledTimes(1);
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+    expect(reemplazarSalonesDelEventoMock).not.toHaveBeenCalled();
   });
 
-  it('responde 409 si el presupuesto está Confirmado', async () => {
-    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({ estado: 'Confirmado' }));
+  it('responde 409 si el presupuesto está Confirmado: un evento reservado se cancela por HU-23', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Confirmado' }, { estado: 'Reservado' }),
+    );
 
-    const respuesta = await request(app)
-      .post('/api/presupuestos/31/dar-de-baja')
-      .set('Cookie', [cookieRE]);
+    const respuesta = await darDeBaja();
 
     expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 409 si el presupuesto ya está Cancelado', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
+    );
+
+    const respuesta = await darDeBaja();
+
+    expect(respuesta.status).toBe(409);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 409 si el evento ya no está en consulta', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({}, { estado: 'Cancelado' }));
+
+    const respuesta = await darDeBaja();
+
+    expect(respuesta.status).toBe(409);
+    expect(actualizarEventoMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 404 si el presupuesto no existe', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(null as never);
+
+    const respuesta = await darDeBaja();
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app).post('/api/presupuestos/31/dar-de-baja');
+    const cliente = await darDeBaja(cookieDe('CLIENTE'));
+
+    expect(sinSesion.status).toBe(401);
+    expect(cliente.status).toBe(403);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+
+  it('cualquier rol del personal puede dar de baja', async () => {
+    const respuesta = await darDeBaja(cookieDe('RESPONSABLE_FINANZAS'));
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('el presupuesto Cancelado se sigue consultando en su detalle', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
+    );
+
+    const respuesta = await request(app).get('/api/presupuestos/31').set('Cookie', [cookieRE]);
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data).toMatchObject({ estado: 'Cancelado', total: '222200.00' });
+  });
+
+  it('el presupuesto Cancelado no se modifica ni se recalcula: responde 409', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
+    );
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send(bodyBase);
+
+    expect(respuesta.status).toBe(409);
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+});
+
+// El tacho del listado de consultas (decisión de Franco, 16/10/2026): saca del listado un
+// presupuesto Cancelado sin borrarlo, porque HU-22 pide conservarlo.
+describe('POST /api/presupuestos/:id/ocultar', () => {
+  function ocultar(cookie = cookieRE) {
+    return request(app).post('/api/presupuestos/31/ocultar').set('Cookie', [cookie]);
+  }
+
+  it('marca ocultoEn en un presupuesto Cancelado y responde 204 sin cuerpo', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
+    );
+
+    const respuesta = await ocultar();
+
+    expect(respuesta.status).toBe(204);
+    expect(respuesta.body).toEqual({});
+    expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, { ocultoEn: expect.any(Date) });
+  });
+
+  it('no borra nada: no toca el evento, las líneas ni los salones', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
+    );
+
+    await ocultar();
+
+    expect(actualizarEventoMock).not.toHaveBeenCalled();
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+    expect(reemplazarSalonesDelEventoMock).not.toHaveBeenCalled();
+  });
+
+  it('ocultar uno ya oculto responde 204 y no lo vuelve a escribir', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ estado: 'Cancelado', ocultoEn: new Date() }, { estado: 'Cancelado' }),
+    );
+
+    const respuesta = await ocultar();
+
+    expect(respuesta.status).toBe(204);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['Estimado', 'Expirado', 'Confirmado'])(
+    'responde 409 con un presupuesto %s: solo se ocultan los Cancelados',
+    async (estado) => {
+      buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({ estado }));
+
+      const respuesta = await ocultar();
+
+      expect(respuesta.status).toBe(409);
+      expect(respuesta.body.error.code).toBe('CONFLICT');
+      expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('responde 404 si el presupuesto no existe', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(null as never);
+
+    const respuesta = await ocultar();
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app).post('/api/presupuestos/31/ocultar');
+    const cliente = await ocultar(cookieDe('CLIENTE'));
+
+    expect(sinSesion.status).toBe(401);
+    expect(cliente.status).toBe(403);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+});
+
+// Seguimiento con el cliente: el aviso de recepción por WhatsApp y el envío formal del PDF. Sin
+// aviso, la consulta se lista como «Nuevo».
+describe('PATCH /api/presupuestos/:id/seguimiento', () => {
+  function seguimiento(cuerpo: object, cookie = cookieRE) {
+    return request(app)
+      .patch('/api/presupuestos/31/seguimiento')
+      .set('Cookie', [cookie])
+      .send(cuerpo);
+  }
+
+  it('tilda el aviso con la fecha de ahora y devuelve la consulta', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta());
+
+    const respuesta = await seguimiento({ avisoRecepcion: true });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.id).toBe(31);
+    expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, {
+      avisoRecepcionEn: expect.any(Date),
+      envioFormalEn: undefined,
+    });
+  });
+
+  it('tildar algo ya tildado conserva la fecha original', async () => {
+    const avisadoEn = new Date('2026-10-18T13:00:00.000Z');
+    buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({ avisoRecepcionEn: avisadoEn }));
+
+    await seguimiento({ avisoRecepcion: true, envioFormal: true });
+
+    expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, {
+      avisoRecepcionEn: avisadoEn,
+      envioFormalEn: expect.any(Date),
+    });
+  });
+
+  it('destildar lo deja en null', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({ envioFormalEn: new Date('2026-10-18T13:00:00.000Z') }),
+    );
+
+    await seguimiento({ envioFormal: false });
+
+    expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, {
+      avisoRecepcionEn: undefined,
+      envioFormalEn: null,
+    });
+  });
+
+  it('responde 400 si no viene ningún cambio', async () => {
+    const respuesta = await seguimiento({});
+
+    expect(respuesta.status).toBe(400);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 404 si el presupuesto no existe', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(null);
+
+    const respuesta = await seguimiento({ avisoRecepcion: true });
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app)
+      .patch('/api/presupuestos/31/seguimiento')
+      .send({ avisoRecepcion: true });
+    const cliente = await seguimiento({ avisoRecepcion: true }, cookieDe('CLIENTE'));
+
+    expect(sinSesion.status).toBe(401);
+    expect(cliente.status).toBe(403);
+    expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
   });
 });
 
@@ -1192,5 +1462,132 @@ describe('PATCH /api/presupuestos/:id — varios salones', () => {
 
     expect(respuesta.status).toBe(400);
     expect(reemplazarSalonesDelEventoMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/presupuestos/:id — modalidad (RN-11) y proyección (RN-13)', () => {
+  const lineasGuardadas = () => reemplazarLineasMock.mock.calls[0]![1];
+  const obtenerPorcentajeMensualMock = vi.mocked(repo.obtenerPorcentajeMensual);
+  const coffeeConModalidad = servicio({
+    id: 1,
+    nombre: 'Coffee Refresh',
+    precio: '8730',
+    admiteModalidad: true,
+  });
+  const lunch = servicio({ id: 3, nombre: 'Lunch', precio: '1000' });
+  const audiovisual = servicio({ id: 4, nombre: 'Audiovisual', precio: '1000', tercerizado: true });
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-16T15:00:00.000Z'));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rechaza con 422 una modalidad en un servicio que no la admite', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, modalidad: 'Continuo' }] });
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+  });
+
+  it('suma el recargo sobre el precio base congelado al cambiar la modalidad', async () => {
+    buscarServiciosPorIdsMock.mockResolvedValue([coffeeConModalidad]);
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, servicios: [{ servicioId: 1, cantidad: 12, modalidad: 'EnMesa' }] });
+
+    expect(respuesta.status).toBe(200);
+    // 8000 congelado + 30% = 10400, no los 8730 del catálogo.
+    expect(lineasGuardadas()[1]).toMatchObject({
+      modalidad: 'EnMesa',
+      precioBase: '8000.00',
+      precioUnitario: '10400.00',
+      subtotal: '124800.00',
+    });
+  });
+
+  it('proyecta a la fecha del evento el precio de un servicio nuevo, pero no el de un tercerizado', async () => {
+    obtenerPorcentajeMensualMock.mockResolvedValue('10');
+    buscarServiciosPorIdsMock.mockResolvedValue([lunch, audiovisual]);
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        // Dos meses después del actual: 1000 × 1.1 × 1.1.
+        fecha: '2026-12-05',
+        servicios: [
+          { servicioId: 3, cantidad: 5 },
+          { servicioId: 4, cantidad: 1 },
+        ],
+      });
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas()[1]).toMatchObject({ servicioId: 3, precioUnitario: '1210.00' });
+    expect(lineasGuardadas()[2]).toMatchObject({ servicioId: 4, precioUnitario: '1000.00' });
+    obtenerPorcentajeMensualMock.mockResolvedValue('0');
+  });
+
+  it('acepta el mismo servicio dos veces con distinta modalidad y cada línea conserva su base', async () => {
+    buscarServiciosPorIdsMock.mockResolvedValue([coffeeConModalidad]);
+    const base = consulta() as unknown as { lineas: Record<string, unknown>[] };
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta({
+        lineas: [
+          ...base.lineas,
+          {
+            ...base.lineas[1],
+            id: 3,
+            modalidad: 'Continuo',
+            precioBase: D('7000'),
+            precioUnitario: D('8400'),
+            subtotal: D('84000'),
+          },
+        ],
+      }),
+    );
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        servicios: [
+          { servicioId: 1, cantidad: 12 },
+          { servicioId: 1, cantidad: 12, modalidad: 'Continuo' },
+        ],
+      });
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas()[1]).toMatchObject({ modalidad: 'Normal', precioUnitario: '8000.00' });
+    expect(lineasGuardadas()[2]).toMatchObject({
+      modalidad: 'Continuo',
+      precioBase: '7000.00',
+      precioUnitario: '8400.00',
+    });
+  });
+
+  it('responde 400 si el mismo servicio viene dos veces con la misma modalidad', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({
+        ...bodyBase,
+        servicios: [
+          { servicioId: 1, cantidad: 12, modalidad: 'Continuo' },
+          { servicioId: 1, cantidad: 5, modalidad: 'Continuo' },
+        ],
+      });
+
+    expect(respuesta.status).toBe(400);
   });
 });

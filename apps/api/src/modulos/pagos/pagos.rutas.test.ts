@@ -1,4 +1,5 @@
 import request from 'supertest';
+import { MEDIOS_PAGO_INICIALES } from '@confluens/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { crearApp } from '../../app.js';
@@ -12,6 +13,9 @@ vi.mock('./pagos.repositorio.js', () => ({
   sumarPagos: vi.fn(),
   buscarMedioPagoActivo: vi.fn(),
   listarMediosPagoActivos: vi.fn(),
+  listarTodosLosMediosPago: vi.fn(),
+  buscarMedioPagoPorNombre: vi.fn(),
+  crearMedioPago: vi.fn(),
   crear: vi.fn(),
   confirmarPresupuestoYReservar: vi.fn(),
   marcarCobrado: vi.fn(),
@@ -28,6 +32,9 @@ const {
   sumarPagos,
   buscarMedioPagoActivo,
   listarMediosPagoActivos,
+  listarTodosLosMediosPago,
+  buscarMedioPagoPorNombre,
+  crearMedioPago,
   crear,
   confirmarPresupuestoYReservar,
   marcarCobrado,
@@ -40,6 +47,9 @@ const listarDeEventoMock = vi.mocked(listarDeEvento);
 const sumarPagosMock = vi.mocked(sumarPagos);
 const buscarMedioPagoActivoMock = vi.mocked(buscarMedioPagoActivo);
 const listarMediosPagoActivosMock = vi.mocked(listarMediosPagoActivos);
+const listarTodosLosMediosPagoMock = vi.mocked(listarTodosLosMediosPago);
+const buscarMedioPagoPorNombreMock = vi.mocked(buscarMedioPagoPorNombre);
+const crearMedioPagoMock = vi.mocked(crearMedioPago);
 const crearMock = vi.mocked(crear);
 const confirmarPresupuestoYReservarMock = vi.mocked(confirmarPresupuestoYReservar);
 const marcarCobradoMock = vi.mocked(marcarCobrado);
@@ -95,6 +105,8 @@ const medioPagoFixture = {
   id: 1,
   nombre: 'Efectivo',
   activo: true,
+  conFactura: true,
+  sinFactura: true,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
 };
@@ -109,6 +121,8 @@ const lineaFixture = {
   precioUnitario: new Prisma.Decimal(TOTAL_SIN_IVA),
   subtotal: new Prisma.Decimal(TOTAL_SIN_IVA),
   aCotizar: false,
+  modalidad: 'Normal' as const,
+  precioBase: null,
   horaEstimada: null,
 };
 
@@ -130,6 +144,9 @@ function presupuestoFixture(
     venceEn: new Date(),
     total: new Prisma.Decimal(TOTAL_SIN_IVA),
     requiereFactura: datos.requiereFactura ?? false,
+    ocultoEn: null,
+    avisoRecepcionEn: null,
+    envioFormalEn: null,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     lineas: [lineaFixture],
@@ -560,6 +577,108 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
 
 // HU-13 C6: las consultas que pisan la franja no se cancelan (dominio.md:30, Cancelado es siempre
 // manual), se informan para que el Responsable de Eventos las gestione.
+// RN-14: con qué se puede cobrar depende de la casilla «El cliente requiere factura» del
+// presupuesto y de la habilitación de cada medio (con factura, sin factura o los dos, HU-19). Del
+// catálogo inicial, sin factura solo Efectivo, Transferencia y A la habitación; con factura se suman
+// Débito, Crédito y Cheque. La web filtra el desplegable, pero la regla la tiene que sostener la API.
+describe('POST /api/eventos/:id/pagos — medios de pago según la factura (RN-14)', () => {
+  const catalogo = MEDIOS_PAGO_INICIALES.map((medio, i) => ({
+    ...medioPagoFixture,
+    ...medio,
+    id: i + 1,
+  }));
+
+  function conMedio(
+    nombre: string,
+    requiereFactura: boolean,
+    habilitacion: { conFactura: boolean; sinFactura: boolean } = MEDIOS_PAGO_INICIALES.find(
+      (m) => m.nombre === nombre,
+    ) ?? { conFactura: false, sinFactura: false },
+  ) {
+    buscarMedioPagoActivoMock.mockResolvedValue({
+      ...medioPagoFixture,
+      id: 7,
+      nombre,
+      conFactura: habilitacion.conFactura,
+      sinFactura: habilitacion.sinFactura,
+    });
+    listarMediosPagoActivosMock.mockResolvedValue(catalogo);
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ presupuestos: [presupuestoFixture({ requiereFactura })] }),
+    );
+  }
+
+  it.each(['Débito', 'Crédito', 'Cheque'])(
+    'responde 422 al cobrar con %s un presupuesto sin factura',
+    async (nombre) => {
+      conMedio(nombre, false);
+
+      const respuesta = await registrarPago('1000');
+
+      expect(respuesta.status).toBe(422);
+      expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+      expect(respuesta.body.error.message).toContain(nombre);
+      expect(crearMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['Efectivo', 'Transferencia', 'A la habitación'])(
+    'acepta %s con un presupuesto sin factura',
+    async (nombre) => {
+      conMedio(nombre, false);
+
+      const respuesta = await registrarPago('1000');
+
+      expect(respuesta.status).toBe(201);
+    },
+  );
+
+  it.each(['Efectivo', 'Transferencia', 'A la habitación', 'Débito', 'Crédito', 'Cheque'])(
+    'acepta %s con un presupuesto con factura',
+    async (nombre) => {
+      conMedio(nombre, true);
+
+      const respuesta = await registrarPago('1000');
+
+      expect(respuesta.status).toBe(201);
+    },
+  );
+
+  // Los medios de versiones anteriores siguen en la base por los pagos históricos, pero ya no se
+  // cobra con ellos ni cuando el presupuesto se factura.
+  it('responde 422 con un medio que quedó fuera del catálogo', async () => {
+    conMedio('Tarjeta', true);
+
+    const respuesta = await registrarPago('1000');
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+    expect(crearMock).not.toHaveBeenCalled();
+  });
+
+  // CP-19-02: un medio dado de alta (HU-19) se puede usar en un cobro del caso que habilita.
+  it('acepta un medio dado de alta en el caso para el que se habilitó', async () => {
+    conMedio('Mercado Pago', false, { conFactura: true, sinFactura: true });
+
+    const respuesta = await registrarPago('1000');
+
+    expect(respuesta.status).toBe(201);
+  });
+
+  // CP-19-09: y se rechaza en el otro, informando con qué se puede cobrar.
+  it('responde 422 con un medio dado de alta solo con factura en un presupuesto sin factura', async () => {
+    conMedio('Mercado Pago', false, { conFactura: true, sinFactura: false });
+
+    const respuesta = await registrarPago('1000');
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.message).toBe(
+      'No se puede cobrar con Mercado Pago en un evento sin factura: los medios habilitados son Efectivo, Transferencia, A la habitación',
+    );
+    expect(crearMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('POST /api/eventos/:id/pagos — consultas en conflicto (HU-13 C6)', () => {
   it('devuelve las consultas superpuestas sin cancelarlas cuando el pago reserva el salón', async () => {
     buscarConsultasSuperpuestasMock.mockResolvedValue([
@@ -613,6 +732,246 @@ describe('GET /api/eventos/:id/pagos', () => {
   });
 });
 
+// HU-21: el estado de cuenta. Todo se calcula en cada consulta, nada se guarda.
+describe('GET /api/eventos/:id/pagos — estado de cuenta (HU-21)', () => {
+  const instanteSena = new Date('2026-10-06T15:00:00.000Z');
+
+  // Un pago con id e instante de registro propios: las marcas de seña y de pago completo se
+  // deciden por el orden de registro y por senaRegistradaEn.
+  function pagoRegistrado(id: number, monto: string, creadoEn: Date) {
+    return { ...pagoFixture(monto), id, creadoEn };
+  }
+
+  function despues(fecha: Date, milisegundos: number) {
+    return new Date(fecha.getTime() + milisegundos);
+  }
+
+  const UN_DIA = 24 * 60 * 60 * 1000;
+
+  function consultarCuenta(cookie = cookieResponsableEventos) {
+    return request(app).get('/api/eventos/20/pagos').set('Cookie', [cookie]);
+  }
+
+  it('sin pagos el saldo es la base de cobro y la seña no está alcanzada', async () => {
+    listarDeEventoMock.mockResolvedValue([]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.pagos).toEqual([]);
+    expect(respuesta.body.data.saldo).toMatchObject({
+      baseDeCobro: '142200.00',
+      pagado: '0.00',
+      saldo: '142200.00',
+      montoSena: '28440.00',
+      senaAlcanzada: false,
+    });
+  });
+
+  it('la seña es el 20% de la base con IVA cuando el presupuesto requiere factura (RN-01)', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ presupuestos: [presupuestoFixture({ requiereFactura: true })] }),
+    );
+    listarDeEventoMock.mockResolvedValue([]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.saldo).toMatchObject({
+      baseDeCobro: BASE_CON_FACTURA,
+      incluyeIva: true,
+      montoSena: SENA_CON_FACTURA,
+    });
+  });
+
+  it('redondea la seña para arriba al centavo', async () => {
+    // 476436 × 1,21 = 576487,56 → 20% = 115297,512 → 115297,52.
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        presupuestos: [
+          {
+            ...presupuestoFixture({ requiereFactura: true }),
+            total: new Prisma.Decimal('476436'),
+          },
+        ],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.saldo.montoSena).toBe('115297.52');
+  });
+
+  it('da la seña por alcanzada cuando lo pagado llega al 20%', async () => {
+    listarDeEventoMock.mockResolvedValue([pagoRegistrado(1, SENA_SIN_FACTURA, instanteSena)]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.saldo.senaAlcanzada).toBe(true);
+  });
+
+  it('un evento reservado mantiene la seña alcanzada aunque después suba el total (RN-09)', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Reservado',
+        senaRegistradaEn: instanteSena,
+        presupuestos: [
+          { ...presupuestoFixture({ estado: 'Confirmado' }), total: new Prisma.Decimal('300000') },
+        ],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([pagoRegistrado(1, SENA_SIN_FACTURA, instanteSena)]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.saldo).toMatchObject({
+      montoSena: '60000.00',
+      senaAlcanzada: true,
+    });
+  });
+
+  it('si el total bajó por debajo de lo pagado, el saldo es negativo: saldo a favor del cliente', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Reservado',
+        senaRegistradaEn: instanteSena,
+        presupuestos: [presupuestoFixture({ estado: 'Confirmado' })],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([
+      pagoRegistrado(1, '50000', instanteSena),
+      pagoRegistrado(2, '100000', despues(instanteSena, UN_DIA)),
+    ]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.saldo.saldo).toBe('-7800.00');
+  });
+
+  it('un evento Cobrado queda con saldo cero y marca el pago de la seña y el que completó el total', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Cobrado',
+        senaRegistradaEn: instanteSena,
+        presupuestos: [presupuestoFixture({ estado: 'Confirmado' })],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([
+      pagoRegistrado(1, '10000', despues(instanteSena, -UN_DIA)),
+      pagoRegistrado(2, '18440', instanteSena),
+      pagoRegistrado(3, '113760', despues(instanteSena, 7 * UN_DIA)),
+    ]);
+
+    const respuesta = await consultarCuenta();
+    const { pagos, saldo } = respuesta.body.data;
+
+    expect(saldo.saldo).toBe('0.00');
+    expect(pagos.map((p: { completaSena: boolean }) => p.completaSena)).toEqual([
+      false,
+      true,
+      false,
+    ]);
+    expect(pagos.map((p: { completaPago: boolean }) => p.completaPago)).toEqual([
+      false,
+      false,
+      true,
+    ]);
+  });
+
+  it('un pago único que completó la seña y el total lleva las dos marcas', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Cobrado',
+        senaRegistradaEn: instanteSena,
+        presupuestos: [presupuestoFixture({ estado: 'Confirmado' })],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([pagoRegistrado(1, TOTAL_SIN_IVA, instanteSena)]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.pagos[0]).toMatchObject({ completaSena: true, completaPago: true });
+  });
+
+  it('la seña es el pago registrado más cerca de senaRegistradaEn aunque los relojes difieran', async () => {
+    // La base escribió creadoEn unos milisegundos después de que el servidor marcara la seña.
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Reservado',
+        senaRegistradaEn: instanteSena,
+        presupuestos: [presupuestoFixture({ estado: 'Confirmado' })],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([
+      pagoRegistrado(1, SENA_SIN_FACTURA, despues(instanteSena, 5)),
+      pagoRegistrado(2, '1000', despues(instanteSena, UN_DIA)),
+    ]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.pagos[0].completaSena).toBe(true);
+    expect(respuesta.body.data.pagos[1].completaSena).toBe(false);
+  });
+
+  it('un evento reservado sin senaRegistradaEn marca el pago con el que el acumulado llegó al 20%', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Reservado',
+        presupuestos: [presupuestoFixture({ estado: 'Confirmado' })],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([
+      pagoRegistrado(1, '10000', instanteSena),
+      pagoRegistrado(2, '20000', despues(instanteSena, UN_DIA)),
+      pagoRegistrado(3, '5000', despues(instanteSena, 2 * UN_DIA)),
+    ]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.pagos.map((p: { completaSena: boolean }) => p.completaSena)).toEqual(
+      [false, true, false],
+    );
+  });
+
+  it('un evento en consulta no tiene pago de seña ni de total', async () => {
+    listarDeEventoMock.mockResolvedValue([pagoRegistrado(1, '5000', instanteSena)]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.body.data.pagos[0]).toMatchObject({
+      completaSena: false,
+      completaPago: false,
+    });
+  });
+
+  it('un evento Cancelado conserva sus pagos y la base de su presupuesto dado de baja (RN-06)', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({
+        estado: 'Cancelado',
+        presupuestos: [presupuestoFixture({ estado: 'Cancelado' })],
+      }),
+    );
+    listarDeEventoMock.mockResolvedValue([pagoRegistrado(1, '14220', instanteSena)]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.pagos).toHaveLength(1);
+    expect(respuesta.body.data.saldo).toMatchObject({
+      baseDeCobro: '142200.00',
+      pagado: '14220.00',
+      saldo: '127980.00',
+    });
+  });
+
+  it('un Cliente no accede al estado de cuenta', async () => {
+    const respuesta = await consultarCuenta(cookieDe('CLIENTE', 'ana@empresa.com'));
+
+    expect(respuesta.status).toBe(403);
+    expect(listarDeEventoMock).not.toHaveBeenCalled();
+  });
+});
+
 describe('GET /api/medios-pago', () => {
   it('devuelve los medios de pago activos', async () => {
     listarMediosPagoActivosMock.mockResolvedValue([medioPagoFixture]);
@@ -624,6 +983,154 @@ describe('GET /api/medios-pago', () => {
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.data).toHaveLength(1);
     expect(respuesta.body.data[0].nombre).toBe('Efectivo');
+    expect(listarTodosLosMediosPagoMock).not.toHaveBeenCalled();
+  });
+
+  // HU-20, CP-20-01 y CP-20-03: el listado trae también los dados de baja, con su estado y su
+  // habilitación, en el orden alfabético en que los devuelve el repositorio.
+  it('con incluirInactivos=true devuelve también los dados de baja, con su habilitación', async () => {
+    listarTodosLosMediosPagoMock.mockResolvedValue([
+      { ...medioPagoFixture, id: 3, nombre: 'A la habitación' },
+      { ...medioPagoFixture, id: 1, nombre: 'Efectivo' },
+      {
+        ...medioPagoFixture,
+        id: 6,
+        nombre: 'Tarjeta',
+        activo: false,
+        conFactura: false,
+        sinFactura: false,
+      },
+    ]);
+
+    const respuesta = await request(app)
+      .get('/api/medios-pago?incluirInactivos=true')
+      .set('Cookie', [cookieResponsableEventos]);
+
+    expect(respuesta.status).toBe(200);
+    expect(listarMediosPagoActivosMock).not.toHaveBeenCalled();
+    expect(respuesta.body.data.map((m: { nombre: string }) => m.nombre)).toEqual([
+      'A la habitación',
+      'Efectivo',
+      'Tarjeta',
+    ]);
+    expect(respuesta.body.data[2]).toMatchObject({
+      activo: false,
+      conFactura: false,
+      sinFactura: false,
+    });
+  });
+
+  it('un valor de incluirInactivos que no es booleano responde 400 VALIDATION_ERROR', async () => {
+    const respuesta = await request(app)
+      .get('/api/medios-pago?incluirInactivos=quizas')
+      .set('Cookie', [cookieResponsableEventos]);
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  // CP-20-05
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app).get('/api/medios-pago');
+    const comoCliente = await request(app)
+      .get('/api/medios-pago')
+      .set('Cookie', [cookieDe('CLIENTE', 'cliente@mail.test')]);
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
+  });
+});
+
+describe('POST /api/medios-pago (HU-19)', () => {
+  const alta = (cuerpo: object, cookie = cookieResponsableEventos) =>
+    request(app).post('/api/medios-pago').set('Cookie', [cookie]).send(cuerpo);
+
+  beforeEach(() => {
+    buscarMedioPagoPorNombreMock.mockReset();
+    crearMedioPagoMock.mockReset();
+    buscarMedioPagoPorNombreMock.mockResolvedValue(null);
+    crearMedioPagoMock.mockImplementation(async (datos) => ({
+      ...medioPagoFixture,
+      id: 9,
+      ...datos,
+    }));
+  });
+
+  // CP-19-01
+  it('crea el medio activo con su habilitación y el nombre recortado', async () => {
+    const respuesta = await alta({ nombre: '  Mercado Pago ', conFactura: true, sinFactura: true });
+
+    expect(respuesta.status).toBe(201);
+    expect(crearMedioPagoMock).toHaveBeenCalledWith({
+      nombre: 'Mercado Pago',
+      conFactura: true,
+      sinFactura: true,
+    });
+    expect(respuesta.body.data).toMatchObject({
+      id: 9,
+      nombre: 'Mercado Pago',
+      activo: true,
+      conFactura: true,
+      sinFactura: true,
+    });
+  });
+
+  it('se puede habilitar para un solo caso', async () => {
+    const respuesta = await alta({ nombre: 'Vale', sinFactura: true });
+
+    expect(respuesta.status).toBe(201);
+    expect(crearMedioPagoMock).toHaveBeenCalledWith({
+      nombre: 'Vale',
+      conFactura: false,
+      sinFactura: true,
+    });
+  });
+
+  // CP-19-04
+  it('sin nombre o con el nombre solo con espacios responde 400 VALIDATION_ERROR', async () => {
+    for (const cuerpo of [{ sinFactura: true }, { nombre: '   ', sinFactura: true }]) {
+      const respuesta = await alta(cuerpo);
+      expect(respuesta.status).toBe(400);
+      expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+      expect(respuesta.body.error.details[0].campo).toBe('nombre');
+    }
+    expect(crearMedioPagoMock).not.toHaveBeenCalled();
+  });
+
+  // CP-19-08
+  it('sin habilitarlo en ningún caso responde 400 VALIDATION_ERROR', async () => {
+    const respuesta = await alta({ nombre: 'Vale' });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details[0].campo).toBe('conFactura');
+    expect(crearMedioPagoMock).not.toHaveBeenCalled();
+  });
+
+  // CP-19-05: el nombre es único sin distinguir mayúsculas.
+  it('un nombre que ya existe con otras mayúsculas responde 409 CONFLICT', async () => {
+    buscarMedioPagoPorNombreMock.mockResolvedValue({ ...medioPagoFixture, nombre: 'Efectivo' });
+
+    const respuesta = await alta({ nombre: 'efectivo', sinFactura: true });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(buscarMedioPagoPorNombreMock).toHaveBeenCalledWith('efectivo');
+    expect(crearMedioPagoMock).not.toHaveBeenCalled();
+  });
+
+  // CP-19-07
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const sinSesion = await request(app)
+      .post('/api/medios-pago')
+      .send({ nombre: 'Vale', sinFactura: true });
+    const comoCliente = await alta(
+      { nombre: 'Vale', sinFactura: true },
+      cookieDe('CLIENTE', 'cliente@mail.test'),
+    );
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
+    expect(crearMedioPagoMock).not.toHaveBeenCalled();
   });
 });
 

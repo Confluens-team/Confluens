@@ -1,5 +1,5 @@
-import type { CrearPago } from '@confluens/shared';
-import { PORCENTAJE_SENA } from '@confluens/shared';
+import type { CrearMedioPago, CrearPago, FiltrosMediosPago } from '@confluens/shared';
+import { admiteMedioPago, mediosPagoHabilitados, PORCENTAJE_SENA } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
 import {
@@ -15,16 +15,33 @@ import type { PagosRepositorio } from './pagos.repositorio.js';
 
 const CIEN = new Prisma.Decimal(100);
 
-function armarSaldo(base: Prisma.Decimal, pagado: Prisma.Decimal, incluyeIva: boolean) {
+/**
+ * El saldo del evento. `senaRegistrada` dice si el evento ya se reservó (tiene `senaRegistradaEn`):
+ * en ese caso la seña cuenta como alcanzada aunque después haya subido el total (RN-09).
+ */
+function armarSaldo(
+  base: Prisma.Decimal,
+  pagado: Prisma.Decimal,
+  incluyeIva: boolean,
+  senaRegistrada: boolean,
+) {
   return {
     baseDeCobro: base.toFixed(2),
     incluyeIva,
     pagado: pagado.toFixed(2),
+    // Puede ser negativo: es el saldo a favor del cliente (decisión del PO, 16/10/2026).
     saldo: base.minus(pagado).toFixed(2),
     // Único valor de presentación del conjunto, así que acá sí se pasa a number.
     porcentajeAbonado: base.isZero()
       ? 0
       : Number(pagado.times(CIEN).dividedBy(base).toDecimalPlaces(2)),
+    // Para arriba al centavo: con IVA el 20% casi nunca es exacto y nadie entrega medio centavo.
+    montoSena: base
+      .times(PORCENTAJE_SENA)
+      .dividedBy(CIEN)
+      .toDecimalPlaces(2, Prisma.Decimal.ROUND_UP)
+      .toFixed(2),
+    senaAlcanzada: senaRegistrada || (!base.isZero() && alcanza(pagado, base, PORCENTAJE_SENA)),
   };
 }
 
@@ -82,6 +99,20 @@ export async function registrarPago(
   const medioPago = await repo.buscarMedioPagoActivo(datos.medioPagoId);
   if (!medioPago) {
     throw ErrorApi.noEncontrado(`No existe un medio de pago activo con id ${datos.medioPagoId}`);
+  }
+  // RN-14: los medios disponibles dependen de la casilla «El cliente requiere factura» del
+  // presupuesto y de la habilitación de cada medio (con factura, sin factura o los dos), que se
+  // elige al darlo de alta (HU-19). La web ya filtra el desplegable; esto es lo que hace que la
+  // regla valga igual contra la API.
+  if (!admiteMedioPago(medioPago, presupuesto.requiereFactura)) {
+    const activos = await repo.listarMediosPagoActivos();
+    const habilitados = mediosPagoHabilitados(activos, presupuesto.requiereFactura)
+      .map((medio) => medio.nombre)
+      .join(', ');
+    const caso = presupuesto.requiereFactura ? 'con factura' : 'sin factura';
+    throw ErrorApi.reglaNegocio(
+      `No se puede cobrar con ${medioPago.nombre} en un evento ${caso}: los medios habilitados son ${habilitados}`,
+    );
   }
 
   const base = calcularBaseDeCobro(presupuesto);
@@ -160,7 +191,12 @@ export async function registrarPago(
 
       return {
         pago,
-        saldo: armarSaldo(base, pagado, presupuesto.requiereFactura),
+        saldo: armarSaldo(
+          base,
+          pagado,
+          presupuesto.requiereFactura,
+          evento.senaRegistradaEn !== null || reservaElSalon,
+        ),
         estadoEvento,
         reservoElSalon: reservaElSalon,
         consultasEnConflicto,
@@ -176,7 +212,56 @@ export async function registrarPago(
   }
 }
 
-// HU-14 C2: el historial de pagos del evento más su saldo actualizado.
+type PagoParaHitos = { id: number; monto: Prisma.Decimal | string; creadoEn: Date };
+
+/**
+ * HU-21: marca en el historial el pago que completó la seña y el que completó el total, para que la
+ * cuenta los destaque. Se recorren en orden de registro (`id`), que no siempre es el de `fecha`: la
+ * fecha del pago la elige quien lo carga.
+ *
+ * - **Seña:** el pago registrado más cerca del instante de `senaRegistradaEn`, que se escribe en la
+ *   misma transacción que ese pago. Se busca el más cercano y no «el último anterior» para no
+ *   depender de que el reloj de la base y el del servidor coincidan al milisegundo. Un evento
+ *   Reservado o Cobrado sin esa marca (datos anteriores a HU-13) usa el primero cuyo acumulado
+ *   llega al 20% de la base actual. Un evento que nunca se reservó no tiene pago de seña.
+ * - **Pago completo:** el último registrado, solo si el evento está Cobrado.
+ */
+export function marcarHitos<P extends PagoParaHitos>(
+  pagos: P[],
+  evento: { estado: string; senaRegistradaEn: Date | null },
+  base: Prisma.Decimal,
+): (P & { completaSena: boolean; completaPago: boolean })[] {
+  const porRegistro = [...pagos].sort((a, b) => a.id - b.id);
+
+  let senaId: number | undefined;
+  if (evento.senaRegistradaEn) {
+    const instante = evento.senaRegistradaEn.getTime();
+    senaId = porRegistro.reduce<P | undefined>(
+      (masCercano, pago) =>
+        !masCercano ||
+        Math.abs(pago.creadoEn.getTime() - instante) <
+          Math.abs(masCercano.creadoEn.getTime() - instante)
+          ? pago
+          : masCercano,
+      undefined,
+    )?.id;
+  } else if (evento.estado === 'Reservado' || evento.estado === 'Cobrado') {
+    let acumulado = new Prisma.Decimal(0);
+    senaId = porRegistro.find((pago) => {
+      acumulado = acumulado.plus(new Prisma.Decimal(pago.monto));
+      return alcanza(acumulado, base, PORCENTAJE_SENA);
+    })?.id;
+  }
+  const pagoCompletoId = evento.estado === 'Cobrado' ? porRegistro.at(-1)?.id : undefined;
+
+  return pagos.map((pago) => ({
+    ...pago,
+    completaSena: pago.id === senaId,
+    completaPago: pago.id === pagoCompletoId,
+  }));
+}
+
+// HU-21 (antes HU-14 C2): el historial de pagos del evento, con sus hitos, más el saldo.
 export async function obtenerCuenta(
   eventoId: number,
   repo: PagosRepositorio = pagosRepositorioReal,
@@ -184,7 +269,12 @@ export async function obtenerCuenta(
   const evento = await repo.buscarDetallado(eventoId);
   if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${eventoId}`);
 
-  const presupuesto = presupuestoVigente(evento.presupuestos);
+  // Un evento dado de baja (HU-22) tiene su presupuesto Cancelado y ninguno vigente. Su cuenta se
+  // sigue midiendo contra ese presupuesto: si no, la base quedaría en 0 y lo pagado aparecería como
+  // saldo a favor, cuando lo abonado no se reintegra (RN-06).
+  const presupuesto =
+    presupuestoVigente(evento.presupuestos) ??
+    [...evento.presupuestos].sort((a, b) => b.id - a.id).at(0);
   const base = presupuesto ? calcularBaseDeCobro(presupuesto) : new Prisma.Decimal(0);
   const pagos = await repo.listarDeEvento(eventoId);
   const pagado = pagos.reduce(
@@ -192,9 +282,38 @@ export async function obtenerCuenta(
     new Prisma.Decimal(0),
   );
 
-  return { pagos, saldo: armarSaldo(base, pagado, presupuesto?.requiereFactura ?? false) };
+  return {
+    pagos: marcarHitos(pagos, evento, base),
+    saldo: armarSaldo(
+      base,
+      pagado,
+      presupuesto?.requiereFactura ?? false,
+      evento.senaRegistradaEn !== null,
+    ),
+  };
 }
 
-export async function listarMediosPago(repo: PagosRepositorio = pagosRepositorioReal) {
-  return repo.listarMediosPagoActivos();
+// Sin filtros, los activos: es lo que usa el formulario de cobro. El listado de HU-20 pide también
+// los dados de baja, para mostrar el estado de cada medio.
+export async function listarMediosPago(
+  { incluirInactivos }: FiltrosMediosPago = {},
+  repo: PagosRepositorio = pagosRepositorioReal,
+) {
+  return incluirInactivos ? repo.listarTodosLosMediosPago() : repo.listarMediosPagoActivos();
+}
+
+/**
+ * HU-19: alta de un medio de pago, con su habilitación para cobros con factura, sin factura o los
+ * dos (RN-14). El nombre llega recortado por esquemaCrearMedioPago y es único sin distinguir
+ * mayúsculas: «efectivo» choca con «Efectivo», aunque ese medio esté dado de baja.
+ */
+export async function crearMedioPago(
+  datos: CrearMedioPago,
+  repo: PagosRepositorio = pagosRepositorioReal,
+) {
+  const existente = await repo.buscarMedioPagoPorNombre(datos.nombre);
+  if (existente) {
+    throw ErrorApi.conflicto(`Ya existe un medio de pago llamado «${existente.nombre}»`);
+  }
+  return repo.crearMedioPago(datos);
 }

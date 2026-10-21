@@ -21,8 +21,8 @@
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "9.1.0",
     "@confluens/shared": "0.0.0",
-    "@prisma/adapter-pg": "7.10.0",
-    "@prisma/client": "7.10.0",
+    "@prisma/adapter-pg": "7.10.1",
+    "@prisma/client": "7.10.1",
     "bcrypt": "6.0.0",
     "cookie-parser": "1.4.7",
     "cors": "2.8.6",
@@ -43,7 +43,7 @@
     "@types/node-cron": "3.0.11",
     "@types/supertest": "7.2.1",
     "@types/swagger-ui-express": "4.1.8",
-    "prisma": "7.10.0",
+    "prisma": "7.10.1",
     "supertest": "7.2.2",
     "tsx": "4.23.13"
   }

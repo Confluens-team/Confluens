@@ -36,6 +36,7 @@ const servicioDb = {
   precio: new Decimal('4500'),
   porPersona: true,
   tercerizado: false,
+  admiteModalidad: false,
   activo: true,
   categoria: 'Coffee breaks',
   fotoUrl: null,
@@ -120,6 +121,7 @@ describe('POST /api/servicios', () => {
     precio: '4500',
     porPersona: true,
     tercerizado: false,
+    admiteModalidad: false,
   };
 
   it('con un nombre nuevo responde 201 y crea el servicio', async () => {
@@ -302,6 +304,7 @@ describe('servicios: permisos (HU-48)', () => {
     precio: '4500',
     porPersona: true,
     tercerizado: false,
+    admiteModalidad: false,
   };
   const cookieCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
     id: 7,

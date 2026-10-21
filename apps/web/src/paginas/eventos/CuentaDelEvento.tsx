@@ -2,6 +2,7 @@ import {
   type CrearPago,
   esquemaCrearPago,
   type EventoDetallado,
+  mediosPagoHabilitados,
   PORCENTAJE_SENA,
   type TipoJornada,
 } from '@confluens/shared';
@@ -235,19 +236,26 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
 
   const { pagos, saldo } = cuenta.data;
   const base = Number(saldo.baseDeCobro);
-  // Presentación: cuánto falta para que el pago reserve el salón. La cuenta exacta la hace la API
-  // con Decimal; acá es un número para mostrar, como el desglose de IVA.
-  //
-  // Se redondea para ARRIBA al centavo porque la base con IVA casi nunca da un 20% exacto (RN-01:
-  // 576.487,56 × 20% = 115.297,512) y nadie puede entregar fracciones de centavo. Redondear para
-  // abajo haría que la pantalla diga "ya está cubierta" con un pago que la API todavía considera
-  // por debajo del umbral, y el salón no quedaría reservado.
-  const montoSena = Math.ceil(base * PORCENTAJE_SENA) / 100;
+  // RN-14: con qué se puede cobrar depende de la casilla «El cliente requiere factura» del
+  // presupuesto, que es lo mismo que `incluyeIva` (es la marca que define la base de cobro de
+  // RN-01), y de la habilitación de cada medio con o sin factura (HU-19). Primero los del catálogo
+  // inicial y después los dados de alta. La API aplica la misma regla, así que el filtro de acá no
+  // la sostiene solo.
+  const mediosHabilitados = mediosPagoHabilitados(mediosPago.data ?? [], saldo.incluyeIva);
+  // HU-21: el importe de la seña y si ya se alcanzó los calcula la API con Decimal (el 20% de la
+  // base, redondeado para arriba al centavo). Acá solo se resta para mostrar cuánto falta.
+  const montoSena = Number(saldo.montoSena);
   // Redondeado al centavo: la resta de dos number puede dejar 184058.00000000003.
-  const faltaParaLaSena = Number((montoSena - Number(saldo.pagado)).toFixed(2));
+  const faltaParaLaSena = saldo.senaAlcanzada
+    ? 0
+    : Number((montoSena - Number(saldo.pagado)).toFixed(2));
   const resultado = registrarPago.data;
   const porcentajeAbonado = Math.min(100, Math.max(0, Number(saldo.porcentajeAbonado)));
   const saldoPendiente = Number(saldo.saldo);
+  const cancelado = evento.estado === 'Cancelado';
+  // Decisión del PO (16/10/2026): si el total bajó por debajo de lo pagado, la diferencia es un
+  // saldo a favor del cliente, no un saldo pendiente con signo menos.
+  const saldoAFavor = saldoPendiente < 0;
 
   const errorAgendar =
     agendarEvento.isError &&
@@ -335,10 +343,10 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           {/* Un evento cobrado no tiene saldo que mirar: lo que importa es cuánto entró y que
-              ya está completo. Va en el verde con el que la agenda marca los eventos que ocupan el
-              salón, para que se lea de un vistazo sin tener que interpretar un $0 de saldo. */}
+              ya está completo. Va en el azul con el que la agenda marca los eventos Cobrados, para
+              que se lea de un vistazo sin tener que interpretar un $0 de saldo. */}
           {cobrado ? (
-            <div className="rounded-xl bg-emerald-700 px-4 py-3 text-crema">
+            <div className="rounded-xl bg-estado-cobrado px-4 py-3 text-crema">
               <p className="text-xs font-medium tracking-wide uppercase opacity-90">
                 Evento cobrado
               </p>
@@ -349,22 +357,41 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                 Total cobrado por completo ({saldo.incluyeIva ? 'con IVA' : 'sin IVA'})
               </p>
             </div>
+          ) : cancelado ? (
+            // RN-06: lo abonado no se reintegra. La cuenta queda para consulta, sin cobro ni saldo
+            // que perseguir: lo que importa es cuánto entró antes de la baja.
+            <div className="rounded-xl bg-estado-cancelado-fondo px-4 py-3 text-estado-cancelado-texto">
+              <p className="text-xs font-medium tracking-wide uppercase">Evento cancelado</p>
+              <p className="text-2xl font-semibold tabular-nums">
+                {formateadorMoneda.format(Number(saldo.pagado))}
+              </p>
+              <p className="text-xs">
+                Abonado antes de la baja, de una base de cobro de {formateadorMoneda.format(base)} (
+                {saldo.incluyeIva ? 'con IVA' : 'sin IVA'}). Los pagos se conservan para consulta y
+                no se reintegran.
+              </p>
+            </div>
           ) : (
             <div>
-              <p className="text-2xl font-semibold tabular-nums">
-                {formateadorMoneda.format(saldoPendiente)}
+              <p
+                className={cn(
+                  'text-2xl font-semibold tabular-nums',
+                  saldoAFavor && 'text-amber-800',
+                )}
+              >
+                {formateadorMoneda.format(Math.abs(saldoPendiente))}
               </p>
               <p className="text-xs text-muted-foreground">
-                Saldo pendiente · base de cobro {formateadorMoneda.format(base)} (
-                {saldo.incluyeIva ? 'con IVA' : 'sin IVA'})
+                {saldoAFavor ? 'Saldo a favor del cliente' : 'Saldo pendiente'} · base de cobro{' '}
+                {formateadorMoneda.format(base)} ({saldo.incluyeIva ? 'con IVA' : 'sin IVA'})
               </p>
             </div>
           )}
 
           {/* Barra de lo abonado. Mientras el evento está en consulta lleva la marca de la seña: es
-              el umbral que reserva el salón (HU-13). Con el evento cobrado no aporta: estaría
-              siempre al 100% debajo del cartel que ya lo dice. */}
-          <div className={cn('space-y-1.5', cobrado && 'hidden')}>
+              el umbral que reserva el salón (HU-13). Con el evento cobrado o cancelado no aporta:
+              el cartel de arriba ya dice cómo quedó. */}
+          <div className={cn('space-y-1.5', (cobrado || cancelado) && 'hidden')}>
             <div
               className="relative h-2 rounded-full bg-muted"
               role="progressbar"
@@ -389,11 +416,17 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
               <span className="text-muted-foreground">
                 {porcentajeAbonado}% abonado · {formateadorMoneda.format(Number(saldo.pagado))}
               </span>
-              {enConsulta && (
-                <span className="text-dorado-texto">
-                  Seña {PORCENTAJE_SENA}%: {formateadorMoneda.format(montoSena)}
-                </span>
-              )}
+              {/* HU-21: la seña se ve en cualquier estado, con su importe y si ya se alcanzó. */}
+              <span
+                className={
+                  saldo.senaAlcanzada
+                    ? 'text-estado-confirmado-texto'
+                    : 'text-estado-consulta-texto'
+                }
+              >
+                Seña {PORCENTAJE_SENA}%: {formateadorMoneda.format(montoSena)}
+                {saldo.senaAlcanzada && ' · cubierta'}
+              </span>
             </div>
           </div>
 
@@ -401,18 +434,18 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
               20% cambia de monto según eso. Por eso se aclara sobre qué se calculó. */}
           {/* Una vez reservado, la seña ya se cobró aunque después suba el total (RN-09): no se
               vuelve a pedir el 20%, se cobra el saldo. */}
-          <p className={cn('text-xs text-muted-foreground', cobrado && 'hidden')}>
+          <p className={cn('text-xs text-muted-foreground', (cobrado || cancelado) && 'hidden')}>
             {enConsulta
               ? faltaParaLaSena > 0
                 ? `Faltan ${formateadorMoneda.format(faltaParaLaSena)} para la seña y reservar el salón.`
                 : 'La seña ya está cubierta.'
-              : saldoPendiente < 0
+              : saldoAFavor
                 ? 'Lo pagado supera el total: hay que resolver la diferencia con el cliente.'
                 : 'La seña ya se cobró y el salón está reservado.'}
           </p>
 
           {resultado?.reservoElSalon && (
-            <div className="space-y-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
+            <div className="space-y-2 rounded-lg border border-estado-confirmado-borde bg-estado-confirmado-fondo p-3 text-sm text-estado-confirmado-texto">
               <p className="font-medium">
                 Con este pago se alcanzó la seña: el presupuesto quedó confirmado y el salón
                 reservado.{' '}
@@ -461,22 +494,68 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
               </p>
             ) : (
               <ul className="divide-y">
-                {pagos.map((pago) => (
-                  <li key={pago.id} className="py-2">
-                    <div className="flex justify-between gap-3">
-                      <span>
-                        {fechaLocal(pago.fecha).toLocaleDateString('es-AR')} ·{' '}
-                        {pago.medioPago.nombre}
-                      </span>
-                      <span className="font-medium tabular-nums">
-                        {formateadorMoneda.format(Number(pago.monto))}
-                      </span>
-                    </div>
-                    {pago.observacion && (
-                      <p className="text-xs text-muted-foreground">{pago.observacion}</p>
-                    )}
-                  </li>
-                ))}
+                {pagos.map((pago) => {
+                  // HU-21: el pago que completó la seña y el que completó el total se destacan con
+                  // el color del estado al que llevaron el evento, el mismo de la agenda: verde de
+                  // Confirmado y azul de Cobrado. Si un solo pago hizo las dos cosas, la fila va en
+                  // azul, que es como quedó el evento, y lleva las dos etiquetas.
+                  const hitos = [
+                    pago.completaSena && { texto: 'Seña completa', clase: 'bg-estado-confirmado' },
+                    pago.completaPago && {
+                      texto: 'Evento con pago completo',
+                      clase: 'bg-estado-cobrado',
+                    },
+                  ].filter((hito): hito is { texto: string; clase: string } => Boolean(hito));
+                  const destacado = hitos.length > 0;
+                  return (
+                    <li
+                      key={pago.id}
+                      className={cn(
+                        'py-2',
+                        destacado && 'my-1 rounded-lg border px-2.5',
+                        pago.completaPago
+                          ? 'border-estado-cobrado-borde bg-estado-cobrado-fondo text-estado-cobrado-texto'
+                          : pago.completaSena &&
+                              'border-estado-confirmado-borde bg-estado-confirmado-fondo text-estado-confirmado-texto',
+                      )}
+                    >
+                      <div className="flex justify-between gap-3">
+                        <span>
+                          {fechaLocal(pago.fecha).toLocaleDateString('es-AR')} ·{' '}
+                          {pago.medioPago.nombre}
+                        </span>
+                        <span className="font-medium tabular-nums">
+                          {formateadorMoneda.format(Number(pago.monto))}
+                        </span>
+                      </div>
+                      {destacado && (
+                        <div className="mt-1 flex flex-wrap gap-1.5">
+                          {hitos.map((hito) => (
+                            <span
+                              key={hito.texto}
+                              className={cn(
+                                'rounded-full px-2 py-0.5 text-xs font-medium text-crema',
+                                hito.clase,
+                              )}
+                            >
+                              {hito.texto}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {pago.observacion && (
+                        <p
+                          className={cn(
+                            'text-xs',
+                            destacado ? 'mt-1 opacity-80' : 'text-muted-foreground',
+                          )}
+                        >
+                          {pago.observacion}
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -643,7 +722,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                       <option value="" disabled>
                         Elegir…
                       </option>
-                      {(mediosPago.data ?? []).map((medio) => (
+                      {mediosHabilitados.map((medio) => (
                         <option key={medio.id} value={medio.id}>
                           {medio.nombre}
                         </option>
@@ -651,6 +730,14 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                     </select>
                     {errors.medioPagoId && (
                       <p className="text-xs text-destructive">Elegí un medio de pago.</p>
+                    )}
+                    {/* RN-14: por qué faltan opciones. Sin la aclaración, el que cobra no sabe que
+                        la lista corta la define la casilla de factura del presupuesto. */}
+                    {!saldo.incluyeIva && (
+                      <p className="text-xs text-muted-foreground">
+                        Sin factura solo se puede cobrar en efectivo, por transferencia o a la
+                        habitación.
+                      </p>
                     )}
                   </div>
                   <div className="space-y-1.5">

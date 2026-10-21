@@ -1,18 +1,22 @@
 import type { EstadoEvento } from '@confluens/shared';
-import { Check, ChevronDown, ChevronUp, Printer } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, Printer, Repeat2 } from 'lucide-react';
 import { useState } from 'react';
 
-import { armadoDeSalones, nombresDeSalones } from '@/lib/formato';
+import { armadoDeSalones, nombresDeSalones, textoModalidad } from '@/lib/formato';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { BotonWhatsApp } from '@/components/BotonWhatsApp';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { IconoEstado } from '@/components/IconoEstado';
 import { useCancelarEvento, useEvento } from '@/hooks/use-eventos';
 import { useArmarPresupuestoDeEvento } from '@/hooks/use-presupuestos';
 import { ErrorApiCliente } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { mensajeWhatsApp } from '@/lib/whatsapp';
 import { CuentaDelEvento } from './CuentaDelEvento';
 import { ESTADOS } from './estado-evento';
+import { ReutilizarConfiguracion } from './ReutilizarConfiguracion';
 
 // En 24 horas, como la agenda de la que se viene y como la tarjeta de resumen: "6:00 a. m." al
 // lado de "06:00" se lee como dos horarios distintos.
@@ -54,7 +58,7 @@ function PasosDelEvento({ estado }: { estado: EstadoEvento }) {
               aria-current={actual ? 'step' : undefined}
               className={cn(
                 'inline-flex items-center gap-1 rounded-full px-2 py-0.5',
-                hecho && 'text-emerald-800',
+                hecho && 'text-estado-confirmado-texto',
                 actual && 'bg-bordo/10 font-medium text-bordo',
                 !hecho && !actual && 'text-muted-foreground',
               )}
@@ -84,6 +88,8 @@ interface DetalleEventoProps {
   onVerPresupuesto?: (presupuestoId: number) => void;
   // Comanda de cocina del evento confirmado: la hoja sin precios que se imprime y se cuelga.
   onImprimirComanda?: (presupuestoId: number) => void;
+  // HU-24: abre la consulta nueva creada con «Repetir evento». Sin esto, el botón no aparece.
+  onAbrirConsulta?: (presupuestoId: number, eventoId: number) => void;
 }
 
 // Vista central del evento: datos, presupuesto, cuenta y cancelación (criterio 5 / RN-07). No hay
@@ -98,11 +104,13 @@ export function DetalleEvento({
   eventoId,
   onVerPresupuesto,
   onImprimirComanda,
+  onAbrirConsulta,
 }: DetalleEventoProps) {
   const { data: evento, isLoading, isError } = useEvento(eventoId);
   const cancelarEvento = useCancelarEvento(eventoId);
   const armarPresupuesto = useArmarPresupuestoDeEvento(eventoId);
   const [presupuestoDesplegado, setPresupuestoDesplegado] = useState(false);
+  const [repitiendo, setRepitiendo] = useState(false);
 
   if (isLoading) return <p className="py-6 text-sm text-muted-foreground">Cargando…</p>;
   if (isError || !evento) {
@@ -139,10 +147,26 @@ export function DetalleEvento({
     });
   }
 
+  // HU-23: la cancelación pide confirmación explícita. En un evento confirmado el aviso dice qué
+  // implica: el salón queda libre y lo abonado no se reintegra (RN-06).
   function manejarCancelacion() {
-    if (!window.confirm('¿Cancelar este evento? Esta acción no se puede deshacer.')) return;
+    const aviso =
+      evento?.estado === 'Reservado'
+        ? '¿Cancelar este evento? El salón queda libre en ese horario y lo abonado no se reintegra. Esta acción no se puede deshacer.'
+        : '¿Cancelar esta consulta? Esta acción no se puede deshacer.';
+    if (!window.confirm(aviso)) return;
     cancelarEvento.mutate();
   }
+
+  // El rechazo de la API (por ejemplo, RN-07 con menos de 48 horas) lo comparten la consulta
+  // (EnConsulta) y el evento confirmado (Reservado).
+  const errorDeCancelacion = cancelarEvento.isError && (
+    <p role="alert" className="text-sm text-destructive">
+      {cancelarEvento.error instanceof ErrorApiCliente
+        ? cancelarEvento.error.message
+        : 'No se pudo cancelar el evento.'}
+    </p>
+  );
 
   const horario =
     evento.inicio && evento.fin
@@ -156,12 +180,24 @@ export function DetalleEvento({
     <div className="space-y-5 rounded-2xl bg-secondary/80 p-4 ring-1 ring-dorado/25 sm:p-6">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-dorado/25 pb-4">
         <div>
-          <h1 className="text-xl font-semibold text-bordo">Evento #{evento.id}</h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className="text-xl font-semibold text-bordo">Evento #{evento.id}</h1>
+            {/* HU-24: solo se repite un evento Cobrado (decisión de Franco, 17/10/2026). */}
+            {onAbrirConsulta && evento.estado === 'Cobrado' && (
+              <Button variant="outline" size="sm" onClick={() => setRepitiendo(true)}>
+                <Repeat2 /> Repetir evento
+              </Button>
+            )}
+          </div>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <span
               title={estado.ayuda}
-              className={cn('rounded-full px-2 py-0.5 text-xs font-medium', estado.clase)}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium',
+                estado.clase,
+              )}
             >
+              <IconoEstado estado={evento.estado} />
               {estado.etiqueta}
             </span>
             <BadgeTipoEvento evento={evento} />
@@ -169,6 +205,14 @@ export function DetalleEvento({
         </div>
         <PasosDelEvento estado={evento.estado} />
       </div>
+      {onAbrirConsulta && evento.estado === 'Cobrado' && (
+        <ReutilizarConfiguracion
+          eventoId={evento.id}
+          abierto={repitiendo}
+          onCambiarAbierto={setRepitiendo}
+          onAbrirConsulta={({ consulta }) => onAbrirConsulta(consulta.id, consulta.evento.id)}
+        />
+      )}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] lg:items-start">
         {/* Columna de la cuenta. Va primero en el DOM para quedar arriba en mobile; en lg pasa a la
@@ -218,6 +262,27 @@ export function DetalleEvento({
               </CardContent>
             </Card>
           )}
+          {evento.estado === 'EnConsulta' && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Cancelar la consulta</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <p className="text-muted-foreground">
+                  Si el cliente desiste, la consulta se cancela en cualquier momento y queda en su
+                  historial.
+                </p>
+                {errorDeCancelacion}
+                <Button
+                  variant="destructive"
+                  disabled={cancelarEvento.isPending}
+                  onClick={manejarCancelacion}
+                >
+                  Cancelar consulta
+                </Button>
+              </CardContent>
+            </Card>
+          )}
           {(evento.estado === 'Cancelado' || evento.estado === 'Cobrado') && (
             <p className="text-sm text-muted-foreground">
               Este evento está {evento.estado === 'Cancelado' ? 'cancelado' : 'cobrado'}, no admite
@@ -236,6 +301,11 @@ export function DetalleEvento({
                     {evento.cliente.telefono} · {evento.cliente.correo}
                   </span>
                   <EtiquetaCliente etiqueta={evento.cliente.etiqueta} className="mt-1" />
+                  <BotonWhatsApp
+                    telefono={evento.cliente.telefono}
+                    mensaje={mensajeWhatsApp(evento.cliente.nombre, evento.estado)}
+                    className="mt-2"
+                  />
                 </Dato>
                 <Dato etiqueta="Salón">
                   {nombresDeSalones(evento.salones)} · {evento.cantidadPersonas} personas
@@ -273,6 +343,8 @@ export function DetalleEvento({
                         {linea.descripcion}{' '}
                         <span className="text-muted-foreground">
                           ×{linea.cantidad}
+                          {/* RN-11: continuo o en mesa, si el servicio la lleva. */}
+                          {linea.modalidad !== 'Normal' && ` · ${textoModalidad(linea.modalidad)}`}
                           {/* La hora a la que se espera el servicio, si se pidió una. */}
                           {linea.horaEstimada && ` · ${linea.horaEstimada}`}
                         </span>
@@ -355,13 +427,11 @@ export function DetalleEvento({
                   </p>
                 )}
 
-                {cancelarEvento.isError && (
-                  <p className="text-sm text-destructive">
-                    {cancelarEvento.error instanceof ErrorApiCliente
-                      ? cancelarEvento.error.message
-                      : 'No se pudo cancelar el evento.'}
-                  </p>
-                )}
+                <p className="text-muted-foreground">
+                  Se puede cancelar hasta 48 horas corridas antes del inicio. El salón queda libre y
+                  los pagos se conservan en la cuenta: lo abonado no se reintegra.
+                </p>
+                {errorDeCancelacion}
                 <Button
                   variant="destructive"
                   disabled={cancelarEvento.isPending}

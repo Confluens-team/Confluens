@@ -28,6 +28,7 @@ describe('auth.servicio: iniciarSesion', () => {
         id: 1,
         email: 'ge@confluens.test',
         hashContrasena: hash,
+        versionSesion: 0,
         rol: 'GERENTE_GENERAL',
         creadoEn: new Date(),
         actualizadoEn: new Date(),
@@ -51,6 +52,7 @@ describe('auth.servicio: iniciarSesion', () => {
         id: 1,
         email: 'ge@confluens.test',
         hashContrasena: hash,
+        versionSesion: 0,
         rol: 'GERENTE_GENERAL',
         creadoEn: new Date(),
         actualizadoEn: new Date(),
@@ -81,6 +83,7 @@ describe('auth.servicio: restablecer la contraseña', () => {
       id: 7,
       email: 'ana@empresa.com',
       hashContrasena: await hashearContrasena('vieja-123'),
+      versionSesion: 0,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -90,7 +93,8 @@ describe('auth.servicio: restablecer la contraseña', () => {
       buscarUsuarioPorId: async (id) => (id === usuario.id ? usuario : null),
       actualizarContrasena: async (_id, hashContrasena) => {
         usuario.hashContrasena = hashContrasena;
-        return usuario;
+        usuario.versionSesion += 1;
+        return usuario.versionSesion;
       },
     };
     const enviados: Correo[] = [];

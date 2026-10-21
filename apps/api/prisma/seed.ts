@@ -2,6 +2,8 @@
 // Fuente única: docs/negocio/tarifario-2026.md. Todos los precios en pesos, sin IVA (RN-05).
 // Es idempotente: se puede correr varias veces (upsert por nombre/email).
 // Uso: npm run prisma:seed -w @confluens/api
+import { MEDIOS_PAGO_INICIALES } from '@confluens/shared';
+
 import { hashearContrasena } from '../src/lib/contrasena.js';
 import { prisma } from '../src/lib/prisma.js';
 
@@ -77,6 +79,7 @@ interface SeedServicio {
   descripcion: string;
   precio: number;
   porPersona: boolean;
+  admiteModalidad?: boolean;
 }
 
 const COFFEE_BREAKS: SeedServicio[] = [
@@ -114,28 +117,14 @@ const COFFEE_BREAKS: SeedServicio[] = [
   },
 ];
 
-// Recargos por persona sobre cada coffee break. Se cargan como variantes con el precio ya aplicado
-// porque Servicio tiene un precio fijo (decisión del Sprint 1).
-const RECARGOS_COFFEE = [
-  { sufijo: 'continuo en salón', detalle: 'Coffee continuo en salón', porcentaje: 20 },
-  {
-    sufijo: 'en mesas con mozo',
-    detalle: 'Servicio en mesas con mozo personalizado',
-    porcentaje: 30,
-  },
-];
-
-const VARIANTES_COFFEE: SeedServicio[] = COFFEE_BREAKS.flatMap((coffee) =>
-  RECARGOS_COFFEE.map((recargo) => ({
-    nombre: `${coffee.nombre} — ${recargo.sufijo}`,
-    // El porcentaje del recargo no va en la descripción: ya está aplicado en `precio`, y desde
-    // HU-07 la descripción viaja al canal público, que no publica ningún dato de precio.
-    descripcion: `${coffee.descripcion}. ${recargo.detalle}`,
-    // Los precios base son enteros y los porcentajes, múltiplos de 10: el resultado es exacto.
-    precio: (coffee.precio * (100 + recargo.porcentaje)) / 100,
-    porPersona: true,
-  })),
-);
+// Los recargos de los coffee breaks (continuo en salón +20%, en mesas con mozo +30%, RN-11) no son
+// servicios aparte: son la modalidad que se elige en cada línea del presupuesto (ADR 0012). Las
+// variantes con el recargo incluido del Sprint 1 las da de baja la migración
+// modalidad_y_configuracion_precios.
+const COFFEE_CON_MODALIDAD: SeedServicio[] = COFFEE_BREAKS.map((coffee) => ({
+  ...coffee,
+  admiteModalidad: true,
+}));
 
 const DISPENSER: SeedServicio = {
   nombre: 'Dispenser con vasos descartables',
@@ -249,7 +238,7 @@ function conCategoria(servicios: SeedServicio[], categoria: string): SeedServici
 type SeedServicioCargable = SeedServicio & { categoria: string };
 
 const SERVICIOS: SeedServicioCargable[] = [
-  ...conCategoria([...COFFEE_BREAKS, ...VARIANTES_COFFEE, DISPENSER], 'Coffee breaks'),
+  ...conCategoria([...COFFEE_CON_MODALIDAD, DISPENSER], 'Coffee breaks'),
   ...conCategoria(DESAYUNOS, 'Desayunos'),
   ...conCategoria(DEGUSTACION, 'Degustación'),
   ...conCategoria(LUNCH_COCKTAIL, 'Lunch y cocktail'),
@@ -312,6 +301,7 @@ async function cargarServicios(): Promise<void> {
       precio: String(servicio.precio),
       unidadMedida: servicio.porPersona ? 'persona' : 'unidad',
       tercerizado: false,
+      admiteModalidad: servicio.admiteModalidad ?? false,
     };
     await prisma.servicio.upsert({
       where: { nombre: servicio.nombre },
@@ -321,16 +311,37 @@ async function cargarServicios(): Promise<void> {
   }
 }
 
-// Los tres medios con los que hoy cobra el hotel (modelo-datos.md). El ABM es del Sprint 3
-// (HU-36 a HU-39); acá solo la precarga, sin la que no se puede registrar ningún pago.
-const MEDIOS_PAGO = ['Efectivo', 'Tarjeta', 'A la habitación'];
+// El catálogo inicial de medios de pago (RN-14), con su habilitación para cobros con factura, sin
+// factura o los dos; vive en shared porque la regla la aplican la web y la API. Después el personal
+// da de alta otros desde el panel (HU-19); acá solo la precarga, sin la que no se puede cobrar.
+//
+// La precarga que vale es la de las migraciones 20261013201842_medios_de_pago_rn_14 y
+// 20261016211752_medios_de_pago_habilitacion_factura, porque el deploy corre `prisma migrate
+// deploy` y nunca el seed. Esto queda para la base que se levanta a mano y para que el seed se
+// describa solo; al ser idempotente, no choca con las migraciones. «Tarjeta», el medio de la
+// versión anterior, queda dado de baja y sin habilitar: los pagos históricos que lo referencian
+// quedan intactos y se siguen mostrando, pero ya no se ofrece ni se acepta.
 
 async function cargarMediosPago(): Promise<void> {
-  for (const nombre of MEDIOS_PAGO) {
-    // Solo `create`: si el medio ya existe no se reactiva, porque pudo haberse dado de baja a
-    // propósito y el seed se corre varias veces sobre la misma base.
-    await prisma.medioPago.upsert({ where: { nombre }, create: { nombre }, update: {} });
+  for (const { nombre, conFactura, sinFactura } of MEDIOS_PAGO_INICIALES) {
+    // Solo `create`: si el medio ya existe no se toca, porque pudo haberse dado de baja a propósito
+    // y el seed se corre varias veces sobre la misma base.
+    await prisma.medioPago.upsert({
+      where: { nombre },
+      create: { nombre, conFactura, sinFactura },
+      update: {},
+    });
   }
+}
+
+// RN-13: la fila única de la configuración de precios, en 0%. La crea también la migración; acá
+// solo `create`, para no pisar el porcentaje que haya cargado el Responsable de Eventos.
+async function cargarConfiguracionPrecios(): Promise<void> {
+  await prisma.configuracionPrecios.upsert({
+    where: { id: 1 },
+    create: { id: 1, porcentajeMensual: '0' },
+    update: {},
+  });
 }
 
 try {
@@ -338,8 +349,9 @@ try {
   await cargarServicios();
   await cargarUsuarios();
   await cargarMediosPago();
+  await cargarConfiguracionPrecios();
   console.log(
-    `Seed completo: ${SALONES.length} salones, ${SERVICIOS.length} servicios, ${MEDIOS_PAGO.length} medios de pago y ${USUARIOS.length} usuarios de prueba (contraseña: "${CONTRASENA_DESARROLLO}").`,
+    `Seed completo: ${SALONES.length} salones, ${SERVICIOS.length} servicios, ${MEDIOS_PAGO_INICIALES.length} medios de pago y ${USUARIOS.length} usuarios de prueba (contraseña: "${CONTRASENA_DESARROLLO}").`,
   );
 } finally {
   await prisma.$disconnect();

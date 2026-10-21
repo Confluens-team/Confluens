@@ -27,8 +27,13 @@ function obtenerSecreto(): string {
   return 'clave-de-desarrollo-confluens-no-usar-en-produccion';
 }
 
-export function firmarToken(sesion: Sesion): string {
-  return jwt.sign(sesion, obtenerSecreto(), { expiresIn: `${JWT_EXPIRA_MINUTOS}m` });
+// M2 de la auditoría de seguridad: el token lleva la versión de sesión del usuario al firmarlo
+// (claim `v`, Usuario.versionSesion). autenticar.ts la compara con la de la base en cada request:
+// cerrar sesión o restablecer la contraseña incrementa la versión, y todos los tokens emitidos
+// antes —incluido uno robado— dejan de servir.
+export function firmarToken(sesion: Sesion, version?: number): string {
+  const payload = version === undefined ? sesion : { ...sesion, v: version };
+  return jwt.sign(payload, obtenerSecreto(), { expiresIn: `${JWT_EXPIRA_MINUTOS}m` });
 }
 
 // Token del enlace para restablecer la contraseña (C8 de HU-48). Vence a los 30 minutos y se firma
@@ -55,7 +60,9 @@ export function usuarioDelTokenRestablecimiento(token: string): number | null {
 
 export function verificarTokenRestablecimiento(token: string, hashContrasena: string): boolean {
   try {
-    const payload = jwt.verify(token, obtenerSecreto() + hashContrasena);
+    const payload = jwt.verify(token, obtenerSecreto() + hashContrasena, {
+      algorithms: ['HS256'],
+    });
     return typeof payload === 'object' && payload.proposito === PROPOSITO_RESTABLECER;
   } catch {
     return false;
@@ -100,10 +107,18 @@ export function opcionesLimpiarCookieSesion(): CookieOptions {
 // módulo no conoce el contrato HTTP.
 export function verificarToken(token: string): Sesion | null {
   try {
-    const payload = jwt.verify(token, obtenerSecreto());
+    const payload = jwt.verify(token, obtenerSecreto(), { algorithms: ['HS256'] });
     const resultado = esquemaSesion.safeParse(payload);
     return resultado.success ? resultado.data : null;
   } catch {
     return null;
   }
+}
+
+// Versión de sesión (claim `v`) de un token que ya pasó verificarToken(). null si el token no la
+// trae: los firmados antes de M2 no la tienen, y autenticar.ts los rechaza.
+export function versionDelToken(token: string): number | null {
+  const payload = jwt.decode(token);
+  const version = typeof payload === 'object' && payload ? payload['v'] : undefined;
+  return Number.isInteger(version) ? (version as number) : null;
 }

@@ -10,11 +10,13 @@ import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 vi.mock('./solicitudes.repositorio.js', () => ({
   listar: vi.fn(),
   crear: vi.fn(),
+  buscarClientePorUsuarioId: vi.fn(),
 }));
 
-const { listar, crear } = await import('./solicitudes.repositorio.js');
+const { listar, crear, buscarClientePorUsuarioId } = await import('./solicitudes.repositorio.js');
 const listarMock = vi.mocked(listar);
 const crearMock = vi.mocked(crear);
+const buscarClienteMock = vi.mocked(buscarClientePorUsuarioId);
 
 const app = crearApp();
 
@@ -145,6 +147,73 @@ describe('solicitudes: permisos (HU-48)', () => {
     const respuesta = await request(app).post('/api/solicitudes').send(cuerpoValido);
 
     expect(respuesta.status).toBe(401);
+    expect(crearMock).not.toHaveBeenCalled();
+  });
+});
+
+// M1 de la auditoría de seguridad: la solicitud de un cliente queda asociada a su ficha y los
+// campos de texto tienen tope de largo.
+describe('POST /api/solicitudes — cliente de la sesión y topes (M1)', () => {
+  const cuerpoValido = {
+    nombre: 'Marina Gómez',
+    telefono: '+54 9 351 555-1234',
+    correo: 'marina@example.com',
+    fechaDeseada: '2026-11-15',
+    cantidadPersonas: 80,
+  };
+  const cookieCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+    id: 7,
+    email: 'marina@example.com',
+    rol: 'CLIENTE',
+  })}`;
+
+  beforeEach(() => {
+    crearMock.mockReset();
+    buscarClienteMock.mockReset();
+  });
+
+  it('con sesión de Cliente asocia la solicitud a su ficha', async () => {
+    buscarClienteMock.mockResolvedValue({ id: 42 } as never);
+    crearMock.mockResolvedValue({ ...solicitudDb, clienteId: 42 });
+
+    const respuesta = await request(app)
+      .post('/api/solicitudes')
+      .set('Cookie', [cookieCliente])
+      .send(cuerpoValido);
+
+    expect(respuesta.status).toBe(201);
+    expect(buscarClienteMock).toHaveBeenCalledWith(7);
+    expect(crearMock).toHaveBeenCalledWith(expect.objectContaining(cuerpoValido), 42);
+  });
+
+  it('con sesión de Cliente sin ficha responde 404 y no crea nada', async () => {
+    buscarClienteMock.mockResolvedValue(null);
+
+    const respuesta = await request(app)
+      .post('/api/solicitudes')
+      .set('Cookie', [cookieCliente])
+      .send(cuerpoValido);
+
+    expect(respuesta.status).toBe(404);
+    expect(crearMock).not.toHaveBeenCalled();
+  });
+
+  it('cargada por el personal queda sin cliente asociado', async () => {
+    crearMock.mockResolvedValue(solicitudDb);
+
+    await request(app).post('/api/solicitudes').set('Cookie', [cookiePersonal]).send(cuerpoValido);
+
+    expect(buscarClienteMock).not.toHaveBeenCalled();
+    expect(crearMock).toHaveBeenCalledWith(expect.objectContaining(cuerpoValido));
+  });
+
+  it('un nombre de más de 100 caracteres responde 400 sin crear nada', async () => {
+    const respuesta = await request(app)
+      .post('/api/solicitudes')
+      .set('Cookie', [cookieCliente])
+      .send({ ...cuerpoValido, nombre: 'a'.repeat(101) });
+
+    expect(respuesta.status).toBe(400);
     expect(crearMock).not.toHaveBeenCalled();
   });
 });

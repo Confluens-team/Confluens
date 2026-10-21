@@ -1,4 +1,9 @@
-import type { FiltrosPresupuestos, TipoEventoSocial, TipoJornada } from '@confluens/shared';
+import type {
+  FiltrosPresupuestos,
+  ModalidadServicio,
+  TipoEventoSocial,
+  TipoJornada,
+} from '@confluens/shared';
 
 import { prisma } from '../../lib/prisma.js';
 import type { Prisma } from '../../generated/prisma/client.js';
@@ -86,13 +91,18 @@ export async function buscarSolicitud(id: number, tx: Prisma.TransactionClient =
 }
 
 // Vincula la Solicitud original al Evento recién creado, para que el RE vea en el detalle los
-// datos de contacto y del formulario con los que el cliente pidió la consulta.
+// datos de contacto y del formulario con los que el cliente pidió la consulta. Solo vincula si
+// sigue libre (eventoId null) y devuelve cuántas filas tocó: 0 = otra transacción la tomó antes.
 export async function vincularSolicitudAEvento(
   solicitudId: number,
   eventoId: number,
   tx: Prisma.TransactionClient = prisma,
-) {
-  return tx.solicitud.update({ where: { id: solicitudId }, data: { eventoId } });
+): Promise<number> {
+  const { count } = await tx.solicitud.updateMany({
+    where: { id: solicitudId, eventoId: null },
+    data: { eventoId },
+  });
+  return count;
 }
 
 // Un evento corporativo llega con salón; uno social, sin salón y con su tipo social (ADR 0008).
@@ -113,22 +123,27 @@ export async function crearEvento(
   return tx.evento.create({ data: datos });
 }
 
+// Una línea lista para guardar: el servicio ya resolvió precio, modalidad (RN-11) y subtotal.
+export interface LineaNueva {
+  servicioId: number | null;
+  salonId: number | null;
+  descripcion: string;
+  cantidad: number;
+  modalidad: ModalidadServicio;
+  precioBase: string | null;
+  precioUnitario: string;
+  subtotal: string;
+  aCotizar: boolean;
+  horaEstimada: string | null;
+}
+
 export async function crearPresupuestoConLineas(
   datos: {
     eventoId: number;
     fechaEmision: Date;
     venceEn: Date | null; // null: presupuesto sin armar de una consulta social (ADR 0008)
     total: string;
-    lineas: {
-      servicioId: number | null;
-      salonId: number | null;
-      descripcion: string;
-      cantidad: number;
-      precioUnitario: string;
-      subtotal: string;
-      aCotizar: boolean;
-      horaEstimada: string | null;
-    }[];
+    lineas: LineaNueva[];
   },
   tx: Prisma.TransactionClient = prisma,
 ) {
@@ -166,7 +181,8 @@ export async function crearEnTransaccion<T>(
 }
 
 // HU-10: listado de consultas del personal, del más reciente al más antiguo por emisión (el id
-// desempata los emitidos en el mismo instante). Los Confirmado no se listan: pasan a la agenda. Cada palabra de `cliente` tiene que aparecer en el nombre, el
+// desempata los emitidos en el mismo instante). Los Confirmado no se listan: pasan a la agenda.
+// Tampoco los Cancelados que se sacaron con el tacho (`ocultoEn`). Cada palabra de `cliente` tiene que aparecer en el nombre, el
 // apellido, el correo o la etiqueta, así "Marina Gómez" encuentra a quien tiene nombre y apellido
 // separados y "empresa1" a todos los clientes con esa etiqueta.
 export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
@@ -176,6 +192,7 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
   return prisma.presupuesto.findMany({
     where: {
       estado: estado ?? { not: 'Confirmado' },
+      ocultoEn: null,
       evento: {
         fecha: {
           gte: desde ? new Date(desde) : undefined,
@@ -200,6 +217,8 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
       fechaEmision: true,
       venceEn: true,
       total: true,
+      avisoRecepcionEn: true,
+      envioFormalEn: true,
       evento: {
         select: {
           fecha: true,
@@ -242,7 +261,10 @@ export async function buscarPresupuestoDetallado(
           salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
         },
       },
-      lineas: { include: { servicio: { select: { tercerizado: true } } }, orderBy: { id: 'asc' } },
+      lineas: {
+        include: { servicio: { select: { tercerizado: true, admiteModalidad: true } } },
+        orderBy: { id: 'asc' },
+      },
     },
   });
 }
@@ -267,16 +289,7 @@ export async function actualizarPresupuesto(
 // que el servicio ya resolvió.
 export async function reemplazarLineas(
   presupuestoId: number,
-  lineas: {
-    servicioId: number | null;
-    salonId: number | null;
-    descripcion: string;
-    cantidad: number;
-    precioUnitario: string;
-    subtotal: string;
-    aCotizar: boolean;
-    horaEstimada: string | null;
-  }[],
+  lineas: LineaNueva[],
   tx: Prisma.TransactionClient = prisma,
 ) {
   await tx.lineaPresupuesto.deleteMany({ where: { presupuestoId } });
@@ -302,6 +315,51 @@ export async function buscarDistribucionPorNombre(
   return tx.distribucion.findFirst({ where: { salonId, nombre } });
 }
 
+// RN-13: el porcentaje de incremento mensual. La fila la crea la migración; si faltara (una base
+// armada a mano), es 0 y no se proyecta nada.
+export async function obtenerPorcentajeMensual(tx: Prisma.TransactionClient = prisma) {
+  const configuracion = await tx.configuracionPrecios.findUnique({ where: { id: 1 } });
+  return configuracion?.porcentajeMensual.toString() ?? '0';
+}
+
+// HU-24: el evento que se reutiliza, con sus salones (y la distribución de cada uno) y sus
+// presupuestos con las líneas. De cada servicio se trae lo necesario para saber si sigue en el
+// catálogo y con qué precio.
+export async function buscarEventoParaReutilizar(
+  id: number,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.evento.findUnique({
+    where: { id },
+    include: {
+      salones: { include: { salon: true }, orderBy: { salonId: 'asc' } },
+      presupuestos: {
+        include: { lineas: { include: { servicio: true }, orderBy: { id: 'asc' } } },
+        orderBy: { id: 'asc' },
+      },
+    },
+  });
+}
+
+// RN-12 sobre una consulta que todavía no tiene horario: los salones que ese día ya tienen un
+// evento reservado o cobrado. Es un aviso, no un bloqueo.
+export async function buscarSalonesReservadosEseDia(
+  salonIds: number[],
+  fecha: Date,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  const filas = await tx.eventoSalon.findMany({
+    where: {
+      salonId: { in: salonIds },
+      evento: { fecha, estado: { in: ['Reservado', 'Cobrado'] } },
+    },
+    select: { salon: { select: { id: true, nombre: true } } },
+    distinct: ['salonId'],
+    orderBy: { salonId: 'asc' },
+  });
+  return filas.map((fila) => fila.salon);
+}
+
 export type PresupuestosRepositorio = {
   buscarClientePorCorreo: typeof buscarClientePorCorreo;
   buscarClientePorUsuarioId: typeof buscarClientePorUsuarioId;
@@ -323,4 +381,7 @@ export type PresupuestosRepositorio = {
   reemplazarLineas: typeof reemplazarLineas;
   sumarPagos: typeof sumarPagos;
   buscarDistribucionPorNombre: typeof buscarDistribucionPorNombre;
+  obtenerPorcentajeMensual: typeof obtenerPorcentajeMensual;
+  buscarEventoParaReutilizar: typeof buscarEventoParaReutilizar;
+  buscarSalonesReservadosEseDia: typeof buscarSalonesReservadosEseDia;
 };

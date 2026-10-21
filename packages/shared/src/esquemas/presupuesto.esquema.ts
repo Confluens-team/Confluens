@@ -58,6 +58,9 @@ export const esquemaPresupuestoListado = z.object({
   }),
   // Varios a la vez (ADR 0011); vacío en una consulta social que todavía no lo tiene.
   salones: z.array(z.object({ id: esquemaId, nombre: z.string() })),
+  // Seguimiento con el cliente. Sin aviso de recepción, la consulta se lista como «Nuevo».
+  avisoRecepcionEn: esquemaFechaHora.nullable(),
+  envioFormalEn: esquemaFechaHora.nullable(),
 });
 export type PresupuestoListado = z.infer<typeof esquemaPresupuestoListado>;
 
@@ -76,3 +79,15 @@ export const esquemaFiltrosPresupuestos = z
     message: 'La fecha hasta no puede ser anterior a la fecha desde',
   });
 export type FiltrosPresupuestos = z.infer<typeof esquemaFiltrosPresupuestos>;
+
+// Body de PATCH /presupuestos/:id/seguimiento: tilda (true) o destilda (false) el aviso de recepción
+// por WhatsApp y el envío formal del presupuesto en PDF. Lo que no viene no cambia.
+export const esquemaSeguimientoConsulta = z
+  .object({
+    avisoRecepcion: z.boolean().optional(),
+    envioFormal: z.boolean().optional(),
+  })
+  .refine((cambios) => cambios.avisoRecepcion !== undefined || cambios.envioFormal !== undefined, {
+    message: 'Indicá el aviso de recepción o el envío formal',
+  });
+export type SeguimientoConsulta = z.infer<typeof esquemaSeguimientoConsulta>;

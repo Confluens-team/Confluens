@@ -41,5 +41,20 @@ export const esquemaCrearSolicitud = esquemaSolicitud
     creadoEn: true,
     actualizadoEn: true,
   })
-  .extend({ salonId: esquemaId.nullable().optional() });
+  // Topes de largo (M1 de la auditoría de seguridad): sin ellos el único límite era el de 100 KB
+  // del body. Los mismos que la ficha del cliente para el nombre.
+  .extend({
+    nombre: z
+      .string()
+      .trim()
+      .min(1, 'Ingresá tu nombre y apellido')
+      .max(100, 'Usá hasta 100 caracteres'),
+    telefono: z
+      .string()
+      .trim()
+      .min(1, 'Ingresá un teléfono de contacto')
+      .max(30, 'Usá hasta 30 caracteres'),
+    correo: z.email('Ingresá un correo válido').max(254, 'El correo es demasiado largo'),
+    salonId: esquemaId.nullable().optional(),
+  });
 export type CrearSolicitud = z.infer<typeof esquemaCrearSolicitud>;

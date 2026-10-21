@@ -15,10 +15,10 @@ export async function listar(_req: Request, res: Response): Promise<void> {
 }
 
 // req.body ya llegó validado por validar({ body: esquemaCrearSolicitud }) en solicitudes.rutas.ts.
-// Sin autenticación (criterio 2 de HU-14): cualquiera puede enviar una solicitud desde el
-// formulario público.
+// Pide sesión desde HU-07. Si la carga un CLIENTE, queda asociada a su ficha (M1).
 export async function crear(req: Request, res: Response): Promise<void> {
-  const solicitud = await registrarSolicitud(req.body as CrearSolicitud);
+  const usuarioCliente = req.usuario!.rol === 'CLIENTE' ? req.usuario!.id : undefined;
+  const solicitud = await registrarSolicitud(req.body as CrearSolicitud, undefined, usuarioCliente);
   const cuerpo: RespuestaExito<Solicitud> = { data: solicitud as unknown as Solicitud };
   res.status(201).json(cuerpo);
 }

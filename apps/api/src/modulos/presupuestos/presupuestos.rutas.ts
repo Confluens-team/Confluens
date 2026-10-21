@@ -6,6 +6,7 @@ import {
   esquemaModificarPresupuesto,
   esquemaPresupuestoDetallado,
   esquemaPresupuestoListado,
+  esquemaSeguimientoConsulta,
 } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -24,6 +25,8 @@ import {
   listar,
   modificar,
   obtener,
+  ocultar,
+  seguimiento,
 } from './presupuestos.controlador.js';
 
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
@@ -174,6 +177,39 @@ registroOpenApi.registerPath({
   },
 });
 
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/presupuestos/{id}/ocultar',
+  tags: ['Presupuestos'],
+  summary:
+    'Saca del listado de consultas un presupuesto Cancelado, sin borrarlo: sigue en su detalle, en el evento y en la cuenta (HU-22)',
+  request: { params: esquemaIdParam },
+  responses: {
+    204: { description: 'Presupuesto oculto del listado (también si ya lo estaba)' },
+    404: { description: 'No existe el presupuesto' },
+    409: { description: 'El presupuesto no está Cancelado' },
+    ...erroresDeSesion,
+  },
+});
+
+registroOpenApi.registerPath({
+  method: 'patch',
+  path: '/presupuestos/{id}/seguimiento',
+  tags: ['Presupuestos'],
+  summary:
+    'Tilda o destilda el aviso de recepción por WhatsApp y el envío formal del presupuesto en PDF. Sin aviso, la consulta se lista como «Nuevo»',
+  request: {
+    params: esquemaIdParam,
+    body: { content: { 'application/json': { schema: esquemaSeguimientoConsulta } } },
+  },
+  responses: {
+    200: { description: 'Consulta con su seguimiento actualizado', content: respuestaConsulta },
+    400: { description: 'Datos inválidos o sin ningún cambio' },
+    404: { description: 'No existe el presupuesto' },
+    ...erroresDeSesion,
+  },
+});
+
 export const rutasPresupuestos = Router();
 
 // H1 de la auditoría de seguridad (OWASP A01): este POST estaba montado solo con validar(), sin
@@ -232,4 +268,16 @@ rutasPresupuestos.post(
   ...personalDeConsultas,
   validar({ params: esquemaIdParam }),
   asincrono(darDeBaja),
+);
+rutasPresupuestos.patch(
+  '/:id/seguimiento',
+  ...personalDeConsultas,
+  validar({ params: esquemaIdParam, body: esquemaSeguimientoConsulta }),
+  asincrono(seguimiento),
+);
+rutasPresupuestos.post(
+  '/:id/ocultar',
+  ...personalDeConsultas,
+  validar({ params: esquemaIdParam }),
+  asincrono(ocultar),
 );

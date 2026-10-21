@@ -4,13 +4,14 @@ import {
   type EstadoEvento,
   type EventoAgenda,
 } from '@confluens/shared';
-import { ArrowLeft, CalendarDays, Clock, List, Users } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Clock, Users } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import { type ReactNode, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
+import { IconoEstado } from '@/components/IconoEstado';
 import { useAgenda } from '@/hooks/use-eventos';
 import { useSalones } from '@/hooks/use-salones';
 import { fechaLocal, formatearPesos, hoyISO, nombreCompleto } from '@/lib/formato';
@@ -24,11 +25,11 @@ import { DetalleEvento } from './DetalleEvento';
 import { ESTADOS, ESTADOS_DEL_FILTRO } from './estado-evento';
 import { TarjetaResumenEvento } from './TarjetaResumenEvento';
 
-type Vista = 'calendario' | 'lista';
+export type VistaAgenda = 'calendario' | 'lista';
 
 const hora = (instante: string | null) => (instante ? horaDelEvento(instante) : null);
 
-// Chip de filtro: se usa igual para los salones, los estados y el conmutador de vista.
+// Chip de filtro: se usa igual para los salones y para los estados.
 function Chip({
   activo,
   onClick,
@@ -140,10 +141,11 @@ function ListaDeEventos({
                     <div className="shrink-0 text-right">
                       <span
                         className={cn(
-                          'inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold',
+                          'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold',
                           estado.clase,
                         )}
                       >
+                        <IconoEstado estado={evento.estado} />
                         {estado.etiqueta}
                       </span>
                       {evento.totalPresupuesto && (
@@ -176,8 +178,12 @@ function ListaDeEventos({
 // lee como disponible aunque haya consultas EnConsulta sobre ella (criterio 5), y los Cancelado
 // quedan afuera hasta que se los pida (criterio 2). Tres eventos el mismo día y horario en salones
 // distintos se ven los tres: el filtro de salón es opcional y acepta varios a la vez.
-export function Agenda() {
-  const [vista, setVista] = useState<Vista>('calendario');
+/**
+ * La agenda de eventos en una de sus dos vistas. Cada una es su propia pestaña del panel: «Agenda»
+ * es el calendario y «Eventos» la lista agrupada por mes (decisión de Franco, 16/10/2026). Antes
+ * convivían en la misma pestaña con un conmutador.
+ */
+export function Agenda({ vista }: { vista: VistaAgenda }) {
   const [salonId, setSalonId] = useState<number[]>([]);
   const [estado, setEstado] = useState<EstadoEvento[]>([...ESTADOS_QUE_OCUPAN_SALON]);
   // Ventana visible del calendario; la manda él mismo al cambiar de mes o de vista.
@@ -189,7 +195,7 @@ export function Agenda() {
   const [resumen, setResumen] = useState<{
     id: number;
     ancla: HTMLElement;
-    origen: Vista;
+    origen: VistaAgenda;
   } | null>(null);
   // Dónde quedó parado el calendario. FullCalendar se desmonta al abrir el detalle, así que sin
   // esto volvería siempre al mes de hoy en la vista mensual.
@@ -212,13 +218,6 @@ export function Agenda() {
     },
     !enCalendario || rango !== null,
   );
-
-  // El resumen está anclado a un elemento del calendario o de la lista: si cambia lo que se
-  // muestra, ese elemento puede desaparecer y la tarjeta quedaría flotando en cualquier lado.
-  function cambiarVista(valor: Vista) {
-    setResumen(null);
-    setVista(valor);
-  }
 
   function alternarSalon(id: number) {
     setResumen(null);
@@ -266,12 +265,17 @@ export function Agenda() {
     return (
       <div className="space-y-2">
         <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
-          <ArrowLeft /> Volver a la agenda
+          <ArrowLeft /> {enCalendario ? 'Volver a la agenda' : 'Volver a los eventos'}
         </Button>
         <DetalleEvento
           eventoId={eventoAbierto}
           onVerPresupuesto={setPresupuestoAbierto}
           onImprimirComanda={setComandaAbierta}
+          // HU-24: la consulta nueva creada con «Repetir evento» se abre en su lugar.
+          onAbrirConsulta={(presupuestoId, eventoId) => {
+            setEventoAbierto(eventoId);
+            setPresupuestoAbierto(presupuestoId);
+          }}
         />
       </div>
     );
@@ -287,29 +291,9 @@ export function Agenda() {
 
   return (
     <div className="space-y-5">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-lg bg-muted p-1">
-          {(
-            [
-              { valor: 'calendario', texto: 'Calendario', icono: CalendarDays },
-              { valor: 'lista', texto: 'Lista', icono: List },
-            ] as const
-          ).map(({ valor, texto, icono: Icono }) => (
-            <button
-              key={valor}
-              type="button"
-              onClick={() => cambiarVista(valor)}
-              className={cn(
-                'inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-                vista === valor ? 'bg-card shadow-sm' : 'text-muted-foreground',
-              )}
-            >
-              <Icono className="size-4" /> {texto}
-            </button>
-          ))}
-        </div>
-        {agenda.isFetching && <span className="text-xs text-muted-foreground">Actualizando…</span>}
-      </div>
+      {agenda.isFetching && (
+        <p className="text-right text-xs text-muted-foreground">Actualizando…</p>
+      )}
 
       <div className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-border">
         <div>
@@ -343,17 +327,16 @@ export function Agenda() {
                 onClick={() => alternarEstado(valor)}
                 title={ESTADOS[valor].ayuda}
               >
-                {/* El aro no es decorativo: el color de Cobrado es el mismo bordo que pinta el chip
-                    activo, así que sin él el punto desaparece justo cuando el filtro está puesto.
-                    Va en crema y no en negro porque el negro sobre el bordo da 1.57:1 y no se
-                    despega; el crema da cerca de 12:1. Sobre el chip inactivo el aro queda
-                    invisible contra la tarjeta, que es lo que se busca: ahí el punto ya se ve.
-                    Es `ring` y no `border` porque el borde le comería 2px al color dentro de un
-                    punto de 8px. */}
+                {/* Aro crema alrededor del punto: sobre el chip activo, que es bordó, un punto
+                    oscuro se pierde (el negro da 1.57:1) y el crema lo despega. Sobre el chip
+                    inactivo el aro queda invisible contra la tarjeta, que es lo que se busca. Es
+                    `ring` y no `border` porque el borde le comería 2px al color dentro de un punto
+                    de 8px. */}
                 <span
                   className="size-2 rounded-full ring-1 ring-crema"
                   style={{ backgroundColor: ESTADOS[valor].color }}
                 />
+                <IconoEstado estado={valor} />
                 {ESTADOS[valor].etiqueta}
               </Chip>
             ))}

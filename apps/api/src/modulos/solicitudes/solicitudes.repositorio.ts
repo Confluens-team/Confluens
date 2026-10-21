@@ -13,9 +13,8 @@ export async function listar() {
   });
 }
 
-// clienteId queda null: en el Sprint 1 el formulario público no requiere autenticación (ver
-// esquemaCrearSolicitud en packages/shared). La ficha de cliente la crea el Responsable de
-// Eventos al tomar la solicitud, fuera del alcance de HU-14.
+// clienteId lo decide el servicio: la ficha del cliente de la sesión cuando quien consulta es un
+// CLIENTE (M1 de la auditoría de seguridad), o null cuando la carga el personal.
 //
 // fechaDeseada llega como string "AAAA-MM-DD" (esquemaFecha = z.iso.date()): Prisma con el
 // adapter-pg exige un DateTime ISO-8601 completo incluso para columnas @db.Date y rechaza la
@@ -25,18 +24,23 @@ export async function listar() {
 // cuando el formulario no lo manda —se llega a él desde el menú y no desde la ficha de un salón—
 // para que la columna nunca quede en undefined y el listado interno pueda distinguir "sin
 // preferencia" de "prefiere este salón".
-export async function crear(datos: CrearSolicitud) {
+export async function crear(datos: CrearSolicitud, clienteId: number | null = null) {
   return prisma.solicitud.create({
     data: {
       ...datos,
       fechaDeseada: new Date(datos.fechaDeseada),
       salonId: datos.salonId ?? null,
-      clienteId: null,
+      clienteId,
     },
   });
+}
+
+export async function buscarClientePorUsuarioId(usuarioId: number) {
+  return prisma.cliente.findUnique({ where: { usuarioId } });
 }
 
 export type SolicitudesRepositorio = {
   listar: typeof listar;
   crear: typeof crear;
+  buscarClientePorUsuarioId: typeof buscarClientePorUsuarioId;
 };
