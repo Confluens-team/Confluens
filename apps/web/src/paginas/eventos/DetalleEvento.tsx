@@ -4,6 +4,7 @@ import { useState } from 'react';
 
 import { armadoDeSalones, nombresDeSalones, textoModalidad } from '@/lib/formato';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { BotonWhatsApp } from '@/components/BotonWhatsApp';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,6 +13,7 @@ import { useCancelarEvento, useEvento } from '@/hooks/use-eventos';
 import { useArmarPresupuestoDeEvento } from '@/hooks/use-presupuestos';
 import { ErrorApiCliente } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { mensajeWhatsApp } from '@/lib/whatsapp';
 import { CuentaDelEvento } from './CuentaDelEvento';
 import { ESTADOS } from './estado-evento';
 import { ReutilizarConfiguracion } from './ReutilizarConfiguracion';
@@ -299,6 +301,11 @@ export function DetalleEvento({
                     {evento.cliente.telefono} · {evento.cliente.correo}
                   </span>
                   <EtiquetaCliente etiqueta={evento.cliente.etiqueta} className="mt-1" />
+                  <BotonWhatsApp
+                    telefono={evento.cliente.telefono}
+                    mensaje={mensajeWhatsApp(evento.cliente.nombre, evento.estado)}
+                    className="mt-2"
+                  />
                 </Dato>
                 <Dato etiqueta="Salón">
                   {nombresDeSalones(evento.salones)} · {evento.cantidadPersonas} personas

@@ -1,5 +1,15 @@
 import { desglosarIva, type EstadoConsulta, type FiltrosPresupuestos } from '@confluens/shared';
-import { AlertTriangle, ArrowLeft, CheckCircle2, FileText, Search, Trash2, X } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CheckCircle2,
+  FileCheck,
+  FileText,
+  MessageCircle,
+  Search,
+  Trash2,
+  X,
+} from 'lucide-react';
 import { type MouseEvent, useEffect, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
@@ -28,6 +38,27 @@ const claseDeEstado = (estado: string) => ESTADOS.find((e) => e.valor === estado
 
 const fechaCorta = (fecha: Date) =>
   fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+// Seguimiento con el cliente: el aviso por WhatsApp y el envío formal del PDF. Encendido si se
+// hizo, apagado si no; el title dice cuándo.
+function IconoSeguimiento({
+  Icono,
+  hecho,
+  texto,
+}: {
+  Icono: typeof MessageCircle;
+  hecho: string | null;
+  texto: string;
+}) {
+  const titulo = hecho
+    ? `${texto} el ${fechaCorta(new Date(hecho))}`
+    : `Sin ${texto.toLowerCase()}`;
+  return (
+    <span title={titulo} aria-label={titulo} role="img">
+      <Icono className={cn('size-3.5', hecho ? 'text-emerald-700' : 'text-muted-foreground/40')} />
+    </span>
+  );
+}
 
 // En la columna de vigencia el año va con dos dígitos para que la tabla entre sin scroll.
 const fechaCompacta = (fecha: Date) =>
@@ -294,6 +325,9 @@ export function ListadoConsultas() {
                   // ADR 0008: consulta social que el personal todavía no armó.
                   const sinArmar = presupuesto.venceEn === null;
                   const importes = desglosarIva(presupuesto.total);
+                  // Recién entrada: nadie le avisó todavía al cliente que se recibió.
+                  const nueva =
+                    presupuesto.avisoRecepcionEn === null && presupuesto.estado !== 'Cancelado';
                   return (
                     <tr
                       key={presupuesto.id}
@@ -301,6 +335,7 @@ export function ListadoConsultas() {
                       className={cn(
                         'cursor-pointer transition-colors hover:bg-muted/60',
                         expirado && 'bg-estado-expirado-fondo/50',
+                        nueva && 'bg-destructive/5',
                       )}
                     >
                       <td
@@ -316,6 +351,11 @@ export function ListadoConsultas() {
                         >
                           {presupuesto.id}
                         </button>
+                        {nueva && (
+                          <span className="mt-1 block w-fit rounded-full bg-destructive px-2 py-0.5 text-[0.65rem] font-bold tracking-wide text-white uppercase">
+                            Nuevo
+                          </span>
+                        )}
                       </td>
                       <td className="max-w-[10rem] px-3 py-3">
                         <p className="truncate font-medium">
@@ -383,6 +423,18 @@ export function ListadoConsultas() {
                             Presupuesto vencido, recalcular
                           </p>
                         )}
+                        <p className="mt-1.5 flex items-center gap-2">
+                          <IconoSeguimiento
+                            Icono={MessageCircle}
+                            hecho={presupuesto.avisoRecepcionEn}
+                            texto="Aviso al cliente"
+                          />
+                          <IconoSeguimiento
+                            Icono={FileCheck}
+                            hecho={presupuesto.envioFormalEn}
+                            texto="Presupuesto enviado"
+                          />
+                        </p>
                       </td>
                       <td className="px-3 py-3 text-right">
                         {presupuesto.estado === 'Cancelado' && (

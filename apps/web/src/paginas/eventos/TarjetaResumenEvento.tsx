@@ -2,11 +2,13 @@ import type { EventoAgenda } from '@confluens/shared';
 import { ArrowRight, CalendarDays, Clock, LayoutGrid, Users, X } from 'lucide-react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
+import { BotonWhatsApp } from '@/components/BotonWhatsApp';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { IconoEstado } from '@/components/IconoEstado';
 import { fechaLocal, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { cn } from '@/lib/utils';
+import { mensajeWhatsApp } from '@/lib/whatsapp';
 import { ESTADOS } from './estado-evento';
 
 // En 24 horas, como el calendario y la lista que están abajo: la tarjeta se lee junto a ellos y
@@ -117,13 +119,17 @@ export function TarjetaResumenEvento({
         >
           {iniciales(evento.cliente)}
         </span>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">{nombreCompleto(evento.cliente)}</p>
           <p className="truncate text-xs text-muted-foreground">
             {evento.cliente.telefono} · {evento.cliente.correo}
           </p>
           <EtiquetaCliente etiqueta={evento.cliente.etiqueta} className="mt-1" />
         </div>
+        <BotonWhatsApp
+          telefono={evento.cliente.telefono}
+          mensaje={mensajeWhatsApp(evento.cliente.nombre, evento.estado)}
+        />
       </div>
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t pt-3">
