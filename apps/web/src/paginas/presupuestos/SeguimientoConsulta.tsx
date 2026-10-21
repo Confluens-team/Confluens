@@ -58,36 +58,14 @@ function ErrorDeSeguimiento({ error }: { error: unknown }) {
   );
 }
 
-// El botón de WhatsApp con el check «Aviso al cliente»: tocar el botón lo tilda solo (la consulta
-// deja de listarse como «Nuevo») y también se tilda o destilda a mano.
-export function AvisoAlCliente({ consulta }: { consulta: ConsultaDetallada }) {
-  const seguimiento = useSeguimientoConsulta(consulta.id);
-
-  return (
-    <div className="flex flex-col items-end gap-1.5">
-      <BotonWhatsApp
-        telefono={consulta.cliente.telefono}
-        mensaje={mensajeWhatsApp(consulta.cliente.nombre, consulta.evento.estado)}
-        onClick={() => {
-          if (!consulta.avisoRecepcionEn) seguimiento.mutate({ avisoRecepcion: true });
-        }}
-      />
-      <CheckSeguimiento
-        id="seguimiento-aviso"
-        etiqueta="Aviso al cliente"
-        marcadoEn={consulta.avisoRecepcionEn}
-        deshabilitado={seguimiento.isPending}
-        onCambio={(marcado) => seguimiento.mutate({ avisoRecepcion: marcado })}
-      />
-      <ErrorDeSeguimiento error={seguimiento.error} />
-    </div>
-  );
-}
-
-// El presupuesto completo en PDF para mandárselo al cliente de manera formal, con el check
-// «Presupuesto enviado»: se tilda solo al guardar el PDF y también a mano. Una consulta social sin
-// armar todavía no tiene presupuesto (ADR 0008).
-export function EnvioFormal({
+// Los dos pasos del seguimiento en el bloque del cliente, cada botón con su check:
+// - WhatsApp y «Aviso al cliente»: tocar el botón lo tilda solo (la consulta deja de listarse como
+//   «Nuevo»).
+// - «Descargar PDF» y «Presupuesto enviado»: el presupuesto completo para mandárselo de manera
+//   formal; guardar el PDF lo tilda solo. Una consulta social sin armar todavía no tiene
+//   presupuesto (ADR 0008).
+// Los dos checks también se tildan y destildan a mano.
+export function SeguimientoConsulta({
   consulta,
   onDescargar,
 }: {
@@ -98,15 +76,32 @@ export function EnvioFormal({
   const sinArmar = consulta.venceEn === null;
 
   return (
-    <section className="rounded-xl bg-card p-5 ring-1 ring-border">
-      <h3 className="text-sm font-semibold">Envío formal</h3>
-      <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-3">
+    <div className="space-y-2">
+      <div className="grid grid-cols-[auto_1fr] items-center gap-x-3 gap-y-2">
+        <BotonWhatsApp
+          telefono={consulta.cliente.telefono}
+          mensaje={mensajeWhatsApp(consulta.cliente.nombre, consulta.evento.estado)}
+          onClick={() => {
+            if (!consulta.avisoRecepcionEn) seguimiento.mutate({ avisoRecepcion: true });
+          }}
+        />
+        <CheckSeguimiento
+          id="seguimiento-aviso"
+          etiqueta="Aviso al cliente"
+          marcadoEn={consulta.avisoRecepcionEn}
+          deshabilitado={seguimiento.isPending}
+          onCambio={(marcado) => seguimiento.mutate({ avisoRecepcion: marcado })}
+        />
         <Button
           type="button"
           size="sm"
           variant="outline"
           disabled={sinArmar}
-          title={sinArmar ? 'La consulta todavía no tiene presupuesto armado' : undefined}
+          title={
+            sinArmar
+              ? 'Armá y guardá el presupuesto para poder descargarlo'
+              : 'El PDF sale con lo último guardado de la consulta'
+          }
           onClick={onDescargar}
         >
           <FileDown /> Descargar PDF
@@ -119,12 +114,7 @@ export function EnvioFormal({
           onCambio={(marcado) => seguimiento.mutate({ envioFormal: marcado })}
         />
       </div>
-      <p className="mt-2 text-xs text-muted-foreground">
-        {sinArmar
-          ? 'Armá y guardá el presupuesto para poder descargarlo.'
-          : 'El PDF sale con lo último guardado de la consulta.'}
-      </p>
       <ErrorDeSeguimiento error={seguimiento.error} />
-    </section>
+    </div>
   );
 }

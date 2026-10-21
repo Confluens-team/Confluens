@@ -49,7 +49,7 @@ import { agruparPorCategoria } from '@/lib/catalogo';
 import { armadoDeSalones, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { PresupuestoFormal } from './PresupuestoFormal';
-import { AvisoAlCliente, EnvioFormal } from './SeguimientoConsulta';
+import { SeguimientoConsulta } from './SeguimientoConsulta';
 
 // Una línea del detalle mientras se edita. servicioId null = adicional escrito a mano. Un
 // tercerizado puede quedar con el precio vacío: "a cotizar" (HU-11).
@@ -613,23 +613,23 @@ function Formulario({
       )}
 
       <section className="rounded-xl bg-card p-5 ring-1 ring-border">
-        <div className="flex items-start justify-between gap-3">
-          <h3 className="text-sm font-semibold">Cliente</h3>
-          <AvisoAlCliente consulta={consulta} />
+        <h3 className="text-sm font-semibold">Cliente</h3>
+        <div className="mt-2 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
+          <div className="min-w-0">
+            <p className="flex flex-wrap items-center gap-2 font-medium">
+              {nombreCompleto(consulta.cliente)}
+              <EtiquetaCliente etiqueta={consulta.cliente.etiqueta} />
+            </p>
+            <p className="text-sm text-muted-foreground">
+              {consulta.cliente.correo} · {consulta.cliente.telefono}
+            </p>
+            <p className="mt-2 text-xs text-muted-foreground">
+              Los datos de contacto los mantiene el cliente desde su cuenta.
+            </p>
+          </div>
+          <SeguimientoConsulta consulta={consulta} onDescargar={onDescargarPresupuesto} />
         </div>
-        <p className="mt-2 flex flex-wrap items-center gap-2 font-medium">
-          {nombreCompleto(consulta.cliente)}
-          <EtiquetaCliente etiqueta={consulta.cliente.etiqueta} />
-        </p>
-        <p className="text-sm text-muted-foreground">
-          {consulta.cliente.correo} · {consulta.cliente.telefono}
-        </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          Los datos de contacto los mantiene el cliente desde su cuenta.
-        </p>
       </section>
-
-      <EnvioFormal consulta={consulta} onDescargar={onDescargarPresupuesto} />
 
       <fieldset disabled={!editable} className="space-y-6">
         <section className="rounded-xl bg-card p-5 ring-1 ring-border">
