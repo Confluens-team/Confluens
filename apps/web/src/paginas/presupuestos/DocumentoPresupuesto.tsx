@@ -32,6 +32,8 @@ export function DocumentoPresupuesto({
   tipoJornada,
   lineas,
   total: totalSinIva,
+  salon,
+  sinCondiciones = false,
 }: {
   id: number;
   estado: string;
@@ -46,6 +48,10 @@ export function DocumentoPresupuesto({
   lineas: LineaPresupuesto[];
   // Sin IVA, como se guarda (RN-05): es el subtotal del desglose.
   total: string;
+  // El horario que va en la línea del salón (la de `idLinea`), en el presupuesto formal.
+  salon?: { idLinea: number; horario: string };
+  // El presupuesto formal trae después las condiciones completas: no hace falta el resumen.
+  sinCondiciones?: boolean;
 }) {
   const { subtotal, iva, total } = desglosarIva(totalSinIva);
   const numero = String(id).padStart(6, '0');
@@ -127,6 +133,9 @@ export function DocumentoPresupuesto({
                     a las {linea.horaEstimada}
                   </span>
                 )}
+                {salon?.idLinea === linea.id && (
+                  <span className="block text-xs text-muted-foreground">{salon.horario}</span>
+                )}
               </td>
               <td className="py-3 text-right tabular-nums">{linea.cantidad}</td>
               <td className="hidden py-3 text-right tabular-nums sm:table-cell">
@@ -162,24 +171,26 @@ export function DocumentoPresupuesto({
         Este presupuesto tiene una validez de {DIAS_VIGENCIA_PRESUPUESTO} días.
       </p>
 
-      <footer className="relative mt-10 rounded-lg bg-muted/70 p-5 text-xs leading-relaxed text-muted-foreground">
-        <p className="font-semibold text-foreground">Condiciones</p>
-        <ul className="mt-2 list-disc space-y-1 pl-4">
-          <li>
-            Presupuesto estimado sujeto a disponibilidad del salón en la fecha elegida: no reserva
-            la fecha hasta que se confirme.
-          </li>
-          <li>
-            La seña del {PORCENTAJE_SENA}% se abona dentro de la vigencia del presupuesto y congela
-            sus precios. Se calcula sobre el total con IVA.
-          </li>
-          <li>
-            Vencidos los {DIAS_VIGENCIA_PRESUPUESTO} días sin seña, el presupuesto se recalcula con
-            los precios vigentes.
-          </li>
-          <li>Cancelación hasta 48 horas corridas antes del evento. La seña no se reintegra.</li>
-        </ul>
-      </footer>
+      {!sinCondiciones && (
+        <footer className="relative mt-10 rounded-lg bg-muted/70 p-5 text-xs leading-relaxed text-muted-foreground">
+          <p className="font-semibold text-foreground">Condiciones</p>
+          <ul className="mt-2 list-disc space-y-1 pl-4">
+            <li>
+              Presupuesto estimado sujeto a disponibilidad del salón en la fecha elegida: no reserva
+              la fecha hasta que se confirme.
+            </li>
+            <li>
+              La seña del {PORCENTAJE_SENA}% se abona dentro de la vigencia del presupuesto y
+              congela sus precios. Se calcula sobre el total con IVA.
+            </li>
+            <li>
+              Vencidos los {DIAS_VIGENCIA_PRESUPUESTO} días sin seña, el presupuesto se recalcula
+              con los precios vigentes.
+            </li>
+            <li>Cancelación hasta 48 horas corridas antes del evento. La seña no se reintegra.</li>
+          </ul>
+        </footer>
+      )}
     </article>
   );
 }
