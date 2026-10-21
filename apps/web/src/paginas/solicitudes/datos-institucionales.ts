@@ -12,9 +12,11 @@
 export const UBICACION = {
   direccion: 'Av. Sabattini 459',
   localidad: 'Córdoba, Argentina',
-  // Link en vez del iframe de Google Maps: embeberlo sumaría un tercero que rastrea a cualquiera
-  // que entre a la landing, y el dato que el visitante necesita es la dirección.
   mapaUrl: 'https://www.google.com/maps/search/?api=1&query=Av.+Sabattini+459,+Córdoba,+Argentina',
+  // Vista del mapa en la sección "Ubicación". Es el embed sin API key; el click sobre el mapa no
+  // lo mueve sino que abre mapaUrl en Google Maps. Contra: Google recibe la visita de cualquiera
+  // que entre a la landing (decisión del equipo, que antes publicaba solo el link).
+  mapaEmbedUrl: 'https://www.google.com/maps?q=Av.+Sabattini+459,+Córdoba,+Argentina&output=embed',
 } as const;
 
 export const INSTAGRAM = {
