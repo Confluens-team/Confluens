@@ -8,12 +8,14 @@ import {
   Inbox,
   List,
   LogOut,
+  Moon,
   Settings,
+  Sun,
   UserRound,
   Users,
   UtensilsCrossed,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router';
 
 import { Logo } from '@/components/Logo';
@@ -190,6 +192,32 @@ function MiCuenta({ sesion, onCerrarSesion }: { sesion: Sesion; onCerrarSesion: 
   );
 }
 
+const CLAVE_MODO_OSCURO = 'confluens.panel.modoOscuro';
+
+function leerModoOscuro() {
+  try {
+    return localStorage.getItem(CLAVE_MODO_OSCURO) === '1';
+  } catch {
+    return false;
+  }
+}
+
+// Prueba de modo oscuro, solo para el panel: la clase va en <html> para que alcance también a los
+// diálogos y menús, que Radix monta fuera del panel, y se saca al salir para no oscurecer la landing.
+function useModoOscuro() {
+  const [oscuro, setOscuro] = useState(leerModoOscuro);
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', oscuro);
+    try {
+      localStorage.setItem(CLAVE_MODO_OSCURO, oscuro ? '1' : '0');
+    } catch {
+      // Sin almacenamiento la preferencia dura hasta recargar.
+    }
+    return () => document.documentElement.classList.remove('dark');
+  }, [oscuro]);
+  return [oscuro, () => setOscuro((valor) => !valor)] as const;
+}
+
 // Panel interno: una sola vista para todo el personal, con todo lo implementado en seis pestañas.
 // Por ahora todos los roles ven las mismas pestañas; qué ve cada uno se revisa más adelante, y
 // mientras tanto los permisos los aplica la API. Cada pestaña es una ruta: /admin/<pestaña>.
@@ -198,6 +226,7 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
   const cerrarSesion = useCerrarSesion();
   const pestania = useParams()['pestania'] as Pestania | undefined;
   const activa = PESTANIAS.find((p) => p.valor === pestania);
+  const [oscuro, alternarModoOscuro] = useModoOscuro();
 
   // Primero se sale a la landing y después se cierra la sesión: si fuera al revés, la ruta /admin
   // se quedaría sin sesión y redirigiría al login del personal.
@@ -224,6 +253,15 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
           </button>
           <div className="flex items-center gap-2 text-sm">
             <span className="hidden text-muted-foreground sm:inline">{sesion.email}</span>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={alternarModoOscuro}
+              aria-label={oscuro ? 'Usar modo claro' : 'Usar modo oscuro'}
+              title={oscuro ? 'Modo claro' : 'Modo oscuro'}
+            >
+              {oscuro ? <Sun /> : <Moon />}
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/')}>
               <Globe /> Ver la landing
             </Button>

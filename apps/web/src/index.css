@@ -129,38 +129,87 @@
   --sidebar-ring: #8a3a2f;
 }
 
+/* Prueba de modo oscuro del panel interno: la misma paleta del tarifario, de noche. El fondo es
+   un marrón casi negro en vez de gris, el bordó pasa a un rosado claro para que se lea como texto y
+   el crema se invierte, porque se usa como texto sobre bordó y como fondo claro. Los estados
+   cambian el -fondo claro por un tinte oscuro y el -texto oscuro por uno claro. */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
+  --background: #1a1311;
+  --foreground: #efe6dc;
+  --card: #241a17;
+  --card-foreground: #efe6dc;
+  --popover: #241a17;
+  --popover-foreground: #efe6dc;
+  --primary: #d98b80;
+  --primary-foreground: #1a1311;
+  --secondary: #33251f;
+  --secondary-foreground: #efe6dc;
+  --muted: #2d211d;
+  --muted-foreground: #b3a397;
+  --accent: #3a2a23;
+  --accent-foreground: #efe6dc;
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --border: #3d2d27;
+  --input: #4a3830;
+  --ring: #d98b80;
+  --chart-1: #d98b80;
+  --chart-2: #c2a071;
+  --chart-3: #a8574b;
+  --chart-4: #5b4a40;
+  --chart-5: #efe6dc;
+  --sidebar: #241a17;
+  --sidebar-foreground: #efe6dc;
+  --sidebar-primary: #d98b80;
+  --sidebar-primary-foreground: #1a1311;
+  --sidebar-accent: #3a2a23;
+  --sidebar-accent-foreground: #efe6dc;
+  --sidebar-border: #3d2d27;
+  --sidebar-ring: #d98b80;
+
+  --color-bordo: #d98b80;
+  --color-crema: #1a1311;
+  --color-papel: #241a17;
+  --color-dorado-texto: #c9a876;
+
+  --color-estado-consulta-fondo: #3a2e1c;
+  --color-estado-consulta-texto: #e0c48f;
+  --color-estado-expirado-fondo: #3d2219;
+  --color-estado-expirado-texto: #eba684;
+  --color-estado-confirmado-fondo: #1d3326;
+  --color-estado-confirmado-borde: #2f5a40;
+  --color-estado-confirmado-texto: #9fd4b2;
+  --color-estado-cobrado-fondo: #1a2b38;
+  --color-estado-cobrado-borde: #2c4a62;
+  --color-estado-cobrado-texto: #a3c6e0;
+  --color-estado-cancelado-fondo: #2e2925;
+  --color-estado-cancelado-texto: #c4bbb2;
+  --color-tipo-corporativo: #b3a1dd;
+  --color-tipo-corporativo-suave: #3b3150;
+  --color-tipo-social: #e58bb5;
+  --color-tipo-social-suave: #4d2639;
+
+  /* Los avisos usan los ámbar y esmeralda de Tailwind directo: se oscurecen acá, sin tocar cada
+     componente. */
+  --color-amber-50: #33270f;
+  --color-amber-100: #3d2f12;
+  --color-amber-200: #5c4719;
+  --color-amber-700: #f0c060;
+  --color-amber-800: #f3cd7d;
+  --color-amber-900: #f6d99a;
+  --color-emerald-50: #10291f;
+  --color-emerald-100: #143326;
+  --color-emerald-200: #1f4d39;
+  --color-emerald-700: #6fd3a5;
+  --color-emerald-800: #8ddcb7;
+  --color-emerald-900: #a9e6c9;
+
+  color-scheme: dark;
+}
+
+.dark .fondo-papel {
+  background-image:
+    radial-gradient(circle at 20% 10%, rgb(255 255 255 / 0.03), transparent 40%),
+    radial-gradient(circle at 80% 90%, rgb(176 141 87 / 0.06), transparent 45%);
 }
 
 @layer base {
