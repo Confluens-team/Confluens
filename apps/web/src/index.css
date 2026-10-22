@@ -12,10 +12,12 @@
   /* AC1 de la auditoría de accesibilidad (WCAG 1.4.3): el dorado de los filetes da 2.75:1 sobre
      crema, muy por debajo del 4.5:1 que pide el texto chico. Se mantiene para filetes, bordes e
      iconos decorativos, y los rótulos en versalitas pasan a una de estas dos variantes según el
-     fondo: -texto sobre los fondos claros de la paleta (4.66:1 en el peor de ellos) y -claro
-     sobre bordó (5.07:1) y bordó oscuro (6.62:1). */
-  --color-dorado-texto: #7e5f26;
-  --color-dorado-claro: #c2a071;
+     fondo: -texto sobre los fondos claros de la paleta y -claro sobre bordó. Se subió el tono de
+     las dos para lectores mayores, con margen sobre el 4.5:1: -texto da 6.1:1 en el peor fondo
+     claro (antes 4.66:1) y -claro, 7.2:1 sobre bordó y 9.4:1 sobre bordó oscuro (antes 5.07:1 y
+     6.62:1). */
+  --color-dorado-texto: #6a4e1c;
+  --color-dorado-claro: #dcc196;
   --color-bordo: #5e1f1a;
   --color-bordo-oscuro: #3b1411;
   --color-crema: #f6f1ea;
