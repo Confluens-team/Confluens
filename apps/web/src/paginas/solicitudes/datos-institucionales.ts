@@ -62,7 +62,7 @@ export const CONDICIONES_DE_CONTRATACION = [
   },
   {
     condicion: 'Validez del presupuesto',
-    detalle: 'Tu presupuesto vale por 10 días desde que lo emitimos.',
+    detalle: 'Tu presupuesto vale por 10 días desde que es emitido.',
   },
   {
     condicion: 'Falta de anticipo',
