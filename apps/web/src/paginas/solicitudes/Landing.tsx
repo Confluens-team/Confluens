@@ -1,4 +1,25 @@
-import { ArrowRight, Car, Check, ChefHat, MapPin, Receipt, Share2, Users } from 'lucide-react';
+import {
+  ArrowRight,
+  Ban,
+  CalendarClock,
+  CalendarX,
+  Car,
+  Check,
+  ChefHat,
+  CreditCard,
+  Hammer,
+  HandCoins,
+  MapPin,
+  PencilLine,
+  Receipt,
+  RefreshCw,
+  Share2,
+  UserX,
+  Users,
+  UtensilsCrossed,
+  Wallet,
+  type LucideIcon,
+} from 'lucide-react';
 
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
@@ -14,6 +35,26 @@ import {
 } from './datos-institucionales';
 
 const NUMERALES = ['I', 'II', 'III', 'IV', 'V'];
+
+// Un ícono por condición. Tipado por el nombre: si se agrega una condición en
+// datos-institucionales.ts, el compilador pide su ícono acá.
+const ICONO_POR_CONDICION: Record<
+  (typeof CONDICIONES_DE_CONTRATACION)[number]['condicion'],
+  LucideIcon
+> = {
+  Precios: Receipt,
+  Seña: HandCoins,
+  'Validez del presupuesto': CalendarClock,
+  'Falta de anticipo': RefreshCw,
+  Cancelación: CalendarX,
+  Reintegro: Ban,
+  Modificaciones: PencilLine,
+  Ausencias: UserX,
+  'Gastos extra': Wallet,
+  'Medios de pago': CreditCard,
+  'Armado y montaje': Hammer,
+  'Ingreso de alimentos': UtensilsCrossed,
+};
 
 // AC3 de la auditoría de accesibilidad: los llamados a la acción de la landing (consultar, cotizar
 // e iniciar sesión) son la puerta de entrada del cliente, así que se agrandan para que se vean de
@@ -49,7 +90,7 @@ function TituloSeccion({
     <div className="mx-auto max-w-2xl text-center">
       {/* AC1: el mismo rótulo se usa sobre crema y sobre bordó; el tono del dorado acompaña. */}
       <p
-        className={`text-xs font-semibold tracking-[0.3em] uppercase ${
+        className={`text-sm font-semibold tracking-[0.2em] uppercase ${
           claro ? 'text-dorado-claro' : 'text-dorado-texto'
         }`}
       >
@@ -67,7 +108,7 @@ function TituloSeccion({
       </div>
       {bajada && (
         <p
-          className={`mt-5 font-display text-xl italic ${claro ? 'text-crema/75' : 'text-muted-foreground'}`}
+          className={`mt-5 font-display text-2xl italic ${claro ? 'text-crema/90' : 'text-foreground/80'}`}
         >
           {bajada}
         </p>
@@ -108,18 +149,18 @@ export function Landing({
           alt="Auditorio del Hotel Dr. César Carman armado en formato conferencia"
           className="absolute inset-0 -z-10 size-full object-cover"
         />
-        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-bordo-oscuro/95 via-bordo-oscuro/70 to-bordo-oscuro/20" />
+        <div className="absolute inset-0 -z-10 bg-gradient-to-r from-bordo-oscuro/95 via-bordo-oscuro/75 to-bordo-oscuro/55" />
         <div className="absolute inset-0 -z-10 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
 
         <div className="mx-auto w-full max-w-6xl px-4 pt-28 pb-10 sm:px-6">
           <div className="max-w-2xl">
-            <p className="text-xs font-semibold tracking-[0.3em] text-dorado-claro uppercase">
+            <p className="text-sm font-semibold tracking-[0.2em] text-dorado-claro uppercase">
               Hotel Dr. César Carman · Córdoba
             </p>
             <h1 className="mt-5 text-4xl leading-[1.1] font-semibold text-crema sm:text-6xl">
               Tu evento, en el salón que se ajusta a vos
             </h1>
-            <p className="mt-6 font-display text-2xl text-crema/85 italic">
+            <p className="mt-6 font-display text-2xl text-crema/95 italic">
               Cinco salones, gastronomía propia y un equipo que se ocupa de cada detalle.
             </p>
             <div className="mt-10 flex flex-col gap-4 sm:flex-row">
@@ -157,7 +198,7 @@ export function Landing({
       {/* Presentación */}
       <section className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2">
         <div>
-          <p className="text-xs font-semibold tracking-[0.3em] text-dorado-texto uppercase">
+          <p className="text-sm font-semibold tracking-[0.2em] text-dorado-texto uppercase">
             Los Abuelos Servicios Gastronómicos SRL
           </p>
           <h2 className="mt-3 text-3xl font-semibold text-bordo sm:text-4xl">
@@ -168,7 +209,7 @@ export function Landing({
             acompañamos desde la primera consulta hasta el último café: elegís el salón, el armado y
             la propuesta gastronómica, y nosotros nos ocupamos del resto.
           </p>
-          <p className="mt-6 font-display text-xl text-bordo italic">
+          <p className="mt-6 font-display text-2xl text-bordo italic">
             “Le agradecemos que se haya contactado con nosotros.”
           </p>
         </div>
@@ -194,7 +235,7 @@ export function Landing({
       </section>
 
       {/* Salones (HU-07) */}
-      <section id="salones" className="scroll-mt-20 border-t border-border/60 bg-papel/60 py-24">
+      <section id="salones" className="scroll-mt-20 py-24">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <TituloSeccion
             antetitulo="Nuestros salones"
@@ -266,33 +307,37 @@ export function Landing({
       </section>
 
       {/* Condiciones de contratación */}
-      <section
-        id="condiciones"
-        className="scroll-mt-20 border-y border-border/60 bg-papel/60 py-24"
-      >
+      <section id="condiciones" className="scroll-mt-20 py-24">
         <div className="mx-auto max-w-6xl px-4 sm:px-6">
           <TituloSeccion
             antetitulo="Condiciones de contratación"
             titulo="Todo claro desde el principio"
             bajada="Las mismas que figuran en el presupuesto que te enviamos."
           />
-          <dl className="mt-12 grid gap-4 md:grid-cols-2">
-            {CONDICIONES_DE_CONTRATACION.map(({ condicion, detalle }) => (
-              <div
-                key={condicion}
-                className="flex gap-4 rounded-xl border-l-2 border-dorado bg-card px-5 py-4 shadow-sm"
-              >
-                <div>
-                  <dt className="text-sm font-semibold text-bordo">{condicion}</dt>
-                  <dd className="mt-0.5 text-sm text-muted-foreground">{detalle}</dd>
+          <dl className="mt-12 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {CONDICIONES_DE_CONTRATACION.map(({ condicion, detalle }) => {
+              const Icono = ICONO_POR_CONDICION[condicion];
+              return (
+                <div
+                  key={condicion}
+                  className="flex gap-4 rounded-2xl bg-card p-5 shadow-sm ring-1 ring-border transition-shadow hover:shadow-md hover:ring-dorado/60"
+                >
+                  <span className="grid size-11 shrink-0 place-items-center rounded-full bg-bordo text-dorado-claro">
+                    <Icono className="size-5" aria-hidden />
+                  </span>
+                  <div>
+                    <dt className="font-semibold text-bordo">{condicion}</dt>
+                    <dd className="mt-1 text-foreground/80">{detalle}</dd>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </dl>
         </div>
       </section>
 
-      {/* Llamado final: la consulta siempre pasa por la cuenta del cliente */}
+      {/* Llamado final y ubicación, en dos columnas: la consulta siempre pasa por la cuenta del
+          cliente; el mapa es solo vista y el click lo cubre el link, que abre Google Maps. */}
       <section id="contacto" className="relative isolate scroll-mt-20 overflow-hidden py-24">
         <img
           src={FOTOS.mesaVinos}
@@ -302,33 +347,61 @@ export function Landing({
         {/* AC2: el rótulo en versalitas necesita 4.5:1 contra la zona más clara de la foto;
             con el velo al 85 % quedaba en 4.25:1 y con el 92 % llega a 5.3:1. */}
         <div className="absolute inset-0 -z-10 bg-bordo-oscuro/92" />
-        <div className="mx-auto flex max-w-3xl flex-col items-center px-4 text-center text-crema sm:px-6">
-          <p className="text-xs font-semibold tracking-[0.3em] text-dorado-claro uppercase">
-            Hagamos tu evento
-          </p>
-          <h2 className="mt-3 text-3xl font-semibold sm:text-5xl">Tu presupuesto, en minutos</h2>
-          <p className="mt-6 font-display text-xl text-crema/80 italic">
-            Iniciá sesión o creá tu cuenta con tu nombre, email, teléfono y una contraseña, y armá
-            tu presupuesto estimado con los precios vigentes.
-          </p>
-          <ul className="mt-8 grid gap-3 text-left text-sm text-crema/85 sm:grid-cols-2">
-            {[
-              'Elegís fecha, cantidad de personas y salón',
-              'Sumás la gastronomía que quieras',
-              'Ves al instante el subtotal, el IVA y el total',
-              'Tu presupuesto tiene una validez de 10 días',
-            ].map((paso) => (
-              <li key={paso} className="flex items-center gap-2">
-                <Check className="size-4 shrink-0 text-dorado" /> {paso}
-              </li>
-            ))}
-          </ul>
-          <Button size="lg" className={`mt-10 ${CTA_DORADO}`} onClick={() => onCotizar()}>
-            Iniciá sesión para cotizar tu evento <ArrowRight className="size-5" />
-          </Button>
-          <p className="mt-3 text-xs text-crema/60">
-            Los precios solo se muestran a clientes registrados.
-          </p>
+        <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 text-crema sm:px-6 lg:grid-cols-2">
+          <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
+            <p className="text-sm font-semibold tracking-[0.2em] text-dorado-claro uppercase">
+              Hagamos tu evento
+            </p>
+            <h2 className="mt-3 text-3xl font-semibold sm:text-5xl">Tu presupuesto, en minutos</h2>
+            <p className="mt-6 font-display text-2xl text-crema/90 italic">
+              Iniciá sesión o creá tu cuenta con tu nombre, email, teléfono y una contraseña, y armá
+              tu presupuesto estimado con los precios vigentes.
+            </p>
+            <ul className="mt-8 grid gap-3 text-left text-sm text-crema/85">
+              {[
+                'Elegís fecha, cantidad de personas y salón',
+                'Sumás la gastronomía que quieras',
+                'Ves al instante el subtotal, el IVA y el total',
+                'Tu presupuesto tiene una validez de 10 días',
+              ].map((paso) => (
+                <li key={paso} className="flex items-center gap-2">
+                  <Check className="size-4 shrink-0 text-dorado" /> {paso}
+                </li>
+              ))}
+            </ul>
+            <Button size="lg" className={`mt-10 ${CTA_DORADO}`} onClick={() => onCotizar()}>
+              Iniciá sesión para cotizar tu evento <ArrowRight className="size-5" />
+            </Button>
+            <p className="mt-3 text-xs text-crema/60">
+              Los precios solo se muestran a clientes registrados.
+            </p>
+          </div>
+
+          <div id="ubicacion" className="scroll-mt-20">
+            <p className="text-sm font-semibold tracking-[0.2em] text-dorado-claro uppercase">
+              Cómo llegar
+            </p>
+            <p className="mt-2 flex items-center gap-2 text-lg">
+              <MapPin className="size-5 shrink-0 text-dorado" />
+              {UBICACION.direccion} · {UBICACION.localidad}
+            </p>
+            <a
+              href={UBICACION.mapaUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={`Abrir ${UBICACION.direccion}, ${UBICACION.localidad} en Google Maps`}
+              className="mt-4 block aspect-[4/3] overflow-hidden rounded-2xl shadow-lg ring-1 ring-crema/15"
+            >
+              <iframe
+                src={UBICACION.mapaEmbedUrl}
+                title={`Mapa de ${UBICACION.direccion}`}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                tabIndex={-1}
+                className="pointer-events-none size-full border-0"
+              />
+            </a>
+          </div>
         </div>
       </section>
 
@@ -336,15 +409,6 @@ export function Landing({
         <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-12 sm:px-6 md:flex-row md:items-center md:justify-between">
           <Logo claro />
           <div className="flex flex-col gap-3 text-sm">
-            <a
-              href={UBICACION.mapaUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 hover:text-crema"
-            >
-              <MapPin className="size-4 text-dorado" />
-              Hotel Dr. César Carman · {UBICACION.direccion} · {UBICACION.localidad}
-            </a>
             <a
               href={INSTAGRAM.url}
               target="_blank"
