@@ -21,6 +21,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 
+import { ConfluensMarca } from '@/components/ConfluensMarca';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { FOTOS } from '@/lib/fotos';
@@ -407,7 +408,17 @@ export function Landing({
 
       <footer className="bg-bordo-oscuro text-crema/80">
         <div className="mx-auto flex max-w-6xl flex-col gap-8 px-4 py-12 sm:px-6 md:flex-row md:items-center md:justify-between">
-          <Logo claro />
+          <div className="flex flex-col gap-3">
+            <Logo claro />
+            {/* Reconocimiento al equipo que desarrolla y mantiene el sistema. */}
+            <span className="inline-flex items-center gap-1.5 text-xs text-crema/50">
+              Powered by
+              <span className="inline-flex items-center gap-1 font-semibold tracking-wide text-crema/80">
+                <ConfluensMarca />
+                Confluens
+              </span>
+            </span>
+          </div>
           <div className="flex flex-col gap-3 text-sm">
             <a
               href={INSTAGRAM.url}
