@@ -108,7 +108,7 @@ function TituloSeccion({
       </div>
       {bajada && (
         <p
-          className={`mt-5 font-display text-2xl italic ${claro ? 'text-crema/90' : 'text-foreground/80'}`}
+          className={`mt-5 font-display text-2xl italic ${claro ? 'text-crema/90' : 'text-foreground'}`}
         >
           {bajada}
         </p>
