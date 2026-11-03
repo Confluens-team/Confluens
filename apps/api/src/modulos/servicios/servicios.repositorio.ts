@@ -1,4 +1,4 @@
-import type { CrearServicio } from '@confluens/shared';
+import type { CrearServicio, ModificarServicio } from '@confluens/shared';
 
 import { prisma } from '../../lib/prisma.js';
 
@@ -76,6 +76,13 @@ export async function actualizarLanding(
   });
 }
 
+// HU-32 (Sprint 4): modifica los datos del catálogo. Las líneas de los presupuestos ya emitidos no
+// se tocan: guardan su propio precio congelado (RN-03), así que el precio nuevo solo lo toman los
+// presupuestos que se arman o se recalculan después.
+export async function modificar(id: number, datos: ModificarServicio) {
+  return prisma.servicio.update({ where: { id }, data: datos });
+}
+
 export type ServiciosRepositorio = {
   listarActivos: typeof listarActivos;
   listarPublicos: typeof listarPublicos;
@@ -83,4 +90,5 @@ export type ServiciosRepositorio = {
   buscarPorId: typeof buscarPorId;
   crear: typeof crear;
   actualizarLanding: typeof actualizarLanding;
+  modificar: typeof modificar;
 };

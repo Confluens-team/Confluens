@@ -1,4 +1,4 @@
-import type { CrearServicio } from '@confluens/shared';
+import type { CrearServicio, ModificarServicio } from '@confluens/shared';
 
 import { borrarFotoReemplazada } from '../../lib/cloudinary.js';
 import { ErrorApi } from '../../lib/errores.js';
@@ -58,4 +58,23 @@ export async function actualizarLandingServicio(
   const actualizado = await repo.actualizarLanding(id, fotoUrl, fotoAnterior, usuarioId);
   await fotos.borrarFotoReemplazada(fotoAnterior, fotoUrl);
   return actualizado;
+}
+
+// HU-32 (Sprint 4): modificar un servicio del catálogo. 404 si no existe y 409 si el nombre nuevo ya
+// es de otro servicio, con el mismo criterio que el alta (nombre exacto, el índice de la base).
+// Conservar el propio nombre no choca. Se corta antes de escribir.
+export async function modificarServicio(
+  id: number,
+  datos: ModificarServicio,
+  repo: ServiciosRepositorio = serviciosRepositorioReal,
+) {
+  const servicio = await repo.buscarPorId(id);
+  if (!servicio) throw ErrorApi.noEncontrado('No existe el servicio indicado');
+
+  const conEseNombre = await repo.buscarPorNombre(datos.nombre);
+  if (conEseNombre && conEseNombre.id !== id) {
+    throw ErrorApi.conflicto(`Ya existe un servicio con el nombre "${datos.nombre}"`);
+  }
+
+  return repo.modificar(id, datos);
 }
