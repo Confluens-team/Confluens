@@ -146,13 +146,26 @@ Criterios propuestos:
 - Si un evento `Reservado` o `Cobrado` cambia de fecha, horario o salón, el horario anterior queda libre en ese
   momento y el nuevo no puede solaparse con otro `Reservado` o `Cobrado` en el mismo salón (RN-12);
   el solapamiento se rechaza.
-- La cantidad de personas no puede superar la capacidad de la distribución elegida.
+- La capacidad informa y no pone tope (`dominio.md`, «Varios salones»): si la cantidad de personas
+  supera la de las distribuciones elegidas, agendar lo avisa y pide confirmarlo. (El criterio
+  propuesto decía «no puede superar», que contradice `dominio.md`; vale `dominio.md`.)
 - Un cambio que mueve el total del presupuesto sigue las reglas de HU-12 (vigencia, saldo a favor si
   baja por debajo de lo pagado).
 - Solo el personal interno modifica eventos; el rol Cliente no.
 
-**A definir (bloquea la historia).** Si hace falta una pantalla propia del evento o alcanza con lo
-que ya existe. Si alcanza, la historia se reduce a cubrir los criterios con tests y se re-estima.
+**Definido (equipo, 03/11/2026).** Alcanza con lo que ya existe: la historia se cubre con tests y
+se re-estima.
+
+**Cobertura** (`presupuestos.consultas.test.ts` y `eventos.rutas.test.ts`):
+
+| Criterio | Tests |
+|---|---|
+| Estados que se modifican | `PATCH … sobre un evento confirmado (RN-09)`: Reservado, Cobrado que vuelve a Reservado, Cancelado `409`; `responde 409 si el evento ya no está en consulta` |
+| Sin el plazo de 7 días | `a menos de 7 días del evento (HU-27)` |
+| Fecha, horario o salón sin solapar | `si cambia la fecha, el horario se corre…`, `responde 409 si la fecha o el salón nuevos pisan a otro evento reservado (RN-12)`; agendar: `responde 409 si el salón ya está reservado…`, `…constraint EXCLUDE…` |
+| Capacidad | agendar: `responde 422 si cantidadPersonas supera la capacidad y no se confirma`, `agenda igual si … confirmarCapacidadExcedida es true` |
+| Reglas de HU-12 | `si lo pagado cubre el total nuevo, el evento pasa a Cobrado…`, `conserva los precios congelados…` |
+| Solo el personal | `sin sesión responde 401 y con sesión de Cliente 403, sin modificar nada` |
 
 **Implementación.** Ya existen `PATCH /api/presupuestos/:id` (fecha, salones, servicios, personas;
 HU-12) y `POST /api/eventos/:id/agendar` (distribución, horario y modalidad; `409` por solapamiento,
