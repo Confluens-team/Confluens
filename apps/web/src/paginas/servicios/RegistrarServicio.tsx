@@ -3,6 +3,7 @@ import { Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
 
 import { ErrorApiCliente } from '@/lib/api';
+import { InputImporte } from '@/components/InputImporte';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -155,9 +156,9 @@ function FormularioServicio({
 
       <div className="space-y-1.5">
         <Label htmlFor="precio">Precio (sin IVA)</Label>
-        <Input
+        <InputImporte
           id="precio"
-          inputMode="decimal"
+          sinSigno={valores.aCotizar}
           placeholder={valores.aCotizar ? 'A cotizar' : '0.00'}
           disabled={valores.aCotizar}
           value={valores.aCotizar ? '' : valores.precio}

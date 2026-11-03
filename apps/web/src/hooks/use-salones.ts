@@ -2,6 +2,7 @@ import type {
   ActualizarLandingSalon,
   CrearDistribucion,
   Distribucion,
+  ModificarDistribucion,
   ModificarSalon,
   RespuestaExito,
   Salon,
@@ -86,8 +87,8 @@ export function useCrearDistribucion() {
   });
 }
 
-// HU-26: modificar capacidad, superficie y precios. Invalidar ['salones'] actualiza el cotizador, la
-// edición del presupuesto, la agenda y la landing, incluidas las distribuciones que bajaron.
+// HU-26: modificar los precios del salón. Invalidar ['salones'] actualiza el cotizador y la edición
+// del presupuesto, que los leen de useSalones.
 export function useModificarSalon() {
   const queryClient = useQueryClient();
 
@@ -102,6 +103,38 @@ export function useModificarSalon() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['salones'] });
+    },
+  });
+}
+
+// HU-26: editar una distribución. Como en el alta, invalidar ['salones'] alcanza para que el nombre
+// y la capacidad nuevos se vean al presupuestar, al agendar y en los eventos que ya la usan.
+export function useModificarDistribucion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      salonId,
+      distribucionId,
+      datos,
+    }: {
+      salonId: number;
+      distribucionId: number;
+      datos: ModificarDistribucion;
+    }) => {
+      const respuesta = await apiFetch<RespuestaExito<Distribucion>>(
+        `/salones/${salonId}/distribuciones/${distribucionId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(datos),
+        },
+      );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['salones'] });
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
     },
   });
 }

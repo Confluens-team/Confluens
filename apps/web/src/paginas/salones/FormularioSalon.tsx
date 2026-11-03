@@ -3,22 +3,14 @@ import { useState } from 'react';
 
 import { InputImporte } from '@/components/InputImporte';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useModificarSalon } from '@/hooks/use-salones';
 import { ErrorApiCliente } from '@/lib/api';
 
-const formatoNumero = new Intl.NumberFormat('es-AR');
-
-// Los enteros llegan del input como texto; vacío queda sin valor para que el schema pida escribirlo.
-const entero = (texto: string) => (texto.trim() === '' ? undefined : Number(texto));
-
-// HU-26: modificar la capacidad máxima, la superficie y los precios de un salón. El nombre no se
-// edita y la landing sigue en HU-08. Mismo patrón que los demás formularios del catálogo: estado
-// controlado y validación con el schema de shared antes de enviar.
-//
-// Si la capacidad nueva queda por debajo de la de alguna distribución, la API la baja a la del salón
-// (equipo, 03/11/2026); el formulario lo avisa antes de guardar para que no sea una sorpresa.
+// HU-26: modificar los precios de un salón. El nombre, la capacidad máxima y la superficie son
+// fijos (equipo, 03/11/2026); las distribuciones se editan desde su propia fila y la landing sigue
+// en HU-08. Mismo patrón que los demás formularios del catálogo: estado controlado y validación con
+// el schema de shared antes de enviar.
 export function FormularioSalon({
   salon,
   onGuardado,
@@ -28,18 +20,10 @@ export function FormularioSalon({
 }) {
   const modificarSalon = useModificarSalon();
   const [valores, setValores] = useState({
-    capacidadMaxima: String(salon.capacidadMaxima),
-    superficie: String(salon.superficie),
     precioJornadaCompleta: salon.precioJornadaCompleta,
     precioMediaJornada: salon.precioMediaJornada,
   });
   const [erroresCampos, setErroresCampos] = useState<Record<string, string>>({});
-
-  const capacidadNueva = entero(valores.capacidadMaxima);
-  const queBajan =
-    capacidadNueva && capacidadNueva > 0
-      ? salon.distribuciones.filter((d) => d.capacidad > capacidadNueva)
-      : [];
 
   function actualizarCampo(campo: keyof typeof valores, valor: string) {
     setValores((anteriores) => ({ ...anteriores, [campo]: valor }));
@@ -48,8 +32,6 @@ export function FormularioSalon({
   function manejarEnvio(evento: React.FormEvent) {
     evento.preventDefault();
     const resultado = esquemaModificarSalon.safeParse({
-      capacidadMaxima: capacidadNueva,
-      superficie: entero(valores.superficie),
       precioJornadaCompleta: valores.precioJornadaCompleta.trim(),
       precioMediaJornada: valores.precioMediaJornada.trim(),
     });
@@ -71,45 +53,6 @@ export function FormularioSalon({
 
   return (
     <form onSubmit={manejarEnvio} className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <div className="space-y-1.5">
-          <Label htmlFor="salon-capacidad">Capacidad máxima</Label>
-          <Input
-            id="salon-capacidad"
-            type="number"
-            inputMode="numeric"
-            min={1}
-            step={1}
-            value={valores.capacidadMaxima}
-            aria-invalid={!!erroresCampos['capacidadMaxima']}
-            onChange={(e) => actualizarCampo('capacidadMaxima', e.target.value)}
-          />
-          {error('capacidadMaxima')}
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="salon-superficie">Superficie (m²)</Label>
-          <Input
-            id="salon-superficie"
-            type="number"
-            inputMode="numeric"
-            min={1}
-            step={1}
-            value={valores.superficie}
-            aria-invalid={!!erroresCampos['superficie']}
-            onChange={(e) => actualizarCampo('superficie', e.target.value)}
-          />
-          {error('superficie')}
-        </div>
-      </div>
-
-      {queBajan.length > 0 && (
-        <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-900 ring-1 ring-amber-200">
-          {queBajan.map((d) => `${d.nombre} (${formatoNumero.format(d.capacidad)})`).join(', ')}{' '}
-          {queBajan.length === 1 ? 'va a bajar' : 'van a bajar'} a{' '}
-          {formatoNumero.format(capacidadNueva!)} personas, la capacidad nueva del salón.
-        </p>
-      )}
-
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <Label htmlFor="salon-precio-completa">Jornada completa (sin IVA)</Label>
@@ -142,11 +85,11 @@ export function FormularioSalon({
         <p className="text-sm text-destructive">
           {modificarSalon.error instanceof ErrorApiCliente
             ? modificarSalon.error.message
-            : 'No se pudo modificar el salón.'}
+            : 'No se pudieron modificar los precios.'}
         </p>
       )}
       <Button type="submit" disabled={modificarSalon.isPending}>
-        {modificarSalon.isPending ? 'Guardando…' : 'Guardar cambios'}
+        {modificarSalon.isPending ? 'Guardando…' : 'Guardar precios'}
       </Button>
     </form>
   );

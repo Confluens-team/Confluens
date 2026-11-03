@@ -29,3 +29,10 @@ export const esquemaCrearDistribucion = z.object({
     .positive('La capacidad tiene que ser mayor que cero'),
 });
 export type CrearDistribucion = z.infer<typeof esquemaCrearDistribucion>;
+
+// Body de PATCH /salones/:id/distribuciones/:distribucionId (HU-26 del Sprint 4): las
+// distribuciones se editan aunque el salón no (equipo, 03/11/2026). Viaja el estado completo, con
+// las mismas reglas que el alta; la API controla de nuevo el nombre repetido y la capacidad del
+// salón.
+export const esquemaModificarDistribucion = esquemaCrearDistribucion;
+export type ModificarDistribucion = z.infer<typeof esquemaModificarDistribucion>;
