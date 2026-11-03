@@ -49,6 +49,8 @@ vi.mock('./salones.repositorio.js', () => ({
   obtenerSalonesPublicos: vi.fn(),
   obtenerSalonPorId: vi.fn(),
   actualizarLanding: vi.fn(),
+  buscarDistribucionPorNombre: vi.fn(),
+  crearDistribucion: vi.fn(),
 }));
 
 const {
@@ -56,11 +58,15 @@ const {
   obtenerSalonesPublicos,
   obtenerSalonPorId,
   actualizarLanding,
+  buscarDistribucionPorNombre,
+  crearDistribucion,
 } = await import('./salones.repositorio.js');
 const obtenerSalonesConDistribucionesMock = vi.mocked(obtenerSalonesConDistribuciones);
 const obtenerSalonesPublicosMock = vi.mocked(obtenerSalonesPublicos);
 const obtenerSalonPorIdMock = vi.mocked(obtenerSalonPorId);
 const actualizarLandingMock = vi.mocked(actualizarLanding);
+const buscarDistribucionPorNombreMock = vi.mocked(buscarDistribucionPorNombre);
+const crearDistribucionMock = vi.mocked(crearDistribucion);
 
 // Sesión del personal: desde HU-48 estos endpoints piden sesión (C5 y C6).
 const cookiePersonal = `${NOMBRE_COOKIE_SESION}=${firmarToken({
@@ -285,5 +291,125 @@ describe('GET /api/salones: permisos (HU-48)', () => {
 
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.data[0]).toHaveProperty('precioJornadaCompleta');
+  });
+});
+
+// HU-25. Las tres reglas (salón existente, nombre sin repetir y capacidad dentro de la del salón)
+// viven en el servicio y se cortan antes de escribir, así que en cada rechazo se verifica también
+// que no se llamó a crearDistribucion.
+describe('POST /api/salones/:id/distribuciones (HU-25)', () => {
+  const app = crearApp();
+
+  const alta = (cuerpo: object, cookie = cookiePersonal) =>
+    request(app).post('/api/salones/1/distribuciones').set('Cookie', [cookie]).send(cuerpo);
+
+  beforeEach(() => {
+    obtenerSalonPorIdMock.mockReset();
+    buscarDistribucionPorNombreMock.mockReset();
+    crearDistribucionMock.mockReset();
+    obtenerSalonPorIdMock.mockResolvedValue(auditorio as never);
+    buscarDistribucionPorNombreMock.mockResolvedValue(null);
+    crearDistribucionMock.mockImplementation(
+      async (salonId, datos) => ({ ...distribucionAuditorio, id: 16, salonId, ...datos }) as never,
+    );
+  });
+
+  it('crea la distribución en el salón con el nombre recortado y responde 201', async () => {
+    const respuesta = await alta({ nombre: '  Banquete ', capacidad: 200 });
+
+    expect(respuesta.status).toBe(201);
+    expect(crearDistribucionMock).toHaveBeenCalledWith(1, { nombre: 'Banquete', capacidad: 200 });
+    expect(respuesta.body.data).toMatchObject({
+      id: 16,
+      salonId: 1,
+      nombre: 'Banquete',
+      capacidad: 200,
+    });
+  });
+
+  it('acepta una capacidad igual a la capacidad máxima del salón', async () => {
+    const respuesta = await alta({ nombre: 'Auditorio completo', capacidad: 280 });
+
+    expect(respuesta.status).toBe(201);
+  });
+
+  it('sin nombre o con el nombre solo con espacios responde 400 VALIDATION_ERROR', async () => {
+    for (const cuerpo of [{ capacidad: 50 }, { nombre: '   ', capacidad: 50 }]) {
+      const respuesta = await alta(cuerpo);
+      expect(respuesta.status).toBe(400);
+      expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+      expect(respuesta.body.error.details[0].campo).toBe('nombre');
+    }
+    expect(crearDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('sin capacidad, con cero, negativa o con decimales responde 400 VALIDATION_ERROR', async () => {
+    for (const capacidad of [undefined, 0, -10, 12.5, '50']) {
+      const respuesta = await alta({ nombre: 'Banquete', capacidad });
+      expect(respuesta.status).toBe(400);
+      expect(respuesta.body.error.details[0].campo).toBe('capacidad');
+    }
+    expect(crearDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('un nombre que ya tiene el salón, con otras mayúsculas, responde 409 CONFLICT', async () => {
+    buscarDistribucionPorNombreMock.mockResolvedValue(distribucionAuditorio as never);
+
+    const respuesta = await alta({ nombre: 'conferencia', capacidad: 100 });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    // La búsqueda es dentro del salón: otro salón puede tener una distribución con el mismo nombre.
+    expect(buscarDistribucionPorNombreMock).toHaveBeenCalledWith(1, 'conferencia');
+    expect(crearDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('una capacidad mayor que la del salón responde 422 BUSINESS_RULE_VIOLATION', async () => {
+    const respuesta = await alta({ nombre: 'Banquete', capacidad: 281 });
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+    expect(respuesta.body.error.details[0].campo).toBe('capacidad');
+    expect(crearDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('con un salón inexistente responde 404 NOT_FOUND', async () => {
+    obtenerSalonPorIdMock.mockResolvedValue(null);
+
+    const respuesta = await request(app)
+      .post('/api/salones/99/distribuciones')
+      .set('Cookie', [cookiePersonal])
+      .send({ nombre: 'Banquete', capacidad: 50 });
+
+    expect(respuesta.status).toBe(404);
+    expect(respuesta.body.error.code).toBe('NOT_FOUND');
+    expect(crearDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('con un id de salón que no es número responde 400 VALIDATION_ERROR', async () => {
+    const respuesta = await request(app)
+      .post('/api/salones/abc/distribuciones')
+      .set('Cookie', [cookiePersonal])
+      .send({ nombre: 'Banquete', capacidad: 50 });
+
+    expect(respuesta.status).toBe(400);
+    expect(obtenerSalonPorIdMock).not.toHaveBeenCalled();
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const cookieCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+      id: 7,
+      email: 'ana@empresa.com',
+      rol: 'CLIENTE',
+    })}`;
+
+    const sinSesion = await request(app)
+      .post('/api/salones/1/distribuciones')
+      .send({ nombre: 'Banquete', capacidad: 50 });
+    const comoCliente = await alta({ nombre: 'Banquete', capacidad: 50 }, cookieCliente);
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
+    expect(crearDistribucionMock).not.toHaveBeenCalled();
   });
 });

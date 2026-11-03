@@ -1,9 +1,11 @@
-import type { ActualizarLandingSalon } from '@confluens/shared';
+import type { ActualizarLandingSalon, CrearDistribucion } from '@confluens/shared';
 
 import { borrarFotoReemplazada } from '../../lib/cloudinary.js';
 import { ErrorApi } from '../../lib/errores.js';
 import {
   actualizarLanding,
+  buscarDistribucionPorNombre,
+  crearDistribucion,
   obtenerSalonesConDistribuciones,
   obtenerSalonesPublicos,
   obtenerSalonPorId,
@@ -45,4 +47,33 @@ export async function actualizarLandingSalon(
   const actualizado = await repo.actualizarLanding(id, cambios, anterior, usuarioId);
   await fotos.borrarFotoReemplazada(anterior.fotoUrl, cambios.fotoUrl);
   return actualizado;
+}
+
+// HU-25: alta de una distribución en un salón. Las tres reglas dependen de lo que ya está en la
+// base, por eso viven acá y no en el schema: el salón tiene que existir (404), el nombre no puede
+// repetirse en el salón sin distinguir mayúsculas (409) y la capacidad no puede superar la del
+// salón (422, dominio.md). Se corta antes de escribir para que ninguna deje una fila a medias.
+export async function registrarDistribucion(
+  salonId: number,
+  datos: CrearDistribucion,
+  repo = { obtenerSalonPorId, buscarDistribucionPorNombre, crearDistribucion },
+) {
+  const salon = await repo.obtenerSalonPorId(salonId);
+  if (!salon) throw ErrorApi.noEncontrado('No existe el salón indicado');
+
+  const existente = await repo.buscarDistribucionPorNombre(salonId, datos.nombre);
+  if (existente) {
+    throw ErrorApi.conflicto(
+      `${salon.nombre} ya tiene una distribución llamada «${existente.nombre}»`,
+    );
+  }
+
+  if (datos.capacidad > salon.capacidadMaxima) {
+    throw ErrorApi.reglaNegocio(
+      `La capacidad no puede superar la del salón (${salon.capacidadMaxima} personas)`,
+      [{ campo: 'capacidad', mensaje: `Máximo ${salon.capacidadMaxima} personas` }],
+    );
+  }
+
+  return repo.crearDistribucion(salonId, datos);
 }

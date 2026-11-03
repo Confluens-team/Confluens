@@ -1,5 +1,7 @@
 import {
   esquemaActualizarLandingSalon,
+  esquemaCrearDistribucion,
+  esquemaDistribucion,
   esquemaSalon,
   esquemaSalonConDistribuciones,
   esquemaSalonPublico,
@@ -12,7 +14,12 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { actualizarLanding, listar, listarPublicos } from './salones.controlador.js';
+import {
+  actualizarLanding,
+  crearDistribucion,
+  listar,
+  listarPublicos,
+} from './salones.controlador.js';
 
 registroOpenApi.registerPath({
   method: 'get',
@@ -71,6 +78,31 @@ registroOpenApi.registerPath({
   },
 });
 
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/salones/{id}/distribuciones',
+  tags: ['Salones'],
+  summary: 'Registra una distribución posible de un salón (HU-25)',
+  request: {
+    params: esquemaParamsId,
+    body: { content: { 'application/json': { schema: esquemaCrearDistribucion } } },
+  },
+  responses: {
+    201: {
+      description: 'Distribución creada; queda disponible al presupuestar y al agendar',
+      content: { 'application/json': { schema: z.object({ data: esquemaDistribucion }) } },
+    },
+    400: { description: 'Nombre o capacidad inválidos' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
+    404: { description: 'No existe el salón indicado' },
+    409: {
+      description: 'El salón ya tiene una distribución con ese nombre (sin distinguir mayúsculas)',
+    },
+    422: { description: 'La capacidad supera la capacidad máxima del salón' },
+  },
+});
+
 export const rutasSalones = Router();
 
 // /publicos va antes de cualquier ruta con parámetro: si en el futuro se agrega un GET /:id,
@@ -91,4 +123,14 @@ rutasSalones.patch(
   autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaParamsId, body: esquemaActualizarLandingSalon }),
   asincrono(actualizarLanding),
+);
+
+// HU-25: mismo orden de middlewares que el de arriba, y la misma decisión provisoria del PO sobre
+// los roles del personal.
+rutasSalones.post(
+  '/:id/distribuciones',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaParamsId, body: esquemaCrearDistribucion }),
+  asincrono(crearDistribucion),
 );
