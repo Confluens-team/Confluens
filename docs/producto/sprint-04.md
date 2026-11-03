@@ -74,7 +74,7 @@ en esta versión, también para el PO):
 | Historia | Qué falta definir | Por qué |
 |---|---|---|
 | HU-30, HU-31 | Si la división de funciones por rol empieza con estas historias. | Hoy todo el personal entra al mismo panel y hace todo (decisión provisoria del PO, 06/10/2026). La regla «el GG asigna RE y RF; el ADM, GG y ADM» necesita que la API distinga roles en `/usuarios`. |
-| HU-33 | Si se puede cambiar con qué casos se habilita un medio del catálogo inicial (Efectivo, Transferencia, Débito, Crédito, Cheque y A la habitación). | RN-14 fija esa habilitación y `dominio.md` no deja cambiarla sin el PO. Para los medios dados de alta después no hay conflicto. |
+| HU-33 | ~~Si se puede cambiar con qué casos se habilita un medio del catálogo inicial (Efectivo, Transferencia, Débito, Crédito, Cheque y A la habitación).~~ **Sí, todos son editables (equipo, 03/11/2026).** | RN-14 fijaba esa habilitación y `dominio.md` no dejaba cambiarla sin el PO. |
 | HU-35 | Si una anulación puede sacar a un evento de `Reservado` o de `Cobrado`. | `Cobrado` → `Reservado` ya existe al modificar un presupuesto por encima de lo pagado (HU-12), pero `Reservado` → `EnConsulta` no está en la máquina de estados aprobada: agregarla es cambiar `dominio.md`. |
 | HU-25, HU-26 | Si bajar la capacidad de un salón por debajo de la de una de sus distribuciones se rechaza o arrastra la distribución. | `dominio.md`: la capacidad de una distribución nunca supera la del salón. |
 
@@ -292,8 +292,9 @@ Criterios propuestos:
   (`422`) aplican la habilitación nueva.
 - Solo el personal interno modifica medios de pago; el rol Cliente no.
 
-**A definir.** Si se puede cambiar la habilitación de los seis medios del catálogo inicial, que fija
-RN-14 (ver «Puntos a definir»). La baja de un medio es HU-39 del backlog (Sprint 6).
+**Definido (equipo, 03/11/2026).** La habilitación de los seis medios del catálogo inicial también
+se puede cambiar, igual que la de los dados de alta después; RN-14 quedó actualizada en
+`dominio.md`. La baja de un medio es HU-39 del backlog (Sprint 6).
 
 **Implementación.** `PATCH /api/medios-pago/:id` (`409` por nombre repetido, `404` si no existe),
 reutilizando las validaciones de `esquemaCrearMedioPago`. Edición en `ListadoMediosPago.tsx`.
