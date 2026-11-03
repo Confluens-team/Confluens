@@ -93,7 +93,8 @@ Criterios propuestos:
 - Desde la gestión de salones, registro una distribución para un salón con su nombre (conferencia,
   mesas de trabajo, banquete u otro) y su capacidad.
 - Nombre y capacidad son obligatorios; la capacidad es un entero mayor que cero.
-- El nombre es único dentro del salón; uno repetido se rechaza. Dos salones distintos pueden tener
+- El nombre es único dentro del salón, sin distinguir mayúsculas (equipo, 02/11/2026); uno
+  repetido se rechaza. Dos salones distintos pueden tener
   una distribución con el mismo nombre.
 - La capacidad de la distribución no puede superar la capacidad máxima del salón (`dominio.md`).
 - La distribución nueva queda disponible al armar o modificar un presupuesto y al agendar el evento.
@@ -104,8 +105,8 @@ modificar o dar de baja. Hoy `Distribucion` no tiene `activo`; una baja lógica 
 
 **Implementación.** `Distribucion` ya existe con `@@unique([salonId, nombre])`; las del tarifario
 las carga el seed. Falta `POST /api/salones/:id/distribuciones` (`409` por nombre repetido, `422` si
-supera la capacidad del salón, `404` si el salón no existe). La unicidad sin distinguir mayúsculas,
-si se pide, la controla el servicio, como en medios de pago.
+supera la capacidad del salón, `404` si el salón no existe). La unicidad sin distinguir mayúsculas
+la controla el servicio, como en medios de pago.
 
 ## HU-26 — Modificar información de un salón
 

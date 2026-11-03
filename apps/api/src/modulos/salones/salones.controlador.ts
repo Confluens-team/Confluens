@@ -1,5 +1,7 @@
 import type {
   ActualizarLandingSalon,
+  CrearDistribucion,
+  Distribucion,
   RespuestaExito,
   Salon,
   SalonConDistribuciones,
@@ -11,6 +13,7 @@ import {
   actualizarLandingSalon,
   listarSalones,
   listarSalonesPublicos,
+  registrarDistribucion,
 } from './salones.servicio.js';
 
 export async function listar(_req: Request, res: Response): Promise<void> {
@@ -43,4 +46,12 @@ export async function actualizarLanding(req: Request, res: Response): Promise<vo
   );
   const cuerpo: RespuestaExito<Salon> = { data: salon as unknown as Salon };
   res.json(cuerpo);
+}
+
+// HU-25. params y body ya validados por validar() en salones.rutas.ts.
+export async function crearDistribucion(req: Request, res: Response): Promise<void> {
+  const salonId = Number(req.params['id']);
+  const distribucion = await registrarDistribucion(salonId, req.body as CrearDistribucion);
+  const cuerpo: RespuestaExito<Distribucion> = { data: distribucion as unknown as Distribucion };
+  res.status(201).json(cuerpo);
 }

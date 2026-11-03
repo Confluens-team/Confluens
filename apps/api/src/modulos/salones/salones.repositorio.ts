@@ -1,4 +1,4 @@
-import type { ActualizarLandingSalon } from '@confluens/shared';
+import type { ActualizarLandingSalon, CrearDistribucion } from '@confluens/shared';
 
 import { prisma } from '../../lib/prisma.js';
 
@@ -69,4 +69,17 @@ export async function actualizarLanding(
     });
     return salon;
   });
+}
+
+// HU-25: el nombre es único dentro del salón sin distinguir mayúsculas. El índice de la base
+// (@@unique([salonId, nombre])) es exacto, así que antes de crear se busca así, como en los medios
+// de pago (HU-19).
+export async function buscarDistribucionPorNombre(salonId: number, nombre: string) {
+  return prisma.distribucion.findFirst({
+    where: { salonId, nombre: { equals: nombre, mode: 'insensitive' } },
+  });
+}
+
+export async function crearDistribucion(salonId: number, datos: CrearDistribucion) {
+  return prisma.distribucion.create({ data: { ...datos, salonId } });
 }
