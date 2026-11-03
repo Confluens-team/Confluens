@@ -32,6 +32,7 @@ import {
 import { useState } from 'react';
 
 import { InputEntero } from '@/components/InputEntero';
+import { SelectorFecha, SelectorHora } from '@/components/SelectorFechaHora';
 import { SelectorModalidad } from '@/components/SelectorModalidad';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -448,12 +449,12 @@ export function CotizarEvento({
                 <Label htmlFor="fecha" className="inline-flex items-center gap-1.5">
                   <CalendarDays className="size-4 text-dorado" /> Fecha del evento
                 </Label>
-                <Input
+                <SelectorFecha
                   id="fecha"
-                  type="date"
-                  min={hoyISO()}
+                  diaMinimo={hoyISO()}
                   value={fecha}
-                  onChange={(e) => setFecha(e.target.value)}
+                  onChange={setFecha}
+                  placeholder="Elegí el día"
                   className="h-11"
                 />
                 {errores['fecha'] && <p className="text-xs text-destructive">{errores['fecha']}</p>}
@@ -517,11 +518,12 @@ export function CotizarEvento({
                 <Clock className="size-4 text-dorado" /> Hora de inicio estimada
                 <span className="font-normal text-muted-foreground">(opcional)</span>
               </Label>
-              <Input
+              <SelectorHora
                 id="hora"
-                type="time"
                 value={hora}
-                onChange={(e) => setHora(e.target.value)}
+                onChange={setHora}
+                opcional
+                placeholder="Elegí la hora"
                 className="h-11"
               />
             </div>
@@ -816,12 +818,14 @@ export function CotizarEvento({
                             >
                               A las
                             </label>
-                            <Input
+                            <SelectorHora
                               id={`hora-${servicio.id}`}
-                              type="time"
                               value={horas.get(servicio.id) ?? ''}
-                              onChange={(e) => cambiarHora(servicio.id, e.target.value)}
-                              className="h-8 w-28"
+                              onChange={(valor) => cambiarHora(servicio.id, valor)}
+                              horaSugerida={hora || undefined}
+                              opcional
+                              placeholder="--:--"
+                              className="h-8 w-32"
                             />
                             <span>(opcional)</span>
                             {servicio.admiteModalidad && (
