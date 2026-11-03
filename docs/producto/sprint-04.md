@@ -191,9 +191,18 @@ Criterios propuestos:
   `Reservado` con saldo pendiente.
 - El estado de cuenta (HU-21) muestra la cuenta saldada y destaca el pago que completó el total.
 
-**A definir (bloquea la historia).** Si agrega algo al cambio automático (por ejemplo, marcar a mano
-un evento como Cobrado). Marcarlo a mano con saldo pendiente contradice la máquina de estados
-(`Cobrado` = acumulado 100%) y se decide con el PO.
+**Definido (equipo, 03/11/2026).** No agrega nada al cambio automático: no se marca a mano. La
+historia se cubre con los tests que ya existen y se re-estima.
+
+**Cobertura** (`pagos.rutas.test.ts`, `eventos.rutas.test.ts` y `presupuestos.consultas.test.ts`):
+
+| Criterio | Tests |
+|---|---|
+| Al 100% pasa a `Cobrado` con saldo cero | `un pago que completa el 100% sobre un evento ya Reservado lo pasa a Cobrado`, `un pago único que cruza el 20% y el 100% a la vez…`, `un evento Cobrado queda con saldo cero…` |
+| `Cobrado` no admite pagos ni se cancela | `it.each(['Cancelado', 'Cobrado'])` de `POST /eventos/:id/pagos` (`409`) y de `POST /eventos/:id/cancelar` |
+| Vuelve a `Reservado` si el total sube | `un Cobrado al que se le suman servicios vuelve a Reservado…` |
+| Se distingue en agenda, listado y ficha | Presentación, sin test (AGENTS.md §5): las tres vistas usan `estado-evento.ts`, con Cobrado en azul y Confirmado en verde |
+| El estado de cuenta destaca el pago que completó | `un evento Cobrado queda con saldo cero y marca el pago de la seña y el que completó el total` |
 
 **Implementación.** El cambio automático ya está en el módulo de pagos desde HU-14, y el estado de
 cuenta marca `completaPago` desde HU-21. Si el PO no agrega nada, la historia se cubre con tests por
