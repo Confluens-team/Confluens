@@ -1,4 +1,4 @@
-import type { ActualizarLandingSalon, CrearDistribucion } from '@confluens/shared';
+import type { ActualizarLandingSalon, CrearDistribucion, ModificarSalon } from '@confluens/shared';
 
 import { borrarFotoReemplazada } from '../../lib/cloudinary.js';
 import { ErrorApi } from '../../lib/errores.js';
@@ -6,6 +6,7 @@ import {
   actualizarLanding,
   buscarDistribucionPorNombre,
   crearDistribucion,
+  modificarSalon,
   obtenerSalonesConDistribuciones,
   obtenerSalonesPublicos,
   obtenerSalonPorId,
@@ -76,4 +77,16 @@ export async function registrarDistribucion(
   }
 
   return repo.crearDistribucion(salonId, datos);
+}
+
+// HU-26 (Sprint 4): 404 si el salón no existe, antes de escribir. Las reglas de los datos están en
+// el schema y el arrastre de las distribuciones, en el repositorio (va en la misma transacción).
+export async function modificarDatosSalon(
+  id: number,
+  datos: ModificarSalon,
+  repo = { obtenerSalonPorId, modificarSalon },
+) {
+  const salon = await repo.obtenerSalonPorId(id);
+  if (!salon) throw ErrorApi.noEncontrado('No existe el salón indicado');
+  return repo.modificarSalon(id, datos);
 }

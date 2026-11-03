@@ -1,4 +1,4 @@
-import type { ActualizarLandingSalon, CrearDistribucion } from '@confluens/shared';
+import type { ActualizarLandingSalon, CrearDistribucion, ModificarSalon } from '@confluens/shared';
 
 import { prisma } from '../../lib/prisma.js';
 
@@ -82,4 +82,22 @@ export async function buscarDistribucionPorNombre(salonId: number, nombre: strin
 
 export async function crearDistribucion(salonId: number, datos: CrearDistribucion) {
   return prisma.distribucion.create({ data: { ...datos, salonId } });
+}
+
+// HU-26 (Sprint 4): modifica capacidad, superficie y precios. Las distribuciones que quedan por
+// encima de la capacidad nueva bajan a esa capacidad (equipo, 03/11/2026), en la misma transacción:
+// la capacidad de una distribución nunca supera la del salón (dominio.md). Los presupuestos ya
+// emitidos no cambian: sus líneas guardan el precio congelado (RN-03, RN-10).
+export async function modificarSalon(id: number, datos: ModificarSalon) {
+  return prisma.$transaction(async (tx) => {
+    await tx.salon.update({ where: { id }, data: datos });
+    await tx.distribucion.updateMany({
+      where: { salonId: id, capacidad: { gt: datos.capacidadMaxima } },
+      data: { capacidad: datos.capacidadMaxima },
+    });
+    return tx.salon.findUniqueOrThrow({
+      where: { id },
+      include: { distribuciones: { orderBy: { id: 'asc' } } },
+    });
+  });
 }
