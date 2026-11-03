@@ -1,4 +1,9 @@
-import type { CrearMedioPago, CrearPago, FiltrosMediosPago } from '@confluens/shared';
+import type {
+  CrearMedioPago,
+  CrearPago,
+  FiltrosMediosPago,
+  ModificarMedioPago,
+} from '@confluens/shared';
 import { admiteMedioPago, mediosPagoHabilitados, PORCENTAJE_SENA } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
@@ -316,4 +321,23 @@ export async function crearMedioPago(
     throw ErrorApi.conflicto(`Ya existe un medio de pago llamado «${existente.nombre}»`);
   }
   return repo.crearMedioPago(datos);
+}
+
+// HU-33 del Sprint 4: modificar el nombre o la habilitación de un medio (RN-14). 404 si no existe y
+// 409 si el nombre ya es de otro medio, sin distinguir mayúsculas, como en el alta. Conservar el
+// propio nombre, o cambiarle solo las mayúsculas, no choca.
+export async function modificarMedioPago(
+  id: number,
+  datos: ModificarMedioPago,
+  repo: PagosRepositorio = pagosRepositorioReal,
+) {
+  const medio = await repo.buscarMedioPagoPorId(id);
+  if (!medio) throw ErrorApi.noEncontrado('No existe el medio de pago indicado');
+
+  const conEseNombre = await repo.buscarMedioPagoPorNombre(datos.nombre);
+  if (conEseNombre && conEseNombre.id !== id) {
+    throw ErrorApi.conflicto(`Ya existe un medio de pago llamado «${conEseNombre.nombre}»`);
+  }
+
+  return repo.modificarMedioPago(id, datos);
 }

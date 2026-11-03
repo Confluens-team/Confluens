@@ -4,6 +4,7 @@ import type {
   CuentaEvento,
   FiltrosMediosPago,
   MedioPago,
+  ModificarMedioPago,
   RespuestaExito,
   ResultadoPago,
 } from '@confluens/shared';
@@ -12,6 +13,7 @@ import type { Request, Response } from 'express';
 import {
   crearMedioPago,
   listarMediosPago,
+  modificarMedioPago,
   obtenerCuenta,
   registrarPago,
 } from './pagos.servicio.js';
@@ -43,4 +45,12 @@ export async function crearMedio(req: Request, res: Response): Promise<void> {
   const medio = await crearMedioPago(req.body as CrearMedioPago);
   const cuerpo: RespuestaExito<MedioPago> = { data: medio as unknown as MedioPago };
   res.status(201).json(cuerpo);
+}
+
+// HU-33 del Sprint 4. params y body ya validados por validar() en pagos.rutas.ts.
+export async function modificarMedio(req: Request, res: Response): Promise<void> {
+  const id = Number(req.params['id']);
+  const medio = await modificarMedioPago(id, req.body as ModificarMedioPago);
+  const cuerpo: RespuestaExito<MedioPago> = { data: medio as unknown as MedioPago };
+  res.json(cuerpo);
 }

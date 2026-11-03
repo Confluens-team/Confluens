@@ -4,6 +4,7 @@ import {
   esquemaCuentaEvento,
   esquemaFiltrosMediosPago,
   esquemaMedioPago,
+  esquemaModificarMedioPago,
   esquemaResultadoPago,
 } from '@confluens/shared';
 import { Router } from 'express';
@@ -14,7 +15,13 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { crearMedio, listarCuenta, listarMedios, registrar } from './pagos.controlador.js';
+import {
+  crearMedio,
+  listarCuenta,
+  listarMedios,
+  modificarMedio,
+  registrar,
+} from './pagos.controlador.js';
 
 // Detalle de la capa HTTP, no se comparte con el frontend (igual que en eventos.rutas.ts).
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
@@ -132,6 +139,30 @@ registroOpenApi.registerPath({
   },
 });
 
+registroOpenApi.registerPath({
+  method: 'patch',
+  path: '/medios-pago/{id}',
+  tags: ['Pagos'],
+  summary: 'Modifica el nombre de un medio de pago y en qué cobros se puede usar (HU-33, RN-14)',
+  request: {
+    params: esquemaIdParam,
+    body: { content: { 'application/json': { schema: esquemaModificarMedioPago } } },
+  },
+  responses: {
+    200: {
+      description:
+        'Medio modificado; los pagos ya registrados lo muestran con el nombre nuevo y la ' +
+        'habilitación nueva vale desde el próximo cobro',
+      content: { 'application/json': { schema: z.object({ data: esquemaMedioPago }) } },
+    },
+    400: { description: 'Nombre vacío o de más de 40 caracteres, o sin habilitar en ningún caso' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
+    404: { description: 'No existe el medio de pago indicado' },
+    409: { description: 'Otro medio ya tiene ese nombre (sin distinguir mayúsculas)' },
+  },
+});
+
 export const rutasMediosPago = Router();
 
 rutasMediosPago.get(
@@ -149,4 +180,13 @@ rutasMediosPago.post(
   autorizar(...ROLES_PERSONAL),
   validar({ body: esquemaCrearMedioPago }),
   asincrono(crearMedio),
+);
+
+// HU-33: mismo criterio de roles que el alta (HU-19).
+rutasMediosPago.patch(
+  '/:id',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaIdParam, body: esquemaModificarMedioPago }),
+  asincrono(modificarMedio),
 );

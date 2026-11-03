@@ -1,5 +1,7 @@
-import { Check, Minus } from 'lucide-react';
+import type { MedioPago } from '@confluens/shared';
+import { Check, Minus, Pencil } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import { useListadoMediosPago } from '@/hooks/use-pagos';
 import { cn } from '@/lib/utils';
 
@@ -13,8 +15,8 @@ function Habilitado({ si, caso }: { si: boolean; caso: string }) {
 
 // HU-20: el catálogo de medios de pago, activos y dados de baja, en orden alfabético, con su estado
 // y en qué cobros se puede usar cada uno (RN-14). Al cobrar se ofrecen solo los activos habilitados
-// para el caso del presupuesto (CuentaDelEvento).
-export function ListadoMediosPago() {
+// para el caso del presupuesto (CuentaDelEvento). Cada fila se puede modificar (HU-33).
+export function ListadoMediosPago({ onModificar }: { onModificar: (medio: MedioPago) => void }) {
   const { data: medios, isLoading, isError } = useListadoMediosPago();
 
   return (
@@ -36,6 +38,9 @@ export function ListadoMediosPago() {
                 <th className="px-3 py-2 font-semibold">Estado</th>
                 <th className="px-3 py-2 text-center font-semibold">Con factura</th>
                 <th className="px-3 py-2 text-center font-semibold">Sin factura</th>
+                <th className="px-3 py-2">
+                  <span className="sr-only">Acciones</span>
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -59,6 +64,16 @@ export function ListadoMediosPago() {
                   </td>
                   <td className="px-3 py-2.5">
                     <Habilitado si={medio.sinFactura} caso="sin factura" />
+                  </td>
+                  <td className="px-1 py-1 text-right">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label={`Modificar ${medio.nombre}`}
+                      onClick={() => onModificar(medio)}
+                    >
+                      <Pencil />
+                    </Button>
                   </td>
                 </tr>
               ))}
