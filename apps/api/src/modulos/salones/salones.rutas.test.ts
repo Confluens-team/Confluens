@@ -52,6 +52,8 @@ vi.mock('./salones.repositorio.js', () => ({
   buscarDistribucionPorNombre: vi.fn(),
   crearDistribucion: vi.fn(),
   modificarSalon: vi.fn(),
+  buscarDistribucionPorId: vi.fn(),
+  modificarDistribucion: vi.fn(),
 }));
 
 const {
@@ -62,6 +64,8 @@ const {
   buscarDistribucionPorNombre,
   crearDistribucion,
   modificarSalon,
+  buscarDistribucionPorId,
+  modificarDistribucion,
 } = await import('./salones.repositorio.js');
 const obtenerSalonesConDistribucionesMock = vi.mocked(obtenerSalonesConDistribuciones);
 const obtenerSalonesPublicosMock = vi.mocked(obtenerSalonesPublicos);
@@ -70,6 +74,8 @@ const actualizarLandingMock = vi.mocked(actualizarLanding);
 const buscarDistribucionPorNombreMock = vi.mocked(buscarDistribucionPorNombre);
 const crearDistribucionMock = vi.mocked(crearDistribucion);
 const modificarSalonMock = vi.mocked(modificarSalon);
+const buscarDistribucionPorIdMock = vi.mocked(buscarDistribucionPorId);
+const modificarDistribucionMock = vi.mocked(modificarDistribucion);
 
 // Sesión del personal: desde HU-48 estos endpoints piden sesión (C5 y C6).
 const cookiePersonal = `${NOMBRE_COOKIE_SESION}=${firmarToken({
@@ -417,18 +423,12 @@ describe('POST /api/salones/:id/distribuciones (HU-25)', () => {
   });
 });
 
-// HU-26 del Sprint 4. El arrastre de las distribuciones que superan la capacidad nueva es un
-// updateMany en la transacción del repositorio (ADR 0003: sin Postgres en CI), así que acá se cubre
-// el contrato: validaciones, status, permisos y que la respuesta trae las distribuciones.
+// HU-26 del Sprint 4. Del salón se modifican solo los precios: la capacidad máxima y la superficie
+// son fijas (equipo, 03/11/2026). Las distribuciones se editan aparte, en el describe de abajo.
 describe('PATCH /api/salones/:id (HU-26)', () => {
   const app = crearApp();
 
-  const cuerpoValido = {
-    capacidadMaxima: 250,
-    superficie: 289,
-    precioJornadaCompleta: '950000.00',
-    precioMediaJornada: '850000.00',
-  };
+  const cuerpoValido = { precioJornadaCompleta: '950000.00', precioMediaJornada: '850000.00' };
 
   const modificar = (cuerpo: object, cookie = cookiePersonal, id = 1) =>
     request(app).patch(`/api/salones/${id}`).set('Cookie', [cookie]).send(cuerpo);
@@ -437,49 +437,33 @@ describe('PATCH /api/salones/:id (HU-26)', () => {
     obtenerSalonPorIdMock.mockReset();
     modificarSalonMock.mockReset();
     obtenerSalonPorIdMock.mockResolvedValue(auditorio as never);
-    // Lo que devuelve el repositorio real: la Conferencia (280) bajó a la capacidad nueva.
     modificarSalonMock.mockImplementation(
-      async (_id, datos) =>
-        ({
-          ...auditorio,
-          ...datos,
-          distribuciones: [{ ...distribucionAuditorio, capacidad: datos.capacidadMaxima }],
-        }) as never,
+      async (_id, datos) => ({ ...auditorio, ...datos }) as never,
     );
   });
 
-  it('modifica capacidad, superficie y precios y responde 200 con las distribuciones', async () => {
+  it('modifica los precios y responde 200 con el salón y sus distribuciones', async () => {
     const respuesta = await modificar(cuerpoValido);
 
     expect(respuesta.status).toBe(200);
     expect(modificarSalonMock).toHaveBeenCalledWith(1, cuerpoValido);
     expect(respuesta.body.data).toMatchObject({
       nombre: 'Auditorio',
-      capacidadMaxima: 250,
+      capacidadMaxima: 280,
       precioJornadaCompleta: '950000.00',
-      distribuciones: [expect.objectContaining({ nombre: 'Conferencia', capacidad: 250 })],
+      distribuciones: [expect.objectContaining({ nombre: 'Conferencia' })],
     });
   });
 
-  it('no permite cambiar el nombre: el campo se ignora', async () => {
-    await modificar({ ...cuerpoValido, nombre: 'Otro nombre' });
+  it('no permite cambiar el nombre, la capacidad máxima ni la superficie: se ignoran', async () => {
+    await modificar({
+      ...cuerpoValido,
+      nombre: 'Otro nombre',
+      capacidadMaxima: 500,
+      superficie: 1000,
+    });
 
     expect(modificarSalonMock).toHaveBeenCalledWith(1, cuerpoValido);
-  });
-
-  it('capacidad o superficie en cero, negativas o con decimales responden 400', async () => {
-    for (const cambio of [
-      { capacidadMaxima: 0 },
-      { capacidadMaxima: -5 },
-      { capacidadMaxima: 10.5 },
-      { superficie: 0 },
-      { superficie: 12.5 },
-    ]) {
-      const respuesta = await modificar({ ...cuerpoValido, ...cambio });
-      expect(respuesta.status).toBe(400);
-      expect(respuesta.body.error.details[0].campo).toBe(Object.keys(cambio)[0]);
-    }
-    expect(modificarSalonMock).not.toHaveBeenCalled();
   });
 
   it('un precio en cero o con formato inválido responde 400', async () => {
@@ -518,5 +502,141 @@ describe('PATCH /api/salones/:id (HU-26)', () => {
     expect(sinSesion.status).toBe(401);
     expect(comoCliente.status).toBe(403);
     expect(modificarSalonMock).not.toHaveBeenCalled();
+  });
+});
+
+// HU-26 del Sprint 4: edición de una distribución, con las mismas reglas que el alta (HU-25). En
+// cada rechazo se verifica que no se llamó a modificarDistribucion.
+describe('PATCH /api/salones/:id/distribuciones/:distribucionId (HU-26)', () => {
+  const app = crearApp();
+
+  const editar = (
+    cuerpo: object,
+    ruta = '/api/salones/1/distribuciones/1',
+    cookie = cookiePersonal,
+  ) => request(app).patch(ruta).set('Cookie', [cookie]).send(cuerpo);
+
+  beforeEach(() => {
+    obtenerSalonPorIdMock.mockReset();
+    buscarDistribucionPorIdMock.mockReset();
+    buscarDistribucionPorNombreMock.mockReset();
+    modificarDistribucionMock.mockReset();
+    obtenerSalonPorIdMock.mockResolvedValue(auditorio as never);
+    buscarDistribucionPorIdMock.mockResolvedValue(distribucionAuditorio as never);
+    buscarDistribucionPorNombreMock.mockResolvedValue(null);
+    modificarDistribucionMock.mockImplementation(
+      async (id, datos) => ({ ...distribucionAuditorio, id, ...datos }) as never,
+    );
+  });
+
+  it('modifica nombre y capacidad y responde 200 con la distribución', async () => {
+    const respuesta = await editar({ nombre: ' Conferencia grande ', capacidad: 250 });
+
+    expect(respuesta.status).toBe(200);
+    expect(modificarDistribucionMock).toHaveBeenCalledWith(1, {
+      nombre: 'Conferencia grande',
+      capacidad: 250,
+    });
+    expect(respuesta.body.data).toMatchObject({ id: 1, salonId: 1, capacidad: 250 });
+  });
+
+  it('acepta su propio nombre, también con otras mayúsculas', async () => {
+    buscarDistribucionPorNombreMock.mockResolvedValue(distribucionAuditorio as never);
+
+    const respuesta = await editar({ nombre: 'CONFERENCIA', capacidad: 200 });
+
+    expect(respuesta.status).toBe(200);
+    expect(modificarDistribucionMock).toHaveBeenCalled();
+  });
+
+  it('el nombre de otra distribución del salón responde 409 CONFLICT', async () => {
+    buscarDistribucionPorNombreMock.mockResolvedValue({
+      ...distribucionAuditorio,
+      id: 2,
+      nombre: 'Banquete',
+    } as never);
+
+    const respuesta = await editar({ nombre: 'banquete', capacidad: 200 });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(buscarDistribucionPorNombreMock).toHaveBeenCalledWith(1, 'banquete');
+    expect(modificarDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('una capacidad mayor que la del salón responde 422 BUSINESS_RULE_VIOLATION', async () => {
+    const respuesta = await editar({ nombre: 'Conferencia', capacidad: 281 });
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.details[0].campo).toBe('capacidad');
+    expect(modificarDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('nombre vacío o capacidad inválida responden 400 VALIDATION_ERROR', async () => {
+    for (const cuerpo of [
+      { nombre: '   ', capacidad: 50 },
+      { nombre: 'Conferencia', capacidad: 0 },
+      { nombre: 'Conferencia', capacidad: 12.5 },
+    ]) {
+      const respuesta = await editar(cuerpo);
+      expect(respuesta.status).toBe(400);
+      expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    }
+    expect(modificarDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('una distribución de otro salón o inexistente responde 404 NOT_FOUND', async () => {
+    buscarDistribucionPorIdMock.mockResolvedValueOnce({
+      ...distribucionAuditorio,
+      salonId: 2,
+    } as never);
+    const deOtroSalon = await editar({ nombre: 'Conferencia', capacidad: 50 });
+
+    buscarDistribucionPorIdMock.mockResolvedValueOnce(null);
+    const inexistente = await editar(
+      { nombre: 'Conferencia', capacidad: 50 },
+      '/api/salones/1/distribuciones/99',
+    );
+
+    expect(deOtroSalon.status).toBe(404);
+    expect(inexistente.status).toBe(404);
+    expect(modificarDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('con un salón inexistente responde 404 y con ids que no son número, 400', async () => {
+    obtenerSalonPorIdMock.mockResolvedValue(null);
+    const sinSalon = await editar(
+      { nombre: 'Conferencia', capacidad: 50 },
+      '/api/salones/99/distribuciones/1',
+    );
+    const idInvalido = await editar(
+      { nombre: 'Conferencia', capacidad: 50 },
+      '/api/salones/1/distribuciones/abc',
+    );
+
+    expect(sinSalon.status).toBe(404);
+    expect(idInvalido.status).toBe(400);
+    expect(modificarDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const cookieCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+      id: 7,
+      email: 'ana@empresa.com',
+      rol: 'CLIENTE',
+    })}`;
+
+    const sinSesion = await request(app)
+      .patch('/api/salones/1/distribuciones/1')
+      .send({ nombre: 'Conferencia', capacidad: 50 });
+    const comoCliente = await editar(
+      { nombre: 'Conferencia', capacidad: 50 },
+      '/api/salones/1/distribuciones/1',
+      cookieCliente,
+    );
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
+    expect(modificarDistribucionMock).not.toHaveBeenCalled();
   });
 });

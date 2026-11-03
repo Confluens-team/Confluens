@@ -1,11 +1,18 @@
-import type { ActualizarLandingSalon, CrearDistribucion, ModificarSalon } from '@confluens/shared';
+import type {
+  ActualizarLandingSalon,
+  CrearDistribucion,
+  ModificarDistribucion,
+  ModificarSalon,
+} from '@confluens/shared';
 
 import { borrarFotoReemplazada } from '../../lib/cloudinary.js';
 import { ErrorApi } from '../../lib/errores.js';
 import {
   actualizarLanding,
+  buscarDistribucionPorId,
   buscarDistribucionPorNombre,
   crearDistribucion,
+  modificarDistribucion as modificarDistribucionEnBase,
   modificarSalon,
   obtenerSalonesConDistribuciones,
   obtenerSalonesPublicos,
@@ -79,8 +86,8 @@ export async function registrarDistribucion(
   return repo.crearDistribucion(salonId, datos);
 }
 
-// HU-26 (Sprint 4): 404 si el salón no existe, antes de escribir. Las reglas de los datos están en
-// el schema y el arrastre de las distribuciones, en el repositorio (va en la misma transacción).
+// HU-26 (Sprint 4): solo los precios; las reglas de los datos están en el schema. 404 si el salón
+// no existe, antes de escribir.
 export async function modificarDatosSalon(
   id: number,
   datos: ModificarSalon,
@@ -89,4 +96,44 @@ export async function modificarDatosSalon(
   const salon = await repo.obtenerSalonPorId(id);
   if (!salon) throw ErrorApi.noEncontrado('No existe el salón indicado');
   return repo.modificarSalon(id, datos);
+}
+
+// HU-26 (Sprint 4): edición de una distribución, con las mismas reglas que el alta (HU-25). La
+// distribución tiene que ser del salón de la URL (404 si no), el nombre no puede ser el de otra
+// distribución del salón (409; el suyo propio sí, para poder cambiar solo la capacidad o las
+// mayúsculas) y la capacidad no puede superar la del salón (422).
+export async function modificarDistribucion(
+  salonId: number,
+  distribucionId: number,
+  datos: ModificarDistribucion,
+  repo = {
+    obtenerSalonPorId,
+    buscarDistribucionPorId,
+    buscarDistribucionPorNombre,
+    modificarDistribucion: modificarDistribucionEnBase,
+  },
+) {
+  const salon = await repo.obtenerSalonPorId(salonId);
+  if (!salon) throw ErrorApi.noEncontrado('No existe el salón indicado');
+
+  const distribucion = await repo.buscarDistribucionPorId(distribucionId);
+  if (!distribucion || distribucion.salonId !== salonId) {
+    throw ErrorApi.noEncontrado(`${salon.nombre} no tiene la distribución indicada`);
+  }
+
+  const existente = await repo.buscarDistribucionPorNombre(salonId, datos.nombre);
+  if (existente && existente.id !== distribucionId) {
+    throw ErrorApi.conflicto(
+      `${salon.nombre} ya tiene una distribución llamada «${existente.nombre}»`,
+    );
+  }
+
+  if (datos.capacidad > salon.capacidadMaxima) {
+    throw ErrorApi.reglaNegocio(
+      `La capacidad no puede superar la del salón (${salon.capacidadMaxima} personas)`,
+      [{ campo: 'capacidad', mensaje: `Máximo ${salon.capacidadMaxima} personas` }],
+    );
+  }
+
+  return repo.modificarDistribucion(distribucionId, datos);
 }

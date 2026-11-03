@@ -1,4 +1,9 @@
-import { esquemaCrearDistribucion, type SalonConDistribuciones } from '@confluens/shared';
+import {
+  type Distribucion,
+  esquemaCrearDistribucion,
+  esquemaModificarDistribucion,
+  type SalonConDistribuciones,
+} from '@confluens/shared';
 import { CheckCircle2, Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
 
@@ -6,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { VentanaFormulario } from '@/components/VentanaFormulario';
-import { useCrearDistribucion, useSalones } from '@/hooks/use-salones';
+import { useCrearDistribucion, useModificarDistribucion, useSalones } from '@/hooks/use-salones';
 import { ErrorApiCliente } from '@/lib/api';
 import { formatearPesos } from '@/lib/formato';
 
@@ -15,27 +20,33 @@ import { FormularioSalon } from './FormularioSalon';
 // Mismo formato que los importes de negocio/tarifario-2026.md (separador de miles es-AR).
 const formatoNumero = new Intl.NumberFormat('es-AR');
 
-const valoresIniciales = { nombre: '', capacidad: '' };
-
-// HU-25: alta de una distribución del salón. Mismo patrón que RegistrarMedioPago: estado
-// controlado y validación con el schema de shared antes de enviar. Que el nombre no se repita en
-// el salón y que la capacidad no supere la del salón lo controla la API (409 y 422), y su mensaje
-// se muestra tal cual.
+// HU-25 (alta) y HU-26 (edición, con `distribucion`) de una distribución del salón. Mismo patrón
+// que RegistrarMedioPago: estado controlado y validación con el schema de shared antes de enviar.
+// Que el nombre no se repita en el salón y que la capacidad no supere la del salón lo controla la
+// API (409 y 422), y su mensaje se muestra tal cual.
 function FormularioDistribucion({
   salon,
-  onRegistrada,
+  distribucion,
+  onGuardada,
 }: {
   salon: SalonConDistribuciones;
-  onRegistrada: (nombre: string) => void;
+  distribucion?: Distribucion;
+  onGuardada: (nombre: string) => void;
 }) {
   const crearDistribucion = useCrearDistribucion();
-  const [valores, setValores] = useState(valoresIniciales);
+  const modificarDistribucion = useModificarDistribucion();
+  const mutacion = distribucion ? modificarDistribucion : crearDistribucion;
+  const [valores, setValores] = useState({
+    nombre: distribucion?.nombre ?? '',
+    capacidad: distribucion ? String(distribucion.capacidad) : '',
+  });
   const [erroresCampos, setErroresCampos] = useState<Record<string, string>>({});
 
   function manejarEnvio(evento: React.FormEvent) {
     evento.preventDefault();
     // El input numérico entrega texto; vacío queda sin capacidad para que el schema pida escribirla.
-    const resultado = esquemaCrearDistribucion.safeParse({
+    const esquema = distribucion ? esquemaModificarDistribucion : esquemaCrearDistribucion;
+    const resultado = esquema.safeParse({
       nombre: valores.nombre,
       capacidad: valores.capacidad === '' ? undefined : Number(valores.capacidad),
     });
@@ -46,10 +57,15 @@ function FormularioDistribucion({
       return;
     }
     setErroresCampos({});
-    crearDistribucion.mutate(
-      { salonId: salon.id, datos: resultado.data },
-      { onSuccess: (distribucion) => onRegistrada(distribucion.nombre) },
-    );
+    const alGuardar = { onSuccess: (guardada: Distribucion) => onGuardada(guardada.nombre) };
+    if (distribucion) {
+      modificarDistribucion.mutate(
+        { salonId: salon.id, distribucionId: distribucion.id, datos: resultado.data },
+        alGuardar,
+      );
+    } else {
+      crearDistribucion.mutate({ salonId: salon.id, datos: resultado.data }, alGuardar);
+    }
   }
 
   return (
@@ -91,24 +107,29 @@ function FormularioDistribucion({
         )}
       </div>
 
-      {crearDistribucion.isError && (
+      {mutacion.isError && (
         <p className="text-sm text-destructive">
-          {crearDistribucion.error instanceof ErrorApiCliente
-            ? crearDistribucion.error.message
-            : 'No se pudo registrar la distribución.'}
+          {mutacion.error instanceof ErrorApiCliente
+            ? mutacion.error.message
+            : 'No se pudo guardar la distribución.'}
         </p>
       )}
-      <Button type="submit" disabled={crearDistribucion.isPending}>
-        {crearDistribucion.isPending ? 'Registrando…' : 'Registrar distribución'}
+      <Button type="submit" disabled={mutacion.isPending}>
+        {mutacion.isPending
+          ? 'Guardando…'
+          : distribucion
+            ? 'Guardar cambios'
+            : 'Registrar distribución'}
       </Button>
     </form>
   );
 }
 
 // Ficha de consulta de los salones (HU-03, criterios 1 y 3): los cinco salones con su capacidad,
-// superficie y distribuciones. Desde el salón abierto se modifican sus datos y precios (HU-26) y se
-// registran distribuciones nuevas (HU-25); modificarlas y darlas de baja espera la definición del
-// PO (sprint-04.md).
+// superficie y distribuciones. Desde el salón abierto se modifican sus precios y sus distribuciones
+// (HU-26) y se registran distribuciones nuevas (HU-25). La capacidad máxima y la superficie son
+// fijas (equipo, 03/11/2026); dar de baja una distribución espera la definición del PO
+// (sprint-04.md).
 //
 // El filtro por capacidad mínima (criterio 2) y el aviso de "ninguno cubre esa capacidad, el mayor
 // es X" (criterio 4) se sacaron de acá: el cotizador ya resuelve las dos cosas contra la cantidad
@@ -117,7 +138,15 @@ export function ConsultarSalones() {
   const { data: salones, isLoading, isError } = useSalones();
   const [salonSeleccionadoId, setSalonSeleccionadoId] = useState<number | null>(null);
   const [salonDelAlta, setSalonDelAlta] = useState<SalonConDistribuciones | null>(null);
-  const [registrada, setRegistrada] = useState<{ salonId: number; nombre: string } | null>(null);
+  const [distribucionEnEdicion, setDistribucionEnEdicion] = useState<{
+    salon: SalonConDistribuciones;
+    distribucion: Distribucion;
+  } | null>(null);
+  const [guardada, setGuardada] = useState<{
+    salonId: number;
+    nombre: string;
+    nueva: boolean;
+  } | null>(null);
   const [salonEnEdicion, setSalonEnEdicion] = useState<SalonConDistribuciones | null>(null);
   const [modificadoId, setModificadoId] = useState<number | null>(null);
 
@@ -177,12 +206,12 @@ export function ConsultarSalones() {
                       setSalonEnEdicion(salon);
                     }}
                   >
-                    <Pencil /> Modificar salón
+                    <Pencil /> Modificar precios
                   </Button>
                 </div>
                 {modificadoId === salon.id && (
                   <p className="mb-3 flex items-center gap-2 text-sm text-emerald-800">
-                    <CheckCircle2 className="size-4" /> Los datos del salón quedaron actualizados.
+                    <CheckCircle2 className="size-4" /> Los precios del salón quedaron actualizados.
                   </p>
                 )}
                 <div className="mb-2 flex items-center justify-between gap-3">
@@ -191,7 +220,7 @@ export function ConsultarSalones() {
                     size="sm"
                     variant="outline"
                     onClick={() => {
-                      setRegistrada(null);
+                      setGuardada(null);
                       setSalonDelAlta(salon);
                     }}
                   >
@@ -200,16 +229,31 @@ export function ConsultarSalones() {
                 </div>
                 <ul className="space-y-1 text-sm text-muted-foreground">
                   {salon.distribuciones.map((distribucion) => (
-                    <li key={distribucion.id} className="flex justify-between">
+                    <li key={distribucion.id} className="flex items-center justify-between gap-3">
                       <span>{distribucion.nombre}</span>
-                      <span>{formatoNumero.format(distribucion.capacidad)} personas</span>
+                      <span className="flex items-center gap-1">
+                        {formatoNumero.format(distribucion.capacidad)} personas
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          aria-label={`Modificar ${distribucion.nombre}`}
+                          onClick={() => {
+                            setGuardada(null);
+                            setDistribucionEnEdicion({ salon, distribucion });
+                          }}
+                        >
+                          <Pencil />
+                        </Button>
+                      </span>
                     </li>
                   ))}
                 </ul>
-                {registrada?.salonId === salon.id && (
+                {guardada?.salonId === salon.id && (
                   <p className="mt-3 flex items-center gap-2 text-sm text-emerald-800">
-                    <CheckCircle2 className="size-4" /> «{registrada.nombre}» quedó registrada y ya
-                    se puede elegir al presupuestar y al agendar.
+                    <CheckCircle2 className="size-4" />
+                    {guardada.nueva
+                      ? `«${guardada.nombre}» quedó registrada y ya se puede elegir al presupuestar y al agendar.`
+                      : `«${guardada.nombre}» quedó actualizada.`}
                   </p>
                 )}
               </div>
@@ -229,9 +273,29 @@ export function ConsultarSalones() {
           <FormularioDistribucion
             key={salonDelAlta.id}
             salon={salonDelAlta}
-            onRegistrada={(nombre) => {
-              setRegistrada({ salonId: salonDelAlta.id, nombre });
+            onGuardada={(nombre) => {
+              setGuardada({ salonId: salonDelAlta.id, nombre, nueva: true });
               setSalonDelAlta(null);
+            }}
+          />
+        )}
+      </VentanaFormulario>
+
+      <VentanaFormulario
+        abierto={distribucionEnEdicion !== null}
+        onCambiarAbierto={(abierto) => !abierto && setDistribucionEnEdicion(null)}
+        titulo={`Modificar ${distribucionEnEdicion?.distribucion.nombre ?? ''}`}
+        descripcion="El cambio se ve también en los eventos que ya usan esta distribución."
+      >
+        {/* Se desmonta al cerrar: cada apertura arranca con los datos guardados. */}
+        {distribucionEnEdicion && (
+          <FormularioDistribucion
+            key={distribucionEnEdicion.distribucion.id}
+            salon={distribucionEnEdicion.salon}
+            distribucion={distribucionEnEdicion.distribucion}
+            onGuardada={(nombre) => {
+              setGuardada({ salonId: distribucionEnEdicion.salon.id, nombre, nueva: false });
+              setDistribucionEnEdicion(null);
             }}
           />
         )}
@@ -240,8 +304,8 @@ export function ConsultarSalones() {
       <VentanaFormulario
         abierto={salonEnEdicion !== null}
         onCambiarAbierto={(abierto) => !abierto && setSalonEnEdicion(null)}
-        titulo={`Modificar ${salonEnEdicion?.nombre ?? ''}`}
-        descripcion="Capacidad, superficie y precios sin IVA. El nombre del salón no se modifica."
+        titulo={`Precios de ${salonEnEdicion?.nombre ?? ''}`}
+        descripcion="Precios sin IVA. El nombre, la capacidad máxima y la superficie del salón no se modifican."
       >
         {/* Se desmonta al cerrar: cada apertura arranca con los datos guardados del salón. */}
         {salonEnEdicion && (
