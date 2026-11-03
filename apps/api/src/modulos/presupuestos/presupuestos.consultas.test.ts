@@ -883,6 +883,47 @@ describe('PATCH /api/presupuestos/:id sobre un evento confirmado (RN-09)', () =>
 
     expect(respuesta.status).toBe(409);
   });
+
+  // HU-27 del Sprint 4 (RN-09): el plazo de 7 días es solo para el cliente. El personal modifica
+  // un evento reservado aunque falte un día.
+  describe('a menos de 7 días del evento (HU-27)', () => {
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-11-14T15:00:00.000Z'));
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('el Responsable de Eventos cambia la cantidad de personas igual', async () => {
+      // La cookie se firma con el reloj ya movido: la de arriba vencería en esta fecha.
+      const respuesta = await request(app)
+        .patch('/api/presupuestos/31')
+        .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')])
+        .send({
+          ...bodyBase,
+          fecha: '2026-11-15',
+          cantidadPersonas: 10,
+          servicios: [{ servicioId: 1, cantidad: 10 }],
+        });
+
+      expect(respuesta.status).toBe(200);
+      expect(datosDelEvento()).toMatchObject({ cantidadPersonas: 10, estado: 'Reservado' });
+    });
+  });
+
+  // HU-27 del Sprint 4: solo el personal modifica eventos.
+  it('sin sesión responde 401 y con sesión de Cliente 403, sin modificar nada', async () => {
+    const sinSesion = await request(app).patch('/api/presupuestos/31').send(bodyBase);
+    const comoCliente = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send(bodyBase);
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
+    expect(actualizarEventoMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('Consultas sociales (ADR 0008)', () => {
