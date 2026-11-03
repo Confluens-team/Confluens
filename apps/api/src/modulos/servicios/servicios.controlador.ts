@@ -1,6 +1,7 @@
 import type {
   ActualizarLandingServicio,
   CrearServicio,
+  ModificarServicio,
   RespuestaExito,
   Servicio,
   ServicioPublico,
@@ -12,6 +13,7 @@ import {
   crearServicio,
   listarServicios,
   listarServiciosPublicos,
+  modificarServicio,
 } from './servicios.servicio.js';
 
 export async function listar(_req: Request, res: Response): Promise<void> {
@@ -43,6 +45,14 @@ export async function actualizarLanding(req: Request, res: Response): Promise<vo
   const id = Number(req.params['id']);
   const { fotoUrl } = req.body as ActualizarLandingServicio;
   const servicio = await actualizarLandingServicio(id, fotoUrl, req.usuario!.id);
+  const cuerpo: RespuestaExito<Servicio> = { data: servicio as unknown as Servicio };
+  res.json(cuerpo);
+}
+
+// HU-32 (Sprint 4). params y body ya validados por validar() en servicios.rutas.ts.
+export async function modificar(req: Request, res: Response): Promise<void> {
+  const id = Number(req.params['id']);
+  const servicio = await modificarServicio(id, req.body as ModificarServicio);
   const cuerpo: RespuestaExito<Servicio> = { data: servicio as unknown as Servicio };
   res.json(cuerpo);
 }

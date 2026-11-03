@@ -1,4 +1,10 @@
-import type { CrearServicio, RespuestaExito, Servicio, ServicioPublico } from '@confluens/shared';
+import type {
+  CrearServicio,
+  ModificarServicio,
+  RespuestaExito,
+  Servicio,
+  ServicioPublico,
+} from '@confluens/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api';
@@ -41,6 +47,26 @@ export function useCrearServicio() {
     },
     // Invalida el catálogo para que el listado refleje el alta sin recargar la página (criterio 1:
     // "queda disponible para seleccionar").
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['servicios'] });
+    },
+  });
+}
+
+// HU-32 del Sprint 4: modificar un servicio. Invalida el catálogo (y por la clave anidada, la
+// landing): los presupuestos nuevos toman el precio nuevo; los emitidos tienen el suyo congelado.
+export function useModificarServicio() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, datos }: { id: number; datos: ModificarServicio }) => {
+      const respuesta = await apiFetch<RespuestaExito<Servicio>>(`/servicios/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
+      });
+      return respuesta.data;
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['servicios'] });
     },

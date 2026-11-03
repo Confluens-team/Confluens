@@ -16,6 +16,8 @@ vi.mock('./pagos.repositorio.js', () => ({
   listarTodosLosMediosPago: vi.fn(),
   buscarMedioPagoPorNombre: vi.fn(),
   crearMedioPago: vi.fn(),
+  buscarMedioPagoPorId: vi.fn(),
+  modificarMedioPago: vi.fn(),
   crear: vi.fn(),
   confirmarPresupuestoYReservar: vi.fn(),
   marcarCobrado: vi.fn(),
@@ -35,6 +37,8 @@ const {
   listarTodosLosMediosPago,
   buscarMedioPagoPorNombre,
   crearMedioPago,
+  buscarMedioPagoPorId,
+  modificarMedioPago,
   crear,
   confirmarPresupuestoYReservar,
   marcarCobrado,
@@ -50,6 +54,8 @@ const listarMediosPagoActivosMock = vi.mocked(listarMediosPagoActivos);
 const listarTodosLosMediosPagoMock = vi.mocked(listarTodosLosMediosPago);
 const buscarMedioPagoPorNombreMock = vi.mocked(buscarMedioPagoPorNombre);
 const crearMedioPagoMock = vi.mocked(crearMedioPago);
+const buscarMedioPagoPorIdMock = vi.mocked(buscarMedioPagoPorId);
+const modificarMedioPagoMock = vi.mocked(modificarMedioPago);
 const crearMock = vi.mocked(crear);
 const confirmarPresupuestoYReservarMock = vi.mocked(confirmarPresupuestoYReservar);
 const marcarCobradoMock = vi.mocked(marcarCobrado);
@@ -1131,6 +1137,114 @@ describe('POST /api/medios-pago (HU-19)', () => {
     expect(sinSesion.status).toBe(401);
     expect(comoCliente.status).toBe(403);
     expect(crearMedioPagoMock).not.toHaveBeenCalled();
+  });
+});
+
+// HU-33 del Sprint 4 («Modificar medio de pago»). La habilitación de los seis medios del catálogo
+// inicial también se puede cambiar (equipo, 03/11/2026): por eso el caso base es Efectivo.
+describe('PATCH /api/medios-pago/:id (HU-33)', () => {
+  const modificar = (cuerpo: object, cookie = cookieResponsableEventos, id = 1) =>
+    request(app).patch(`/api/medios-pago/${id}`).set('Cookie', [cookie]).send(cuerpo);
+
+  beforeEach(() => {
+    buscarMedioPagoPorIdMock.mockReset();
+    buscarMedioPagoPorNombreMock.mockReset();
+    modificarMedioPagoMock.mockReset();
+    buscarMedioPagoPorIdMock.mockResolvedValue(medioPagoFixture);
+    buscarMedioPagoPorNombreMock.mockResolvedValue(null);
+    modificarMedioPagoMock.mockImplementation(async (id, datos) => ({
+      ...medioPagoFixture,
+      id,
+      ...datos,
+    }));
+  });
+
+  it('cambia la habilitación de un medio del catálogo inicial', async () => {
+    const respuesta = await modificar({ nombre: 'Efectivo', conFactura: false, sinFactura: true });
+
+    expect(respuesta.status).toBe(200);
+    expect(modificarMedioPagoMock).toHaveBeenCalledWith(1, {
+      nombre: 'Efectivo',
+      conFactura: false,
+      sinFactura: true,
+    });
+    expect(respuesta.body.data).toMatchObject({ conFactura: false, sinFactura: true });
+  });
+
+  it('cambia el nombre, recortado', async () => {
+    const respuesta = await modificar({ nombre: '  Contado ', conFactura: true, sinFactura: true });
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.nombre).toBe('Contado');
+  });
+
+  it('cambiarle solo las mayúsculas a su propio nombre no choca', async () => {
+    buscarMedioPagoPorNombreMock.mockResolvedValue(medioPagoFixture);
+
+    const respuesta = await modificar({ nombre: 'EFECTIVO', conFactura: true, sinFactura: true });
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('el nombre de otro medio, con otras mayúsculas, responde 409 CONFLICT', async () => {
+    buscarMedioPagoPorNombreMock.mockResolvedValue({
+      ...medioPagoFixture,
+      id: 2,
+      nombre: 'Transferencia',
+    });
+
+    const respuesta = await modificar({
+      nombre: 'transferencia',
+      conFactura: true,
+      sinFactura: true,
+    });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(modificarMedioPagoMock).not.toHaveBeenCalled();
+  });
+
+  it('sin habilitarlo en ningún caso responde 400 VALIDATION_ERROR', async () => {
+    const respuesta = await modificar({ nombre: 'Efectivo', conFactura: false, sinFactura: false });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details[0].campo).toBe('conFactura');
+    expect(modificarMedioPagoMock).not.toHaveBeenCalled();
+  });
+
+  it('sin nombre o sin alguno de los dos casos responde 400 VALIDATION_ERROR', async () => {
+    for (const cuerpo of [
+      { nombre: '  ', conFactura: true, sinFactura: true },
+      { nombre: 'Efectivo', sinFactura: true },
+    ]) {
+      const respuesta = await modificar(cuerpo);
+      expect(respuesta.status).toBe(400);
+    }
+    expect(modificarMedioPagoMock).not.toHaveBeenCalled();
+  });
+
+  it('con un medio inexistente responde 404 NOT_FOUND', async () => {
+    buscarMedioPagoPorIdMock.mockResolvedValue(null);
+
+    const respuesta = await modificar(
+      { nombre: 'Efectivo', conFactura: true, sinFactura: true },
+      cookieResponsableEventos,
+      99,
+    );
+
+    expect(respuesta.status).toBe(404);
+    expect(modificarMedioPagoMock).not.toHaveBeenCalled();
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const cuerpo = { nombre: 'Efectivo', conFactura: true, sinFactura: true };
+
+    const sinSesion = await request(app).patch('/api/medios-pago/1').send(cuerpo);
+    const comoCliente = await modificar(cuerpo, cookieDe('CLIENTE', 'cliente@mail.test'));
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
+    expect(modificarMedioPagoMock).not.toHaveBeenCalled();
   });
 });
 
