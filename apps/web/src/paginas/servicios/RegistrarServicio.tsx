@@ -1,5 +1,5 @@
-import { esquemaCrearServicio } from '@confluens/shared';
-import { Plus } from 'lucide-react';
+import { esquemaCrearServicio, esquemaModificarServicio, type Servicio } from '@confluens/shared';
+import { Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
 
 import { ErrorApiCliente } from '@/lib/api';
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { VentanaFormulario } from '@/components/VentanaFormulario';
-import { useCrearServicio, useServicios } from '@/hooks/use-servicios';
+import { useCrearServicio, useModificarServicio, useServicios } from '@/hooks/use-servicios';
 
 import { IncrementoMensual } from './IncrementoMensual';
 
@@ -31,7 +31,24 @@ const valoresIniciales = {
   admiteModalidad: false,
   // HU-11: un tercerizado puede no tener precio fijo todavía. No viaja: se traduce a precio null.
   aCotizar: false,
+  // Solo en la edición: el alta no la pide (la categoría nace en null).
+  categoria: '',
 };
+
+// HU-32 del Sprint 4: al editar, el formulario arranca con los datos del servicio.
+function valoresDe(servicio: Servicio): typeof valoresIniciales {
+  return {
+    nombre: servicio.nombre,
+    descripcion: servicio.descripcion,
+    unidadMedida: servicio.unidadMedida,
+    precio: servicio.precio ?? '',
+    porPersona: servicio.porPersona,
+    tercerizado: servicio.tercerizado,
+    admiteModalidad: servicio.admiteModalidad,
+    aCotizar: servicio.precio === null,
+    categoria: servicio.categoria ?? '',
+  };
+}
 
 // Estado del formulario con useState controlado en vez de React Hook Form. El criterio se
 // compartía con el filtro de ConsultarSalones.tsx, que ya no existe. El motivo original era que
@@ -40,10 +57,21 @@ const valoresIniciales = {
 // usan, así que migrar esto a RHF es posible, pero no hace falta para HU-13/HU-14. Acá además se
 // valida el body a mano con esquemaCrearServicio antes de enviarlo, para dar el mismo mensaje de
 // error que devolvería el servidor sin esperar el round-trip.
-function FormularioServicio({ onRegistrado }: { onRegistrado: () => void }) {
+//
+// El mismo formulario sirve para el alta y, con `servicio`, para modificarlo (HU-32 del Sprint 4):
+// cambian el schema con que se valida, la mutación y que la edición suma la categoría.
+function FormularioServicio({
+  servicio,
+  onGuardado,
+}: {
+  servicio?: Servicio;
+  onGuardado: () => void;
+}) {
   const crearServicio = useCrearServicio();
+  const modificarServicio = useModificarServicio();
+  const guardar = servicio ? modificarServicio : crearServicio;
 
-  const [valores, setValores] = useState(valoresIniciales);
+  const [valores, setValores] = useState(servicio ? valoresDe(servicio) : valoresIniciales);
   const [erroresCampos, setErroresCampos] = useState<Record<string, string>>({});
 
   function actualizarCampo<K extends keyof typeof valoresIniciales>(
@@ -58,25 +86,32 @@ function FormularioServicio({ onRegistrado }: { onRegistrado: () => void }) {
 
     // Se valida con el mismo schema que usa el servidor (packages/shared): si el body no pasa
     // acá, tampoco pasaría la API, así que se evita el request y se muestra el error al toque.
-    const { aCotizar, ...cuerpo } = valores;
-    const resultado = esquemaCrearServicio.safeParse({
+    const { aCotizar, categoria, ...cuerpo } = valores;
+    const datos = {
       ...cuerpo,
       precio: aCotizar && cuerpo.tercerizado ? null : cuerpo.precio,
       admiteModalidad: cuerpo.porPersona && cuerpo.admiteModalidad,
-    });
-    if (!resultado.success) {
+    };
+    function mostrarErrores(issues: { path: PropertyKey[]; message: string }[]) {
       const errores: Record<string, string> = {};
-      for (const issue of resultado.error.issues) {
-        errores[String(issue.path[0])] = issue.message;
-      }
+      for (const issue of issues) errores[String(issue.path[0])] = issue.message;
       setErroresCampos(errores);
-      return;
     }
 
-    setErroresCampos({});
-    crearServicio.mutate(resultado.data, {
-      onSuccess: onRegistrado,
-    });
+    if (servicio) {
+      const resultado = esquemaModificarServicio.safeParse({ ...datos, categoria });
+      if (!resultado.success) return mostrarErrores(resultado.error.issues);
+      setErroresCampos({});
+      modificarServicio.mutate(
+        { id: servicio.id, datos: resultado.data },
+        { onSuccess: onGuardado },
+      );
+    } else {
+      const resultado = esquemaCrearServicio.safeParse(datos);
+      if (!resultado.success) return mostrarErrores(resultado.error.issues);
+      setErroresCampos({});
+      crearServicio.mutate(resultado.data, { onSuccess: onGuardado });
+    }
   }
 
   return (
@@ -183,16 +218,43 @@ function FormularioServicio({ onRegistrado }: { onRegistrado: () => void }) {
         </div>
       )}
 
-      {crearServicio.isError && (
-        <p className="text-sm text-destructive">
-          {crearServicio.error instanceof ErrorApiCliente
-            ? crearServicio.error.message
-            : 'No se pudo registrar el servicio.'}
+      {/* Agrupa el catálogo en la landing. Las del tarifario: Coffee breaks, Desayunos,
+          Degustación, Lunch y cocktail, Almuerzo y cena. */}
+      {servicio && (
+        <div className="space-y-1.5">
+          <Label htmlFor="categoria">Categoría</Label>
+          <Input
+            id="categoria"
+            placeholder="Sin categoría"
+            maxLength={60}
+            value={valores.categoria}
+            onChange={(e) => actualizarCampo('categoria', e.target.value)}
+          />
+          {erroresCampos['categoria'] && (
+            <p className="text-sm text-destructive">{erroresCampos['categoria']}</p>
+          )}
+        </div>
+      )}
+
+      {servicio && (
+        <p className="text-xs text-muted-foreground">
+          Un cambio de precio no afecta los presupuestos ya emitidos: conservan el precio con que se
+          armaron.
         </p>
       )}
 
-      <Button type="submit" disabled={crearServicio.isPending}>
-        {crearServicio.isPending ? 'Guardando…' : 'Registrar servicio'}
+      {guardar.isError && (
+        <p className="text-sm text-destructive">
+          {guardar.error instanceof ErrorApiCliente
+            ? guardar.error.message
+            : servicio
+              ? 'No se pudo modificar el servicio.'
+              : 'No se pudo registrar el servicio.'}
+        </p>
+      )}
+
+      <Button type="submit" disabled={guardar.isPending}>
+        {guardar.isPending ? 'Guardando…' : servicio ? 'Guardar cambios' : 'Registrar servicio'}
       </Button>
     </form>
   );
@@ -203,6 +265,7 @@ function FormularioServicio({ onRegistrado }: { onRegistrado: () => void }) {
 export function RegistrarServicio() {
   const { data: servicios, isLoading, isError } = useServicios();
   const [abierto, setAbierto] = useState(false);
+  const [enEdicion, setEnEdicion] = useState<Servicio | null>(null);
 
   return (
     <div className="mx-auto max-w-2xl space-y-8 p-6">
@@ -226,7 +289,23 @@ export function RegistrarServicio() {
         descripcion="El servicio queda en el catálogo y se puede incorporar a los presupuestos."
       >
         {/* La key vacía el formulario cada vez que se abre la ventana. */}
-        <FormularioServicio key={String(abierto)} onRegistrado={() => setAbierto(false)} />
+        <FormularioServicio key={String(abierto)} onGuardado={() => setAbierto(false)} />
+      </VentanaFormulario>
+
+      <VentanaFormulario
+        abierto={enEdicion !== null}
+        onCambiarAbierto={(abiertoEdicion) => !abiertoEdicion && setEnEdicion(null)}
+        titulo="Modificar servicio"
+        descripcion="Los presupuestos nuevos o recalculados toman los datos nuevos."
+      >
+        {/* Se desmonta al cerrar: cada apertura arranca con los datos guardados del servicio. */}
+        {enEdicion && (
+          <FormularioServicio
+            key={enEdicion.id}
+            servicio={enEdicion}
+            onGuardado={() => setEnEdicion(null)}
+          />
+        )}
       </VentanaFormulario>
 
       <div className="space-y-2">
@@ -238,7 +317,7 @@ export function RegistrarServicio() {
         )}
         <ul className="divide-y rounded-lg border">
           {servicios?.map((servicio) => (
-            <li key={servicio.id} className="flex items-center justify-between p-3 text-sm">
+            <li key={servicio.id} className="flex items-center justify-between gap-3 p-3 text-sm">
               <div>
                 <p className="font-medium">{servicio.nombre}</p>
                 <p className="text-muted-foreground">
@@ -247,11 +326,21 @@ export function RegistrarServicio() {
                   {servicio.tercerizado ? ' (tercerizado)' : ''}
                 </p>
               </div>
-              <span className="font-medium">
-                {servicio.precio === null
-                  ? 'A cotizar'
-                  : formateadorPrecio.format(Number(servicio.precio))}
-              </span>
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="font-medium">
+                  {servicio.precio === null
+                    ? 'A cotizar'
+                    : formateadorPrecio.format(Number(servicio.precio))}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label={`Modificar ${servicio.nombre}`}
+                  onClick={() => setEnEdicion(servicio)}
+                >
+                  <Pencil />
+                </Button>
+              </div>
             </li>
           ))}
         </ul>
