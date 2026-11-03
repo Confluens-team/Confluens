@@ -35,7 +35,7 @@ export async function crearServicio(
 ) {
   const existente = await repo.buscarPorNombre(datos.nombre);
   if (existente) {
-    throw ErrorApi.conflicto(`Ya existe un servicio con el nombre "${datos.nombre}"`);
+    throw ErrorApi.conflicto(`Ya existe un servicio con el nombre "${existente.nombre}"`);
   }
 
   return repo.crear(datos);
@@ -61,8 +61,8 @@ export async function actualizarLandingServicio(
 }
 
 // HU-32 (Sprint 4): modificar un servicio del catálogo. 404 si no existe y 409 si el nombre nuevo ya
-// es de otro servicio, con el mismo criterio que el alta (nombre exacto, el índice de la base).
-// Conservar el propio nombre no choca. Se corta antes de escribir.
+// es de otro servicio, con el mismo criterio que el alta (sin distinguir mayúsculas). Conservar el
+// propio nombre, o cambiarle solo las mayúsculas, no choca. Se corta antes de escribir.
 export async function modificarServicio(
   id: number,
   datos: ModificarServicio,
@@ -73,7 +73,7 @@ export async function modificarServicio(
 
   const conEseNombre = await repo.buscarPorNombre(datos.nombre);
   if (conEseNombre && conEseNombre.id !== id) {
-    throw ErrorApi.conflicto(`Ya existe un servicio con el nombre "${datos.nombre}"`);
+    throw ErrorApi.conflicto(`Ya existe un servicio con el nombre "${conEseNombre.nombre}"`);
   }
 
   return repo.modificar(id, datos);

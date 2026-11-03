@@ -26,7 +26,8 @@ function repositorioFake(servicios: Servicio[]): ServiciosRepositorio {
           categoria,
           fotoUrl,
         })),
-    buscarPorNombre: async (nombre) => servicios.find((s) => s.nombre === nombre) ?? null,
+    buscarPorNombre: async (nombre) =>
+      servicios.find((s) => s.nombre.toLowerCase() === nombre.toLowerCase()) ?? null,
     buscarPorId: async (id) => servicios.find((s) => s.id === id) ?? null,
     actualizarLanding: async (id, fotoUrl) => {
       const servicio = servicios.find((s) => s.id === id)!;
@@ -124,6 +125,25 @@ describe('servicios.servicio: crearServicio', () => {
       ),
     ).rejects.toMatchObject({ status: 409, codigo: 'CONFLICT' });
   });
+
+  it('con un nombre existente escrito con otras mayúsculas también lanza 409', async () => {
+    const repo = repositorioFake([servicioBase]);
+
+    await expect(
+      crearServicio(
+        {
+          nombre: 'COFFEE BREAK ESTÁNDAR',
+          descripcion: 'Otra descripción',
+          unidadMedida: 'persona',
+          precio: '5000',
+          porPersona: true,
+          tercerizado: false,
+          admiteModalidad: false,
+        },
+        repo,
+      ),
+    ).rejects.toMatchObject({ status: 409 });
+  });
 });
 
 describe('servicios.servicio: actualizarLandingServicio (ADR 0009)', () => {
@@ -182,6 +202,27 @@ describe('servicios.servicio: modificarServicio (HU-32 del Sprint 4)', () => {
       modificarServicio(1, { ...cambios, nombre: 'Desayuno americano' }, repo),
     ).rejects.toMatchObject({ status: 409 });
     expect(modificar).not.toHaveBeenCalled();
+  });
+
+  it('el nombre de otro servicio con otras mayúsculas también lanza 409', async () => {
+    const otro = { ...servicioBase, id: 2, nombre: 'Desayuno americano' };
+    const repo = repositorioFake([{ ...servicioBase }, otro]);
+
+    await expect(
+      modificarServicio(1, { ...cambios, nombre: 'DESAYUNO americano' }, repo),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
+  it('cambiarle solo las mayúsculas al propio nombre no choca', async () => {
+    const repo = repositorioFake([{ ...servicioBase }]);
+
+    const modificado = await modificarServicio(
+      1,
+      { ...cambios, nombre: 'Coffee Break Estándar' },
+      repo,
+    );
+
+    expect(modificado.nombre).toBe('Coffee Break Estándar');
   });
 
   it('con un servicio inexistente lanza 404', async () => {
