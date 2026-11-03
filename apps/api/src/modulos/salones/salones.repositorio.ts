@@ -1,12 +1,19 @@
-import type { ActualizarLandingSalon, CrearDistribucion, ModificarSalon } from '@confluens/shared';
+import type {
+  ActualizarLandingSalon,
+  CrearDistribucion,
+  ModificarDistribucion,
+  ModificarSalon,
+} from '@confluens/shared';
 
 import { prisma } from '../../lib/prisma.js';
 
 // Orden por capacidad descendente: así el primer elemento de la lista es siempre "la mayor
 // disponible" (criterio 4 de HU-01), sin tener que recalcular un máximo aparte en el servicio.
+// Las distribuciones van por id: sin un orden explícito, Postgres devuelve al final la última
+// editada (HU-26) y la lista cambiaba de orden en cada guardado.
 export async function obtenerSalonesConDistribuciones() {
   return prisma.salon.findMany({
-    include: { distribuciones: true },
+    include: { distribuciones: { orderBy: { id: 'asc' } } },
     orderBy: { capacidadMaxima: 'desc' },
   });
 }
@@ -84,20 +91,24 @@ export async function crearDistribucion(salonId: number, datos: CrearDistribucio
   return prisma.distribucion.create({ data: { ...datos, salonId } });
 }
 
-// HU-26 (Sprint 4): modifica capacidad, superficie y precios. Las distribuciones que quedan por
-// encima de la capacidad nueva bajan a esa capacidad (equipo, 03/11/2026), en la misma transacción:
-// la capacidad de una distribución nunca supera la del salón (dominio.md). Los presupuestos ya
-// emitidos no cambian: sus líneas guardan el precio congelado (RN-03, RN-10).
+// HU-26 (Sprint 4): modifica los precios. Los presupuestos ya emitidos no cambian: sus líneas
+// guardan el precio congelado (RN-03, RN-10). Devuelve el salón con sus distribuciones, igual que el
+// listado, para que la web no tenga que pedirlo de nuevo.
 export async function modificarSalon(id: number, datos: ModificarSalon) {
-  return prisma.$transaction(async (tx) => {
-    await tx.salon.update({ where: { id }, data: datos });
-    await tx.distribucion.updateMany({
-      where: { salonId: id, capacidad: { gt: datos.capacidadMaxima } },
-      data: { capacidad: datos.capacidadMaxima },
-    });
-    return tx.salon.findUniqueOrThrow({
-      where: { id },
-      include: { distribuciones: { orderBy: { id: 'asc' } } },
-    });
+  return prisma.salon.update({
+    where: { id },
+    data: datos,
+    include: { distribuciones: { orderBy: { id: 'asc' } } },
   });
+}
+
+export async function buscarDistribucionPorId(id: number) {
+  return prisma.distribucion.findUnique({ where: { id } });
+}
+
+// HU-26 (Sprint 4): edición de una distribución. Los eventos la referencian por id, así que el
+// cambio de nombre o de capacidad se ve en los que ya la usan; la capacidad es informativa y no
+// pone tope a la cantidad de personas (dominio.md).
+export async function modificarDistribucion(id: number, datos: ModificarDistribucion) {
+  return prisma.distribucion.update({ where: { id }, data: datos });
 }

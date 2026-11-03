@@ -2,6 +2,7 @@ import {
   esquemaActualizarLandingSalon,
   esquemaCrearDistribucion,
   esquemaDistribucion,
+  esquemaModificarDistribucion,
   esquemaModificarSalon,
   esquemaSalon,
   esquemaSalonConDistribuciones,
@@ -21,6 +22,7 @@ import {
   listar,
   listarPublicos,
   modificar,
+  editarDistribucion,
 } from './salones.controlador.js';
 
 registroOpenApi.registerPath({
@@ -109,7 +111,7 @@ registroOpenApi.registerPath({
   method: 'patch',
   path: '/salones/{id}',
   tags: ['Salones'],
-  summary: 'Modifica la capacidad, la superficie y los precios de un salón (HU-26 del Sprint 4)',
+  summary: 'Modifica los precios de un salón (HU-26 del Sprint 4)',
   request: {
     params: esquemaParamsId,
     body: { content: { 'application/json': { schema: esquemaModificarSalon } } },
@@ -117,16 +119,46 @@ registroOpenApi.registerPath({
   responses: {
     200: {
       description:
-        'Salón modificado, con sus distribuciones: las que superaban la capacidad nueva bajan a ' +
-        'ella. Los presupuestos ya emitidos conservan su precio congelado (RN-03)',
+        'Salón modificado, con sus distribuciones. La capacidad máxima y la superficie no se ' +
+        'modifican. Los presupuestos ya emitidos conservan su precio congelado (RN-03)',
       content: {
         'application/json': { schema: z.object({ data: esquemaSalonConDistribuciones }) },
       },
     },
-    400: { description: 'Capacidad, superficie o precios inválidos' },
+    400: { description: 'Precios inválidos' },
     401: { description: 'Sin sesión activa' },
     403: { description: 'La sesión no es del personal' },
     404: { description: 'No existe el salón indicado' },
+  },
+});
+
+const esquemaParamsDistribucion = z.object({
+  id: z.coerce.number().int().positive(),
+  distribucionId: z.coerce.number().int().positive(),
+});
+
+registroOpenApi.registerPath({
+  method: 'patch',
+  path: '/salones/{id}/distribuciones/{distribucionId}',
+  tags: ['Salones'],
+  summary: 'Modifica el nombre y la capacidad de una distribución (HU-26 del Sprint 4)',
+  request: {
+    params: esquemaParamsDistribucion,
+    body: { content: { 'application/json': { schema: esquemaModificarDistribucion } } },
+  },
+  responses: {
+    200: {
+      description: 'Distribución modificada; el cambio se ve en los eventos que ya la usan',
+      content: { 'application/json': { schema: z.object({ data: esquemaDistribucion }) } },
+    },
+    400: { description: 'Nombre o capacidad inválidos' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
+    404: { description: 'No existe el salón o la distribución no es de ese salón' },
+    409: {
+      description: 'Otra distribución del salón ya tiene ese nombre (sin distinguir mayúsculas)',
+    },
+    422: { description: 'La capacidad supera la capacidad máxima del salón' },
   },
 });
 
@@ -169,4 +201,13 @@ rutasSalones.patch(
   autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaParamsId, body: esquemaModificarSalon }),
   asincrono(modificar),
+);
+
+// HU-26: edición de una distribución, con el mismo orden de middlewares.
+rutasSalones.patch(
+  '/:id/distribuciones/:distribucionId',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaParamsDistribucion, body: esquemaModificarDistribucion }),
+  asincrono(editarDistribucion),
 );
