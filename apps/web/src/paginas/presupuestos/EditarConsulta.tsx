@@ -282,9 +282,9 @@ function Formulario({
     (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
     consulta.evento.estado === 'EnConsulta';
   // RN-09: el Responsable de Eventos modifica en todo momento, también un evento ya confirmado
-  // (decisión de Franco, 08/10/2026). Sigue Confirmado y sin baja; la vigencia vuelve a contar 10
-  // días como en toda modificación (RN-08, HU-27), y el estado del evento (Reservado o Cobrado) lo
-  // recalcula la API con lo pagado contra el total nuevo.
+  // (decisión de Franco, 08/10/2026). Sigue Confirmado y sin baja; como en toda modificación, se
+  // vuelve a emitir con la fecha de hoy y la vigencia cuenta 10 días desde ahí (RN-08, HU-27), y el
+  // estado del evento (Reservado o Cobrado) lo recalcula la API con lo pagado contra el total nuevo.
   const confirmado =
     consulta.estado === 'Confirmado' &&
     (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');

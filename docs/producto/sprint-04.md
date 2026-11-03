@@ -154,9 +154,10 @@ Criterios propuestos:
   propuesto decía «no puede superar», que contradice `dominio.md`; vale `dominio.md`.)
 - Un cambio que mueve el total del presupuesto sigue las reglas de HU-12 (vigencia, saldo a favor si
   baja por debajo de lo pagado).
-- Al recalcular el presupuesto de un evento `Reservado` o `Cobrado`, la vigencia vuelve a contar 10
-  días desde ese momento, como en toda modificación (RN-08; Franco, 03/11/2026). El presupuesto
-  sigue `Confirmado`: el control de vigencia solo vence los `Estimado`.
+- Al recalcular un presupuesto, la fecha de emisión pasa a ser la del recálculo y la vigencia vuelve
+  a contar 10 días desde ahí, como en toda modificación (RN-08; Franco, 03/11/2026). Vale también
+  para un evento `Reservado` o `Cobrado`: su presupuesto sigue `Confirmado`, porque el control de
+  vigencia solo vence los `Estimado`.
 - Solo el personal interno modifica eventos; el rol Cliente no.
 
 **Definido (equipo, 03/11/2026).** Alcanza con lo que ya existe: la historia se cubre con tests y
@@ -171,7 +172,7 @@ se re-estima.
 | Fecha, horario o salón sin solapar | `si cambia la fecha, el horario se corre…`, `responde 409 si la fecha o el salón nuevos pisan a otro evento reservado (RN-12)`; agendar: `responde 409 si el salón ya está reservado…`, `…constraint EXCLUDE…` |
 | Capacidad | agendar: `responde 422 si cantidadPersonas supera la capacidad y no se confirma`, `agenda igual si … confirmarCapacidadExcedida es true` |
 | Reglas de HU-12 | `si lo pagado cubre el total nuevo, el evento pasa a Cobrado…`, `conserva los precios congelados…` |
-| Vigencia al recalcular | `se guarda sin volver a Estimado, reinicia la vigencia y el evento sigue Reservado` |
+| Emisión y vigencia al recalcular | `conserva los precios congelados … y reinicia la emisión y la vigencia`, `se guarda sin volver a Estimado, reinicia la emisión y la vigencia…` |
 | Solo el personal | `sin sesión responde 401 y con sesión de Cliente 403, sin modificar nada` |
 
 **Implementación.** Ya existen `PATCH /api/presupuestos/:id` (fecha, salones, servicios, personas;
