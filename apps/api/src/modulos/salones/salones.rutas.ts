@@ -1,5 +1,8 @@
 import {
   esquemaActualizarLandingSalon,
+  esquemaCrearDistribucion,
+  esquemaDistribucion,
+  esquemaModificarSalon,
   esquemaSalon,
   esquemaSalonConDistribuciones,
   esquemaSalonPublico,
@@ -12,7 +15,13 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { actualizarLanding, listar, listarPublicos } from './salones.controlador.js';
+import {
+  actualizarLanding,
+  crearDistribucion,
+  listar,
+  listarPublicos,
+  modificar,
+} from './salones.controlador.js';
 
 registroOpenApi.registerPath({
   method: 'get',
@@ -71,6 +80,56 @@ registroOpenApi.registerPath({
   },
 });
 
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/salones/{id}/distribuciones',
+  tags: ['Salones'],
+  summary: 'Registra una distribución posible de un salón (HU-25)',
+  request: {
+    params: esquemaParamsId,
+    body: { content: { 'application/json': { schema: esquemaCrearDistribucion } } },
+  },
+  responses: {
+    201: {
+      description: 'Distribución creada; queda disponible al presupuestar y al agendar',
+      content: { 'application/json': { schema: z.object({ data: esquemaDistribucion }) } },
+    },
+    400: { description: 'Nombre o capacidad inválidos' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
+    404: { description: 'No existe el salón indicado' },
+    409: {
+      description: 'El salón ya tiene una distribución con ese nombre (sin distinguir mayúsculas)',
+    },
+    422: { description: 'La capacidad supera la capacidad máxima del salón' },
+  },
+});
+
+registroOpenApi.registerPath({
+  method: 'patch',
+  path: '/salones/{id}',
+  tags: ['Salones'],
+  summary: 'Modifica la capacidad, la superficie y los precios de un salón (HU-26 del Sprint 4)',
+  request: {
+    params: esquemaParamsId,
+    body: { content: { 'application/json': { schema: esquemaModificarSalon } } },
+  },
+  responses: {
+    200: {
+      description:
+        'Salón modificado, con sus distribuciones: las que superaban la capacidad nueva bajan a ' +
+        'ella. Los presupuestos ya emitidos conservan su precio congelado (RN-03)',
+      content: {
+        'application/json': { schema: z.object({ data: esquemaSalonConDistribuciones }) },
+      },
+    },
+    400: { description: 'Capacidad, superficie o precios inválidos' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
+    404: { description: 'No existe el salón indicado' },
+  },
+});
+
 export const rutasSalones = Router();
 
 // /publicos va antes de cualquier ruta con parámetro: si en el futuro se agrega un GET /:id,
@@ -91,4 +150,23 @@ rutasSalones.patch(
   autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaParamsId, body: esquemaActualizarLandingSalon }),
   asincrono(actualizarLanding),
+);
+
+// HU-25: mismo orden de middlewares que el de arriba, y la misma decisión provisoria del PO sobre
+// los roles del personal.
+rutasSalones.post(
+  '/:id/distribuciones',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaParamsId, body: esquemaCrearDistribucion }),
+  asincrono(crearDistribucion),
+);
+
+// HU-26: mismo orden de middlewares y la misma decisión provisoria sobre los roles del personal.
+rutasSalones.patch(
+  '/:id',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaParamsId, body: esquemaModificarSalon }),
+  asincrono(modificar),
 );
