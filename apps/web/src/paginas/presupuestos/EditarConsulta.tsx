@@ -36,6 +36,7 @@ import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { IconoEstado } from '@/components/IconoEstado';
 import { InputEntero } from '@/components/InputEntero';
+import { InputImporte } from '@/components/InputImporte';
 import { SelectorModalidad } from '@/components/SelectorModalidad';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -850,9 +851,8 @@ function Formulario({
                       <td className="py-2 pr-3 text-muted-foreground">1</td>
                       <td className="py-2 pr-3 text-muted-foreground">—</td>
                       <td className="py-2 pr-3">
-                        <Input
+                        <InputImporte
                           aria-label={`Precio del salón ${nombre}`}
-                          inputMode="decimal"
                           value={sel.precio}
                           aria-invalid={!esImporte(sel.precio)}
                           onChange={(e) => cambiarPrecioSalon(sel.salonId, e.target.value)}
@@ -926,9 +926,9 @@ function Formulario({
                       />
                     </td>
                     <td className="py-2 pr-3">
-                      <Input
+                      <InputImporte
                         aria-label={`Precio unitario de ${linea.descripcion}`}
-                        inputMode="decimal"
+                        sinSigno={aCotizar(linea)}
                         value={linea.precio}
                         placeholder={linea.tercerizado ? 'A cotizar' : undefined}
                         aria-invalid={!precioValido(linea)}
@@ -1049,10 +1049,9 @@ function Formulario({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="otro-precio">Precio sin IVA</Label>
-                  <Input
+                  <InputImporte
                     id="otro-precio"
                     className="bg-card"
-                    inputMode="decimal"
                     placeholder="0.00"
                     value={otro.precio}
                     onChange={(e) => setOtro({ ...otro, precio: e.target.value })}
