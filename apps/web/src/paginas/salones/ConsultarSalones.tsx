@@ -1,5 +1,5 @@
 import { esquemaCrearDistribucion, type SalonConDistribuciones } from '@confluens/shared';
-import { CheckCircle2, Plus } from 'lucide-react';
+import { CheckCircle2, Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,9 @@ import { Label } from '@/components/ui/label';
 import { VentanaFormulario } from '@/components/VentanaFormulario';
 import { useCrearDistribucion, useSalones } from '@/hooks/use-salones';
 import { ErrorApiCliente } from '@/lib/api';
+import { formatearPesos } from '@/lib/formato';
+
+import { FormularioSalon } from './FormularioSalon';
 
 // Mismo formato que los importes de negocio/tarifario-2026.md (separador de miles es-AR).
 const formatoNumero = new Intl.NumberFormat('es-AR');
@@ -103,8 +106,9 @@ function FormularioDistribucion({
 }
 
 // Ficha de consulta de los salones (HU-03, criterios 1 y 3): los cinco salones con su capacidad,
-// superficie y distribuciones. Desde HU-25 se registran distribuciones nuevas desde el salón
-// abierto; modificarlas y darlas de baja espera la definición del PO (sprint-04.md).
+// superficie y distribuciones. Desde el salón abierto se modifican sus datos y precios (HU-26) y se
+// registran distribuciones nuevas (HU-25); modificarlas y darlas de baja espera la definición del
+// PO (sprint-04.md).
 //
 // El filtro por capacidad mínima (criterio 2) y el aviso de "ninguno cubre esa capacidad, el mayor
 // es X" (criterio 4) se sacaron de acá: el cotizador ya resuelve las dos cosas contra la cantidad
@@ -114,6 +118,8 @@ export function ConsultarSalones() {
   const [salonSeleccionadoId, setSalonSeleccionadoId] = useState<number | null>(null);
   const [salonDelAlta, setSalonDelAlta] = useState<SalonConDistribuciones | null>(null);
   const [registrada, setRegistrada] = useState<{ salonId: number; nombre: string } | null>(null);
+  const [salonEnEdicion, setSalonEnEdicion] = useState<SalonConDistribuciones | null>(null);
+  const [modificadoId, setModificadoId] = useState<number | null>(null);
 
   if (isLoading) {
     return <p className="p-6 text-muted-foreground">Cargando salones…</p>;
@@ -152,6 +158,33 @@ export function ConsultarSalones() {
 
             {salon.id === salonSeleccionadoId && (
               <div className="border-t border-border bg-muted/30 px-4 py-3">
+                <div className="mb-3 flex items-start justify-between gap-3 border-b border-border pb-3">
+                  <dl className="grid grid-cols-2 gap-x-6 gap-y-0.5 text-sm">
+                    <dt className="text-muted-foreground">Jornada completa</dt>
+                    <dd className="text-right tabular-nums">
+                      {formatearPesos(salon.precioJornadaCompleta)}
+                    </dd>
+                    <dt className="text-muted-foreground">Media jornada</dt>
+                    <dd className="text-right tabular-nums">
+                      {formatearPesos(salon.precioMediaJornada)}
+                    </dd>
+                  </dl>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setModificadoId(null);
+                      setSalonEnEdicion(salon);
+                    }}
+                  >
+                    <Pencil /> Modificar salón
+                  </Button>
+                </div>
+                {modificadoId === salon.id && (
+                  <p className="mb-3 flex items-center gap-2 text-sm text-emerald-800">
+                    <CheckCircle2 className="size-4" /> Los datos del salón quedaron actualizados.
+                  </p>
+                )}
                 <div className="mb-2 flex items-center justify-between gap-3">
                   <p className="text-sm font-medium">Distribuciones</p>
                   <Button
@@ -199,6 +232,25 @@ export function ConsultarSalones() {
             onRegistrada={(nombre) => {
               setRegistrada({ salonId: salonDelAlta.id, nombre });
               setSalonDelAlta(null);
+            }}
+          />
+        )}
+      </VentanaFormulario>
+
+      <VentanaFormulario
+        abierto={salonEnEdicion !== null}
+        onCambiarAbierto={(abierto) => !abierto && setSalonEnEdicion(null)}
+        titulo={`Modificar ${salonEnEdicion?.nombre ?? ''}`}
+        descripcion="Capacidad, superficie y precios sin IVA. El nombre del salón no se modifica."
+      >
+        {/* Se desmonta al cerrar: cada apertura arranca con los datos guardados del salón. */}
+        {salonEnEdicion && (
+          <FormularioSalon
+            key={salonEnEdicion.id}
+            salon={salonEnEdicion}
+            onGuardado={() => {
+              setModificadoId(salonEnEdicion.id);
+              setSalonEnEdicion(null);
             }}
           />
         )}

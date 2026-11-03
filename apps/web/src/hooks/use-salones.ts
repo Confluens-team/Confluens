@@ -2,6 +2,7 @@ import type {
   ActualizarLandingSalon,
   CrearDistribucion,
   Distribucion,
+  ModificarSalon,
   RespuestaExito,
   Salon,
   SalonConDistribuciones,
@@ -77,6 +78,26 @@ export function useCrearDistribucion() {
           body: JSON.stringify(datos),
         },
       );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['salones'] });
+    },
+  });
+}
+
+// HU-26: modificar capacidad, superficie y precios. Invalidar ['salones'] actualiza el cotizador, la
+// edición del presupuesto, la agenda y la landing, incluidas las distribuciones que bajaron.
+export function useModificarSalon() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, datos }: { id: number; datos: ModificarSalon }) => {
+      const respuesta = await apiFetch<RespuestaExito<SalonConDistribuciones>>(`/salones/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
+      });
       return respuesta.data;
     },
     onSuccess: () => {
