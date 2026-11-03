@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link } from 'react-router';
 
+import { InputImporte } from '@/components/InputImporte';
 import { SelectorFechaHora } from '@/components/SelectorFechaHora';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -663,15 +664,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
                       <Label htmlFor="monto">Monto</Label>
-                      <Input
-                        id="monto"
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        {...register('monto')}
-                      />
+                      <InputImporte id="monto" placeholder="0.00" {...register('monto')} />
                       {errors.monto && (
                         <p className="text-xs text-destructive">{errors.monto.message}</p>
                       )}
