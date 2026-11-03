@@ -744,15 +744,19 @@ describe('PATCH /api/presupuestos/:id sobre un evento confirmado (RN-09)', () =>
     sumarPagosMock.mockResolvedValue(D('50000'));
   });
 
-  it('se guarda sin volver a Estimado ni reiniciar la vigencia, y el evento sigue Reservado', async () => {
+  it('se guarda sin volver a Estimado, reinicia la vigencia y el evento sigue Reservado', async () => {
+    const antes = Date.now();
     const respuesta = await request(app)
       .patch('/api/presupuestos/31')
       .set('Cookie', [cookieRE])
       .send(bodyBase);
 
     expect(respuesta.status).toBe(200);
-    // Sin estado ni venceEn: sigue Confirmado. requiereFactura no viene, así que no se toca.
-    expect(datosDelPresupuesto()).toEqual({ total: '238200.00' });
+    // Sin estado: sigue Confirmado. requiereFactura no viene, así que no se toca.
+    const { venceEn, ...resto } = datosDelPresupuesto() as { venceEn: Date };
+    expect(resto).toEqual({ total: '238200.00' });
+    // RN-08 (HU-27): cada modificación reinicia los 10 días, también en un Confirmado.
+    expect(venceEn.getTime()).toBeGreaterThanOrEqual(antes + DIEZ_DIAS);
     expect(datosDelEvento().estado).toBe('Reservado');
   });
 

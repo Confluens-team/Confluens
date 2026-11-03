@@ -686,8 +686,9 @@ function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoR
  * - Una consulta social puede seguir sin salón (no hay línea del salón). Si no queda ninguna línea,
  *   el presupuesto sigue sin armar y sin vencimiento: los 10 días arrancan cuando el personal carga
  *   la primera (decisión del PO, 07/10/2026).
- * - Un Confirmado sigue Confirmado y no vuelve a contar vigencia: ya se cobró la seña. Necesita
- *   salón, se le corre el horario si cambia la fecha (ver `reubicarHorario`) y su evento queda
+ * - Un Confirmado sigue Confirmado, pero la vigencia también vuelve a contar 10 días: cada
+ *   modificación la reinicia (RN-08; Franco, 03/11/2026, HU-27). No lo puede vencer: el control
+ *   de vigencia solo pasa a Expirado los Estimado. Necesita salón, se le corre el horario si cambia la fecha (ver `reubicarHorario`) y su evento queda
  *   Cobrado si lo pagado cubre el total nuevo, o Reservado si no. Si el total queda por debajo de
  *   lo pagado, se guarda igual y el saldo queda negativo (decisión de Franco, 08/10/2026).
  */
@@ -836,7 +837,11 @@ export async function modificarPresupuesto(
       await repo.actualizarPresupuesto(
         id,
         confirmado
-          ? { total: total.toFixed(2), requiereFactura: datos.requiereFactura }
+          ? {
+              venceEn: calcularVencimiento(new Date()),
+              total: total.toFixed(2),
+              requiereFactura: datos.requiereFactura,
+            }
           : {
               estado: 'Estimado',
               venceEn: lineas.length > 0 ? calcularVencimiento(new Date()) : null,
