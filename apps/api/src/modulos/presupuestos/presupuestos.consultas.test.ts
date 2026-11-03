@@ -395,7 +395,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
     expect(respuesta.status).toBe(200);
   });
 
-  it('conserva los precios congelados de lo que ya estaba y reinicia la vigencia', async () => {
+  it('conserva los precios congelados de lo que ya estaba y reinicia la emisión y la vigencia', async () => {
     const antes = Date.now();
     const respuesta = await request(app)
       .patch('/api/presupuestos/31')
@@ -429,14 +429,17 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
         horaEstimada: null,
       },
     ]);
-    const { estado, total, venceEn } = datosDelPresupuesto() as {
+    const { estado, total, fechaEmision, venceEn } = datosDelPresupuesto() as {
       estado: string;
       total: string;
+      fechaEmision: Date;
       venceEn: Date;
     };
     expect(estado).toBe('Estimado');
     expect(total).toBe('238200.00');
-    expect(venceEn.getTime()).toBeGreaterThanOrEqual(antes + DIEZ_DIAS);
+    // HU-27: se emite de nuevo con la fecha del recálculo, y los 10 días cuentan desde ahí.
+    expect(fechaEmision.getTime()).toBeGreaterThanOrEqual(antes);
+    expect(venceEn.getTime()).toBe(fechaEmision.getTime() + DIEZ_DIAS);
     expect(actualizarEventoMock).toHaveBeenCalledWith(
       20,
       {
@@ -744,15 +747,24 @@ describe('PATCH /api/presupuestos/:id sobre un evento confirmado (RN-09)', () =>
     sumarPagosMock.mockResolvedValue(D('50000'));
   });
 
-  it('se guarda sin volver a Estimado ni reiniciar la vigencia, y el evento sigue Reservado', async () => {
+  it('se guarda sin volver a Estimado, reinicia la emisión y la vigencia y el evento sigue Reservado', async () => {
+    const antes = Date.now();
     const respuesta = await request(app)
       .patch('/api/presupuestos/31')
       .set('Cookie', [cookieRE])
       .send(bodyBase);
 
     expect(respuesta.status).toBe(200);
-    // Sin estado ni venceEn: sigue Confirmado. requiereFactura no viene, así que no se toca.
-    expect(datosDelPresupuesto()).toEqual({ total: '238200.00' });
+    // Sin estado: sigue Confirmado. requiereFactura no viene, así que no se toca.
+    const { fechaEmision, venceEn, ...resto } = datosDelPresupuesto() as {
+      fechaEmision: Date;
+      venceEn: Date;
+    };
+    expect(resto).toEqual({ total: '238200.00' });
+    // RN-08 (HU-27): cada recálculo vuelve a emitir el presupuesto con la fecha de hoy y reinicia
+    // los 10 días, también en un Confirmado.
+    expect(fechaEmision.getTime()).toBeGreaterThanOrEqual(antes);
+    expect(venceEn.getTime()).toBe(fechaEmision.getTime() + DIEZ_DIAS);
     expect(datosDelEvento().estado).toBe('Reservado');
   });
 
@@ -1135,6 +1147,21 @@ describe('POST /api/presupuestos/:id/dar-de-baja (HU-22)', () => {
     expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
   });
 
+  it.each(['Reservado', 'Cobrado'])(
+    'un presupuesto sobrante de un evento %s se da de baja solo, sin tocar el evento',
+    async (estadoEvento) => {
+      buscarPresupuestoDetalladoMock.mockResolvedValue(
+        consulta({ estado: 'Expirado' }, { estado: estadoEvento }),
+      );
+
+      const respuesta = await darDeBaja();
+
+      expect(respuesta.status).toBe(200);
+      expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, { estado: 'Cancelado' });
+      expect(actualizarEventoMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('responde 409 si el presupuesto ya está Cancelado', async () => {
     buscarPresupuestoDetalladoMock.mockResolvedValue(
       consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
@@ -1146,7 +1173,7 @@ describe('POST /api/presupuestos/:id/dar-de-baja (HU-22)', () => {
     expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
   });
 
-  it('responde 409 si el evento ya no está en consulta', async () => {
+  it('responde 409 si el evento está Cancelado', async () => {
     buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({}, { estado: 'Cancelado' }));
 
     const respuesta = await darDeBaja();
