@@ -265,7 +265,8 @@ Criterios propuestos:
 
 - Modifico el nombre, la descripción, la unidad de medida, el precio, si se cobra por persona, si es
   tercerizado, si admite modalidad (RN-11) y la categoría de un servicio.
-- El nombre es obligatorio y único; uno que ya es de otro servicio se rechaza.
+- El nombre es obligatorio y único sin distinguir mayúsculas (equipo, 03/11/2026); uno que ya es
+  de otro servicio se rechaza. Vale también para el alta.
 - El precio es sin IVA (RN-05) y mayor que cero. Solo un tercerizado puede quedar «a cotizar», sin
   precio.
 - Un cambio de precio no afecta los presupuestos ya emitidos: sus líneas conservan el precio

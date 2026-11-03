@@ -1,6 +1,7 @@
 import {
   esquemaActualizarLandingServicio,
   esquemaCrearServicio,
+  esquemaModificarServicio,
   esquemaServicio,
   esquemaServicioPublico,
 } from '@confluens/shared';
@@ -12,7 +13,13 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { actualizarLanding, crear, listar, listarPublicos } from './servicios.controlador.js';
+import {
+  actualizarLanding,
+  crear,
+  listar,
+  listarPublicos,
+  modificar,
+} from './servicios.controlador.js';
 
 registroOpenApi.registerPath({
   method: 'get',
@@ -84,6 +91,29 @@ registroOpenApi.registerPath({
   },
 });
 
+registroOpenApi.registerPath({
+  method: 'patch',
+  path: '/servicios/{id}',
+  tags: ['Servicios'],
+  summary: 'Modifica los datos de un servicio del catálogo (HU-32 del Sprint 4)',
+  request: {
+    params: esquemaParamsId,
+    body: { content: { 'application/json': { schema: esquemaModificarServicio } } },
+  },
+  responses: {
+    200: {
+      description:
+        'Servicio modificado; los presupuestos ya emitidos conservan su precio congelado (RN-03)',
+      content: { 'application/json': { schema: z.object({ data: esquemaServicio }) } },
+    },
+    400: { description: 'Datos inválidos, o a cotizar sin ser tercerizado' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
+    404: { description: 'No existe el servicio indicado' },
+    409: { description: 'El nombre ya es de otro servicio' },
+  },
+});
+
 export const rutasServicios = Router();
 
 // /publicos va antes de cualquier ruta con parámetro (ver salones.rutas.ts).
@@ -107,4 +137,13 @@ rutasServicios.patch(
   autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaParamsId, body: esquemaActualizarLandingServicio }),
   asincrono(actualizarLanding),
+);
+
+// HU-32 (Sprint 4). Mismo orden de middlewares que el de la landing.
+rutasServicios.patch(
+  '/:id',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaParamsId, body: esquemaModificarServicio }),
+  asincrono(modificar),
 );
