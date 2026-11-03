@@ -682,12 +682,14 @@ function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoR
  *   presupuesto sigue siendo el mismo (decisión del PO, 05/10/2026).
  * - El total suma todas las líneas, tercerizados incluidos.
  * - Queda Estimado y la vigencia vuelve a contar 10 días desde ahora (decisión del PO,
- *   05/10/2026), también si estaba Expirado.
+ *   05/10/2026), también si estaba Expirado. La fecha de emisión pasa a ser la del recálculo
+ *   (Franco, 03/11/2026, HU-27): es el presupuesto que se le vuelve a mandar al cliente.
  * - Una consulta social puede seguir sin salón (no hay línea del salón). Si no queda ninguna línea,
  *   el presupuesto sigue sin armar y sin vencimiento: los 10 días arrancan cuando el personal carga
  *   la primera (decisión del PO, 07/10/2026).
- * - Un Confirmado sigue Confirmado y no vuelve a contar vigencia: ya se cobró la seña. Necesita
- *   salón, se le corre el horario si cambia la fecha (ver `reubicarHorario`) y su evento queda
+ * - Un Confirmado sigue Confirmado, pero la vigencia también vuelve a contar 10 días: cada
+ *   modificación la reinicia (RN-08; Franco, 03/11/2026, HU-27). No lo puede vencer: el control
+ *   de vigencia solo pasa a Expirado los Estimado. Necesita salón, se le corre el horario si cambia la fecha (ver `reubicarHorario`) y su evento queda
  *   Cobrado si lo pagado cubre el total nuevo, o Reservado si no. Si el total queda por debajo de
  *   lo pagado, se guarda igual y el saldo queda negativo (decisión de Franco, 08/10/2026).
  */
@@ -792,6 +794,7 @@ export async function modificarPresupuesto(
   const total = sumarLineas(lineas);
   const horario = confirmado ? reubicarHorario(presupuesto.evento, datos) : {};
   const heredados = await armadosHeredados(presupuesto.evento, salonIds, repo);
+  const fechaEmision = new Date();
   // Contra el horario que va a quedar: si cambió la fecha de un evento confirmado, reubicarHorario
   // ya corrió inicio y fin los mismos días.
   exigirHorasDentroDelEvento(
@@ -836,10 +839,16 @@ export async function modificarPresupuesto(
       await repo.actualizarPresupuesto(
         id,
         confirmado
-          ? { total: total.toFixed(2), requiereFactura: datos.requiereFactura }
+          ? {
+              fechaEmision,
+              venceEn: calcularVencimiento(fechaEmision),
+              total: total.toFixed(2),
+              requiereFactura: datos.requiereFactura,
+            }
           : {
               estado: 'Estimado',
-              venceEn: lineas.length > 0 ? calcularVencimiento(new Date()) : null,
+              fechaEmision,
+              venceEn: lineas.length > 0 ? calcularVencimiento(fechaEmision) : null,
               total: total.toFixed(2),
               requiereFactura: datos.requiereFactura,
             },
