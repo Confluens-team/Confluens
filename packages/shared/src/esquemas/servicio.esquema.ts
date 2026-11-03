@@ -42,6 +42,43 @@ export const esquemaCrearServicio = esquemaServicio
   });
 export type CrearServicio = z.infer<typeof esquemaCrearServicio>;
 
+// Body de PATCH /servicios/:id (HU-32 del Sprint 4, «Modificar servicio»). Viaja el estado completo
+// de los datos que edita el Responsable de Eventos, igual que el PATCH del presupuesto: así el
+// formulario manda lo que ve y no hace falta distinguir «no tocar» de «borrar». Quedan afuera
+// `activo` (la baja es otra historia) y `fotoUrl` (es de la landing, HU-08). `categoria` sí entra:
+// agrupa el catálogo y la historia la incluye; vacía queda en null.
+//
+// Que el nombre no sea de otro servicio lo controla la API (409): depende de lo que hay en la base.
+export const esquemaModificarServicio = z
+  .object({
+    nombre: z.string('Escribí el nombre').trim().min(1, 'Escribí el nombre'),
+    descripcion: z.string('Escribí la descripción').trim().min(1, 'Escribí la descripción'),
+    unidadMedida: z
+      .string('Escribí la unidad de medida')
+      .trim()
+      .min(1, 'Escribí la unidad de medida'),
+    // RN-05: sin IVA. null = «a cotizar», solo para tercerizados (HU-11).
+    precio: esquemaImporte.nullable(),
+    porPersona: z.boolean(),
+    tercerizado: z.boolean(),
+    admiteModalidad: z.boolean(),
+    categoria: z
+      .string()
+      .trim()
+      .max(60, 'La categoría admite hasta 60 caracteres')
+      .nullable()
+      .transform((categoria) => categoria || null),
+  })
+  .refine((servicio) => servicio.precio !== null || servicio.tercerizado, {
+    path: ['precio'],
+    message: 'Solo un servicio tercerizado puede quedar a cotizar',
+  })
+  .refine((servicio) => servicio.precio === null || Number(servicio.precio) > 0, {
+    path: ['precio'],
+    message: 'El precio tiene que ser mayor que cero',
+  });
+export type ModificarServicio = z.infer<typeof esquemaModificarServicio>;
+
 // Forma que devuelve GET /api/servicios/publicos (HU-07). Mismo criterio que esquemaSalonPublico:
 // el canal público describe la oferta gastronómica y nada más. Sin precio, sin unidad de medida ni
 // porPersona (son datos de presupuestación) y sin tercerizado (es interno).

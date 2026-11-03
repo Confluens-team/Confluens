@@ -1,5 +1,8 @@
 import type {
   ActualizarLandingSalon,
+  CrearDistribucion,
+  Distribucion,
+  ModificarSalon,
   RespuestaExito,
   Salon,
   SalonConDistribuciones,
@@ -11,6 +14,8 @@ import {
   actualizarLandingSalon,
   listarSalones,
   listarSalonesPublicos,
+  modificarDatosSalon,
+  registrarDistribucion,
 } from './salones.servicio.js';
 
 export async function listar(_req: Request, res: Response): Promise<void> {
@@ -42,5 +47,24 @@ export async function actualizarLanding(req: Request, res: Response): Promise<vo
     req.usuario!.id,
   );
   const cuerpo: RespuestaExito<Salon> = { data: salon as unknown as Salon };
+  res.json(cuerpo);
+}
+
+// HU-25. params y body ya validados por validar() en salones.rutas.ts.
+export async function crearDistribucion(req: Request, res: Response): Promise<void> {
+  const salonId = Number(req.params['id']);
+  const distribucion = await registrarDistribucion(salonId, req.body as CrearDistribucion);
+  const cuerpo: RespuestaExito<Distribucion> = { data: distribucion as unknown as Distribucion };
+  res.status(201).json(cuerpo);
+}
+
+// HU-26 (Sprint 4). Devuelve el salón con sus distribuciones: si la capacidad nueva bajó alguna,
+// la web lo ve sin otro request.
+export async function modificar(req: Request, res: Response): Promise<void> {
+  const id = Number(req.params['id']);
+  const salon = await modificarDatosSalon(id, req.body as ModificarSalon);
+  const cuerpo: RespuestaExito<SalonConDistribuciones> = {
+    data: salon as unknown as SalonConDistribuciones,
+  };
   res.json(cuerpo);
 }

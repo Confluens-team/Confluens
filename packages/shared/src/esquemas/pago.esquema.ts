@@ -34,6 +34,26 @@ export const esquemaCrearMedioPago = z
   });
 export type CrearMedioPago = z.infer<typeof esquemaCrearMedioPago>;
 
+// Body de PATCH /medios-pago/:id (HU-33 del Sprint 4). Viaja el estado completo, como lo muestra el
+// formulario: sin defaults, porque un caso que no llega no es lo mismo que destildarlo. Mismas
+// reglas que el alta; la habilitación de los seis medios del catálogo inicial también se puede
+// cambiar (equipo, 03/11/2026). Que el nombre no sea de otro medio lo controla la API (409).
+export const esquemaModificarMedioPago = z
+  .object({
+    nombre: z
+      .string('Escribí el nombre del medio de pago')
+      .trim()
+      .min(1, 'Escribí el nombre del medio de pago')
+      .max(40, 'El nombre admite hasta 40 caracteres'),
+    conFactura: z.boolean(),
+    sinFactura: z.boolean(),
+  })
+  .refine((medio) => medio.conFactura || medio.sinFactura, {
+    path: ['conFactura'],
+    message: 'Elegí si se puede usar con factura, sin factura o en los dos casos',
+  });
+export type ModificarMedioPago = z.infer<typeof esquemaModificarMedioPago>;
+
 // Filtro de GET /medios-pago. Sin parámetros devuelve solo los activos, que es lo que usa el
 // formulario de cobro; el listado de HU-20 pide también los dados de baja.
 export const esquemaFiltrosMediosPago = z.object({

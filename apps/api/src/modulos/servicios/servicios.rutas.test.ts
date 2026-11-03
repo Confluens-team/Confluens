@@ -15,16 +15,25 @@ vi.mock('./servicios.repositorio.js', () => ({
   buscarPorId: vi.fn(),
   actualizarLanding: vi.fn(),
   crear: vi.fn(),
+  modificar: vi.fn(),
 }));
 
-const { listarActivos, listarPublicos, buscarPorNombre, buscarPorId, actualizarLanding, crear } =
-  await import('./servicios.repositorio.js');
+const {
+  listarActivos,
+  listarPublicos,
+  buscarPorNombre,
+  buscarPorId,
+  actualizarLanding,
+  crear,
+  modificar,
+} = await import('./servicios.repositorio.js');
 const listarActivosMock = vi.mocked(listarActivos);
 const listarPublicosMock = vi.mocked(listarPublicos);
 const buscarPorNombreMock = vi.mocked(buscarPorNombre);
 const buscarPorIdMock = vi.mocked(buscarPorId);
 const actualizarLandingMock = vi.mocked(actualizarLanding);
 const crearMock = vi.mocked(crear);
+const modificarMock = vi.mocked(modificar);
 
 const app = crearApp();
 
@@ -341,5 +350,121 @@ describe('servicios: permisos (HU-48)', () => {
 
     expect(respuesta.status).toBe(403);
     expect(crearMock).not.toHaveBeenCalled();
+  });
+});
+
+// HU-32 del Sprint 4 («Modificar servicio»). Las reglas que dependen de la base (404 y nombre de
+// otro servicio) están en el servicio; acá se cubre el contrato: validaciones del schema, status y
+// permisos.
+describe('PATCH /api/servicios/:id (HU-32 del Sprint 4)', () => {
+  const cuerpoValido = {
+    nombre: '  Coffee break estándar ',
+    descripcion: 'Café, té y masas',
+    unidadMedida: 'persona',
+    precio: '5200.00',
+    porPersona: true,
+    tercerizado: false,
+    admiteModalidad: true,
+    categoria: 'Coffee breaks',
+  };
+
+  const modificarServicio = (cuerpo: object, cookie = cookiePersonal, id = 1) =>
+    request(app).patch(`/api/servicios/${id}`).set('Cookie', [cookie]).send(cuerpo);
+
+  beforeEach(() => {
+    buscarPorIdMock.mockReset();
+    buscarPorNombreMock.mockReset();
+    modificarMock.mockReset();
+    buscarPorIdMock.mockResolvedValue(servicioDb);
+    buscarPorNombreMock.mockResolvedValue(servicioDb);
+    modificarMock.mockImplementation(async (id, datos) => ({
+      ...servicioDb,
+      id,
+      ...datos,
+      precio: datos.precio === null ? null : new Decimal(datos.precio),
+    }));
+  });
+
+  it('modifica el servicio con los textos recortados y responde 200', async () => {
+    const respuesta = await modificarServicio(cuerpoValido);
+
+    expect(respuesta.status).toBe(200);
+    expect(modificarMock).toHaveBeenCalledWith(1, {
+      ...cuerpoValido,
+      nombre: 'Coffee break estándar',
+    });
+    expect(respuesta.body.data).toMatchObject({ precio: '5200', admiteModalidad: true });
+  });
+
+  it('una categoría vacía se guarda como null', async () => {
+    await modificarServicio({ ...cuerpoValido, categoria: '   ' });
+
+    expect(modificarMock).toHaveBeenCalledWith(1, expect.objectContaining({ categoria: null }));
+  });
+
+  it('un tercerizado puede quedar a cotizar', async () => {
+    const respuesta = await modificarServicio({ ...cuerpoValido, tercerizado: true, precio: null });
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('a cotizar sin ser tercerizado responde 400 VALIDATION_ERROR sobre el precio', async () => {
+    const respuesta = await modificarServicio({ ...cuerpoValido, precio: null });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details[0].campo).toBe('precio');
+    expect(modificarMock).not.toHaveBeenCalled();
+  });
+
+  it('un precio en cero o con formato inválido responde 400 VALIDATION_ERROR', async () => {
+    for (const precio of ['0', '0.00', '12,50', '-100']) {
+      const respuesta = await modificarServicio({ ...cuerpoValido, precio });
+      expect(respuesta.status).toBe(400);
+      expect(respuesta.body.error.details[0].campo).toBe('precio');
+    }
+    expect(modificarMock).not.toHaveBeenCalled();
+  });
+
+  it('sin nombre, descripción o unidad de medida responde 400 VALIDATION_ERROR', async () => {
+    for (const campo of ['nombre', 'descripcion', 'unidadMedida']) {
+      const respuesta = await modificarServicio({ ...cuerpoValido, [campo]: '  ' });
+      expect(respuesta.status).toBe(400);
+      expect(respuesta.body.error.details[0].campo).toBe(campo);
+    }
+    expect(modificarMock).not.toHaveBeenCalled();
+  });
+
+  it('con el nombre de otro servicio responde 409 CONFLICT', async () => {
+    buscarPorNombreMock.mockResolvedValue({ ...servicioDb, id: 2, nombre: 'Desayuno americano' });
+
+    const respuesta = await modificarServicio({ ...cuerpoValido, nombre: 'Desayuno americano' });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(modificarMock).not.toHaveBeenCalled();
+  });
+
+  it('con un servicio inexistente responde 404 NOT_FOUND', async () => {
+    buscarPorIdMock.mockResolvedValue(null);
+
+    const respuesta = await modificarServicio(cuerpoValido, cookiePersonal, 99);
+
+    expect(respuesta.status).toBe(404);
+    expect(modificarMock).not.toHaveBeenCalled();
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const cookieCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+      id: 7,
+      email: 'ana@empresa.com',
+      rol: 'CLIENTE',
+    })}`;
+
+    const sinSesion = await request(app).patch('/api/servicios/1').send(cuerpoValido);
+    const comoCliente = await modificarServicio(cuerpoValido, cookieCliente);
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
+    expect(modificarMock).not.toHaveBeenCalled();
   });
 });

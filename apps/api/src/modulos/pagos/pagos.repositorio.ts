@@ -57,6 +57,21 @@ export async function crearMedioPago(
   return tx.medioPago.create({ data: datos });
 }
 
+// HU-33 del Sprint 4: el medio a modificar puede estar activo o dado de baja.
+export async function buscarMedioPagoPorId(id: number, tx: Prisma.TransactionClient = prisma) {
+  return tx.medioPago.findUnique({ where: { id } });
+}
+
+// Los pagos ya registrados referencian el medio por id: siguen apuntando a él y muestran el nombre
+// nuevo. La habilitación nueva vale desde el próximo cobro, que la lee de acá (registrarPago).
+export async function modificarMedioPago(
+  id: number,
+  datos: { nombre: string; conFactura: boolean; sinFactura: boolean },
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.medioPago.update({ where: { id }, data: datos });
+}
+
 export async function crear(
   datos: {
     eventoId: number;
@@ -138,6 +153,8 @@ export type PagosRepositorio = {
   listarTodosLosMediosPago: typeof listarTodosLosMediosPago;
   buscarMedioPagoPorNombre: typeof buscarMedioPagoPorNombre;
   crearMedioPago: typeof crearMedioPago;
+  buscarMedioPagoPorId: typeof buscarMedioPagoPorId;
+  modificarMedioPago: typeof modificarMedioPago;
   crear: typeof crear;
   confirmarPresupuestoYReservar: typeof confirmarPresupuestoYReservar;
   marcarCobrado: typeof marcarCobrado;

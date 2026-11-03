@@ -61,9 +61,9 @@ decisiones se registran acá, en `dominio.md` si cambian una regla, y en la Defi
 | Historia | Qué falta definir |
 |---|---|
 | HU-25 | Si una distribución se puede modificar o dar de baja cuando ya la usa un evento. |
-| HU-26 | Confirmar que la historia es la edición de los datos del salón (capacidad, superficie, precios); lo publicado en la landing ya lo cubre HU-08. |
-| HU-27 | Si hace falta una pantalla propia del evento o alcanza con lo que ya existe (fecha, salones y servicios se cambian desde el presupuesto, HU-12). |
-| HU-28 | Si la historia agrega algo al cambio automático a Cobrado de HU-14 (por ejemplo, marcarlo a mano). |
+| HU-26 | ~~Confirmar que la historia es la edición de los datos del salón (capacidad, superficie, precios).~~ **Sí, ese es el alcance (equipo, 03/11/2026).** |
+| HU-27 | ~~Si hace falta una pantalla propia del evento o alcanza con lo que ya existe.~~ **Alcanza con lo que existe: la historia se cubre con tests y se re-estima (equipo, 03/11/2026).** |
+| HU-28 | ~~Si la historia agrega algo al cambio automático a Cobrado de HU-14.~~ **No agrega nada: se cubre con tests y se re-estima (equipo, 03/11/2026).** |
 | HU-30 | Cómo recibe el usuario su primera contraseña. |
 | HU-35 | Cómo se registra la anulación sin borrar el pago (fecha, usuario y motivo); qué pasa con el estado del evento si lo abonado baja del 20% o del 100% de la base de cobro; quién puede anular. |
 | HU-36 | Qué datos lleva el recibo y si tiene numeración propia. |
@@ -74,9 +74,9 @@ en esta versión, también para el PO):
 | Historia | Qué falta definir | Por qué |
 |---|---|---|
 | HU-30, HU-31 | Si la división de funciones por rol empieza con estas historias. | Hoy todo el personal entra al mismo panel y hace todo (decisión provisoria del PO, 06/10/2026). La regla «el GG asigna RE y RF; el ADM, GG y ADM» necesita que la API distinga roles en `/usuarios`. |
-| HU-33 | Si se puede cambiar con qué casos se habilita un medio del catálogo inicial (Efectivo, Transferencia, Débito, Crédito, Cheque y A la habitación). | RN-14 fija esa habilitación y `dominio.md` no deja cambiarla sin el PO. Para los medios dados de alta después no hay conflicto. |
+| HU-33 | ~~Si se puede cambiar con qué casos se habilita un medio del catálogo inicial (Efectivo, Transferencia, Débito, Crédito, Cheque y A la habitación).~~ **Sí, todos son editables (equipo, 03/11/2026).** | RN-14 fijaba esa habilitación y `dominio.md` no dejaba cambiarla sin el PO. |
 | HU-35 | Si una anulación puede sacar a un evento de `Reservado` o de `Cobrado`. | `Cobrado` → `Reservado` ya existe al modificar un presupuesto por encima de lo pagado (HU-12), pero `Reservado` → `EnConsulta` no está en la máquina de estados aprobada: agregarla es cambiar `dominio.md`. |
-| HU-25, HU-26 | Si bajar la capacidad de un salón por debajo de la de una de sus distribuciones se rechaza o arrastra la distribución. | `dominio.md`: la capacidad de una distribución nunca supera la del salón. |
+| HU-25, HU-26 | ~~Si bajar la capacidad de un salón por debajo de la de una de sus distribuciones se rechaza o arrastra la distribución.~~ **Arrastra: la distribución baja a la capacidad nueva (equipo, 03/11/2026).** | `dominio.md`: la capacidad de una distribución nunca supera la del salón. |
 
 **Cambios de modelo que van a hacer falta** (cada uno se confirma antes de tocar `schema.prisma`,
 `AGENTS.md` §6): la baja lógica de `Distribucion` si el PO la pide (HU-25), los datos de la
@@ -93,7 +93,8 @@ Criterios propuestos:
 - Desde la gestión de salones, registro una distribución para un salón con su nombre (conferencia,
   mesas de trabajo, banquete u otro) y su capacidad.
 - Nombre y capacidad son obligatorios; la capacidad es un entero mayor que cero.
-- El nombre es único dentro del salón; uno repetido se rechaza. Dos salones distintos pueden tener
+- El nombre es único dentro del salón, sin distinguir mayúsculas (equipo, 02/11/2026); uno
+  repetido se rechaza. Dos salones distintos pueden tener
   una distribución con el mismo nombre.
 - La capacidad de la distribución no puede superar la capacidad máxima del salón (`dominio.md`).
 - La distribución nueva queda disponible al armar o modificar un presupuesto y al agendar el evento.
@@ -104,8 +105,8 @@ modificar o dar de baja. Hoy `Distribucion` no tiene `activo`; una baja lógica 
 
 **Implementación.** `Distribucion` ya existe con `@@unique([salonId, nombre])`; las del tarifario
 las carga el seed. Falta `POST /api/salones/:id/distribuciones` (`409` por nombre repetido, `422` si
-supera la capacidad del salón, `404` si el salón no existe). La unicidad sin distinguir mayúsculas,
-si se pide, la controla el servicio, como en medios de pago.
+supera la capacidad del salón, `404` si el salón no existe). La unicidad sin distinguir mayúsculas
+la controla el servicio, como en medios de pago.
 
 ## HU-26 — Modificar información de un salón
 
@@ -121,13 +122,15 @@ Criterios propuestos:
 - Un cambio de precio no afecta los presupuestos ya emitidos: sus líneas conservan el precio
   congelado (RN-03, RN-10). Los presupuestos nuevos o recalculados usan el precio nuevo, proyectado a
   la fecha del evento (RN-13).
-- La capacidad no puede quedar por debajo de la de alguna de sus distribuciones (a confirmar, ver
-  «Puntos a definir»).
+- Si la capacidad nueva queda por debajo de la de alguna de sus distribuciones, esas distribuciones
+  bajan a la capacidad nueva del salón; el formulario lo avisa antes de guardar (equipo,
+  03/11/2026).
 - El nombre del salón no se modifica: los cinco salones son fijos y dan nombre al producto.
 - Lo publicado en la landing (visible, foto) sigue en HU-08 y no cambia con esta historia.
 - Solo el personal interno modifica salones; el rol Cliente no.
 
-**A definir.** Confirmar con el PO que este es el alcance (y no el contenido de la landing).
+**Definido (equipo, 03/11/2026).** El alcance es la capacidad, la superficie y los dos precios; la
+landing sigue en HU-08.
 
 **Implementación.** Hoy solo existe `PATCH /api/salones/:id/landing`. Falta `PATCH /api/salones/:id`
 con su esquema en `packages/shared` y la edición en `ConsultarSalones.tsx`. Que el cambio no
@@ -146,13 +149,26 @@ Criterios propuestos:
 - Si un evento `Reservado` o `Cobrado` cambia de fecha, horario o salón, el horario anterior queda libre en ese
   momento y el nuevo no puede solaparse con otro `Reservado` o `Cobrado` en el mismo salón (RN-12);
   el solapamiento se rechaza.
-- La cantidad de personas no puede superar la capacidad de la distribución elegida.
+- La capacidad informa y no pone tope (`dominio.md`, «Varios salones»): si la cantidad de personas
+  supera la de las distribuciones elegidas, agendar lo avisa y pide confirmarlo. (El criterio
+  propuesto decía «no puede superar», que contradice `dominio.md`; vale `dominio.md`.)
 - Un cambio que mueve el total del presupuesto sigue las reglas de HU-12 (vigencia, saldo a favor si
   baja por debajo de lo pagado).
 - Solo el personal interno modifica eventos; el rol Cliente no.
 
-**A definir (bloquea la historia).** Si hace falta una pantalla propia del evento o alcanza con lo
-que ya existe. Si alcanza, la historia se reduce a cubrir los criterios con tests y se re-estima.
+**Definido (equipo, 03/11/2026).** Alcanza con lo que ya existe: la historia se cubre con tests y
+se re-estima.
+
+**Cobertura** (`presupuestos.consultas.test.ts` y `eventos.rutas.test.ts`):
+
+| Criterio | Tests |
+|---|---|
+| Estados que se modifican | `PATCH … sobre un evento confirmado (RN-09)`: Reservado, Cobrado que vuelve a Reservado, Cancelado `409`; `responde 409 si el evento ya no está en consulta` |
+| Sin el plazo de 7 días | `a menos de 7 días del evento (HU-27)` |
+| Fecha, horario o salón sin solapar | `si cambia la fecha, el horario se corre…`, `responde 409 si la fecha o el salón nuevos pisan a otro evento reservado (RN-12)`; agendar: `responde 409 si el salón ya está reservado…`, `…constraint EXCLUDE…` |
+| Capacidad | agendar: `responde 422 si cantidadPersonas supera la capacidad y no se confirma`, `agenda igual si … confirmarCapacidadExcedida es true` |
+| Reglas de HU-12 | `si lo pagado cubre el total nuevo, el evento pasa a Cobrado…`, `conserva los precios congelados…` |
+| Solo el personal | `sin sesión responde 401 y con sesión de Cliente 403, sin modificar nada` |
 
 **Implementación.** Ya existen `PATCH /api/presupuestos/:id` (fecha, salones, servicios, personas;
 HU-12) y `POST /api/eventos/:id/agendar` (distribución, horario y modalidad; `409` por solapamiento,
@@ -175,9 +191,18 @@ Criterios propuestos:
   `Reservado` con saldo pendiente.
 - El estado de cuenta (HU-21) muestra la cuenta saldada y destaca el pago que completó el total.
 
-**A definir (bloquea la historia).** Si agrega algo al cambio automático (por ejemplo, marcar a mano
-un evento como Cobrado). Marcarlo a mano con saldo pendiente contradice la máquina de estados
-(`Cobrado` = acumulado 100%) y se decide con el PO.
+**Definido (equipo, 03/11/2026).** No agrega nada al cambio automático: no se marca a mano. La
+historia se cubre con los tests que ya existen y se re-estima.
+
+**Cobertura** (`pagos.rutas.test.ts`, `eventos.rutas.test.ts` y `presupuestos.consultas.test.ts`):
+
+| Criterio | Tests |
+|---|---|
+| Al 100% pasa a `Cobrado` con saldo cero | `un pago que completa el 100% sobre un evento ya Reservado lo pasa a Cobrado`, `un pago único que cruza el 20% y el 100% a la vez…`, `un evento Cobrado queda con saldo cero…` |
+| `Cobrado` no admite pagos ni se cancela | `it.each(['Cancelado', 'Cobrado'])` de `POST /eventos/:id/pagos` (`409`) y de `POST /eventos/:id/cancelar` |
+| Vuelve a `Reservado` si el total sube | `un Cobrado al que se le suman servicios vuelve a Reservado…` |
+| Se distingue en agenda, listado y ficha | Presentación, sin test (AGENTS.md §5): las tres vistas usan `estado-evento.ts`, con Cobrado en azul y Confirmado en verde |
+| El estado de cuenta destaca el pago que completó | `un evento Cobrado queda con saldo cero y marca el pago de la seña y el que completó el total` |
 
 **Implementación.** El cambio automático ya está en el módulo de pagos desde HU-14, y el estado de
 cuenta marca `completaPago` desde HU-21. Si el PO no agrega nada, la historia se cubre con tests por
@@ -262,7 +287,8 @@ Criterios propuestos:
 
 - Modifico el nombre, la descripción, la unidad de medida, el precio, si se cobra por persona, si es
   tercerizado, si admite modalidad (RN-11) y la categoría de un servicio.
-- El nombre es obligatorio y único; uno que ya es de otro servicio se rechaza.
+- El nombre es obligatorio y único sin distinguir mayúsculas (equipo, 03/11/2026); uno que ya es
+  de otro servicio se rechaza. Vale también para el alta.
 - El precio es sin IVA (RN-05) y mayor que cero. Solo un tercerizado puede quedar «a cotizar», sin
   precio.
 - Un cambio de precio no afecta los presupuestos ya emitidos: sus líneas conservan el precio
@@ -292,8 +318,9 @@ Criterios propuestos:
   (`422`) aplican la habilitación nueva.
 - Solo el personal interno modifica medios de pago; el rol Cliente no.
 
-**A definir.** Si se puede cambiar la habilitación de los seis medios del catálogo inicial, que fija
-RN-14 (ver «Puntos a definir»). La baja de un medio es HU-39 del backlog (Sprint 6).
+**Definido (equipo, 03/11/2026).** La habilitación de los seis medios del catálogo inicial también
+se puede cambiar, igual que la de los dados de alta después; RN-14 quedó actualizada en
+`dominio.md`. La baja de un medio es HU-39 del backlog (Sprint 6).
 
 **Implementación.** `PATCH /api/medios-pago/:id` (`409` por nombre repetido, `404` si no existe),
 reutilizando las validaciones de `esquemaCrearMedioPago`. Edición en `ListadoMediosPago.tsx`.
