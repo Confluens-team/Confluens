@@ -288,6 +288,11 @@ function Formulario({
     consulta.estado === 'Confirmado' &&
     (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');
   const editable = enCurso || confirmado;
+  // Un Estimado o Expirado que quedó de más: el evento ya está confirmado con otro presupuesto. No
+  // se recalcula; solo se da de baja, sin tocar el evento (la API lo resuelve igual).
+  const sobrante =
+    (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
+    (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');
   const expirado = consulta.estado === 'Expirado';
   const salonDe = (salonId: number) => salones.find((s) => s.id === salonId);
   const capacidadElegida = salonesSel.reduce(
@@ -532,10 +537,12 @@ function Formulario({
   // presupuesto, así que el evento también se cancela; los pagos que ya hubo no se reintegran
   // (RN-06) y quedan en el estado de cuenta.
   function confirmarBaja() {
-    const mensaje =
-      `¿Dar de baja la consulta ${consulta.id}? El presupuesto y su evento van a quedar como ` +
-      'Cancelado y no se van a poder modificar. Si hubo pagos, se conservan en la cuenta del evento ' +
-      'y no se reintegran.';
+    const mensaje = sobrante
+      ? `¿Dar de baja la consulta ${consulta.id}? Este presupuesto va a quedar como Cancelado. El ` +
+        'evento sigue con su presupuesto confirmado y no cambia.'
+      : `¿Dar de baja la consulta ${consulta.id}? El presupuesto y su evento van a quedar como ` +
+        'Cancelado y no se van a poder modificar. Si hubo pagos, se conservan en la cuenta del evento ' +
+        'y no se reintegran.';
     if (!window.confirm(mensaje)) return;
     darDeBaja.mutate(undefined, { onSuccess: onDadaDeBaja });
   }
@@ -602,7 +609,24 @@ function Formulario({
           )}
         </div>
       )}
-      {!editable && (
+      {sobrante && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
+          <p>
+            Este presupuesto quedó de más: el evento ya está confirmado con otro presupuesto, así
+            que no se puede recalcular. Podés darlo de baja sin tocar el evento.
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            className="text-destructive"
+            disabled={darDeBaja.isPending}
+            onClick={confirmarBaja}
+          >
+            <Trash2 /> Dar de baja
+          </Button>
+        </div>
+      )}
+      {!editable && !sobrante && (
         <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
           {consulta.estado === 'Cancelado'
             ? 'Esta consulta se dio de baja'

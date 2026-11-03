@@ -901,15 +901,34 @@ export async function registrarSeguimiento(
   return obtenerConsulta(id, repo);
 }
 
+// Un Estimado o Expirado cuyo evento ya está Reservado o Cobrado: quedó de cuando un evento podía
+// tener más de un presupuesto, y el evento ya tiene el suyo Confirmado. No se recalcula, solo se
+// da de baja.
+export function esPresupuestoSobrante(presupuesto: {
+  estado: string;
+  evento: { estado: string };
+}): boolean {
+  return (
+    (presupuesto.estado === 'Estimado' || presupuesto.estado === 'Expirado') &&
+    (presupuesto.evento.estado === 'Reservado' || presupuesto.evento.estado === 'Cobrado')
+  );
+}
+
 /**
  * HU-12: dar de baja una consulta la pasa a Cancelado (RN-08: solo se da de baja a mano). El
  * evento también se cancela: cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026).
+ * Un presupuesto sobrante (ver `esPresupuestoSobrante`) se da de baja solo: su evento sigue con el
+ * presupuesto Confirmado y no se toca.
  */
 export async function darDeBajaPresupuesto(
   id: number,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
 ): Promise<ConsultaDetallada> {
   const presupuesto = await buscarOFallar(id, repo);
+  if (esPresupuestoSobrante(presupuesto)) {
+    await repo.actualizarPresupuesto(id, { estado: 'Cancelado' });
+    return obtenerConsulta(id, repo);
+  }
   exigirConsultaEnCurso(presupuesto, 'dar de baja');
 
   await repo.crearEnTransaccion(async (tx) => {

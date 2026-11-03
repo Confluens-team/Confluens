@@ -1135,6 +1135,21 @@ describe('POST /api/presupuestos/:id/dar-de-baja (HU-22)', () => {
     expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
   });
 
+  it.each(['Reservado', 'Cobrado'])(
+    'un presupuesto sobrante de un evento %s se da de baja solo, sin tocar el evento',
+    async (estadoEvento) => {
+      buscarPresupuestoDetalladoMock.mockResolvedValue(
+        consulta({ estado: 'Expirado' }, { estado: estadoEvento }),
+      );
+
+      const respuesta = await darDeBaja();
+
+      expect(respuesta.status).toBe(200);
+      expect(actualizarPresupuestoMock).toHaveBeenCalledWith(31, { estado: 'Cancelado' });
+      expect(actualizarEventoMock).not.toHaveBeenCalled();
+    },
+  );
+
   it('responde 409 si el presupuesto ya está Cancelado', async () => {
     buscarPresupuestoDetalladoMock.mockResolvedValue(
       consulta({ estado: 'Cancelado' }, { estado: 'Cancelado' }),
@@ -1146,7 +1161,7 @@ describe('POST /api/presupuestos/:id/dar-de-baja (HU-22)', () => {
     expect(actualizarPresupuestoMock).not.toHaveBeenCalled();
   });
 
-  it('responde 409 si el evento ya no está en consulta', async () => {
+  it('responde 409 si el evento está Cancelado', async () => {
     buscarPresupuestoDetalladoMock.mockResolvedValue(consulta({}, { estado: 'Cancelado' }));
 
     const respuesta = await darDeBaja();
