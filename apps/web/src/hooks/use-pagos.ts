@@ -3,6 +3,7 @@ import type {
   CrearPago,
   CuentaEvento,
   MedioPago,
+  ModificarMedioPago,
   RespuestaExito,
   ResultadoPago,
 } from '@confluens/shared';
@@ -93,6 +94,27 @@ export function useCrearMedioPago() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['medios-pago'] });
+    },
+  });
+}
+
+// HU-33: modificar el nombre o la habilitación de un medio. Además del catálogo se invalidan las
+// cuentas de los eventos (['eventos', id, 'pagos']): los pagos ya registrados muestran el medio con
+// su nombre nuevo.
+export function useModificarMedioPago() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, datos }: { id: number; datos: ModificarMedioPago }) => {
+      const respuesta = await apiFetch<RespuestaExito<MedioPago>>(`/medios-pago/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
+      });
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['medios-pago'] });
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
     },
   });
 }
