@@ -15,6 +15,8 @@ import {
 } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 
+import { lineasDeComanda } from './lineas-comanda';
+
 // Comanda de cocina de un evento ya confirmado: la hoja que se imprime y se cuelga en la cocina.
 // Lleva fecha, salón, horario, cantidad de personas y los servicios de gastronomía ordenados por
 // la hora a la que se los espera. **Sin precios**: no es un documento comercial.
@@ -23,23 +25,9 @@ import { cn } from '@/lib/utils';
 // en PresupuestoEstimado.tsx: sin dependencias nuevas y permite guardar como PDF. Todo lo que no
 // va al papel lleva `print:hidden`.
 //
-// Qué entra y qué no: las líneas de servicio del catálogo que no son tercerizadas. Quedan afuera
-// la línea del salón (su horario ya está en el encabezado) y los tercerizados, que son audiovisual
-// y pantallas, no cocina. Los adicionales escritos a mano van aparte, al pie: pueden ser de cocina
-// («torta de cumpleaños») o no («decoración»), y dejarlos afuera sería peor que mostrarlos.
+// Qué entra y qué no lo decide lineasDeComanda, aparte para poder testearlo (HU-29).
 
 const hora = horaDelEvento;
-
-// Primero las que tienen hora, en orden; las que no, al final y en el orden en que se cargaron.
-// Mezclarlas haría parecer que un servicio sin hora va a las 00:00.
-function porHora(lineas: ConsultaDetallada['lineas']) {
-  return [...lineas].sort((a, b) => {
-    if (!a.horaEstimada && !b.horaEstimada) return 0;
-    if (!a.horaEstimada) return 1;
-    if (!b.horaEstimada) return -1;
-    return a.horaEstimada.localeCompare(b.horaEstimada);
-  });
-}
 
 /**
  * La comanda se aprieta sola para entrar en una hoja. Medido sobre una A4 con los 14 mm de margen
@@ -165,10 +153,7 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
   const [observaciones, setObservaciones] = useState(evento.observacionesComanda ?? '');
   const guardar = useGuardarObservacionesComanda(evento.id);
   const sinGuardar = observaciones.trim() !== (evento.observacionesComanda ?? '');
-  const gastronomia = porHora(
-    consulta.lineas.filter((l) => l.tipo === 'servicio' && !l.tercerizado),
-  );
-  const aMano = consulta.lineas.filter((l) => l.tipo === 'adicional');
+  const { gastronomia, aMano } = lineasDeComanda(consulta.lineas);
   const horario =
     evento.inicio && evento.fin ? `${hora(evento.inicio)} a ${hora(evento.fin)}` : 'A confirmar';
   // Cuenta los dos bloques: los dos ocupan renglones en la misma hoja.
