@@ -1,4 +1,8 @@
-import { esquemaCrearMedioPago } from '@confluens/shared';
+import {
+  esquemaCrearMedioPago,
+  esquemaModificarMedioPago,
+  type MedioPago,
+} from '@confluens/shared';
 import { CheckCircle2, Plus } from 'lucide-react';
 import { useState } from 'react';
 
@@ -7,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { VentanaFormulario } from '@/components/VentanaFormulario';
-import { useCrearMedioPago } from '@/hooks/use-pagos';
+import { useCrearMedioPago, useModificarMedioPago } from '@/hooks/use-pagos';
 import { ErrorApiCliente } from '@/lib/api';
 
 import { ListadoMediosPago } from './ListadoMediosPago';
@@ -18,9 +22,25 @@ const valoresIniciales = { nombre: '', conFactura: false, sinFactura: false };
 // factura, sin factura o en los dos casos (RN-14, decisión del PO del 16/10/2026). Mismo patrón que
 // RegistrarServicio: estado controlado y validación con el schema de shared antes de enviar, para
 // mostrar el mismo error que devolvería la API sin esperar el round-trip.
-function FormularioMedioPago({ onRegistrado }: { onRegistrado: (nombre: string) => void }) {
+//
+// Con `medio` el mismo formulario lo modifica (HU-33): arranca con sus datos y se valida con el
+// schema de la modificación. La habilitación de los medios del catálogo inicial también se puede
+// cambiar (equipo, 03/11/2026).
+function FormularioMedioPago({
+  medio,
+  onGuardado,
+}: {
+  medio?: MedioPago;
+  onGuardado: (nombre: string) => void;
+}) {
   const crearMedioPago = useCrearMedioPago();
-  const [valores, setValores] = useState(valoresIniciales);
+  const modificarMedioPago = useModificarMedioPago();
+  const guardar = medio ? modificarMedioPago : crearMedioPago;
+  const [valores, setValores] = useState(
+    medio
+      ? { nombre: medio.nombre, conFactura: medio.conFactura, sinFactura: medio.sinFactura }
+      : valoresIniciales,
+  );
   const [erroresCampos, setErroresCampos] = useState<Record<string, string>>({});
 
   function actualizarCampo<K extends keyof typeof valoresIniciales>(
@@ -32,7 +52,9 @@ function FormularioMedioPago({ onRegistrado }: { onRegistrado: (nombre: string) 
 
   function manejarEnvio(evento: React.FormEvent) {
     evento.preventDefault();
-    const resultado = esquemaCrearMedioPago.safeParse(valores);
+    const resultado = (medio ? esquemaModificarMedioPago : esquemaCrearMedioPago).safeParse(
+      valores,
+    );
     if (!resultado.success) {
       const errores: Record<string, string> = {};
       for (const issue of resultado.error.issues) errores[String(issue.path[0])] = issue.message;
@@ -40,9 +62,12 @@ function FormularioMedioPago({ onRegistrado }: { onRegistrado: (nombre: string) 
       return;
     }
     setErroresCampos({});
-    crearMedioPago.mutate(resultado.data, {
-      onSuccess: (medio) => onRegistrado(medio.nombre),
-    });
+    const alTerminar = { onSuccess: (guardado: MedioPago) => onGuardado(guardado.nombre) };
+    if (medio) {
+      modificarMedioPago.mutate({ id: medio.id, datos: resultado.data }, alTerminar);
+    } else {
+      crearMedioPago.mutate(resultado.data, alTerminar);
+    }
   }
 
   return (
@@ -85,25 +110,35 @@ function FormularioMedioPago({ onRegistrado }: { onRegistrado: (nombre: string) 
         )}
       </fieldset>
 
-      {crearMedioPago.isError && (
-        <p className="text-sm text-destructive">
-          {crearMedioPago.error instanceof ErrorApiCliente
-            ? crearMedioPago.error.message
-            : 'No se pudo registrar el medio de pago.'}
+      {medio && (
+        <p className="text-xs text-muted-foreground">
+          Los pagos ya registrados con este medio no cambian y lo muestran con el nombre nuevo. La
+          habilitación nueva vale desde el próximo cobro.
         </p>
       )}
-      <Button type="submit" disabled={crearMedioPago.isPending}>
-        {crearMedioPago.isPending ? 'Registrando…' : 'Registrar medio de pago'}
+
+      {guardar.isError && (
+        <p className="text-sm text-destructive">
+          {guardar.error instanceof ErrorApiCliente
+            ? guardar.error.message
+            : medio
+              ? 'No se pudo modificar el medio de pago.'
+              : 'No se pudo registrar el medio de pago.'}
+        </p>
+      )}
+      <Button type="submit" disabled={guardar.isPending}>
+        {guardar.isPending ? 'Guardando…' : medio ? 'Guardar cambios' : 'Registrar medio de pago'}
       </Button>
     </form>
   );
 }
 
-// HU-19 y HU-20: el catálogo de medios de pago, con el alta en una ventana que se abre desde el
-// botón.
+// HU-19, HU-20 y HU-33: el catálogo de medios de pago, con el alta y la modificación en una ventana
+// que se abre desde el botón o desde cada fila.
 export function RegistrarMedioPago() {
   const [abierto, setAbierto] = useState(false);
-  const [registrado, setRegistrado] = useState<string | null>(null);
+  const [enEdicion, setEnEdicion] = useState<MedioPago | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
 
   return (
     <div className="mx-auto max-w-2xl space-y-8 p-6">
@@ -116,16 +151,15 @@ export function RegistrarMedioPago() {
         <Button
           className="mt-4"
           onClick={() => {
-            setRegistrado(null);
+            setAviso(null);
             setAbierto(true);
           }}
         >
           <Plus /> Nuevo medio de pago
         </Button>
-        {registrado && (
+        {aviso && (
           <p className="mt-3 flex items-center gap-2 text-sm text-emerald-800">
-            <CheckCircle2 className="size-4" /> «{registrado}» quedó registrado y ya se puede usar
-            al cobrar.
+            <CheckCircle2 className="size-4" /> {aviso}
           </p>
         )}
       </div>
@@ -139,14 +173,38 @@ export function RegistrarMedioPago() {
         {/* La key vacía el formulario cada vez que se abre la ventana. */}
         <FormularioMedioPago
           key={String(abierto)}
-          onRegistrado={(nombre) => {
-            setRegistrado(nombre);
+          onGuardado={(nombre) => {
+            setAviso(`«${nombre}» quedó registrado y ya se puede usar al cobrar.`);
             setAbierto(false);
           }}
         />
       </VentanaFormulario>
 
-      <ListadoMediosPago />
+      <VentanaFormulario
+        abierto={enEdicion !== null}
+        onCambiarAbierto={(abiertoEdicion) => !abiertoEdicion && setEnEdicion(null)}
+        titulo="Modificar medio de pago"
+        descripcion="Cambiá el nombre o en qué cobros se puede usar."
+      >
+        {/* Se desmonta al cerrar: cada apertura arranca con los datos guardados del medio. */}
+        {enEdicion && (
+          <FormularioMedioPago
+            key={enEdicion.id}
+            medio={enEdicion}
+            onGuardado={(nombre) => {
+              setAviso(`«${nombre}» quedó modificado.`);
+              setEnEdicion(null);
+            }}
+          />
+        )}
+      </VentanaFormulario>
+
+      <ListadoMediosPago
+        onModificar={(medio) => {
+          setAviso(null);
+          setEnEdicion(medio);
+        }}
+      />
     </div>
   );
 }

@@ -54,3 +54,28 @@ export const esquemaActualizarLandingSalon = z
   })
   .refine((datos) => Object.keys(datos).length > 0, 'No hay nada para actualizar');
 export type ActualizarLandingSalon = z.infer<typeof esquemaActualizarLandingSalon>;
+
+// Body de PATCH /salones/:id (HU-26 del Sprint 4, «Modificar información de un salón»). Viaja el
+// estado completo de los datos que edita el Responsable de Eventos. El nombre no se modifica (los
+// cinco salones son fijos) y la landing sigue en HU-08. Precios sin IVA (RN-05).
+//
+// Si la capacidad nueva queda por debajo de la de alguna distribución, la API la baja a la del
+// salón (equipo, 03/11/2026): la capacidad de una distribución nunca supera la del salón.
+const importePositivo = (mensaje: string) =>
+  esquemaImporte.refine((valor) => Number(valor) > 0, mensaje);
+
+export const esquemaModificarSalon = z.object({
+  capacidadMaxima: z
+    .number('Escribí la capacidad máxima')
+    .int('La capacidad es un número entero')
+    .positive('La capacidad tiene que ser mayor que cero'),
+  superficie: z
+    .number('Escribí la superficie')
+    .int('La superficie es un número entero de m²')
+    .positive('La superficie tiene que ser mayor que cero'),
+  precioJornadaCompleta: importePositivo(
+    'El precio de jornada completa tiene que ser mayor que cero',
+  ),
+  precioMediaJornada: importePositivo('El precio de media jornada tiene que ser mayor que cero'),
+});
+export type ModificarSalon = z.infer<typeof esquemaModificarSalon>;
