@@ -61,9 +61,9 @@ decisiones se registran acá, en `dominio.md` si cambian una regla, y en la Defi
 | Historia | Qué falta definir |
 |---|---|
 | HU-25 | Si una distribución se puede modificar o dar de baja cuando ya la usa un evento. |
-| HU-26 | Confirmar que la historia es la edición de los datos del salón (capacidad, superficie, precios); lo publicado en la landing ya lo cubre HU-08. |
-| HU-27 | Si hace falta una pantalla propia del evento o alcanza con lo que ya existe (fecha, salones y servicios se cambian desde el presupuesto, HU-12). |
-| HU-28 | Si la historia agrega algo al cambio automático a Cobrado de HU-14 (por ejemplo, marcarlo a mano). |
+| HU-26 | ~~Confirmar que la historia es la edición de los datos del salón (capacidad, superficie, precios).~~ **Sí, ese es el alcance (equipo, 03/11/2026).** |
+| HU-27 | ~~Si hace falta una pantalla propia del evento o alcanza con lo que ya existe.~~ **Alcanza con lo que existe: la historia se cubre con tests y se re-estima (equipo, 03/11/2026).** |
+| HU-28 | ~~Si la historia agrega algo al cambio automático a Cobrado de HU-14.~~ **No agrega nada: se cubre con tests y se re-estima (equipo, 03/11/2026).** |
 | HU-30 | Cómo recibe el usuario su primera contraseña. |
 | HU-35 | Cómo se registra la anulación sin borrar el pago (fecha, usuario y motivo); qué pasa con el estado del evento si lo abonado baja del 20% o del 100% de la base de cobro; quién puede anular. |
 | HU-36 | Qué datos lleva el recibo y si tiene numeración propia. |
@@ -76,7 +76,7 @@ en esta versión, también para el PO):
 | HU-30, HU-31 | Si la división de funciones por rol empieza con estas historias. | Hoy todo el personal entra al mismo panel y hace todo (decisión provisoria del PO, 06/10/2026). La regla «el GG asigna RE y RF; el ADM, GG y ADM» necesita que la API distinga roles en `/usuarios`. |
 | HU-33 | ~~Si se puede cambiar con qué casos se habilita un medio del catálogo inicial (Efectivo, Transferencia, Débito, Crédito, Cheque y A la habitación).~~ **Sí, todos son editables (equipo, 03/11/2026).** | RN-14 fijaba esa habilitación y `dominio.md` no dejaba cambiarla sin el PO. |
 | HU-35 | Si una anulación puede sacar a un evento de `Reservado` o de `Cobrado`. | `Cobrado` → `Reservado` ya existe al modificar un presupuesto por encima de lo pagado (HU-12), pero `Reservado` → `EnConsulta` no está en la máquina de estados aprobada: agregarla es cambiar `dominio.md`. |
-| HU-25, HU-26 | Si bajar la capacidad de un salón por debajo de la de una de sus distribuciones se rechaza o arrastra la distribución. | `dominio.md`: la capacidad de una distribución nunca supera la del salón. |
+| HU-25, HU-26 | ~~Si bajar la capacidad de un salón por debajo de la de una de sus distribuciones se rechaza o arrastra la distribución.~~ **Arrastra: la distribución baja a la capacidad nueva (equipo, 03/11/2026).** | `dominio.md`: la capacidad de una distribución nunca supera la del salón. |
 
 **Cambios de modelo que van a hacer falta** (cada uno se confirma antes de tocar `schema.prisma`,
 `AGENTS.md` §6): la baja lógica de `Distribucion` si el PO la pide (HU-25), los datos de la
@@ -93,7 +93,8 @@ Criterios propuestos:
 - Desde la gestión de salones, registro una distribución para un salón con su nombre (conferencia,
   mesas de trabajo, banquete u otro) y su capacidad.
 - Nombre y capacidad son obligatorios; la capacidad es un entero mayor que cero.
-- El nombre es único dentro del salón; uno repetido se rechaza. Dos salones distintos pueden tener
+- El nombre es único dentro del salón, sin distinguir mayúsculas (equipo, 02/11/2026); uno
+  repetido se rechaza. Dos salones distintos pueden tener
   una distribución con el mismo nombre.
 - La capacidad de la distribución no puede superar la capacidad máxima del salón (`dominio.md`).
 - La distribución nueva queda disponible al armar o modificar un presupuesto y al agendar el evento.
@@ -104,8 +105,8 @@ modificar o dar de baja. Hoy `Distribucion` no tiene `activo`; una baja lógica 
 
 **Implementación.** `Distribucion` ya existe con `@@unique([salonId, nombre])`; las del tarifario
 las carga el seed. Falta `POST /api/salones/:id/distribuciones` (`409` por nombre repetido, `422` si
-supera la capacidad del salón, `404` si el salón no existe). La unicidad sin distinguir mayúsculas,
-si se pide, la controla el servicio, como en medios de pago.
+supera la capacidad del salón, `404` si el salón no existe). La unicidad sin distinguir mayúsculas
+la controla el servicio, como en medios de pago.
 
 ## HU-26 — Modificar información de un salón
 
@@ -121,13 +122,15 @@ Criterios propuestos:
 - Un cambio de precio no afecta los presupuestos ya emitidos: sus líneas conservan el precio
   congelado (RN-03, RN-10). Los presupuestos nuevos o recalculados usan el precio nuevo, proyectado a
   la fecha del evento (RN-13).
-- La capacidad no puede quedar por debajo de la de alguna de sus distribuciones (a confirmar, ver
-  «Puntos a definir»).
+- Si la capacidad nueva queda por debajo de la de alguna de sus distribuciones, esas distribuciones
+  bajan a la capacidad nueva del salón; el formulario lo avisa antes de guardar (equipo,
+  03/11/2026).
 - El nombre del salón no se modifica: los cinco salones son fijos y dan nombre al producto.
 - Lo publicado en la landing (visible, foto) sigue en HU-08 y no cambia con esta historia.
 - Solo el personal interno modifica salones; el rol Cliente no.
 
-**A definir.** Confirmar con el PO que este es el alcance (y no el contenido de la landing).
+**Definido (equipo, 03/11/2026).** El alcance es la capacidad, la superficie y los dos precios; la
+landing sigue en HU-08.
 
 **Implementación.** Hoy solo existe `PATCH /api/salones/:id/landing`. Falta `PATCH /api/salones/:id`
 con su esquema en `packages/shared` y la edición en `ConsultarSalones.tsx`. Que el cambio no

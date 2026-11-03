@@ -1,5 +1,8 @@
 import type {
   ActualizarLandingSalon,
+  CrearDistribucion,
+  Distribucion,
+  ModificarSalon,
   RespuestaExito,
   Salon,
   SalonConDistribuciones,
@@ -50,6 +53,50 @@ export function useActualizarLandingSalon() {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cambios),
+      });
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['salones'] });
+    },
+  });
+}
+
+// HU-25: alta de una distribución. Las distribuciones llegan anidadas en useSalones, que es lo que
+// leen el cotizador, la edición del presupuesto y la agenda; invalidar ['salones'] alcanza para que
+// la nueva aparezca en todos esos lugares (criterio 5) y también en la landing.
+export function useCrearDistribucion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ salonId, datos }: { salonId: number; datos: CrearDistribucion }) => {
+      const respuesta = await apiFetch<RespuestaExito<Distribucion>>(
+        `/salones/${salonId}/distribuciones`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(datos),
+        },
+      );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['salones'] });
+    },
+  });
+}
+
+// HU-26: modificar capacidad, superficie y precios. Invalidar ['salones'] actualiza el cotizador, la
+// edición del presupuesto, la agenda y la landing, incluidas las distribuciones que bajaron.
+export function useModificarSalon() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, datos }: { id: number; datos: ModificarSalon }) => {
+      const respuesta = await apiFetch<RespuestaExito<SalonConDistribuciones>>(`/salones/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
       });
       return respuesta.data;
     },
