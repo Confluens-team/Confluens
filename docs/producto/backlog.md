@@ -160,7 +160,7 @@ RG-11. Gestionar los pagos y cobros de los eventos.  ·  2 historias  ·  21 pts
 | HU-40 | Registrar el pago de un evento | RD-11.1 | 13 | 2 | Responsable de Finanzas |
 | HU-41 | Consultar el estado de cuenta de un evento | RD-11.1 | 8 | 3 | Responsable de Finanzas |
 
-**Pendiente de HU propia** (mencionadas en el Story Map de Seguimiento del Proyecto, sin HU/RD/puntos en la Definición del Producto): *Consultar pagos de un evento*, *Generar y emitir un recibo como comprobante válido de pago*. La Definición del Producto sugiere que podrían estar ya cubiertas por HU-41 y HU-11 respectivamente — a confirmar con el equipo.
+**Pendiente de HU propia** (mencionadas en el Story Map de Seguimiento del Proyecto, sin HU/RD/puntos en la Definición del Producto): *Consultar pagos de un evento*, *Generar y emitir un recibo como comprobante válido de pago*. La Definición del Producto sugiere que podrían estar ya cubiertas por HU-41 y HU-11 respectivamente — a confirmar con el equipo. **El recibo se eliminó (PO, 06/11/2026):** era HU-36 del Sprint 4 y no se construye.
 
 ## EPIC-07 — Notificaciones y Alertas
 
