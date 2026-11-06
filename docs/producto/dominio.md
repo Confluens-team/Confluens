@@ -396,7 +396,7 @@ el ADM**, como hasta ahora: la reunión no la mencionó.
 acceden a todo el sistema.
 - Muestra los **usuarios del panel interno** (no los clientes). Desde ahí se los **registra,
   modifica y da de baja**. Al registrar un usuario, el GG o el ADM le carga la **contraseña
-  inicial**.
+  inicial**, con al menos 6 caracteres y sin otros requisitos (PO, 06/11/2026).
 - Cada usuario tiene **un solo rol a la vez**. Al marcarle un rol nuevo, se desmarca el anterior.
 - **Quién asigna qué rol:** el ADM asigna cualquiera (ADM, GG, RE, RF). El GG asigna GG, RE y RF,
   pero **no ADM**.
