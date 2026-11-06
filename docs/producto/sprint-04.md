@@ -1,6 +1,6 @@
 # Sprint 4 — Confluens
 
-Del 23/10/2026 al 06/11/2026 · Scrum Master: Ayrton Vanega · 12 historias · 34 puntos + HU-36 a estimar (backlog, sin Planning Poker)
+Del 23/10/2026 al 06/11/2026 · Scrum Master: Ayrton Vanega · 11 historias · 34 puntos (backlog, sin Planning Poker; HU-36 eliminada por el PO, 06/11/2026)
 
 > **Fuentes.** `Seguimiento del Proyecto` v0.5 (sección 6, Sprint 4: alcance, Sprint Backlog y
 > puntos a definir con el PO) en Drive, y `Definicion_del_Producto` v0.6 (29/10/2026), que suma
@@ -12,7 +12,7 @@ Del 23/10/2026 al 06/11/2026 · Scrum Master: Ayrton Vanega · 12 historias · 3
 >
 > **Notas de esta versión:**
 > - **Puntos.** No hubo Planning Poker: la columna *SP* es la del Sprint Backlog del Seguimiento,
->   que toma la estimación del backlog. HU-36 figura «A estimar» y se estima antes de empezarla.
+>   que toma la estimación del backlog. HU-36 figuraba «A estimar»; el PO la eliminó (06/11/2026).
 > - **Numeración.** Como en los sprints anteriores, se usa la numeración local del Seguimiento
 >   (HU-25 a HU-36). La columna *Backlog* da el código de `backlog.md`. Ojo con los choques: en
 >   `sprint-03.md`, «HU-34» es la del backlog (incremento de precios); acá HU-34 es *Consultar pagos
@@ -27,7 +27,7 @@ Del 23/10/2026 al 06/11/2026 · Scrum Master: Ayrton Vanega · 12 historias · 3
 Objetivo: cerrar el Release 2 (MVP operativo). Completar lo que falta para que el sistema reemplace
 las planillas en el trabajo diario: mantener los datos de salones, servicios, medios de pago y
 eventos sin tocar la base, dar de alta al personal con su rol y cerrar el circuito del cobro con la
-anulación de pagos y el recibo.
+anulación de pagos.
 
 Orden del Seguimiento: Salones → Eventos → Usuarios → Catálogos → Pagos.
 
@@ -35,7 +35,7 @@ Orden del Seguimiento: Salones → Eventos → Usuarios → Catálogos → Pagos
 
 | HU | Título | Actor | Backlog | SP | Estado (06/11/2026) |
 |---|---|---|---|---|---|
-| HU-25 | Registrar distribuciones posibles de un salón | RE | HU-02 | 5 | Hecha (#88). Falta la baja, a definir |
+| HU-25 | Registrar distribuciones posibles de un salón | RE | HU-02 | 5 | Hecha (#88). Falta la baja lógica (definida, cambio de modelo) |
 | HU-26 | Modificar información de un salón | RE | HU-03 | 3 | Hecha (#89 y #95): precios y distribuciones |
 | HU-27 | Modificar datos de un evento | RE | HU-16 | 5 | Hecha (#90 y #96): tests y vigencia al recalcular |
 | HU-28 | Registrar evento cobrado | RF | HU-20 | 5 | Hecha (#91): cubierta con tests |
@@ -45,13 +45,13 @@ Orden del Seguimiento: Salones → Eventos → Usuarios → Catálogos → Pagos
 | HU-32 | Modificar servicio | RE | HU-33 | 3 | Hecha (#93) |
 | HU-33 | Modificar medio de pago | RF | HU-38 | 2 | Hecha (#94) |
 | HU-34 | Consultar pagos de un evento | RF | — | 2 | Hecha: cubierta por HU-21, sin código nuevo |
-| HU-35 | Anular pago de un evento | RF | — | 2 | Sin empezar: bloqueada (datos de la anulación, cambio de modelo) |
-| HU-36 | Generar y emitir un recibo como comprobante válido de pago | RF | — | a estimar | Sin empezar: bloqueada (datos y numeración) |
-| | **Total (sin HU-36)** | | | **34** | **Hechos: 27** |
+| HU-35 | Anular pago de un evento | RF | — | 2 | Sin empezar: definida, falta confirmar el cambio de modelo |
+| ~~HU-36~~ | ~~Generar y emitir un recibo como comprobante válido de pago~~ | RF | — | — | **Eliminada (PO, 06/11/2026)** |
+| | **Total** | | | **34** | **Hechos: 27** |
 
 Velocidad de los sprints anteriores: 31, 32 y 36. Con 34 puntos el sprint queda en línea, pero
 varias historias valen menos de lo estimado porque ya están hechas en parte (HU-29, HU-34 y, según
-lo que defina el PO, HU-27 y HU-28), y HU-35 y HU-36 pueden valer más: conviene re-estimarlas.
+lo que defina el PO, HU-27 y HU-28), y HU-35 puede valer más: conviene re-estimarla.
 
 ## Puntos a definir con el PO (Seguimiento, 6.3)
 
@@ -60,13 +60,13 @@ decisiones se registran acá, en `dominio.md` si cambian una regla, y en la Defi
 
 | Historia | Qué falta definir |
 |---|---|
-| HU-25 | Si una distribución se puede dar de baja cuando ya la usa un evento. ~~Si se puede modificar.~~ **Sí, se modifica aunque la use un evento (equipo, 03/11/2026).** |
+| HU-25 | ~~Si una distribución se puede dar de baja cuando ya la usa un evento.~~ **Sí, con baja lógica; no afecta a los eventos que ya la tienen (PO, 06/11/2026).** ~~Si se puede modificar.~~ **Sí, se modifica aunque la use un evento (equipo, 03/11/2026).** |
 | HU-26 | ~~Confirmar que la historia es la edición de los datos del salón (capacidad, superficie, precios).~~ **El alcance son los precios y las distribuciones; la capacidad máxima y la superficie no se modifican (equipo, 03/11/2026).** |
 | HU-27 | ~~Si hace falta una pantalla propia del evento o alcanza con lo que ya existe.~~ **Alcanza con lo que existe: la historia se cubre con tests y se re-estima (equipo, 03/11/2026).** |
 | HU-28 | ~~Si la historia agrega algo al cambio automático a Cobrado de HU-14.~~ **No agrega nada: se cubre con tests y se re-estima (equipo, 03/11/2026).** |
 | HU-30 | ~~Cómo recibe el usuario su primera contraseña.~~ **Se la carga el GG o el ADM al registrarlo (reunión con el cliente, 05/11/2026; PO, 06/11/2026).** |
-| HU-35 | Cómo se registra la anulación sin borrar el pago (fecha, usuario y motivo); quién puede anular. ~~Qué pasa con el estado del evento si lo abonado baja del 20% o del 100% de la base de cobro.~~ **Por debajo de la seña sigue `Reservado`, con un aviso; un `Cobrado` por debajo del 100% vuelve a `Reservado` (reunión 05/11/2026; PO, 06/11/2026).** |
-| HU-36 | Qué datos lleva el recibo y si tiene numeración propia. |
+| HU-35 | ~~Cómo se registra la anulación sin borrar el pago (fecha, usuario y motivo); quién puede anular.~~ **Se guardan la fecha y el usuario que anuló, sin motivo; anula cualquier rol del personal (PO, 06/11/2026).** ~~Qué pasa con el estado del evento si lo abonado baja del 20% o del 100% de la base de cobro.~~ **Por debajo de la seña sigue `Reservado`, con un aviso; un `Cobrado` por debajo del 100% vuelve a `Reservado` (reunión 05/11/2026; PO, 06/11/2026).** |
+| HU-36 | ~~Qué datos lleva el recibo y si tiene numeración propia.~~ **Historia eliminada (PO, 06/11/2026).** |
 
 Además de los del Seguimiento, al cruzarlo con `dominio.md` y el código aparecen estos (agregados
 en esta versión, también para el PO):
@@ -79,8 +79,8 @@ en esta versión, también para el PO):
 | HU-25, HU-26 | ~~Si bajar la capacidad de un salón por debajo de la de una de sus distribuciones se rechaza o arrastra la distribución.~~ **Ya no aplica: la capacidad del salón no se modifica (equipo, 03/11/2026).** | `dominio.md`: la capacidad de una distribución nunca supera la del salón. |
 
 **Cambios de modelo que van a hacer falta** (cada uno se confirma antes de tocar `schema.prisma`,
-`AGENTS.md` §6): la baja lógica de `Distribucion` si el PO la pide (HU-25), los datos de la
-anulación en `Pago` (HU-35) y, según lo que lleve el recibo, su numeración (HU-36).
+`AGENTS.md` §6): la baja lógica de `Distribucion` (HU-25) y los datos de la anulación en `Pago`
+(HU-35). Con HU-36 eliminada, no hace falta numerar recibos.
 
 ## HU-25 — Registrar distribuciones posibles de un salón
 
@@ -100,9 +100,11 @@ Criterios propuestos:
 - La distribución nueva queda disponible al armar o modificar un presupuesto y al agendar el evento.
 - Solo el personal interno registra distribuciones; el rol Cliente no.
 
-**A definir (bloquea dar de baja).** Si una distribución ya usada por un evento se puede dar de
-baja. Hoy `Distribucion` no tiene `activo`; una baja lógica es cambio de modelo. Modificarla quedó
-definido en HU-26.
+**Definido (PO, 06/11/2026): baja lógica.** Una distribución se da de baja aunque ya la use un
+evento. Dada de baja, no se ofrece al armar o modificar un presupuesto ni al agendar, pero los
+eventos que ya la tienen la conservan y la siguen mostrando: la baja no los afecta. Hoy
+`Distribucion` no tiene `activo`, así que es cambio de modelo, a confirmar antes de tocar
+`schema.prisma`. Modificarla quedó definido en HU-26.
 
 **Implementación.** `Distribucion` ya existe con `@@unique([salonId, nombre])`; las del tarifario
 las carga el seed. Falta `POST /api/salones/:id/distribuciones` (`409` por nombre repetido, `422` si
@@ -389,34 +391,18 @@ pago mal registrado (se anula y se registra de nuevo), sin una acción de «tran
 Si el evento estaba `Cobrado` y lo abonado baja del 100%, **vuelve a `Reservado`** hasta
 cobrar la diferencia, como al modificar el presupuesto (PO, 06/11/2026).
 
-**A definir (bloquea la historia).** Qué datos guarda la anulación (fecha, usuario, motivo) y quién
-puede anular.
+**Definido (PO, 06/11/2026).** La anulación guarda la fecha y el usuario que anuló; no se pide
+motivo. Anula cualquier rol del personal (RE, RF, GG y ADM), los mismos que registran pagos; el
+rol Cliente no.
 
 **Implementación.** Hoy `Pago` no se edita ni se borra (comentario en `schema.prisma`). Anular
-necesita columnas nuevas en `Pago` (por ejemplo, `anuladoEn`, `anuladoPorId`, `motivoAnulacion`):
-cambio de modelo a confirmar. El saldo, `senaAlcanzada`, `completaSena` y `completaPago` del estado
+necesita columnas nuevas en `Pago` (por ejemplo, `anuladoEn` y `anuladoPorId`): cambio de
+modelo a confirmar. El saldo, `senaAlcanzada`, `completaSena` y `completaPago` del estado
 de cuenta pasan a ignorar los pagos anulados.
 
 ## HU-36 — Generar y emitir un recibo como comprobante válido de pago
 
-Como Responsable de Finanzas, quiero emitir un recibo de cada pago, para entregarle al cliente un
-comprobante de lo que pagó.
-
-Criterios propuestos (lo que no depende de los puntos abiertos):
-
-- Desde el estado de cuenta del evento genero el recibo de un pago registrado y lo imprimo o lo
-  guardo como PDF.
-- El recibo **no es una factura**: la facturación electrónica está fuera de alcance (EXC-02) y el
-  recibo lo dice.
-- Un pago anulado (HU-35) no emite recibo, o el recibo lo muestra como anulado (a definir con
-  HU-35).
-- Solo el personal interno emite recibos; el rol Cliente no.
-
-**A definir (bloquea la historia).** Qué datos lleva el recibo y si tiene numeración propia. Una
-numeración correlativa es cambio de modelo. La historia se estima recién con eso definido.
-
-**Implementación sugerida.** Igual que el presupuesto y la comanda: una hoja impresa con
-`window.print()`, sin dependencias nuevas (`PresupuestoEstimado.tsx`, `ComandaEvento.tsx`).
+**Eliminada (PO, 06/11/2026).** No se construye.
 
 ## Casos de prueba
 
