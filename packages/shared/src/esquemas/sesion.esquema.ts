@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 import { esquemaId } from './comunes.esquema.js';
 import { esquemaCelular } from './telefono.esquema.js';
-import { esquemaRol } from './usuario.esquema.js';
+import { esquemaRol, esquemaRolPersonal } from './usuario.esquema.js';
 
 // Email de una cuenta: sin espacios y en minúsculas antes de validar el formato, en el registro y
 // en el login por igual. Así Juan@Mail.com y juan@mail.com son la misma cuenta (C3 de HU-48) y el
@@ -35,8 +35,9 @@ const esquemaNombreDePersona = (faltante: string) =>
       error: 'Usá solo letras, sin números ni símbolos',
     });
 
-// Contraseña nueva, en el registro y al restablecerla. El mínimo de 6 caracteres es un piso básico
-// para la demo con el cliente; la política de contraseñas definitiva sigue siendo de HU-28.
+// Contraseña nueva: en el registro, al restablecerla y la inicial que el GG o el ADM le cargan a un
+// usuario del personal (HU-30 del Sprint 4). La política es solo este mínimo de 6 caracteres, sin
+// otros requisitos (PO, 06/11/2026).
 const esquemaContrasenaNueva = z
   .string()
   .min(6, { error: 'La contraseña debe tener al menos 6 caracteres' });
@@ -84,6 +85,16 @@ export const esquemaRegistroCliente = z.object({
   contrasena: esquemaContrasenaNueva,
 });
 export type RegistroCliente = z.infer<typeof esquemaRegistroCliente>;
+
+// Body de POST /usuarios (HU-30 del Sprint 4): el GG o el ADM dan de alta a un usuario del personal
+// con su rol y su contraseña inicial. Qué rol puede asignar cada uno lo decide puedeAsignarRol()
+// (dominio/personal.ts) y lo controla la API (403).
+export const esquemaRegistrarUsuario = z.object({
+  email: esquemaEmailDeCuenta,
+  rol: esquemaRolPersonal,
+  contrasena: esquemaContrasenaNueva,
+});
+export type RegistrarUsuario = z.infer<typeof esquemaRegistrarUsuario>;
 
 // Body de POST /auth/contrasena/olvido (C8 de HU-48): pide el enlace para restablecer la
 // contraseña. Lo usan el cliente y el personal.

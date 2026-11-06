@@ -1,4 +1,4 @@
-import type { Rol, Sesion } from '@confluens/shared';
+import { administraPersonal, type Rol, type Sesion } from '@confluens/shared';
 import {
   Building2,
   CalendarDays,
@@ -10,6 +10,7 @@ import {
   LogOut,
   Moon,
   Settings,
+  ShieldCheck,
   Sun,
   UserRound,
   Users,
@@ -21,10 +22,12 @@ import { Navigate, useNavigate, useParams } from 'react-router';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { useCerrarSesion } from '@/hooks/use-sesion';
+import { NOMBRES_DE_ROL } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 import { ListadoClientes } from '@/paginas/clientes/ListadoClientes';
 import { Agenda } from '@/paginas/eventos/Agenda';
 import { RegistrarMedioPago } from '@/paginas/medios-pago/RegistrarMedioPago';
+import { Personal } from '@/paginas/personal/Personal';
 import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
 import { ConsultarSalones } from '@/paginas/salones/ConsultarSalones';
 import { ListadoConsultas } from '@/paginas/presupuestos/ListadoConsultas';
@@ -72,15 +75,7 @@ const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: 
   },
 ];
 
-const NOMBRES_DE_ROL: Record<Rol, string> = {
-  RESPONSABLE_EVENTOS: 'Responsable de Eventos',
-  RESPONSABLE_FINANZAS: 'Responsable de Finanzas',
-  GERENTE_GENERAL: 'Gerente General',
-  ADMINISTRADOR_SISTEMA: 'Administrador del Sistema',
-  CLIENTE: 'Cliente',
-};
-
-type SeccionConfiguracion = 'salones' | 'servicios' | 'medios' | 'landing';
+type SeccionConfiguracion = 'salones' | 'servicios' | 'medios' | 'landing' | 'personal';
 
 // Las secciones de la configuración, agrupadas como en el sidebar.
 const GRUPOS_DE_CONFIGURACION: {
@@ -100,13 +95,24 @@ const GRUPOS_DE_CONFIGURACION: {
     titulo: 'Sitio web',
     secciones: [{ valor: 'landing', texto: 'Landing y fotos', icono: Images }],
   },
+  {
+    titulo: 'Equipo',
+    secciones: [{ valor: 'personal', texto: 'Personal', icono: ShieldCheck }],
+  },
 ];
 
 // Todo lo que se consulta o se carga del catálogo: salones (HU-03), servicios (HU-02), medios de pago
-// (HU-19) y el contenido de la landing (HU-08). Cada sección se elige desde el sidebar de la
-// izquierda; en pantallas angostas el sidebar va arriba.
-function ConfiguracionDeNegocio() {
+// (HU-19), el contenido de la landing (HU-08) y el personal (HU-30 y HU-31 del Sprint 4). Cada
+// sección se elige desde el sidebar de la izquierda; en pantallas angostas el sidebar va arriba.
+//
+// Personal la ven solo el GG y el ADM (dominio.md, «Personal»); la API también se lo niega al resto.
+// Las demás secciones las siguen viendo todos hasta HU-56 del backlog (permisos por rol).
+function ConfiguracionDeNegocio({ rol }: { rol: Rol }) {
   const [seccion, setSeccion] = useState<SeccionConfiguracion>('servicios');
+  const grupos = GRUPOS_DE_CONFIGURACION.filter(
+    ({ secciones }) =>
+      !secciones.some(({ valor }) => valor === 'personal') || administraPersonal(rol),
+  );
   return (
     <div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start">
       {/* top-32: deja libre el encabezado fijo del panel con sus pestañas. */}
@@ -114,7 +120,7 @@ function ConfiguracionDeNegocio() {
         aria-label="Secciones de la configuración"
         className="space-y-4 rounded-xl bg-card p-2 ring-1 ring-border md:sticky md:top-32"
       >
-        {GRUPOS_DE_CONFIGURACION.map(({ titulo, secciones }) => (
+        {grupos.map(({ titulo, secciones }) => (
           <div key={titulo} className="space-y-1">
             <p className="px-3 pt-2 text-[0.65rem] font-semibold tracking-[0.15em] text-dorado-texto uppercase">
               {titulo}
@@ -141,6 +147,7 @@ function ConfiguracionDeNegocio() {
         {seccion === 'servicios' && <RegistrarServicio />}
         {seccion === 'medios' && <RegistrarMedioPago />}
         {seccion === 'landing' && <AdministrarLanding />}
+        {seccion === 'personal' && administraPersonal(rol) && <Personal rol={rol} />}
       </div>
     </div>
   );
@@ -312,7 +319,7 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
         {pestania === 'eventos' && <Agenda key="eventos" vista="lista" />}
         {pestania === 'consultas' && <ListadoConsultas />}
         {pestania === 'clientes' && <ListadoClientes />}
-        {pestania === 'configuracion' && <ConfiguracionDeNegocio />}
+        {pestania === 'configuracion' && <ConfiguracionDeNegocio rol={sesion.rol} />}
         {pestania === 'cuenta' && <MiCuenta sesion={sesion} onCerrarSesion={salir} />}
       </main>
     </div>
