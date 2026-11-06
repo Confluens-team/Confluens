@@ -316,7 +316,8 @@ export async function buscarDistribucionPorNombre(
   nombre: string,
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.distribucion.findFirst({ where: { salonId, nombre } });
+  // Solo las activas: heredar una dada de baja (HU-25 del Sprint 4) sería elegirla de nuevo.
+  return tx.distribucion.findFirst({ where: { salonId, nombre, activo: true } });
 }
 
 // RN-13: el porcentaje de incremento mensual. La fila la crea la migración; si faltara (una base
@@ -336,7 +337,11 @@ export async function buscarEventoParaReutilizar(
   return tx.evento.findUnique({
     where: { id },
     include: {
-      salones: { include: { salon: true }, orderBy: { salonId: 'asc' } },
+      // activo de la distribución: una dada de baja (HU-25 del Sprint 4) no se copia al evento nuevo.
+      salones: {
+        include: { salon: true, distribucion: { select: { activo: true } } },
+        orderBy: { salonId: 'asc' },
+      },
       presupuestos: {
         include: { lineas: { include: { servicio: true }, orderBy: { id: 'asc' } } },
         orderBy: { id: 'asc' },

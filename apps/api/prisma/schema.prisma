@@ -144,6 +144,9 @@ model Distribucion {
   salon         Salon         @relation(fields: [salonId], references: [id])
   nombre        String
   capacidad     Int
+  // Baja lógica (HU-25 del Sprint 4): una distribución dada de baja no se ofrece al presupuestar ni
+  // al agendar, pero los eventos que ya la tienen la conservan y la siguen mostrando.
+  activo        Boolean       @default(true)
   eventoSalones EventoSalon[]
   creadoEn      DateTime      @default(now())
   actualizadoEn DateTime      @updatedAt

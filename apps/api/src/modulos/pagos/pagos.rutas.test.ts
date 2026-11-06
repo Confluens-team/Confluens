@@ -112,6 +112,7 @@ const distribucionFixture = {
   salonId: salonFixture.id,
   nombre: 'Conferencia',
   capacidad: 280,
+  activo: true,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
 };

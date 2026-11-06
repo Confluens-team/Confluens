@@ -8,6 +8,9 @@ export const esquemaDistribucion = z.object({
   salonId: esquemaId,
   nombre: z.string().min(1),
   capacidad: z.number().int().positive(),
+  // Baja lógica (HU-25 del Sprint 4): dada de baja no se ofrece al presupuestar ni al agendar, pero
+  // los eventos que ya la tienen la conservan.
+  activo: z.boolean(),
   creadoEn: esquemaFechaHora,
   actualizadoEn: esquemaFechaHora,
 });
@@ -36,3 +39,10 @@ export type CrearDistribucion = z.infer<typeof esquemaCrearDistribucion>;
 // salón.
 export const esquemaModificarDistribucion = esquemaCrearDistribucion;
 export type ModificarDistribucion = z.infer<typeof esquemaModificarDistribucion>;
+
+// Body de PATCH /salones/:id/distribuciones/:distribucionId/estado (HU-25 del Sprint 4): `false` la
+// da de baja y `true` la reactiva. Se da de baja aunque la use un evento (PO, 06/11/2026).
+export const esquemaCambiarEstadoDistribucion = z.object({
+  activo: z.boolean('Indicá si la distribución queda activa o dada de baja'),
+});
+export type CambiarEstadoDistribucion = z.infer<typeof esquemaCambiarEstadoDistribucion>;

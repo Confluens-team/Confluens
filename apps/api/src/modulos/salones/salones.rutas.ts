@@ -1,5 +1,6 @@
 import {
   esquemaActualizarLandingSalon,
+  esquemaCambiarEstadoDistribucion,
   esquemaCrearDistribucion,
   esquemaDistribucion,
   esquemaModificarDistribucion,
@@ -18,6 +19,7 @@ import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
 import {
   actualizarLanding,
+  cambiarEstado,
   crearDistribucion,
   listar,
   listarPublicos,
@@ -162,6 +164,28 @@ registroOpenApi.registerPath({
   },
 });
 
+registroOpenApi.registerPath({
+  method: 'patch',
+  path: '/salones/{id}/distribuciones/{distribucionId}/estado',
+  tags: ['Salones'],
+  summary:
+    'Da de baja (activo: false) o reactiva (activo: true) una distribución (HU-25 del Sprint 4). Dada de baja no se ofrece al presupuestar ni al agendar; los eventos que ya la tienen no cambian',
+  request: {
+    params: esquemaParamsDistribucion,
+    body: { content: { 'application/json': { schema: esquemaCambiarEstadoDistribucion } } },
+  },
+  responses: {
+    200: {
+      description: 'Distribución con su estado nuevo',
+      content: { 'application/json': { schema: z.object({ data: esquemaDistribucion }) } },
+    },
+    400: { description: 'Falta activo o no es booleano' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
+    404: { description: 'No existe el salón o la distribución no es de ese salón' },
+  },
+});
+
 export const rutasSalones = Router();
 
 // /publicos va antes de cualquier ruta con parámetro: si en el futuro se agrega un GET /:id,
@@ -210,4 +234,13 @@ rutasSalones.patch(
   autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaParamsDistribucion, body: esquemaModificarDistribucion }),
   asincrono(editarDistribucion),
+);
+
+// HU-25: baja lógica o reactivación de una distribución, con el mismo orden de middlewares.
+rutasSalones.patch(
+  '/:id/distribuciones/:distribucionId/estado',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaParamsDistribucion, body: esquemaCambiarEstadoDistribucion }),
+  asincrono(cambiarEstado),
 );

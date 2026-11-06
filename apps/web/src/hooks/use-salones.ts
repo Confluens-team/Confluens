@@ -138,3 +138,34 @@ export function useModificarDistribucion() {
     },
   });
 }
+
+// HU-25 del Sprint 4: baja lógica (`activo: false`) o reactivación de una distribución. Invalida
+// ['salones'] para que deje de ofrecerse (o vuelva) al presupuestar y al agendar.
+export function useCambiarEstadoDistribucion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      salonId,
+      distribucionId,
+      activo,
+    }: {
+      salonId: number;
+      distribucionId: number;
+      activo: boolean;
+    }) => {
+      const respuesta = await apiFetch<RespuestaExito<Distribucion>>(
+        `/salones/${salonId}/distribuciones/${distribucionId}/estado`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ activo }),
+        },
+      );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['salones'] });
+    },
+  });
+}
