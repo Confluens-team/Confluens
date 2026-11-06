@@ -33,21 +33,21 @@ Orden del Seguimiento: Salones → Eventos → Usuarios → Catálogos → Pagos
 
 ## Alcance
 
-| HU | Título | Actor | Backlog | SP | Estado en el código |
+| HU | Título | Actor | Backlog | SP | Estado (06/11/2026) |
 |---|---|---|---|---|---|
-| HU-25 | Registrar distribuciones posibles de un salón | RE | HU-02 | 5 | Solo lectura (`GET /salones` las trae) |
-| HU-26 | Modificar información de un salón | RE | HU-03 | 3 | Solo la parte de la landing (HU-08) |
-| HU-27 | Modificar datos de un evento | RE | HU-16 | 5 | Cubierto en parte por HU-12 y `agendar` |
-| HU-28 | Registrar evento cobrado | RF | HU-20 | 5 | Automático desde HU-14 |
-| HU-29 | Generar y emitir comanda | RE | — (S-07) | 2 | Construida, falta formalizarla |
-| HU-30 | Registrar usuario | GG / ADM | HU-28 | 3 | No existe (usuarios del seed) |
-| HU-31 | Consultar usuario | GG / ADM | HU-29 | 2 | No existe |
-| HU-32 | Modificar servicio | RE | HU-33 | 3 | Solo la foto de la landing (HU-08) |
-| HU-33 | Modificar medio de pago | RF | HU-38 | 2 | No existe |
-| HU-34 | Consultar pagos de un evento | RF | — | 2 | Cubierta por HU-21 |
-| HU-35 | Anular pago de un evento | RF | — | 2 | No existe; los pagos no se editan ni se borran |
-| HU-36 | Generar y emitir un recibo como comprobante válido de pago | RF | — | a estimar | No existe |
-| | **Total (sin HU-36)** | | | **34** | |
+| HU-25 | Registrar distribuciones posibles de un salón | RE | HU-02 | 5 | Hecha (#88). Falta la baja, a definir |
+| HU-26 | Modificar información de un salón | RE | HU-03 | 3 | Hecha (#89 y #95): precios y distribuciones |
+| HU-27 | Modificar datos de un evento | RE | HU-16 | 5 | Hecha (#90 y #96): tests y vigencia al recalcular |
+| HU-28 | Registrar evento cobrado | RF | HU-20 | 5 | Hecha (#91): cubierta con tests |
+| HU-29 | Generar y emitir comanda | RE | — (S-07) | 2 | Hecha (#92) |
+| HU-30 | Registrar usuario | GG / ADM | HU-28 | 3 | Sin empezar: bloqueada (primera contraseña) |
+| HU-31 | Consultar usuario | GG / ADM | HU-29 | 2 | Sin empezar: va con HU-30 |
+| HU-32 | Modificar servicio | RE | HU-33 | 3 | Hecha (#93) |
+| HU-33 | Modificar medio de pago | RF | HU-38 | 2 | Hecha (#94) |
+| HU-34 | Consultar pagos de un evento | RF | — | 2 | Hecha: cubierta por HU-21, sin código nuevo |
+| HU-35 | Anular pago de un evento | RF | — | 2 | Sin empezar: bloqueada (datos de la anulación, cambio de modelo) |
+| HU-36 | Generar y emitir un recibo como comprobante válido de pago | RF | — | a estimar | Sin empezar: bloqueada (datos y numeración) |
+| | **Total (sin HU-36)** | | | **34** | **Hechos: 27** |
 
 Velocidad de los sprints anteriores: 31, 32 y 36. Con 34 puntos el sprint queda en línea, pero
 varias historias valen menos de lo estimado porque ya están hechas en parte (HU-29, HU-34 y, según
@@ -355,8 +355,18 @@ Criterios propuestos:
 - Solo el personal interno consulta los pagos; el rol Cliente no.
 
 **Ya cubierta por HU-21** (Seguimiento: «no lleva trabajo nuevo»). `GET /api/eventos/:id/pagos` y la
-tarjeta «Cuenta del evento» del detalle muestran todo esto. Se cierra pasando la historia a la
-Definición del Producto y referenciando los tests de HU-21; conviene re-estimarla.
+tarjeta «Cuenta del evento» del detalle muestran todo esto. Se cierra sin código nuevo, con la
+cobertura de abajo; falta pasarla a la Definición del Producto y re-estimarla.
+
+**Cobertura** (`pagos.rutas.test.ts`, `describe` de `GET /api/eventos/:id/pagos` y del estado de
+cuenta de HU-21):
+
+| Criterio | Tests |
+|---|---|
+| Cada pago con fecha, importe, medio y observación | `devuelve el historial y el saldo actualizado (HU-14 C2)`. El orden del más antiguo al más reciente lo da la consulta (`pagos.repositorio.ts`, por fecha y después por id), que en los tests de rutas está simulada: sin test propio |
+| Total abonado y saldo pendiente | `devuelve el historial y el saldo actualizado (HU-14 C2)`, `un evento Cobrado queda con saldo cero…` |
+| Sin pagos, el sistema lo informa | `sin pagos el saldo es la base de cobro y la seña no está alcanzada`. El texto «Todavía no hay pagos.» de `CuentaDelEvento.tsx` es presentación, sin test (AGENTS.md §5) |
+| Solo el personal interno | `un Cliente no accede al estado de cuenta` (`403`) |
 
 ## HU-35 — Anular pago de un evento
 
