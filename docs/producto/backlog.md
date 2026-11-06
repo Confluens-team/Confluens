@@ -1,10 +1,28 @@
 # Backlog — Confluens
 
-Las 46 historias del Product Backlog, alineadas con el Seguimiento del Proyecto.
+Las 53 historias del Product Backlog, alineadas con el Seguimiento del Proyecto.
 Una línea por historia: para los criterios de aceptación completos ver el archivo del sprint
 en curso. **Jira es la fuente de verdad del estado**; este archivo solo dice qué existe y dónde cae.
 
-Total: 46 historias · 226 + 6 story points\* · 2 historias sin estimar (HU-48, HU-49) · 12 Epics
+Total: 53 historias · 226 + 6 story points\* · 9 historias sin estimar (HU-48 a HU-56) · 12 Epics
+
+> **Cambios por la reunión con el cliente del 05/11/2026** (validados por el PO el 06/11/2026; las
+> reglas están en `dominio.md`, con la marca «Reunión 05/11/2026 → HU-xx»):
+> - Se **agregan siete historias**, HU-50 a HU-56, sin puntos: se estiman en el Sprint Planning.
+>   Los códigos son de este archivo y se cargan en Jira al planificarlas.
+> - **HU-34** suma los tramos consecutivos del porcentaje general y el porcentaje propio por
+>   servicio (RN-10, RN-13).
+> - **HU-28 a HU-31** (usuarios) pasan a la sección **Personal** de Configuración de negocio: el
+>   GG y el ADM registran, modifican y dan de baja (lógica) al personal, con un rol por usuario y
+>   siempre al menos un GG y un ADM. El GG asigna GG, RE y RF; el ADM, cualquier rol. Los permisos
+>   de cada rol van en HU-56.
+> - Se resuelven sin historia nueva: corregir un pago registrado con error y pasar un pago a otro
+>   evento (los dos con la anulación, HU-35 del Sprint 4), y modificar un evento de fecha pasada (ya
+>   no hay ningún control por fecha; falta probarlo en la web).
+> - Correcciones que van a Jira sin historia: el nombre del PDF del presupuesto pasa a ser
+>   `presupuesto-AAAA-MM-DD-apellido.pdf` con la fecha del evento; los campos de importe solo dejan
+>   tipear dígitos y un separador decimal; el botón «Salir» del cotizador no funciona y tiene que
+>   pedir confirmación («¿Seguro que querés salir? Tu consulta todavía no se completó»).
 
 > **Cambios por la entrevista con el Responsable de Eventos (24/09/2026)**:
 > - Se **elimina HU-08** (baja de cliente por inactividad): el cliente no quiere baja por inactividad.
@@ -46,7 +64,7 @@ RG-02. Gestionar los clientes de la organización.  ·  4 historias  ·  13 pts 
 
 ## EPIC-03 — Gestión de Presupuestos de Eventos
 
-RG-03. Gestionar los presupuestos.  ·  8 historias  ·  37 pts + HU-49 sin estimar  ·  Alta
+RG-03. Gestionar los presupuestos.  ·  13 historias  ·  37 pts + HU-49 y HU-51 a HU-55 sin estimar  ·  Alta
 
 | HU | Título | RD | Pts | Sprint | Actor |
 |---|---|---|---|---|---|
@@ -58,6 +76,38 @@ RG-03. Gestionar los presupuestos.  ·  8 historias  ·  37 pts + HU-49 sin esti
 | HU-45 | Registrar un presupuesto cancelado | RD-03.6 | 2 | 3 | Responsable de Eventos |
 | HU-43 | Emitir el presupuesto confirmado | RD-05.3 | 3 | 5 | Responsable de Eventos |
 | HU-49 | Armar un presupuesto estimado y confirmar la consulta en el canal público | — | a estimar | a definir | Cliente |
+| HU-51 | Agregar servicios propios a un evento | — | a estimar | a definir | Responsable de Eventos |
+| HU-52 | Registrar lo pagado de más como no reintegrable | — | a estimar | a definir | Responsable de Eventos |
+| HU-53 | Calcular todo presupuesto nuevo con IVA | — | a estimar | a definir | Sistema |
+| HU-54 | Recalcular el presupuesto automáticamente | — | a estimar | a definir | Sistema |
+| HU-55 | Cobrar la seña de un presupuesto vencido | — | a estimar | a definir | Responsable de Finanzas |
+
+**HU-51.** Desde el detalle del presupuesto, el personal agrega servicios que no están en el
+catálogo, propios de ese evento: cada uno es una línea con precio, cantidad y su propia
+observación, suma al total y sale en el PDF del presupuesto y en la comanda. No se guarda en el
+catálogo. Se construye sobre los adicionales escritos a mano y reemplaza a la caja de texto única
+del evento social.
+
+**HU-52.** Si un cambio baja el total por debajo de lo pagado, un cartel lo avisa y pide
+confirmarlo. Confirmado, el saldo queda en $0 y lo pagado de más se registra como «no
+reintegrable», informativo en la cuenta del evento; lo que se agregue después se paga completo.
+Reemplaza el saldo a favor. Cambia el modelo.
+
+**HU-53.** Se saca la casilla Con o Sin factura: todo presupuesto nuevo requiere factura y su base
+de cobro es el total con IVA (RN-01). Los existentes conservan su marca. Todos los medios de pago
+quedan habilitados en todos los cobros (RN-14) y el alta y la modificación de medios dejan de pedir
+el caso. Sin cambio de modelo: `requiereFactura` sigue en uso para los anteriores y los nuevos se
+crean con `true`.
+
+**HU-54.** Se saca el botón Recalcular. Al cambiar la fecha del evento se recalcula con los precios
+de la fecha nueva, en cualquier estado, y se reinicia la vigencia; al cambiar el porcentaje (o un
+tramo, HU-34) se recalculan solo los presupuestos `Estimado` de eventos `EnConsulta`, sin
+reiniciar la vigencia. Un `Expirado` se recalcula solo si cambia su fecha. Corrige HU-27 del
+Sprint 4, que deja recalcular un presupuesto confirmado.
+
+**HU-55.** La seña se registra aunque el presupuesto esté `Expirado`, sin recalcular: la vigencia
+de 10 días es una leyenda para el cliente (RN-06, RN-08). Agrega `Expirado → Confirmado` a la
+máquina del presupuesto.
 
 **HU-49.** El cliente registrado carga sus datos y la fecha; ve precios proyectados a esa fecha (RN-13); elige salón, distribución, jornada, personas, servicios con modalidad (RN-11) y audiovisual; ve en vivo subtotal sin IVA, IVA 21% y total (RN-05); confirma y recibe un correo de consulta recibida. Se guarda como Solicitud con sus líneas. No bloquea el salón. Depende de HU-48 y de S-11 (proveedor de correo).
 
@@ -72,9 +122,17 @@ RG-09. Gestionar servicios.  ·  4 historias  ·  23 pts  ·  Media
 | HU-34 | Configurar el incremento de precios (mensual automático, global o por servicio) | RD-09.3 | 13 | 5 | Responsable de Eventos |
 | HU-35 | Dar de baja un servicio | RD-09.4 | 2 | 6 | Responsable de Eventos |
 
+**HU-34** (alcance ampliado el 05/11/2026). El porcentaje general se carga en tramos con fecha de
+inicio y de fin («+» para sumar): consecutivos, el inicio de cada uno lo completa el sistema al día
+siguiente del fin del anterior, y el último no tiene fin. Si se cambia el fin de un tramo, el
+siguiente se corre solo; si el fin nuevo pasa el fin del siguiente, se rechaza. Un servicio puede
+tener su propio porcentaje, que reemplaza al general; al cambiar el general, el sistema avisa y deja
+elegir en cada servicio si conserva el suyo. La proyección de RN-13 usa el porcentaje de cada mes.
+Conviene re-estimarla.
+
 ## EPIC-05 — Gestión de Reservas de Eventos
 
-RG-04. Gestionar eventos.  ·  8 historias  ·  62 pts  ·  Alta
+RG-04. Gestionar eventos.  ·  9 historias  ·  62 pts + HU-50 sin estimar  ·  Alta
 
 | HU | Título | RD | Pts | Sprint | Actor |
 |---|---|---|---|---|---|
@@ -86,6 +144,12 @@ RG-04. Gestionar eventos.  ·  8 historias  ·  62 pts  ·  Alta
 | HU-19 | Reutilizar la configuración de un evento anterior | RD-04.4 | 8 | 3 | Responsable de Eventos |
 | HU-20 | Registrar un evento como pagado | RD-04.6 | 5 | 4 | Responsable de Finanzas |
 | HU-44 | Registrar un evento cancelado | RD-04.7 | 5 | 3 | Responsable de Eventos |
+| HU-50 | Reservar un evento de varios días | — | a estimar | a definir | Responsable de Eventos |
+
+**HU-50.** Un evento abarca varios días consecutivos, cada uno con su horario, jornada, salones,
+servicios y cantidad de personas; el salón se cobra según la jornada de cada día. El solapamiento
+(RN-12) se controla por día y por salón, sale una comanda por día, y todo va en un solo presupuesto
+con una sola seña. Cambia el modelo del evento. Es grande: hay que pulirla antes de estimarla.
 
 ## EPIC-06 — Gestión de Pagos de Clientes de los Eventos
 
@@ -150,7 +214,7 @@ RG-05. Gestionar reportes e indicadores del negocio.  ·  2 historias  ·  13 pt
 
 ## EPIC-12 — Administración de Accesos al Sistema
 
-RG-08. Administrar los accesos al sistema.  ·  6 historias  ·  18 pts + HU-48 sin estimar  ·  Media
+RG-08. Administrar los accesos al sistema.  ·  7 historias  ·  18 pts + HU-48 y HU-56 sin estimar  ·  Media
 
 | HU | Título | RD | Pts | Sprint | Actor |
 |---|---|---|---|---|---|
@@ -160,6 +224,20 @@ RG-08. Administrar los accesos al sistema.  ·  6 historias  ·  18 pts + HU-48 
 | HU-30 | Modificar un usuario | RD-08.5 | 3 | 5 | Gerente General |
 | HU-31 | Dar de baja un usuario | RD-08.4 | 2 | 5 | Gerente General |
 | HU-48 | Registrarse como cliente en el canal público | — | a estimar | a definir | Cliente |
+| HU-56 | Restringir el panel interno según el rol | — | a estimar | a definir | Gerente General |
+
+**HU-28 a HU-31** (alcance actualizado el 05/11/2026). Se gestionan desde la sección **Personal**
+de Configuración de negocio, que usan solo el GG y el ADM. Listan solo al personal; registrar
+incluye la contraseña inicial, que carga el GG o el ADM; un usuario tiene un solo rol; el GG asigna
+GG, RE y RF y el ADM cualquiera; siempre queda al menos un GG y un ADM activos; el GG no toca a un
+ADM ni se quitan el rol entre sí. Dar de baja es **baja lógica** (activo / inactivo, reactivable),
+que cambia el modelo de `Usuario`.
+
+**HU-56.** Cada rol ve en Configuración de negocio solo lo suyo: el RE, Salones y Servicios y
+precios; el RF, lo mismo más Medios de pago; el GG, todo menos el contenido de la landing (solo sus
+fotos); el ADM, todo. Fuera de la configuración los cuatro ven todo el panel, y la auditoría la ven
+el GG y el ADM. La API rechaza con `403` lo que el rol no puede hacer. Reemplaza la decisión
+provisoria del PO del 06/10/2026.
 
 **HU-48.** Desde la landing, el cliente se registra con nombre, apellido, correo, contraseña y teléfono (autorregistro abierto, sin aprobación) y después inicia sesión. Se crean `Usuario` con rol `CLIENTE` y su `Cliente`. Correo duplicado se rechaza. Con sesión ve precios; sin sesión, la landing nunca los muestra. `dominio.md` lo planifica para el Sprint 2.
 
@@ -175,7 +253,7 @@ RG-08. Administrar los accesos al sistema.  ·  6 historias  ·  18 pts + HU-48 
 | 4 | HU-02 · HU-03 · HU-16 · HU-18 · HU-20 · HU-22 · HU-28 · HU-29 · HU-33 · HU-38 | 41 |
 | 5 | HU-43 · HU-24 · HU-25 · HU-30 · HU-31 · HU-34 | 34 |
 | 6 | HU-21 · HU-23 · HU-35 · HU-39 | 20 |
-| a definir | HU-48 · HU-49 | sin estimar |
+| a definir | HU-48 · HU-49 · HU-50 · HU-51 · HU-52 · HU-53 · HU-54 · HU-55 · HU-56 | sin estimar |
 
 Los puntos son los del backlog general (con HU-46 y HU-47 marcadas \*, ver nota de EPIC-10). Cada Sprint Planning re-estima según el alcance real: el Sprint 1 se cerró en 8 historias y 31 puntos tras re-estimar HU-27, HU-32, HU-01 y HU-09 a la baja (ver el documento de Sprint 1, que usa numeración local HU-01 a HU-08 para este subconjunto).
 
