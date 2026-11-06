@@ -35,7 +35,7 @@ Orden del Seguimiento: Salones → Eventos → Usuarios → Catálogos → Pagos
 
 | HU | Título | Actor | Backlog | SP | Estado (06/11/2026) |
 |---|---|---|---|---|---|
-| HU-25 | Registrar distribuciones posibles de un salón | RE | HU-02 | 5 | Hecha (#88). Falta la baja lógica (definida, cambio de modelo) |
+| HU-25 | Registrar distribuciones posibles de un salón | RE | HU-02 | 5 | Hecha (#88), con la baja lógica |
 | HU-26 | Modificar información de un salón | RE | HU-03 | 3 | Hecha (#89 y #95): precios y distribuciones |
 | HU-27 | Modificar datos de un evento | RE | HU-16 | 5 | Hecha (#90 y #96): tests y vigencia al recalcular |
 | HU-28 | Registrar evento cobrado | RF | HU-20 | 5 | Hecha (#91): cubierta con tests |
@@ -102,14 +102,20 @@ Criterios propuestos:
 
 **Definido (PO, 06/11/2026): baja lógica.** Una distribución se da de baja aunque ya la use un
 evento. Dada de baja, no se ofrece al armar o modificar un presupuesto ni al agendar, pero los
-eventos que ya la tienen la conservan y la siguen mostrando: la baja no los afecta. Hoy
-`Distribucion` no tiene `activo`, así que es cambio de modelo, a confirmar antes de tocar
-`schema.prisma`. Modificarla quedó definido en HU-26.
+eventos que ya la tienen la conservan y la siguen mostrando: la baja no los afecta. Modificarla
+quedó definido en HU-26.
 
 **Implementación.** `Distribucion` ya existe con `@@unique([salonId, nombre])`; las del tarifario
 las carga el seed. Falta `POST /api/salones/:id/distribuciones` (`409` por nombre repetido, `422` si
 supera la capacidad del salón, `404` si el salón no existe). La unicidad sin distinguir mayúsculas
 la controla el servicio, como en medios de pago.
+
+La baja es la columna `Distribucion.activo` (migración `20261106220000_baja_logica_distribucion`,
+confirmada por el PO el 06/11/2026) y `PATCH /api/salones/:id/distribuciones/:distribucionId/estado`
+con `{ activo }`, que también la reactiva. Agendar rechaza con `422` una dada de baja, salvo la que el
+evento ya tiene en ese salón; al cambiar de salón un presupuesto solo se heredan las activas, y la
+landing no publica las dadas de baja. En la web, cada distribución de Salones tiene su botón para dar
+de baja o reactivar. Tests en `salones.rutas.test.ts` y `eventos.rutas.test.ts`.
 
 ## HU-26 — Modificar información de un salón
 

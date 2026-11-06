@@ -149,7 +149,10 @@ completa y media jornada. Capacidades y precios reales en `../negocio/tarifario-
 media jornada). **Jornada completa: más de 4 horas.** Se deriva del horario del evento.
 
 **Distribución.** Forma de armado de un salón con su propia capacidad: conferencia, mesas de
-trabajo, banquete. Nombre único por salón. Su capacidad nunca supera la del salón.
+trabajo, banquete. Nombre único por salón. Su capacidad nunca supera la del salón. **Baja lógica**
+(PO, 06/11/2026): se da de baja aunque la use un evento. Dada de baja no se ofrece al presupuestar
+ni al agendar, ni se publica en la landing, pero los eventos que ya la tienen la conservan. Sigue
+ocupando su nombre en el salón y se puede reactivar.
 
 **Cliente.** Persona u organización que contrata. Datos: nombre, apellido (o razón social),
 teléfono y correo. **No hay baja por inactividad**: el cliente se conserva siempre con su
