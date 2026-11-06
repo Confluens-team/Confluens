@@ -317,9 +317,8 @@ lo pasa a otro evento **suyo**. Se hace a mano: se **anula** el pago en el event
 del Sprint 4) y se registra en el otro. No hay una acción de «transferir». Si el evento original
 queda por debajo de la seña, **sigue `Reservado`** y el sistema avisa que lo pagado no cubre la
 seña: no hay transición `Reservado → EnConsulta`. Si estaba `Cobrado` y lo pagado queda por debajo
-del total, **vuelve a `Reservado`** (en pantalla, «Confirmado») hasta cobrar la diferencia, como al
-modificar el presupuesto (reunión 05/11/2026; PO, 06/11/2026). La misma anulación sirve
-para corregir un pago registrado con un error, por ejemplo en su observación: se anula y se
+del total, **vuelve a `Reservado`** hasta cobrar la diferencia, como al modificar el presupuesto
+(reunión 05/11/2026; PO, 06/11/2026). La misma anulación sirve para corregir un pago registrado con un error, por ejemplo en su observación: se anula y se
 registra de nuevo. La anulación todavía no está construida.
 
 **Medio de pago.** El catálogo inicial es Efectivo, Transferencia, Débito, Crédito, Cheque y A la

@@ -386,8 +386,8 @@ Criterios propuestos (lo que no depende de los puntos abiertos):
 La anulación es también la forma de pasar un pago a otro evento del mismo cliente y de corregir un
 pago mal registrado (se anula y se registra de nuevo), sin una acción de «transferir» ni de editar.
 
-Si el evento estaba `Cobrado` y lo abonado baja del 100%, **vuelve a `Reservado`** (en pantalla,
-«Confirmado») hasta cobrar la diferencia, como al modificar el presupuesto (PO, 06/11/2026).
+Si el evento estaba `Cobrado` y lo abonado baja del 100%, **vuelve a `Reservado`** hasta
+cobrar la diferencia, como al modificar el presupuesto (PO, 06/11/2026).
 
 **A definir (bloquea la historia).** Qué datos guarda la anulación (fecha, usuario, motivo) y quién
 puede anular.
