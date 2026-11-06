@@ -1,4 +1,4 @@
-import { esquemaRegistrarUsuario, esquemaUsuario } from '@confluens/shared';
+import { esquemaFiltrosUsuarios, esquemaRegistrarUsuario, esquemaUsuario } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -7,7 +7,24 @@ import { asincrono } from '../../lib/asincrono.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
-import { registrar } from './usuarios.controlador.js';
+import { listar, registrar } from './usuarios.controlador.js';
+
+registroOpenApi.registerPath({
+  method: 'get',
+  path: '/usuarios',
+  tags: ['Usuarios'],
+  summary: 'Lista los usuarios del personal, por rol y después por correo (HU-31)',
+  request: { query: esquemaFiltrosUsuarios },
+  responses: {
+    200: {
+      description: 'Usuarios del personal, sin los clientes',
+      content: { 'application/json': { schema: z.object({ data: z.array(esquemaUsuario) }) } },
+    },
+    400: { description: 'El rol del filtro no es del personal' },
+    401: { description: 'Sin sesión' },
+    403: { description: 'La sesión no es del Gerente General ni del Administrador del Sistema' },
+  },
+});
 
 registroOpenApi.registerPath({
   method: 'post',
@@ -38,6 +55,12 @@ const soloAdministranPersonal = [
   autorizar('GERENTE_GENERAL', 'ADMINISTRADOR_SISTEMA'),
 ] as const;
 
+rutasUsuarios.get(
+  '/',
+  ...soloAdministranPersonal,
+  validar({ query: esquemaFiltrosUsuarios }),
+  asincrono(listar),
+);
 rutasUsuarios.post(
   '/',
   ...soloAdministranPersonal,

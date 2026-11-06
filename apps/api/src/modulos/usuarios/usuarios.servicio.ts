@@ -1,4 +1,9 @@
-import { puedeAsignarRol, type RegistrarUsuario, type Rol } from '@confluens/shared';
+import {
+  puedeAsignarRol,
+  type FiltrosUsuarios,
+  type RegistrarUsuario,
+  type Rol,
+} from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
 import { hashearContrasena } from '../../lib/contrasena.js';
@@ -41,4 +46,12 @@ export async function registrarUsuario(
     }
     throw error;
   }
+}
+
+// HU-31 del Sprint 4: los usuarios del personal, sin los clientes (esos están en Clientes).
+export async function listarUsuarios(
+  filtros: FiltrosUsuarios,
+  repo: UsuariosRepositorio = usuariosRepositorioReal,
+) {
+  return repo.listar(filtros.rol);
 }

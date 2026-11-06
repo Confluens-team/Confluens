@@ -25,7 +25,18 @@ export async function crear(datos: { email: string; hashContrasena: string; rol:
   return prisma.usuario.create({ data: datos, select: SELECCION });
 }
 
+// Ordena por rol en el orden del enum Rol de schema.prisma (RE, RF, GG, ADM), que es el que usa
+// Postgres para comparar enums, y después por correo.
+export async function listar(rol?: RolPersonal) {
+  return prisma.usuario.findMany({
+    where: { rol: rol ?? { not: 'CLIENTE' } },
+    orderBy: [{ rol: 'asc' }, { email: 'asc' }],
+    select: SELECCION,
+  });
+}
+
 export type UsuariosRepositorio = {
   buscarPorEmail: typeof buscarPorEmail;
   crear: typeof crear;
+  listar: typeof listar;
 };

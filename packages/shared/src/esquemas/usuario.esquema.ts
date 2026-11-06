@@ -29,3 +29,7 @@ export const esquemaRolPersonal = z.enum(
   { error: 'Elegí el rol del usuario' },
 );
 export type RolPersonal = z.infer<typeof esquemaRolPersonal>;
+
+// Query de GET /usuarios (HU-31 del Sprint 4): el filtro por rol es opcional.
+export const esquemaFiltrosUsuarios = z.object({ rol: esquemaRolPersonal.optional() });
+export type FiltrosUsuarios = z.infer<typeof esquemaFiltrosUsuarios>;

@@ -11,11 +11,13 @@ import { firmarToken, NOMBRE_COOKIE_SESION, verificarToken } from '../../lib/jwt
 vi.mock('./usuarios.repositorio.js', () => ({
   buscarPorEmail: vi.fn(),
   crear: vi.fn(),
+  listar: vi.fn(),
 }));
 
-const { buscarPorEmail, crear } = await import('./usuarios.repositorio.js');
+const { buscarPorEmail, crear, listar } = await import('./usuarios.repositorio.js');
 const buscarPorEmailMock = vi.mocked(buscarPorEmail);
 const crearMock = vi.mocked(crear);
+const listarMock = vi.mocked(listar);
 
 const cookieDe = (rol: Rol) =>
   `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 1, email: 'gg@confluens.test', rol })}`;
@@ -37,6 +39,7 @@ describe('POST /api/usuarios (HU-30 del Sprint 4)', () => {
   beforeEach(() => {
     buscarPorEmailMock.mockReset().mockResolvedValue(null);
     crearMock.mockReset();
+    listarMock.mockReset();
   });
 
   it('el GG registra un RE: 201 con el usuario, sin hash y sin tocar su propia sesión', async () => {
@@ -205,5 +208,77 @@ describe('POST /api/usuarios (HU-30 del Sprint 4)', () => {
 
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
+  });
+});
+
+describe('GET /api/usuarios (HU-31 del Sprint 4)', () => {
+  const app = crearApp();
+
+  beforeEach(() => {
+    listarMock.mockReset();
+  });
+
+  it.each(['GERENTE_GENERAL', 'ADMINISTRADOR_SISTEMA'] as const)(
+    'con sesión de %s lista el personal con correo, rol y fecha de alta, sin hash',
+    async (rol) => {
+      listarMock.mockResolvedValue([
+        creado('re@confluens.test', 'RESPONSABLE_EVENTOS'),
+        creado('gg@confluens.test', 'GERENTE_GENERAL'),
+      ]);
+
+      const respuesta = await request(app)
+        .get('/api/usuarios')
+        .set('Cookie', [cookieDe(rol)]);
+
+      expect(respuesta.status).toBe(200);
+      expect(respuesta.body.data).toHaveLength(2);
+      expect(respuesta.body.data[0]).toEqual({
+        id: 7,
+        email: 're@confluens.test',
+        rol: 'RESPONSABLE_EVENTOS',
+        creadoEn: FECHA.toISOString(),
+        actualizadoEn: FECHA.toISOString(),
+      });
+      expect(listarMock).toHaveBeenCalledWith(undefined);
+    },
+  );
+
+  it('filtra por rol', async () => {
+    listarMock.mockResolvedValue([creado('rf@confluens.test', 'RESPONSABLE_FINANZAS')]);
+
+    const respuesta = await request(app)
+      .get('/api/usuarios?rol=RESPONSABLE_FINANZAS')
+      .set('Cookie', [cookieDe('GERENTE_GENERAL')]);
+
+    expect(respuesta.status).toBe(200);
+    expect(listarMock).toHaveBeenCalledWith('RESPONSABLE_FINANZAS');
+  });
+
+  it('filtrar por el rol Cliente responde 400: los clientes se consultan en Clientes', async () => {
+    const respuesta = await request(app)
+      .get('/api/usuarios?rol=CLIENTE')
+      .set('Cookie', [cookieDe('GERENTE_GENERAL')]);
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(listarMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['RESPONSABLE_EVENTOS', 'RESPONSABLE_FINANZAS', 'CLIENTE'] as const)(
+    'con sesión de %s responde 403',
+    async (rol) => {
+      const respuesta = await request(app)
+        .get('/api/usuarios')
+        .set('Cookie', [cookieDe(rol)]);
+
+      expect(respuesta.status).toBe(403);
+      expect(listarMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it('sin sesión responde 401', async () => {
+    const respuesta = await request(app).get('/api/usuarios');
+
+    expect(respuesta.status).toBe(401);
   });
 });

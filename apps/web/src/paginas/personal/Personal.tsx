@@ -16,6 +16,8 @@ import { ErrorApiCliente } from '@/lib/api';
 import { NOMBRES_DE_ROL } from '@/lib/roles';
 import { CLASES_SELECT } from '@/paginas/eventos/clases-select';
 
+import { ListadoPersonal } from './ListadoPersonal';
+
 // HU-30 del Sprint 4: alta de un usuario del personal. El rol se elige entre los que puede asignar
 // quien tiene la sesión (el GG no ve Administrador del Sistema; la API igual lo rechaza con 403) y
 // la contraseña inicial la define quien da el alta (PO, 06/11/2026). Mismo patrón que
@@ -165,6 +167,8 @@ export function Personal({ rol }: { rol: Rol }) {
           }}
         />
       </VentanaFormulario>
+
+      <ListadoPersonal />
     </div>
   );
 }
