@@ -11,6 +11,8 @@ vi.mock('./pagos.repositorio.js', () => ({
   buscarSolapamiento: vi.fn(),
   listarDeEvento: vi.fn(),
   sumarPagos: vi.fn(),
+  buscarPago: vi.fn(),
+  anular: vi.fn(),
   buscarMedioPagoActivo: vi.fn(),
   listarMediosPagoActivos: vi.fn(),
   listarTodosLosMediosPago: vi.fn(),
@@ -21,6 +23,7 @@ vi.mock('./pagos.repositorio.js', () => ({
   crear: vi.fn(),
   confirmarPresupuestoYReservar: vi.fn(),
   marcarCobrado: vi.fn(),
+  volverAReservado: vi.fn(),
   buscarConsultasSuperpuestas: vi.fn(),
   // No hay transacción real en el test: se ejecuta el callback tal cual. Las escrituras de adentro
   // ya están mockeadas y no usan el `tx` que recibirían de una transacción real.
@@ -32,6 +35,8 @@ const {
   buscarSolapamiento,
   listarDeEvento,
   sumarPagos,
+  buscarPago,
+  anular,
   buscarMedioPagoActivo,
   listarMediosPagoActivos,
   listarTodosLosMediosPago,
@@ -42,6 +47,7 @@ const {
   crear,
   confirmarPresupuestoYReservar,
   marcarCobrado,
+  volverAReservado,
   buscarConsultasSuperpuestas,
 } = await import('./pagos.repositorio.js');
 
@@ -59,6 +65,9 @@ const modificarMedioPagoMock = vi.mocked(modificarMedioPago);
 const crearMock = vi.mocked(crear);
 const confirmarPresupuestoYReservarMock = vi.mocked(confirmarPresupuestoYReservar);
 const marcarCobradoMock = vi.mocked(marcarCobrado);
+const buscarPagoMock = vi.mocked(buscarPago);
+const anularMock = vi.mocked(anular);
+const volverAReservadoMock = vi.mocked(volverAReservado);
 const buscarConsultasSuperpuestasMock = vi.mocked(buscarConsultasSuperpuestas);
 
 const app = crearApp();
@@ -218,6 +227,9 @@ function pagoFixture(monto: string) {
     observacion: null,
     creadoEn: new Date(),
     medioPago: medioPagoFixture,
+    anuladoEn: null as Date | null,
+    anuladoPorId: null as number | null,
+    anuladoPor: null as { id: number; email: string } | null,
   };
 }
 
@@ -245,6 +257,9 @@ beforeEach(() => {
   confirmarPresupuestoYReservarMock.mockReset();
   marcarCobradoMock.mockReset();
   buscarConsultasSuperpuestasMock.mockReset();
+  buscarPagoMock.mockReset();
+  anularMock.mockReset();
+  volverAReservadoMock.mockReset();
 
   buscarDetalladoMock.mockResolvedValue(eventoFixture());
   buscarSolapamientoMock.mockResolvedValue(null);
@@ -1277,5 +1292,257 @@ describe('pagos: permisos (HU-14 C7)', () => {
 
     expect(respuesta.status).toBe(401);
     expect(crearMock).not.toHaveBeenCalled();
+  });
+});
+
+// HU-35 del Sprint 4: anular un pago sin borrarlo. Queda en la cuenta con la fecha y el usuario que
+// lo anuló y deja de sumar; el estado del evento se recalcula en la misma transacción.
+describe('POST /api/eventos/:id/pagos/:pagoId/anular (HU-35)', () => {
+  const ANULADO_EN = new Date('2026-11-06T18:00:00.000Z');
+  const cookieFinanzas = cookieDe('RESPONSABLE_FINANZAS', 'rf@confluens.test');
+
+  function eventoReservado(estado: 'Reservado' | 'Cobrado' = 'Reservado') {
+    return eventoFixture({
+      estado,
+      senaRegistradaEn: new Date('2026-10-06T15:00:00.000Z'),
+      presupuestos: [presupuestoFixture({ estado: 'Confirmado' })],
+    });
+  }
+
+  function anularPago(cookie = cookieFinanzas, ruta = '/api/eventos/20/pagos/100/anular') {
+    return request(app).post(ruta).set('Cookie', [cookie]);
+  }
+
+  beforeEach(() => {
+    buscarDetalladoMock.mockResolvedValue(eventoReservado());
+    // Primero el pago vigente (el chequeo previo) y después el ya anulado (la respuesta).
+    buscarPagoMock.mockResolvedValueOnce(pagoFixture('10000')).mockResolvedValueOnce({
+      ...pagoFixture('10000'),
+      anuladoEn: ANULADO_EN,
+      anuladoPorId: 1,
+      anuladoPor: { id: 1, email: 'rf@confluens.test' },
+    });
+    anularMock.mockResolvedValue(1);
+    volverAReservadoMock.mockImplementation(async () => eventoFixture({ estado: 'Reservado' }));
+  });
+
+  it('marca el pago como anulado con el usuario de la sesión y lo devuelve sin borrarlo', async () => {
+    sumarPagosMock.mockResolvedValue(new Prisma.Decimal('30000'));
+
+    const respuesta = await anularPago();
+
+    expect(respuesta.status).toBe(200);
+    expect(anularMock).toHaveBeenCalledWith({ pagoId: 100, usuarioId: 1 }, undefined);
+    expect(respuesta.body.data.pago).toMatchObject({
+      id: 100,
+      anuladoEn: ANULADO_EN.toISOString(),
+      anuladoPor: { id: 1, email: 'rf@confluens.test' },
+    });
+    expect(respuesta.body.data.saldo.pagado).toBe('30000.00');
+    expect(respuesta.body.data.saldo.cubreSena).toBe(true);
+    expect(respuesta.body.data.estadoEvento).toBe('Reservado');
+  });
+
+  it('un Reservado que queda por debajo de la seña sigue Reservado y la cuenta lo avisa', async () => {
+    // La seña sin factura es 28440: lo que queda no la cubre.
+    sumarPagosMock.mockResolvedValue(new Prisma.Decimal('20000'));
+
+    const respuesta = await anularPago();
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.estadoEvento).toBe('Reservado');
+    expect(respuesta.body.data.saldo.cubreSena).toBe(false);
+    // La seña ya se registró: no se vuelve a pedir ni el evento vuelve a EnConsulta.
+    expect(respuesta.body.data.saldo.senaAlcanzada).toBe(true);
+    expect(volverAReservadoMock).not.toHaveBeenCalled();
+  });
+
+  it('un Cobrado que queda por debajo del total vuelve a Reservado', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoReservado('Cobrado'));
+    sumarPagosMock.mockResolvedValue(new Prisma.Decimal('132200'));
+
+    const respuesta = await anularPago();
+
+    expect(respuesta.status).toBe(200);
+    expect(volverAReservadoMock).toHaveBeenCalledWith(20, undefined);
+    expect(respuesta.body.data.estadoEvento).toBe('Reservado');
+    expect(respuesta.body.data.saldo.saldo).toBe('10000.00');
+  });
+
+  it('un Cobrado que sigue cubriendo el total queda Cobrado', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoReservado('Cobrado'));
+    sumarPagosMock.mockResolvedValue(new Prisma.Decimal(TOTAL_SIN_IVA));
+
+    const respuesta = await anularPago();
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.estadoEvento).toBe('Cobrado');
+    expect(volverAReservadoMock).not.toHaveBeenCalled();
+  });
+
+  it('un evento EnConsulta sigue EnConsulta', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture());
+    sumarPagosMock.mockResolvedValue(null);
+
+    const respuesta = await anularPago();
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.estadoEvento).toBe('EnConsulta');
+    expect(respuesta.body.data.saldo.pagado).toBe('0.00');
+  });
+
+  it('un pago ya anulado no se anula de nuevo: 409 CONFLICT', async () => {
+    buscarPagoMock.mockReset().mockResolvedValue({
+      ...pagoFixture('10000'),
+      anuladoEn: ANULADO_EN,
+      anuladoPorId: 2,
+      anuladoPor: { id: 2, email: 'gg@confluens.test' },
+    });
+
+    const respuesta = await anularPago();
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(anularMock).not.toHaveBeenCalled();
+  });
+
+  it('dos anulaciones simultáneas: la que no encuentra el pago vigente responde 409', async () => {
+    anularMock.mockResolvedValue(0);
+
+    const respuesta = await anularPago();
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+  });
+
+  it('un pago que no es de ese evento responde 404', async () => {
+    buscarPagoMock.mockReset().mockResolvedValue({ ...pagoFixture('10000'), eventoId: 21 });
+
+    const respuesta = await anularPago();
+
+    expect(respuesta.status).toBe(404);
+    expect(anularMock).not.toHaveBeenCalled();
+  });
+
+  it('un pago que no existe responde 404', async () => {
+    buscarPagoMock.mockReset().mockResolvedValue(null);
+
+    const respuesta = await anularPago();
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it('un evento que no existe responde 404', async () => {
+    buscarDetalladoMock.mockResolvedValue(null);
+
+    const respuesta = await anularPago(cookieFinanzas, '/api/eventos/999/pagos/100/anular');
+
+    expect(respuesta.status).toBe(404);
+  });
+
+  it('en un evento Cancelado responde 409: su cuenta queda como estaba', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Cancelado' }));
+
+    const respuesta = await anularPago();
+
+    expect(respuesta.status).toBe(409);
+    expect(anularMock).not.toHaveBeenCalled();
+  });
+
+  it('un id de pago inválido responde 400', async () => {
+    const respuesta = await anularPago(cookieFinanzas, '/api/eventos/20/pagos/abc/anular');
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it.each([
+    ['RESPONSABLE_EVENTOS', 're@confluens.test'],
+    ['GERENTE_GENERAL', 'gg@confluens.test'],
+    ['ADMINISTRADOR_SISTEMA', 'admin@confluens.test'],
+  ])('%s también anula: cualquier rol del personal (PO, 06/11/2026)', async (rol, email) => {
+    sumarPagosMock.mockResolvedValue(new Prisma.Decimal('30000'));
+
+    const respuesta = await anularPago(cookieDe(rol, email));
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('con sesión de Cliente responde 403 y sin sesión 401, sin anular nada', async () => {
+    const comoCliente = await anularPago(cookieDe('CLIENTE', 'cliente@example.com'));
+    const sinSesion = await request(app).post('/api/eventos/20/pagos/100/anular');
+
+    expect(comoCliente.status).toBe(403);
+    expect(sinSesion.status).toBe(401);
+    expect(anularMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/eventos/:id/pagos con pagos anulados (HU-35)', () => {
+  const instanteSena = new Date('2026-10-06T15:00:00.000Z');
+  const anulado = {
+    anuladoEn: new Date('2026-11-06T18:00:00.000Z'),
+    anuladoPorId: 1,
+    anuladoPor: { id: 1, email: 'rf@confluens.test' },
+  };
+
+  function pagoRegistrado(id: number, monto: string, creadoEn: Date) {
+    return { ...pagoFixture(monto), id, creadoEn };
+  }
+
+  function consultarCuenta() {
+    return request(app).get('/api/eventos/20/pagos').set('Cookie', [cookieResponsableEventos]);
+  }
+
+  it('el pago anulado sigue en la cuenta, marcado, pero no suma a lo pagado ni al saldo', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ estado: 'Reservado', senaRegistradaEn: instanteSena }),
+    );
+    listarDeEventoMock.mockResolvedValue([
+      pagoRegistrado(1, '30000', instanteSena),
+      { ...pagoRegistrado(2, '10000', new Date('2026-10-10T15:00:00.000Z')), ...anulado },
+    ]);
+
+    const respuesta = await consultarCuenta();
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.pagos).toHaveLength(2);
+    expect(respuesta.body.data.pagos[1].anuladoPor.email).toBe('rf@confluens.test');
+    expect(respuesta.body.data.saldo.pagado).toBe('30000.00');
+    expect(respuesta.body.data.saldo.saldo).toBe('112200.00');
+    expect(respuesta.body.data.saldo.cubreSena).toBe(true);
+  });
+
+  it('si se anuló el pago de la seña, ningún pago queda marcado como el de la seña', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ estado: 'Reservado', senaRegistradaEn: instanteSena }),
+    );
+    listarDeEventoMock.mockResolvedValue([
+      { ...pagoRegistrado(1, '30000', instanteSena), ...anulado },
+      pagoRegistrado(2, '5000', new Date('2026-10-07T15:00:00.000Z')),
+    ]);
+
+    const respuesta = await consultarCuenta();
+
+    const marcas = respuesta.body.data.pagos.map((p: { completaSena: boolean }) => p.completaSena);
+    expect(marcas).toEqual([false, false]);
+    expect(respuesta.body.data.saldo.senaAlcanzada).toBe(true);
+    expect(respuesta.body.data.saldo.cubreSena).toBe(false);
+  });
+
+  it('en un Cobrado, el pago que completó el total es el último vigente, no uno anulado', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ estado: 'Cobrado', senaRegistradaEn: instanteSena }),
+    );
+    listarDeEventoMock.mockResolvedValue([
+      pagoRegistrado(1, '30000', instanteSena),
+      pagoRegistrado(2, '112200', new Date('2026-10-10T15:00:00.000Z')),
+      { ...pagoRegistrado(3, '100', new Date('2026-10-11T15:00:00.000Z')), ...anulado },
+    ]);
+
+    const respuesta = await consultarCuenta();
+
+    const marcas = respuesta.body.data.pagos.map((p: { completaPago: boolean }) => p.completaPago);
+    expect(marcas).toEqual([false, true, false]);
+    expect(respuesta.body.data.saldo.saldo).toBe('0.00');
   });
 });

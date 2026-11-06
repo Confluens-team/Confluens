@@ -5,6 +5,7 @@ import {
   esquemaFiltrosMediosPago,
   esquemaMedioPago,
   esquemaModificarMedioPago,
+  esquemaResultadoAnulacion,
   esquemaResultadoPago,
 } from '@confluens/shared';
 import { Router } from 'express';
@@ -16,6 +17,7 @@ import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
 import {
+  anular,
   crearMedio,
   listarCuenta,
   listarMedios,
@@ -25,6 +27,7 @@ import {
 
 // Detalle de la capa HTTP, no se comparte con el frontend (igual que en eventos.rutas.ts).
 const esquemaIdParam = z.object({ id: z.coerce.number().int().positive() });
+const esquemaPagoParam = esquemaIdParam.extend({ pagoId: z.coerce.number().int().positive() });
 
 // HU-14 C7: la lista de roles es una decisión explícita del PO, no se hereda de ROLES_PERSONAL.
 // Hoy coincide en contenido, pero si mañana se agrega un rol al personal no debería poder cobrar
@@ -63,6 +66,25 @@ registroOpenApi.registerPath({
     },
     401: { description: 'Sin sesión activa' },
     403: { description: 'El rol no tiene permiso para registrar cobros' },
+  },
+});
+
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/eventos/{id}/pagos/{pagoId}/anular',
+  tags: ['Pagos'],
+  summary:
+    'Anula un pago sin borrarlo (HU-35): queda en la cuenta con la fecha y quién lo anuló, y deja de sumar. Un Cobrado que queda por debajo del total vuelve a Reservado; por debajo de la seña sigue Reservado y saldo.cubreSena lo avisa',
+  request: { params: esquemaPagoParam },
+  responses: {
+    200: {
+      description: 'Pago anulado, con el saldo recalculado y el estado resultante del evento',
+      content: { 'application/json': { schema: z.object({ data: esquemaResultadoAnulacion }) } },
+    },
+    404: { description: 'No existe el evento, o el pago no es de ese evento' },
+    409: { description: 'El pago ya está anulado, o el evento está Cancelado' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'El rol no tiene permiso para anular cobros' },
   },
 });
 
@@ -111,6 +133,14 @@ rutasPagos.post(
   autorizar(...ROLES_QUE_COBRAN),
   validar({ params: esquemaIdParam, body: esquemaCrearPago }),
   asincrono(registrar),
+);
+// HU-35: anula cualquier rol del personal, los mismos que registran pagos (PO, 06/11/2026).
+rutasPagos.post(
+  '/:id/pagos/:pagoId/anular',
+  autenticar,
+  autorizar(...ROLES_QUE_COBRAN),
+  validar({ params: esquemaPagoParam }),
+  asincrono(anular),
 );
 rutasPagos.get(
   '/:id/pagos',

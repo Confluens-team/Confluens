@@ -301,7 +301,11 @@ export async function reemplazarLineas(
 // HU-12 sobre un evento confirmado: con el total nuevo, lo pagado decide si el evento queda
 // Reservado o Cobrado.
 export async function sumarPagos(eventoId: number, tx: Prisma.TransactionClient = prisma) {
-  const resultado = await tx.pago.aggregate({ where: { eventoId }, _sum: { monto: true } });
+  // Sin los pagos anulados (HU-35 del Sprint 4): no suman a lo pagado.
+  const resultado = await tx.pago.aggregate({
+    where: { eventoId, anuladoEn: null },
+    _sum: { monto: true },
+  });
   return resultado._sum.monto;
 }
 

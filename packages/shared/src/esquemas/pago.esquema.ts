@@ -73,6 +73,10 @@ export const esquemaPago = z.object({
   medioPago: esquemaMedioPago,
   observacion: z.string().nullable(),
   creadoEn: esquemaFechaHora,
+  // HU-35 del Sprint 4: un pago anulado sigue en la cuenta, pero no suma. Se guarda cuándo y quién lo
+  // anuló (PO, 06/11/2026); los dos son null mientras el pago está vigente.
+  anuladoEn: esquemaFechaHora.nullable(),
+  anuladoPor: z.object({ id: esquemaId, email: z.email() }).nullable(),
 });
 export type Pago = z.infer<typeof esquemaPago>;
 
@@ -112,6 +116,10 @@ export const esquemaSaldoEvento = z.object({
   porcentajeAbonado: z.number(),
   montoSena: esquemaImporte,
   senaAlcanzada: z.boolean(),
+  // Si lo pagado hoy, sin los pagos anulados, llega al 20% de la base. A diferencia de
+  // `senaAlcanzada`, no queda fijo al reservar: si una anulación (HU-35) deja lo pagado por debajo
+  // de la seña, el evento sigue Reservado y la cuenta lo avisa (reunión 05/11/2026).
+  cubreSena: z.boolean(),
 });
 export type SaldoEvento = z.infer<typeof esquemaSaldoEvento>;
 
@@ -136,6 +144,16 @@ export const esquemaResultadoPago = z.object({
   consultasEnConflicto: z.array(esquemaConsultaEnConflicto),
 });
 export type ResultadoPago = z.infer<typeof esquemaResultadoPago>;
+
+// Respuesta de POST /eventos/:id/pagos/:pagoId/anular (HU-35 del Sprint 4): el pago ya anulado, el
+// saldo sin él y el estado del evento, que vuelve de Cobrado a Reservado si lo pagado no llega al
+// total. Si queda por debajo de la seña sigue Reservado y `saldo.cubreSena` lo avisa.
+export const esquemaResultadoAnulacion = z.object({
+  pago: esquemaPago,
+  saldo: esquemaSaldoEvento,
+  estadoEvento: esquemaEstadoEvento,
+});
+export type ResultadoAnulacion = z.infer<typeof esquemaResultadoAnulacion>;
 
 // Un pago dentro del estado de cuenta (HU-21), con los dos hitos que puede haber disparado: el que
 // completó la seña y reservó el salón (HU-13) y el que completó el total y dejó el evento Cobrado.

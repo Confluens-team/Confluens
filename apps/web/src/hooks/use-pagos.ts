@@ -5,6 +5,7 @@ import type {
   MedioPago,
   ModificarMedioPago,
   RespuestaExito,
+  ResultadoAnulacion,
   ResultadoPago,
 } from '@confluens/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -47,6 +48,27 @@ export function useRegistrarPago(eventoId: number) {
       void queryClient.invalidateQueries({ queryKey: ['eventos'] });
       // La consulta confirmada sale del listado de Consultas (HU-10): ya vive en la agenda.
       void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+    },
+  });
+}
+
+/**
+ * HU-35 del Sprint 4: anula un pago sin borrarlo. Como el pago, puede cambiarle el estado al evento
+ * (un Cobrado que queda por debajo del total vuelve a Reservado), así que invalida `['eventos']`
+ * entero: el detalle, la cuenta y la agenda.
+ */
+export function useAnularPago(eventoId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (pagoId: number) => {
+      const respuesta = await apiFetch<RespuestaExito<ResultadoAnulacion>>(
+        `/eventos/${eventoId}/pagos/${pagoId}/anular`,
+        { method: 'POST' },
+      );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
     },
   });
 }
