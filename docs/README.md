@@ -3,9 +3,11 @@
 Esta carpeta es la fuente de verdad para cualquier agente de IA que trabaje en este repo.
 Se deriva de la documentación aprobada por la cátedra (carpeta de Drive "Documentación para subir")
 y de la máquina de estados corregida.
-Última actualización de reglas: entrevista con el Responsable de Eventos del **24/09/2026**
-(canal público, IVA, vigencia de 10 días, incremento de precios, recargos). Si otro documento
-contradice a `producto/dominio.md`, vale `dominio.md`.
+Última actualización de reglas: reunión con el cliente del **05/11/2026**, validada por el PO el
+06/11/2026 (roles y Personal, factura, saldo, recálculo automático, vigencia, tramos del
+incremento, eventos de varios días, servicios propios). Antes, la entrevista con el Responsable de
+Eventos del 24/09/2026. Si otro documento contradice a `producto/dominio.md`, vale `dominio.md`.
+Las reglas decididas que el código todavía no cumple llevan la marca «Reunión 05/11/2026 → HU-xx».
 
 ## Protocolo de carga
 
