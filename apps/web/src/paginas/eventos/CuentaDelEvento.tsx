@@ -7,7 +7,7 @@ import {
   type TipoJornada,
 } from '@confluens/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, X } from 'lucide-react';
+import { Ban, Plus, X } from 'lucide-react';
 import { Dialog } from 'radix-ui';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -21,7 +21,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAgendarEvento } from '@/hooks/use-eventos';
-import { useMediosPago, usePagosDeEvento, useRegistrarPago } from '@/hooks/use-pagos';
+import {
+  useAnularPago,
+  useMediosPago,
+  usePagosDeEvento,
+  useRegistrarPago,
+} from '@/hooks/use-pagos';
 import { useSalones } from '@/hooks/use-salones';
 import { ErrorApiCliente } from '@/lib/api';
 import { fechaLocal, nombreCompleto } from '@/lib/formato';
@@ -95,8 +100,15 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   const registrarPago = useRegistrarPago(eventoId);
   const agendarEvento = useAgendarEvento(eventoId);
   const salones = useSalones();
+  const anularPago = useAnularPago(eventoId);
   const [dialogoAbierto, setDialogoAbierto] = useState(false);
   const [editandoHorario, setEditandoHorario] = useState(false);
+  // HU-35: el pago cuya anulación se está confirmando. Anular pide una confirmación explícita en la
+  // misma fila antes de llamar a la API.
+  const [pagoAAnular, setPagoAAnular] = useState<number | null>(null);
+  // Si la última anulación sacó al evento de Cobrado: el detalle ya muestra el estado nuevo, pero se
+  // avisa por qué cambió.
+  const [volvioAConfirmado, setVolvioAConfirmado] = useState(false);
 
   // `fecha` viaja como medianoche UTC del día del evento: el día es la parte YYYY-MM-DD, sin pasar
   // por Date (que lo correría al día anterior en Argentina). Es la fecha que se propone para el
@@ -203,6 +215,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
     if (abrir) {
       registrarPago.reset();
       agendarEvento.reset();
+      anularPago.reset();
     }
     setDialogoAbierto(abrir);
   }
@@ -262,6 +275,20 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   // Decisión del PO (16/10/2026): si el total bajó por debajo de lo pagado, la diferencia es un
   // saldo a favor del cliente, no un saldo pendiente con signo menos.
   const saldoAFavor = saldoPendiente < 0;
+  // HU-35: una anulación puede dejar lo pagado por debajo de la seña. El evento sigue Reservado (no
+  // vuelve a consulta), pero se avisa. Solo si hay un pago anulado: que el total haya subido después
+  // de reservar no vuelve a pedir la seña (RN-09).
+  const senaDescubierta =
+    !enConsulta && !cancelado && !saldo.cubreSena && pagos.some((pago) => pago.anuladoEn);
+
+  function confirmarAnulacion(pagoId: number) {
+    registrarPago.reset();
+    anularPago.mutate(pagoId, {
+      onSuccess: (resultadoAnulacion) =>
+        setVolvioAConfirmado(cobrado && resultadoAnulacion.estadoEvento === 'Reservado'),
+      onSettled: () => setPagoAAnular(null),
+    });
+  }
 
   const errorAgendar =
     agendarEvento.isError &&
@@ -485,6 +512,28 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
             <p className="text-sm text-emerald-800">Pago registrado.</p>
           )}
 
+          {/* HU-35: sin transición a consulta, el evento sigue confirmado aunque lo pagado ya no
+              cubra la seña (reunión 05/11/2026). */}
+          {senaDescubierta && (
+            <p className="rounded-lg border border-estado-consulta-borde bg-estado-consulta-fondo p-3 text-sm text-estado-consulta-texto">
+              Lo pagado no cubre la seña ({formateadorMoneda.format(montoSena)}) por un pago
+              anulado. El evento sigue confirmado.
+            </p>
+          )}
+          {anularPago.isSuccess && (
+            <p className="text-sm text-emerald-800">
+              Pago anulado.
+              {volvioAConfirmado && ' El evento volvió a confirmado hasta cobrar la diferencia.'}
+            </p>
+          )}
+          {anularPago.isError && (
+            <p className="text-sm text-destructive">
+              {anularPago.error instanceof ErrorApiCliente
+                ? anularPago.error.message
+                : 'No se pudo anular el pago.'}
+            </p>
+          )}
+
           {admitePagos && (
             <Button className="w-full" size="lg" onClick={() => abrirDialogo(true)}>
               <Plus /> {enConsulta ? 'Agendar y registrar pago' : 'Registrar pago'}
@@ -513,11 +562,16 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                     },
                   ].filter((hito): hito is { texto: string; clase: string } => Boolean(hito));
                   const destacado = hitos.length > 0;
+                  // HU-35: el pago anulado sigue en la lista, apagado y tachado, con quién lo anuló
+                  // y cuándo. No suma a lo pagado. Los de un evento cancelado no se anulan.
+                  const anulado = pago.anuladoEn !== null;
+                  const confirmando = pagoAAnular === pago.id;
                   return (
                     <li
                       key={pago.id}
                       className={cn(
                         'py-2',
+                        anulado && 'text-muted-foreground',
                         destacado && 'my-1 rounded-lg border px-2.5',
                         pago.completaPago
                           ? 'border-estado-cobrado-borde bg-estado-cobrado-fondo text-estado-cobrado-texto'
@@ -525,15 +579,68 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                               'border-estado-confirmado-borde bg-estado-confirmado-fondo text-estado-confirmado-texto',
                       )}
                     >
-                      <div className="flex justify-between gap-3">
+                      <div className="flex items-center justify-between gap-3">
                         <span>
                           {fechaLocal(pago.fecha).toLocaleDateString('es-AR')} ·{' '}
                           {pago.medioPago.nombre}
                         </span>
-                        <span className="font-medium tabular-nums">
-                          {formateadorMoneda.format(Number(pago.monto))}
+                        <span className="flex items-center gap-1">
+                          <span
+                            className={cn('font-medium tabular-nums', anulado && 'line-through')}
+                          >
+                            {formateadorMoneda.format(Number(pago.monto))}
+                          </span>
+                          {!anulado && !cancelado && !confirmando && (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="Anular pago"
+                              title="Anular pago"
+                              onClick={() => {
+                                anularPago.reset();
+                                setPagoAAnular(pago.id);
+                              }}
+                            >
+                              <Ban />
+                            </Button>
+                          )}
                         </span>
                       </div>
+                      {anulado && (
+                        <p className="mt-0.5 text-xs">
+                          <span className="font-medium">Anulado</span>
+                          {pago.anuladoEn &&
+                            ` el ${new Date(pago.anuladoEn).toLocaleDateString('es-AR')}`}
+                          {pago.anuladoPor && ` por ${pago.anuladoPor.email}`}. No suma a lo pagado.
+                        </p>
+                      )}
+                      {confirmando && (
+                        <div className="mt-2 space-y-2 rounded-lg border border-destructive/40 p-2.5 text-xs">
+                          <p>
+                            ¿Anular este pago? Queda en la cuenta como anulado y deja de sumar a lo
+                            pagado. Para corregirlo o pasarlo a otro evento, después se registra de
+                            nuevo.
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              disabled={anularPago.isPending}
+                              onClick={() => confirmarAnulacion(pago.id)}
+                            >
+                              {anularPago.isPending ? 'Anulando…' : 'Sí, anular'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={anularPago.isPending}
+                              onClick={() => setPagoAAnular(null)}
+                            >
+                              No
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                       {destacado && (
                         <div className="mt-1 flex flex-wrap gap-1.5">
                           {hitos.map((hito) => (

@@ -322,7 +322,10 @@ queda por debajo de la seña, **sigue `Reservado`** y el sistema avisa que lo pa
 seña: no hay transición `Reservado → EnConsulta`. Si estaba `Cobrado` y lo pagado queda por debajo
 del total, **vuelve a `Reservado`** hasta cobrar la diferencia, como al modificar el presupuesto
 (reunión 05/11/2026; PO, 06/11/2026). La misma anulación sirve para corregir un pago registrado con un error, por ejemplo en su observación: se anula y se
-registra de nuevo. La anulación todavía no está construida.
+registra de nuevo. La anulación guarda la fecha y el usuario que anuló, sin motivo, y la puede hacer
+cualquier rol del personal (PO, 06/11/2026). El pago anulado sigue en la cuenta del evento, marcado,
+y no suma a lo pagado. En un evento `Cancelado` no se anulan pagos, igual que no se registran: su
+cuenta queda como estaba al cancelarse (PO, 06/11/2026).
 
 **Medio de pago.** El catálogo inicial es Efectivo, Transferencia, Débito, Crédito, Cheque y A la
 habitación. El Responsable de Finanzas puede dar de alta otros. Baja lógica: un medio dado de baja
