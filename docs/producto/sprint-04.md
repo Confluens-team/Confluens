@@ -64,8 +64,8 @@ decisiones se registran acá, en `dominio.md` si cambian una regla, y en la Defi
 | HU-26 | ~~Confirmar que la historia es la edición de los datos del salón (capacidad, superficie, precios).~~ **El alcance son los precios y las distribuciones; la capacidad máxima y la superficie no se modifican (equipo, 03/11/2026).** |
 | HU-27 | ~~Si hace falta una pantalla propia del evento o alcanza con lo que ya existe.~~ **Alcanza con lo que existe: la historia se cubre con tests y se re-estima (equipo, 03/11/2026).** |
 | HU-28 | ~~Si la historia agrega algo al cambio automático a Cobrado de HU-14.~~ **No agrega nada: se cubre con tests y se re-estima (equipo, 03/11/2026).** |
-| HU-30 | Cómo recibe el usuario su primera contraseña. |
-| HU-35 | Cómo se registra la anulación sin borrar el pago (fecha, usuario y motivo); qué pasa con el estado del evento si lo abonado baja del 20% o del 100% de la base de cobro; quién puede anular. |
+| HU-30 | ~~Cómo recibe el usuario su primera contraseña.~~ **Se la carga el GG o el ADM al registrarlo (reunión con el cliente, 05/11/2026; PO, 06/11/2026).** |
+| HU-35 | Cómo se registra la anulación sin borrar el pago (fecha, usuario y motivo); quién puede anular. ~~Qué pasa con el estado del evento si lo abonado baja del 20% o del 100% de la base de cobro.~~ **Por debajo de la seña sigue `Reservado`, con un aviso; un `Cobrado` por debajo del 100% vuelve a `Reservado` (reunión 05/11/2026; PO, 06/11/2026).** |
 | HU-36 | Qué datos lleva el recibo y si tiene numeración propia. |
 
 Además de los del Seguimiento, al cruzarlo con `dominio.md` y el código aparecen estos (agregados
@@ -73,9 +73,9 @@ en esta versión, también para el PO):
 
 | Historia | Qué falta definir | Por qué |
 |---|---|---|
-| HU-30, HU-31 | Si la división de funciones por rol empieza con estas historias. | Hoy todo el personal entra al mismo panel y hace todo (decisión provisoria del PO, 06/10/2026). La regla «el GG asigna RE y RF; el ADM, GG y ADM» necesita que la API distinga roles en `/usuarios`. |
+| HU-30, HU-31 | ~~Si la división de funciones por rol empieza con estas historias.~~ **Quedó definida en la reunión del 05/11/2026 (`dominio.md`, «Roles» y «Personal»): `/usuarios` distingue roles desde estas historias; los permisos del resto del panel son HU-56 del backlog.** | Hoy todo el personal entra al mismo panel y hace todo (decisión provisoria del PO, 06/10/2026). La regla de quién asigna qué rol necesita que la API distinga roles en `/usuarios`. |
 | HU-33 | ~~Si se puede cambiar con qué casos se habilita un medio del catálogo inicial (Efectivo, Transferencia, Débito, Crédito, Cheque y A la habitación).~~ **Sí, todos son editables (equipo, 03/11/2026).** | RN-14 fijaba esa habilitación y `dominio.md` no dejaba cambiarla sin el PO. |
-| HU-35 | Si una anulación puede sacar a un evento de `Reservado` o de `Cobrado`. | `Cobrado` → `Reservado` ya existe al modificar un presupuesto por encima de lo pagado (HU-12), pero `Reservado` → `EnConsulta` no está en la máquina de estados aprobada: agregarla es cambiar `dominio.md`. |
+| HU-35 | ~~Si una anulación puede sacar a un evento de `Reservado` o de `Cobrado`.~~ **Si lo pagado queda por debajo de la seña, el evento sigue `Reservado` y el sistema avisa que no la cubre: no se agrega `Reservado` → `EnConsulta` (reunión 05/11/2026).** | `Cobrado` → `Reservado` ya existe al modificar un presupuesto por encima de lo pagado (HU-12), pero `Reservado` → `EnConsulta` no está en la máquina de estados aprobada: agregarla es cambiar `dominio.md`. |
 | HU-25, HU-26 | ~~Si bajar la capacidad de un salón por debajo de la de una de sus distribuciones se rechaza o arrastra la distribución.~~ **Ya no aplica: la capacidad del salón no se modifica (equipo, 03/11/2026).** | `dominio.md`: la capacidad de una distribución nunca supera la del salón. |
 
 **Cambios de modelo que van a hacer falta** (cada uno se confirma antes de tocar `schema.prisma`,
@@ -156,11 +156,14 @@ Criterios propuestos:
   supera la de las distribuciones elegidas, agendar lo avisa y pide confirmarlo. (El criterio
   propuesto decía «no puede superar», que contradice `dominio.md`; vale `dominio.md`.)
 - Un cambio que mueve el total del presupuesto sigue las reglas de HU-12 (vigencia, saldo a favor si
-  baja por debajo de lo pagado).
+  baja por debajo de lo pagado). **Cambia con HU-52 del backlog** (reunión 05/11/2026): por debajo
+  de lo pagado, cartel de confirmación, saldo en $0 y lo pagado de más como no reintegrable.
 - Al recalcular un presupuesto, la fecha de emisión pasa a ser la del recálculo y la vigencia vuelve
   a contar 10 días desde ahí, como en toda modificación (RN-08; Franco, 03/11/2026). Vale también
   para un evento `Reservado` o `Cobrado`: su presupuesto sigue `Confirmado`, porque el control de
-  vigencia solo vence los `Estimado`.
+  vigencia solo vence los `Estimado`. **Cambia con HU-54 del backlog** (reunión 05/11/2026): se saca
+  el botón y el sistema recalcula solo. Un presupuesto `Confirmado` ya no se recalcula por un
+  cambio de porcentaje; solo por un cambio de fecha del evento, que reinicia la vigencia.
 - Solo el personal interno modifica eventos; el rol Cliente no.
 
 **Definido (equipo, 03/11/2026).** Alcanza con lo que ya existe: la historia se cubre con tests y
@@ -251,19 +254,20 @@ Criterios propuestos:
 - Registro un usuario con su correo y su rol: Responsable de Eventos, Responsable de Finanzas,
   Gerente General o Administrador del Sistema. El rol Cliente no se asigna por acá: el cliente se
   registra solo en la landing (`dominio.md`).
-- El Gerente General asigna los roles RE y RF; solo el Administrador del Sistema asigna los de
+- ~~El Gerente General asigna los roles RE y RF; solo el Administrador del Sistema asigna los de
   Gerente General y Administrador (Seguimiento, HU-30; Definición del Producto, «Roles del
-  Sistema»).
+  Sistema»).~~ **El Gerente General asigna GG, RE y RF; el Administrador del Sistema, cualquier rol
+  (reunión 05/11/2026).** Las demás reglas de Personal (al menos un GG y un ADM, el GG no toca a un
+  ADM, un rol por usuario) están en `dominio.md`.
+- El GG o el ADM le cargan la contraseña inicial al registrarlo (reunión 05/11/2026).
 - El correo es obligatorio, se guarda en minúsculas y sin espacios, y es único: uno que ya es de
   otro usuario se rechaza.
 - El usuario nuevo inicia sesión con su correo y su contraseña, y entra al panel interno según su
   rol (HU-01).
 - El RE, el RF y el rol Cliente no registran usuarios.
 
-**A definir (bloquea la historia).** Cómo recibe el usuario su primera contraseña. Hay un mecanismo
-ya construido que podría servir (el enlace de «Olvidé mi contraseña», que vence a los 30 minutos y
-sirve una vez), pero la decisión es del PO. También, si la división por rol arranca acá (ver
-«Puntos a definir»).
+**Definido (reunión 05/11/2026; PO, 06/11/2026).** La contraseña inicial la carga el GG o el ADM, y
+la división por rol arranca acá para `/usuarios` (ver «Puntos a definir»).
 
 **Implementación.** No hay módulo de usuarios: los cuatro usuarios del personal los carga el seed
 (`re@`, `rf@`, `gg@` y `admin@confluens.test`). Falta un módulo `usuarios` con `POST /api/usuarios`
@@ -330,6 +334,10 @@ Criterios propuestos:
 se puede cambiar, igual que la de los dados de alta después; RN-14 quedó actualizada en
 `dominio.md`. La baja de un medio es HU-39 del backlog (Sprint 6).
 
+**Cambia con HU-53 del backlog** (reunión 05/11/2026): todos los medios quedan habilitados en todos
+los cobros, así que elegir con factura, sin factura o los dos deja de tener sentido y sale del alta
+y de la modificación.
+
 **Implementación.** `PATCH /api/medios-pago/:id` (`409` por nombre repetido, `404` si no existe),
 reutilizando las validaciones de `esquemaCrearMedioPago`. Edición en `ListadoMediosPago.tsx`.
 
@@ -373,10 +381,16 @@ Criterios propuestos (lo que no depende de los puntos abiertos):
 - Un pago ya anulado no se puede anular de nuevo.
 - Solo el personal interno anula pagos; el rol Cliente no.
 
-**A definir (bloquea la historia).** Qué datos guarda la anulación (fecha, usuario, motivo); quién
-puede anular; y qué pasa con el estado del evento si lo abonado baja del 20% (`Reservado`) o del
-100% (`Cobrado`) de la base de cobro. Esto último toca la máquina de estados (`dominio.md`), así que
-no se construye hasta que el PO lo defina.
+**Definido (reunión 05/11/2026; PO, 06/11/2026).** Si lo abonado baja del 20%, el evento **sigue
+`Reservado`** y el sistema avisa que lo pagado no cubre la seña: la máquina de estados no cambia.
+La anulación es también la forma de pasar un pago a otro evento del mismo cliente y de corregir un
+pago mal registrado (se anula y se registra de nuevo), sin una acción de «transferir» ni de editar.
+
+Si el evento estaba `Cobrado` y lo abonado baja del 100%, **vuelve a `Reservado`** (en pantalla,
+«Confirmado») hasta cobrar la diferencia, como al modificar el presupuesto (PO, 06/11/2026).
+
+**A definir (bloquea la historia).** Qué datos guarda la anulación (fecha, usuario, motivo) y quién
+puede anular.
 
 **Implementación.** Hoy `Pago` no se edita ni se borra (comentario en `schema.prisma`). Anular
 necesita columnas nuevas en `Pago` (por ejemplo, `anuladoEn`, `anuladoPorId`, `motivoAnulacion`):
