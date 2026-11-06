@@ -35,7 +35,7 @@ Orden del Seguimiento: Salones → Eventos → Usuarios → Catálogos → Pagos
 
 | HU | Título | Actor | Backlog | SP | Estado (06/11/2026) |
 |---|---|---|---|---|---|
-| HU-25 | Registrar distribuciones posibles de un salón | RE | HU-02 | 5 | Hecha (#88), con la baja lógica |
+| HU-25 | Registrar distribuciones posibles de un salón | RE | HU-02 | 5 | Hecha (#88 y #107), con la baja lógica |
 | HU-26 | Modificar información de un salón | RE | HU-03 | 3 | Hecha (#89 y #95): precios y distribuciones |
 | HU-27 | Modificar datos de un evento | RE | HU-16 | 5 | Hecha (#90 y #96): tests y vigencia al recalcular |
 | HU-28 | Registrar evento cobrado | RF | HU-20 | 5 | Hecha (#91): cubierta con tests |
@@ -113,7 +113,8 @@ la controla el servicio, como en medios de pago.
 La baja es la columna `Distribucion.activo` (migración `20261106220000_baja_logica_distribucion`,
 confirmada por el PO el 06/11/2026) y `PATCH /api/salones/:id/distribuciones/:distribucionId/estado`
 con `{ activo }`, que también la reactiva. Agendar rechaza con `422` una dada de baja, salvo la que el
-evento ya tiene en ese salón; al cambiar de salón un presupuesto solo se heredan las activas, y la
+evento ya tiene en ese salón; al cambiar de salón un presupuesto o al reutilizar la configuración de
+un evento solo se heredan las activas, y la
 landing no publica las dadas de baja. En la web, cada distribución de Salones tiene su botón para dar
 de baja o reactivar. Tests en `salones.rutas.test.ts` y `eventos.rutas.test.ts`.
 

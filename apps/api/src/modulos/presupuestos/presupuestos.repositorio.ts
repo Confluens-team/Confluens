@@ -333,7 +333,11 @@ export async function buscarEventoParaReutilizar(
   return tx.evento.findUnique({
     where: { id },
     include: {
-      salones: { include: { salon: true }, orderBy: { salonId: 'asc' } },
+      // activo de la distribución: una dada de baja (HU-25 del Sprint 4) no se copia al evento nuevo.
+      salones: {
+        include: { salon: true, distribucion: { select: { activo: true } } },
+        orderBy: { salonId: 'asc' },
+      },
       presupuestos: {
         include: { lineas: { include: { servicio: true }, orderBy: { id: 'asc' } } },
         orderBy: { id: 'asc' },

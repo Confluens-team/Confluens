@@ -1029,9 +1029,13 @@ export async function reutilizarConfiguracion(
   const lineas = [...lineasSalones, ...lineasServicios, ...adicionales];
   const total = sumarLineas(lineas);
   const salonIds = original.salones.map((s) => s.salonId);
+  // Una distribución dada de baja (HU-25 del Sprint 4) no se copia: el evento nuevo la elegiría de
+  // nuevo. Ese salón queda sin armado, para elegirlo al agendar.
   const distribuciones = new Map(
     original.salones.flatMap((s) =>
-      s.distribucionId === null ? [] : [[s.salonId, s.distribucionId] as const],
+      s.distribucionId === null || !s.distribucion?.activo
+        ? []
+        : [[s.salonId, s.distribucionId] as const],
     ),
   );
   const fecha = new Date(datos.fecha);
