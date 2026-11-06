@@ -21,3 +21,15 @@ export const esquemaUsuario = z.object({
   actualizadoEn: esquemaFechaHora,
 });
 export type Usuario = z.infer<typeof esquemaUsuario>;
+
+// Los roles del personal: los que se asignan desde Personal (HU-30 del Sprint 4). CLIENTE queda
+// afuera: el cliente se registra solo en la landing (dominio.md, «Roles»).
+export const esquemaRolPersonal = z.enum(
+  ['RESPONSABLE_EVENTOS', 'RESPONSABLE_FINANZAS', 'GERENTE_GENERAL', 'ADMINISTRADOR_SISTEMA'],
+  { error: 'Elegí el rol del usuario' },
+);
+export type RolPersonal = z.infer<typeof esquemaRolPersonal>;
+
+// Query de GET /usuarios (HU-31 del Sprint 4): el filtro por rol es opcional.
+export const esquemaFiltrosUsuarios = z.object({ rol: esquemaRolPersonal.optional() });
+export type FiltrosUsuarios = z.infer<typeof esquemaFiltrosUsuarios>;
