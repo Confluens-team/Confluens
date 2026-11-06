@@ -316,7 +316,9 @@ modelo). Hasta entonces el saldo puede quedar negativo y se muestra como saldo a
 lo pasa a otro evento **suyo**. Se hace a mano: se **anula** el pago en el evento original (HU-35
 del Sprint 4) y se registra en el otro. No hay una acción de «transferir». Si el evento original
 queda por debajo de la seña, **sigue `Reservado`** y el sistema avisa que lo pagado no cubre la
-seña: no hay transición `Reservado → EnConsulta` (reunión 05/11/2026). La misma anulación sirve
+seña: no hay transición `Reservado → EnConsulta`. Si estaba `Cobrado` y lo pagado queda por debajo
+del total, **vuelve a `Reservado`** (en pantalla, «Confirmado») hasta cobrar la diferencia, como al
+modificar el presupuesto (reunión 05/11/2026; PO, 06/11/2026). La misma anulación sirve
 para corregir un pago registrado con un error, por ejemplo en su observación: se anula y se
 registra de nuevo. La anulación todavía no está construida.
 

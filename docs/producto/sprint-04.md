@@ -65,7 +65,7 @@ decisiones se registran acá, en `dominio.md` si cambian una regla, y en la Defi
 | HU-27 | ~~Si hace falta una pantalla propia del evento o alcanza con lo que ya existe.~~ **Alcanza con lo que existe: la historia se cubre con tests y se re-estima (equipo, 03/11/2026).** |
 | HU-28 | ~~Si la historia agrega algo al cambio automático a Cobrado de HU-14.~~ **No agrega nada: se cubre con tests y se re-estima (equipo, 03/11/2026).** |
 | HU-30 | ~~Cómo recibe el usuario su primera contraseña.~~ **Se la carga el GG o el ADM al registrarlo (reunión con el cliente, 05/11/2026; PO, 06/11/2026).** |
-| HU-35 | Cómo se registra la anulación sin borrar el pago (fecha, usuario y motivo); quién puede anular. ~~Qué pasa con el estado del evento si lo abonado baja del 20% o del 100% de la base de cobro.~~ **Por debajo de la seña sigue `Reservado`, con un aviso (reunión 05/11/2026).** |
+| HU-35 | Cómo se registra la anulación sin borrar el pago (fecha, usuario y motivo); quién puede anular. ~~Qué pasa con el estado del evento si lo abonado baja del 20% o del 100% de la base de cobro.~~ **Por debajo de la seña sigue `Reservado`, con un aviso; un `Cobrado` por debajo del 100% vuelve a `Reservado` (reunión 05/11/2026; PO, 06/11/2026).** |
 | HU-36 | Qué datos lleva el recibo y si tiene numeración propia. |
 
 Además de los del Seguimiento, al cruzarlo con `dominio.md` y el código aparecen estos (agregados
@@ -376,8 +376,11 @@ Criterios propuestos (lo que no depende de los puntos abiertos):
 La anulación es también la forma de pasar un pago a otro evento del mismo cliente y de corregir un
 pago mal registrado (se anula y se registra de nuevo), sin una acción de «transferir» ni de editar.
 
+Si el evento estaba `Cobrado` y lo abonado baja del 100%, **vuelve a `Reservado`** (en pantalla,
+«Confirmado») hasta cobrar la diferencia, como al modificar el presupuesto (PO, 06/11/2026).
+
 **A definir (bloquea la historia).** Qué datos guarda la anulación (fecha, usuario, motivo) y quién
-puede anular. Tampoco se habló de lo abonado que baja del 100% en un `Cobrado`.
+puede anular.
 
 **Implementación.** Hoy `Pago` no se edita ni se borra (comentario en `schema.prisma`). Anular
 necesita columnas nuevas en `Pago` (por ejemplo, `anuladoEn`, `anuladoPorId`, `motivoAnulacion`):
