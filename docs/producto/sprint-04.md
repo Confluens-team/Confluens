@@ -112,7 +112,8 @@ la controla el servicio, como en medios de pago.
 
 La baja es la columna `Distribucion.activo` (migración `20261106220000_baja_logica_distribucion`,
 confirmada por el PO el 06/11/2026) y `PATCH /api/salones/:id/distribuciones/:distribucionId/estado`
-con `{ activo }`, que también la reactiva. Agendar rechaza con `422` una dada de baja, salvo la que el
+con `{ activo }`, que también la reactiva; ninguna de las dos pide confirmación, porque se puede
+deshacer (PO, 06/11/2026). Agendar rechaza con `422` una dada de baja, salvo la que el
 evento ya tiene en ese salón; al cambiar de salón un presupuesto o al reutilizar la configuración de
 un evento solo se heredan las activas, y la
 landing no publica las dadas de baja. En la web, cada distribución de Salones tiene su botón para dar

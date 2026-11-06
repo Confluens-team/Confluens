@@ -152,7 +152,8 @@ media jornada). **Jornada completa: más de 4 horas.** Se deriva del horario del
 trabajo, banquete. Nombre único por salón. Su capacidad nunca supera la del salón. **Baja lógica**
 (PO, 06/11/2026): se da de baja aunque la use un evento. Dada de baja no se ofrece al presupuestar
 ni al agendar, ni se publica en la landing, pero los eventos que ya la tienen la conservan. Sigue
-ocupando su nombre en el salón y se puede reactivar.
+ocupando su nombre en el salón y se puede reactivar. Dar de baja o reactivar no pide confirmación,
+porque se puede deshacer (PO, 06/11/2026).
 
 **Cliente.** Persona u organización que contrata. Datos: nombre, apellido (o razón social),
 teléfono y correo. **No hay baja por inactividad**: el cliente se conserva siempre con su
