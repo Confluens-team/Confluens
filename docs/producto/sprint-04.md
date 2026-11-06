@@ -45,7 +45,7 @@ Orden del Seguimiento: Salones → Eventos → Usuarios → Catálogos → Pagos
 | HU-32 | Modificar servicio | RE | HU-33 | 3 | Hecha (#93) |
 | HU-33 | Modificar medio de pago | RF | HU-38 | 2 | Hecha (#94) |
 | HU-34 | Consultar pagos de un evento | RF | — | 2 | Hecha: cubierta por HU-21, sin código nuevo |
-| HU-35 | Anular pago de un evento | RF | — | 2 | Sin empezar: definida, falta confirmar el cambio de modelo |
+| HU-35 | Anular pago de un evento | RF | — | 2 | Hecha: anulación sin borrar el pago |
 | ~~HU-36~~ | ~~Generar y emitir un recibo como comprobante válido de pago~~ | RF | — | — | **Eliminada (PO, 06/11/2026)** |
 | | **Total** | | | **34** | **Hechos: 27** |
 
@@ -395,10 +395,16 @@ cobrar la diferencia, como al modificar el presupuesto (PO, 06/11/2026).
 motivo. Anula cualquier rol del personal (RE, RF, GG y ADM), los mismos que registran pagos; el
 rol Cliente no.
 
-**Implementación.** Hoy `Pago` no se edita ni se borra (comentario en `schema.prisma`). Anular
-necesita columnas nuevas en `Pago` (por ejemplo, `anuladoEn` y `anuladoPorId`): cambio de
-modelo a confirmar. El saldo, `senaAlcanzada`, `completaSena` y `completaPago` del estado
-de cuenta pasan a ignorar los pagos anulados.
+**Implementación.** Columnas `anuladoEn` y `anuladoPorId` en `Pago` (migración
+`20261106210000_anulacion_de_pagos`, con el CHECK `pago_anulacion_completa`: las dos se cargan
+juntas), confirmadas por el PO el 06/11/2026. `POST /api/eventos/:id/pagos/:pagoId/anular` para
+todo el personal: `404` si el pago no es del evento, `409` si ya está anulado (también ante dos
+anulaciones simultáneas) o si el evento está `Cancelado`, cuya cuenta queda como estaba al
+cancelarse. Lo pagado, el saldo, `completaSena` y `completaPago` ignoran los pagos anulados, también
+al modificar un presupuesto confirmado (HU-12). `senaAlcanzada` sigue fija una vez reservado el
+evento; el aviso de que lo pagado ya no cubre la seña es el campo nuevo `cubreSena` del saldo. En la
+web, cada pago de la cuenta tiene «Anular» con confirmación en la misma fila, y el anulado queda
+tachado con la fecha y el usuario. Tests en `pagos.rutas.test.ts`.
 
 ## HU-36 — Generar y emitir un recibo como comprobante válido de pago
 
