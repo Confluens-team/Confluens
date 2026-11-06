@@ -40,14 +40,14 @@ Orden del Seguimiento: Salones → Eventos → Usuarios → Catálogos → Pagos
 | HU-27 | Modificar datos de un evento | RE | HU-16 | 5 | Hecha (#90 y #96): tests y vigencia al recalcular |
 | HU-28 | Registrar evento cobrado | RF | HU-20 | 5 | Hecha (#91): cubierta con tests |
 | HU-29 | Generar y emitir comanda | RE | — (S-07) | 2 | Hecha (#92) |
-| HU-30 | Registrar usuario | GG / ADM | HU-28 | 3 | Hecha: alta en Personal, con la contraseña inicial que define el GG o el ADM |
-| HU-31 | Consultar usuario | GG / ADM | HU-29 | 2 | Hecha: listado en Personal, con filtro por rol |
+| HU-30 | Registrar usuario | GG / ADM | HU-28 | 3 | Hecha (#105): alta en Personal, con la contraseña inicial que define el GG o el ADM |
+| HU-31 | Consultar usuario | GG / ADM | HU-29 | 2 | Hecha (#105): listado en Personal, con filtro por rol |
 | HU-32 | Modificar servicio | RE | HU-33 | 3 | Hecha (#93) |
 | HU-33 | Modificar medio de pago | RF | HU-38 | 2 | Hecha (#94) |
 | HU-34 | Consultar pagos de un evento | RF | — | 2 | Hecha: cubierta por HU-21, sin código nuevo |
 | HU-35 | Anular pago de un evento | RF | — | 2 | Sin empezar: definida, falta confirmar el cambio de modelo |
 | ~~HU-36~~ | ~~Generar y emitir un recibo como comprobante válido de pago~~ | RF | — | — | **Eliminada (PO, 06/11/2026)** |
-| | **Total** | | | **34** | **Hechos: 27** |
+| | **Total** | | | **34** | **Hechos: 32** |
 
 Velocidad de los sprints anteriores: 31, 32 y 36. Con 34 puntos el sprint queda en línea, pero
 varias historias valen menos de lo estimado porque ya están hechas en parte (HU-29, HU-34 y, según
