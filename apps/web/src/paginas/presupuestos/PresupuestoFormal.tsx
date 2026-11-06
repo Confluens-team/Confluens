@@ -8,6 +8,7 @@ import { CondicionesContratacion } from './CondicionesContratacion';
 import { DocumentoPresupuesto } from './DocumentoPresupuesto';
 import { HojaImagen } from './HojaA4';
 import { horarioSalon } from './horario-salon';
+import { nombrePdfPresupuesto } from './nombre-pdf';
 
 // Al imprimir, las hojas de imagen y las de condiciones van a sangre (sin margen); el detalle lleva
 // margen porque puede ocupar más de una hoja. Las reglas viven solo mientras esta vista está abierta,
@@ -37,7 +38,7 @@ export function PresupuestoFormal({
     if (!consulta.envioFormalEn) seguimiento.mutate({ envioFormal: true });
     // El título de la página es el nombre que el navegador le propone al PDF.
     const titulo = document.title;
-    document.title = `Presupuesto ${String(consulta.id).padStart(6, '0')} - ${cliente}`;
+    document.title = nombrePdfPresupuesto(consulta.evento.fecha, consulta.cliente);
     window.addEventListener('afterprint', () => (document.title = titulo), { once: true });
     window.print();
   }
