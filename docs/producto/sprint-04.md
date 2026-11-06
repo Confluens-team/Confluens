@@ -400,7 +400,7 @@ rol Cliente no.
 juntas), confirmadas por el PO el 06/11/2026. `POST /api/eventos/:id/pagos/:pagoId/anular` para
 todo el personal: `404` si el pago no es del evento, `409` si ya está anulado (también ante dos
 anulaciones simultáneas) o si el evento está `Cancelado`, cuya cuenta queda como estaba al
-cancelarse. Lo pagado, el saldo, `completaSena` y `completaPago` ignoran los pagos anulados, también
+cancelarse (PO, 06/11/2026). Lo pagado, el saldo, `completaSena` y `completaPago` ignoran los pagos anulados, también
 al modificar un presupuesto confirmado (HU-12). `senaAlcanzada` sigue fija una vez reservado el
 evento; el aviso de que lo pagado ya no cubre la seña es el campo nuevo `cubreSena` del saldo. En la
 web, cada pago de la cuenta tiene «Anular» con confirmación en la misma fila, y el anulado queda
