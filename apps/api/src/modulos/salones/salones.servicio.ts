@@ -11,6 +11,7 @@ import {
   actualizarLanding,
   buscarDistribucionPorId,
   buscarDistribucionPorNombre,
+  cambiarEstadoDistribucion as cambiarEstadoDistribucionEnBase,
   crearDistribucion,
   modificarDistribucion as modificarDistribucionEnBase,
   modificarSalon,
@@ -136,4 +137,28 @@ export async function modificarDistribucion(
   }
 
   return repo.modificarDistribucion(distribucionId, datos);
+}
+
+// HU-25 (Sprint 4): baja lógica de una distribución, o su reactivación. Se da de baja aunque la use
+// un evento, y ese evento no cambia (PO, 06/11/2026). Una dada de baja sigue ocupando su nombre en el
+// salón, como un medio de pago dado de baja. 404 si la distribución no es del salón de la URL.
+export async function cambiarEstadoDistribucion(
+  salonId: number,
+  distribucionId: number,
+  activo: boolean,
+  repo = {
+    obtenerSalonPorId,
+    buscarDistribucionPorId,
+    cambiarEstadoDistribucion: cambiarEstadoDistribucionEnBase,
+  },
+) {
+  const salon = await repo.obtenerSalonPorId(salonId);
+  if (!salon) throw ErrorApi.noEncontrado('No existe el salón indicado');
+
+  const distribucion = await repo.buscarDistribucionPorId(distribucionId);
+  if (!distribucion || distribucion.salonId !== salonId) {
+    throw ErrorApi.noEncontrado(`${salon.nombre} no tiene la distribución indicada`);
+  }
+
+  return repo.cambiarEstadoDistribucion(distribucionId, activo);
 }

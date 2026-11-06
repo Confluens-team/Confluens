@@ -110,6 +110,14 @@ export async function agendarEvento(
         `No existe la distribución ${distribucionId} para el salón ${salonId}`,
       );
     }
+    // HU-25 del Sprint 4: una dada de baja no se elige de nuevo, pero el evento que ya la tenía en
+    // ese salón la conserva al reagendar (PO, 06/11/2026: la baja no lo afecta).
+    const yaLaTenia = evento.salones.some(
+      (s) => s.salonId === salonId && s.distribucionId === distribucionId,
+    );
+    if (!distribucion.activo && !yaLaTenia) {
+      throw ErrorApi.reglaNegocio(`La distribución "${distribucion.nombre}" está dada de baja`);
+    }
   }
 
   // Con varios salones la gente se reparte: cuenta la capacidad sumada. Es un aviso, no un tope.

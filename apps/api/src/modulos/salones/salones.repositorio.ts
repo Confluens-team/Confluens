@@ -34,7 +34,8 @@ export async function obtenerSalonesPublicos() {
       capacidadMaxima: true,
       superficie: true,
       fotoUrl: true,
-      distribuciones: true,
+      // Las dadas de baja (HU-25 del Sprint 4) no se publican: el cliente no las puede pedir.
+      distribuciones: { where: { activo: true }, orderBy: { id: 'asc' } },
     },
     orderBy: { capacidadMaxima: 'desc' },
   });
@@ -111,4 +112,10 @@ export async function buscarDistribucionPorId(id: number) {
 // pone tope a la cantidad de personas (dominio.md).
 export async function modificarDistribucion(id: number, datos: ModificarDistribucion) {
   return prisma.distribucion.update({ where: { id }, data: datos });
+}
+
+// HU-25 (Sprint 4): baja lógica o reactivación. Los eventos que ya la tienen la siguen referenciando
+// por id y no cambian; lo que cambia es que no se ofrece en presupuestos ni agendas nuevas.
+export async function cambiarEstadoDistribucion(id: number, activo: boolean) {
+  return prisma.distribucion.update({ where: { id }, data: { activo } });
 }

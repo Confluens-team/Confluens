@@ -1,5 +1,6 @@
 import type {
   ActualizarLandingSalon,
+  CambiarEstadoDistribucion,
   CrearDistribucion,
   Distribucion,
   ModificarDistribucion,
@@ -13,6 +14,7 @@ import type { Request, Response } from 'express';
 
 import {
   actualizarLandingSalon,
+  cambiarEstadoDistribucion,
   listarSalones,
   listarSalonesPublicos,
   modificarDatosSalon,
@@ -78,6 +80,17 @@ export async function editarDistribucion(req: Request, res: Response): Promise<v
     salonId,
     distribucionId,
     req.body as ModificarDistribucion,
+  );
+  const cuerpo: RespuestaExito<Distribucion> = { data: distribucion as unknown as Distribucion };
+  res.json(cuerpo);
+}
+
+// HU-25 (Sprint 4): baja lógica o reactivación. params y body ya validados en salones.rutas.ts.
+export async function cambiarEstado(req: Request, res: Response): Promise<void> {
+  const distribucion = await cambiarEstadoDistribucion(
+    Number(req.params['id']),
+    Number(req.params['distribucionId']),
+    (req.body as CambiarEstadoDistribucion).activo,
   );
   const cuerpo: RespuestaExito<Distribucion> = { data: distribucion as unknown as Distribucion };
   res.json(cuerpo);
