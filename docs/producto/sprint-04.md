@@ -40,14 +40,14 @@ Orden del Seguimiento: Salones → Eventos → Usuarios → Catálogos → Pagos
 | HU-27 | Modificar datos de un evento | RE | HU-16 | 5 | Hecha (#90 y #96): tests y vigencia al recalcular |
 | HU-28 | Registrar evento cobrado | RF | HU-20 | 5 | Hecha (#91): cubierta con tests |
 | HU-29 | Generar y emitir comanda | RE | — (S-07) | 2 | Hecha (#92) |
-| HU-30 | Registrar usuario | GG / ADM | HU-28 | 3 | Sin empezar: bloqueada (primera contraseña) |
-| HU-31 | Consultar usuario | GG / ADM | HU-29 | 2 | Sin empezar: va con HU-30 |
+| HU-30 | Registrar usuario | GG / ADM | HU-28 | 3 | Hecha (#105): alta en Personal, con la contraseña inicial que define el GG o el ADM |
+| HU-31 | Consultar usuario | GG / ADM | HU-29 | 2 | Hecha (#105): listado en Personal, con filtro por rol |
 | HU-32 | Modificar servicio | RE | HU-33 | 3 | Hecha (#93) |
 | HU-33 | Modificar medio de pago | RF | HU-38 | 2 | Hecha (#94) |
 | HU-34 | Consultar pagos de un evento | RF | — | 2 | Hecha: cubierta por HU-21, sin código nuevo |
 | HU-35 | Anular pago de un evento | RF | — | 2 | Hecha: anulación sin borrar el pago |
 | ~~HU-36~~ | ~~Generar y emitir un recibo como comprobante válido de pago~~ | RF | — | — | **Eliminada (PO, 06/11/2026)** |
-| | **Total** | | | **34** | **Hechos: 27** |
+| | **Total** | | | **34** | **Hechos: 32** |
 
 Velocidad de los sprints anteriores: 31, 32 y 36. Con 34 puntos el sprint queda en línea, pero
 varias historias valen menos de lo estimado porque ya están hechas en parte (HU-29, HU-34 y, según
@@ -261,20 +261,24 @@ Criterios propuestos:
   Sistema»).~~ **El Gerente General asigna GG, RE y RF; el Administrador del Sistema, cualquier rol
   (reunión 05/11/2026).** Las demás reglas de Personal (al menos un GG y un ADM, el GG no toca a un
   ADM, un rol por usuario) están en `dominio.md`.
-- El GG o el ADM le cargan la contraseña inicial al registrarlo (reunión 05/11/2026).
+- El GG o el ADM le cargan la contraseña inicial al registrarlo (reunión 05/11/2026). Alcanza con
+  que tenga al menos 6 caracteres, la misma regla del registro del cliente (PO, 06/11/2026).
 - El correo es obligatorio, se guarda en minúsculas y sin espacios, y es único: uno que ya es de
   otro usuario se rechaza.
 - El usuario nuevo inicia sesión con su correo y su contraseña, y entra al panel interno según su
   rol (HU-01).
 - El RE, el RF y el rol Cliente no registran usuarios.
 
-**Definido (reunión 05/11/2026; PO, 06/11/2026).** La contraseña inicial la carga el GG o el ADM, y
-la división por rol arranca acá para `/usuarios` (ver «Puntos a definir»).
+**Definido (reunión 05/11/2026; PO, 06/11/2026).** La contraseña inicial la carga el GG o el ADM,
+con un mínimo de 6 caracteres y sin otros requisitos, y la división por rol arranca acá para
+`/usuarios` (ver «Puntos a definir»).
 
-**Implementación.** No hay módulo de usuarios: los cuatro usuarios del personal los carga el seed
-(`re@`, `rf@`, `gg@` y `admin@confluens.test`). Falta un módulo `usuarios` con `POST /api/usuarios`
-(`409` por correo repetido, `403` si el rol no puede asignar el rol pedido). La contraseña se guarda
-con bcrypt, igual que en el registro del cliente.
+**Implementación.** Módulo `usuarios` con `POST /api/usuarios`, solo para el GG y el ADM: `400` si el
+rol no es del personal, `403` si quien da el alta no puede asignar el rol pedido (`puedeAsignarRol`
+en `packages/shared`, que la web usa para ofrecer solo esos roles) y `409` por correo repetido, aunque
+sea de un cliente. La contraseña se guarda con bcrypt y el alta no inicia sesión. En la web, la
+sección **Personal** de Configuración de negocio, que ven solo el GG y el ADM; el resto del panel
+sigue igual hasta HU-56 del backlog. Tests en `usuarios.rutas.test.ts` y `personal.test.ts`.
 
 ## HU-31 — Consultar usuario
 
@@ -289,8 +293,10 @@ Criterios propuestos:
 - Nunca se muestra la contraseña ni su hash.
 - Solo el Gerente General y el Administrador del Sistema acceden; el RE, el RF y el Cliente no.
 
-**Implementación.** `GET /api/usuarios` en el mismo módulo que HU-30. Modificar y dar de baja
-usuarios quedan para el Sprint 5 (HU-30 y HU-31 del backlog).
+**Implementación.** `GET /api/usuarios?rol=` en el mismo módulo que HU-30, con el listado debajo del
+alta en Personal. El orden por rol es el del enum `Rol` (RE, RF, GG, ADM). Que no salgan los clientes,
+el orden y que nunca se lea el hash se prueban en `usuarios.repositorio.test.ts`. Modificar y dar de
+baja usuarios quedan para el Sprint 5 (HU-30 y HU-31 del backlog).
 
 ## HU-32 — Modificar servicio
 
