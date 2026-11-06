@@ -74,6 +74,7 @@ const distribucionFixture = {
   salonId: salonFixture.id,
   nombre: 'Conferencia',
   capacidad: 280,
+  activo: true,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
 };
@@ -324,6 +325,37 @@ describe('POST /api/eventos/:id/agendar', () => {
     expect(respuesta.status).toBe(409);
     expect(respuesta.body.error.code).toBe('CONFLICT');
     expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+
+  // HU-25 del Sprint 4: una distribución dada de baja no se elige de nuevo, pero la baja no afecta al
+  // evento que ya la tenía (PO, 06/11/2026).
+  describe('con una distribución dada de baja (HU-25)', () => {
+    const dadaDeBaja = { ...distribucionFixture, activo: false };
+
+    it('responde 422 si el evento todavía no la tenía, sin escribir nada', async () => {
+      buscarDistribucionesMock.mockResolvedValue([dadaDeBaja]);
+
+      const respuesta = await agendar(cuerpo());
+
+      expect(respuesta.status).toBe(422);
+      expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+      expect(respuesta.body.error.message).toBe('La distribución "Conferencia" está dada de baja');
+      expect(agendarConDistribucionesMock).not.toHaveBeenCalled();
+    });
+
+    it('el evento que ya la tenía en ese salón se reagenda con ella', async () => {
+      buscarDistribucionesMock.mockResolvedValue([dadaDeBaja]);
+      const base = eventoFixture({ estado: 'Reservado' });
+      buscarDetalladoMock.mockResolvedValue({
+        ...base,
+        salones: [{ ...base.salones[0]!, distribucionId: dadaDeBaja.id, distribucion: dadaDeBaja }],
+      });
+
+      const respuesta = await agendar(cuerpo());
+
+      expect(respuesta.status).toBe(200);
+      expect(agendarConDistribucionesMock).toHaveBeenCalled();
+    });
   });
 
   it('responde 404 si la distribución no existe', async () => {

@@ -151,8 +151,13 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   const cobrado = evento.estado === 'Cobrado';
   // Las distribuciones posibles de cada salón del evento, con la elegida.
   const porSalon = evento.salones.map((salonDelEvento) => {
-    const opciones =
-      salones.data?.find((salon) => salon.id === salonDelEvento.id)?.distribuciones ?? [];
+    // HU-25 del Sprint 4: las dadas de baja no se ofrecen, salvo la que el evento ya tiene en ese
+    // salón, que conserva (la baja no lo afecta). La API aplica la misma regla.
+    const opciones = (
+      salones.data?.find((salon) => salon.id === salonDelEvento.id)?.distribuciones ?? []
+    ).filter(
+      (distribucion) => distribucion.activo || distribucion.id === salonDelEvento.distribucion?.id,
+    );
     const elegidaId = distribucionPorSalon.get(salonDelEvento.id) ?? '';
     return {
       salon: salonDelEvento,

@@ -14,6 +14,7 @@ const distribucionAuditorio = {
   salonId: 1,
   nombre: 'Conferencia',
   capacidad: 280,
+  activo: true,
   creadoEn: FECHA,
   actualizadoEn: FECHA,
 };
@@ -54,6 +55,7 @@ vi.mock('./salones.repositorio.js', () => ({
   modificarSalon: vi.fn(),
   buscarDistribucionPorId: vi.fn(),
   modificarDistribucion: vi.fn(),
+  cambiarEstadoDistribucion: vi.fn(),
 }));
 
 const {
@@ -66,6 +68,7 @@ const {
   modificarSalon,
   buscarDistribucionPorId,
   modificarDistribucion,
+  cambiarEstadoDistribucion,
 } = await import('./salones.repositorio.js');
 const obtenerSalonesConDistribucionesMock = vi.mocked(obtenerSalonesConDistribuciones);
 const obtenerSalonesPublicosMock = vi.mocked(obtenerSalonesPublicos);
@@ -76,6 +79,7 @@ const crearDistribucionMock = vi.mocked(crearDistribucion);
 const modificarSalonMock = vi.mocked(modificarSalon);
 const buscarDistribucionPorIdMock = vi.mocked(buscarDistribucionPorId);
 const modificarDistribucionMock = vi.mocked(modificarDistribucion);
+const cambiarEstadoDistribucionMock = vi.mocked(cambiarEstadoDistribucion);
 
 // Sesión del personal: desde HU-48 estos endpoints piden sesión (C5 y C6).
 const cookiePersonal = `${NOMBRE_COOKIE_SESION}=${firmarToken({
@@ -638,5 +642,102 @@ describe('PATCH /api/salones/:id/distribuciones/:distribucionId (HU-26)', () => 
     expect(sinSesion.status).toBe(401);
     expect(comoCliente.status).toBe(403);
     expect(modificarDistribucionMock).not.toHaveBeenCalled();
+  });
+});
+
+// HU-25 del Sprint 4: baja lógica de una distribución (PO, 06/11/2026). Se da de baja aunque la use
+// un evento; los eventos que ya la tienen no cambian (eso lo prueba eventos.rutas.test.ts).
+describe('PATCH /api/salones/:id/distribuciones/:distribucionId/estado (HU-25)', () => {
+  const app = crearApp();
+
+  const cambiar = (
+    cuerpo: object,
+    ruta = '/api/salones/1/distribuciones/1/estado',
+    cookie = cookiePersonal,
+  ) => request(app).patch(ruta).set('Cookie', [cookie]).send(cuerpo);
+
+  beforeEach(() => {
+    obtenerSalonPorIdMock.mockReset();
+    buscarDistribucionPorIdMock.mockReset();
+    cambiarEstadoDistribucionMock.mockReset();
+    obtenerSalonPorIdMock.mockResolvedValue(auditorio as never);
+    buscarDistribucionPorIdMock.mockResolvedValue(distribucionAuditorio as never);
+    cambiarEstadoDistribucionMock.mockImplementation(
+      async (id, activo) => ({ ...distribucionAuditorio, id, activo }) as never,
+    );
+  });
+
+  it('la da de baja y responde 200 con la distribución inactiva', async () => {
+    const respuesta = await cambiar({ activo: false });
+
+    expect(respuesta.status).toBe(200);
+    expect(cambiarEstadoDistribucionMock).toHaveBeenCalledWith(1, false);
+    expect(respuesta.body.data).toMatchObject({ id: 1, salonId: 1, activo: false });
+  });
+
+  it('la reactiva', async () => {
+    buscarDistribucionPorIdMock.mockResolvedValue({
+      ...distribucionAuditorio,
+      activo: false,
+    } as never);
+
+    const respuesta = await cambiar({ activo: true });
+
+    expect(respuesta.status).toBe(200);
+    expect(cambiarEstadoDistribucionMock).toHaveBeenCalledWith(1, true);
+  });
+
+  it('una distribución de otro salón o inexistente responde 404', async () => {
+    buscarDistribucionPorIdMock.mockResolvedValueOnce({
+      ...distribucionAuditorio,
+      salonId: 2,
+    } as never);
+    const deOtroSalon = await cambiar({ activo: false });
+    buscarDistribucionPorIdMock.mockResolvedValueOnce(null);
+    const inexistente = await cambiar({ activo: false });
+
+    expect(deOtroSalon.status).toBe(404);
+    expect(inexistente.status).toBe(404);
+    expect(cambiarEstadoDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('con un salón inexistente responde 404', async () => {
+    obtenerSalonPorIdMock.mockResolvedValue(null);
+
+    const respuesta = await cambiar({ activo: false }, '/api/salones/99/distribuciones/1/estado');
+
+    expect(respuesta.status).toBe(404);
+    expect(cambiarEstadoDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('sin activo booleano responde 400 VALIDATION_ERROR', async () => {
+    const sinCampo = await cambiar({});
+    const comoTexto = await cambiar({ activo: 'no' });
+
+    expect(sinCampo.status).toBe(400);
+    expect(sinCampo.body.error.code).toBe('VALIDATION_ERROR');
+    expect(comoTexto.status).toBe(400);
+    expect(cambiarEstadoDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
+    const cookieCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+      id: 7,
+      email: 'ana@empresa.com',
+      rol: 'CLIENTE',
+    })}`;
+
+    const sinSesion = await request(app)
+      .patch('/api/salones/1/distribuciones/1/estado')
+      .send({ activo: false });
+    const comoCliente = await cambiar(
+      { activo: false },
+      '/api/salones/1/distribuciones/1/estado',
+      cookieCliente,
+    );
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
+    expect(cambiarEstadoDistribucionMock).not.toHaveBeenCalled();
   });
 });

@@ -109,7 +109,15 @@ function eventoOriginal(datos: Record<string, unknown> = {}) {
     horaInicioEstimada: '09:00',
     modalidadSalonRestaurante: true,
     observacionesComanda: 'Sin TACC',
-    salones: [{ eventoId: 20, salonId: 5, distribucionId: 14, salon: parana }],
+    salones: [
+      {
+        eventoId: 20,
+        salonId: 5,
+        distribucionId: 14,
+        salon: parana,
+        distribucion: { activo: true },
+      },
+    ],
     presupuestos: [
       {
         id: 31,
@@ -250,6 +258,30 @@ describe('POST /api/eventos/:id/reutilizar (HU-24)', () => {
     expect(salonIds).toEqual([5]);
     expect(distribuciones).toEqual(new Map([[5, 14]]));
     expect(respuesta.body.data.consulta.id).toBe(77);
+  });
+
+  // HU-25 del Sprint 4: la baja no afecta al evento original, pero el nuevo no la puede heredar.
+  it('no copia una distribución dada de baja: el salón queda sin armado', async () => {
+    buscarEventoMock.mockResolvedValue(
+      eventoOriginal({
+        salones: [
+          {
+            eventoId: 20,
+            salonId: 5,
+            distribucionId: 14,
+            salon: parana,
+            distribucion: { activo: false },
+          },
+        ],
+      }) as never,
+    );
+
+    const respuesta = await reutilizar();
+
+    expect(respuesta.status).toBe(201);
+    const [, salonIds, , distribuciones] = reemplazarSalonesMock.mock.calls[0]!;
+    expect(salonIds).toEqual([5]);
+    expect(distribuciones).toEqual(new Map());
   });
 
   it('toma los precios vigentes del catálogo y conserva la modalidad de cada servicio', async () => {

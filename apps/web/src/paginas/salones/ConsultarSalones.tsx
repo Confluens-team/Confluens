@@ -4,16 +4,22 @@ import {
   esquemaModificarDistribucion,
   type SalonConDistribuciones,
 } from '@confluens/shared';
-import { CheckCircle2, Pencil, Plus } from 'lucide-react';
+import { ArchiveRestore, Ban, CheckCircle2, Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { VentanaFormulario } from '@/components/VentanaFormulario';
-import { useCrearDistribucion, useModificarDistribucion, useSalones } from '@/hooks/use-salones';
+import {
+  useCambiarEstadoDistribucion,
+  useCrearDistribucion,
+  useModificarDistribucion,
+  useSalones,
+} from '@/hooks/use-salones';
 import { ErrorApiCliente } from '@/lib/api';
 import { formatearPesos } from '@/lib/formato';
+import { cn } from '@/lib/utils';
 
 import { FormularioSalon } from './FormularioSalon';
 
@@ -149,6 +155,29 @@ export function ConsultarSalones() {
   } | null>(null);
   const [salonEnEdicion, setSalonEnEdicion] = useState<SalonConDistribuciones | null>(null);
   const [modificadoId, setModificadoId] = useState<number | null>(null);
+  const cambiarEstado = useCambiarEstadoDistribucion();
+  const [estadoCambiado, setEstadoCambiado] = useState<{
+    salonId: number;
+    nombre: string;
+    activo: boolean;
+  } | null>(null);
+
+  // HU-25 del Sprint 4: baja lógica o reactivación. Es reversible, así que no pide confirmación.
+  function alternarEstado(salon: SalonConDistribuciones, distribucion: Distribucion) {
+    setGuardada(null);
+    setEstadoCambiado(null);
+    cambiarEstado.mutate(
+      { salonId: salon.id, distribucionId: distribucion.id, activo: !distribucion.activo },
+      {
+        onSuccess: (cambiada) =>
+          setEstadoCambiado({
+            salonId: salon.id,
+            nombre: cambiada.nombre,
+            activo: cambiada.activo,
+          }),
+      },
+    );
+  }
 
   if (isLoading) {
     return <p className="p-6 text-muted-foreground">Cargando salones…</p>;
@@ -229,8 +258,21 @@ export function ConsultarSalones() {
                 </div>
                 <ul className="space-y-1 text-sm text-muted-foreground">
                   {salon.distribuciones.map((distribucion) => (
-                    <li key={distribucion.id} className="flex items-center justify-between gap-3">
-                      <span>{distribucion.nombre}</span>
+                    <li
+                      key={distribucion.id}
+                      className={cn(
+                        'flex items-center justify-between gap-3',
+                        !distribucion.activo && 'opacity-60',
+                      )}
+                    >
+                      <span className="flex items-center gap-2">
+                        {distribucion.nombre}
+                        {!distribucion.activo && (
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold">
+                            Dada de baja
+                          </span>
+                        )}
+                      </span>
                       <span className="flex items-center gap-1">
                         {formatoNumero.format(distribucion.capacidad)} personas
                         <Button
@@ -244,10 +286,39 @@ export function ConsultarSalones() {
                         >
                           <Pencil />
                         </Button>
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          disabled={cambiarEstado.isPending}
+                          aria-label={
+                            distribucion.activo
+                              ? `Dar de baja ${distribucion.nombre}`
+                              : `Reactivar ${distribucion.nombre}`
+                          }
+                          title={distribucion.activo ? 'Dar de baja' : 'Reactivar'}
+                          onClick={() => alternarEstado(salon, distribucion)}
+                        >
+                          {distribucion.activo ? <Ban /> : <ArchiveRestore />}
+                        </Button>
                       </span>
                     </li>
                   ))}
                 </ul>
+                {estadoCambiado?.salonId === salon.id && (
+                  <p className="mt-3 flex items-center gap-2 text-sm text-emerald-800">
+                    <CheckCircle2 className="size-4" />
+                    {estadoCambiado.activo
+                      ? `«${estadoCambiado.nombre}» se reactivó y se puede volver a elegir.`
+                      : `«${estadoCambiado.nombre}» quedó dada de baja: ya no se ofrece al presupuestar ni al agendar. Los eventos que la tienen no cambian.`}
+                  </p>
+                )}
+                {cambiarEstado.isError && cambiarEstado.variables?.salonId === salon.id && (
+                  <p className="mt-3 text-sm text-destructive">
+                    {cambiarEstado.error instanceof ErrorApiCliente
+                      ? cambiarEstado.error.message
+                      : 'No se pudo cambiar el estado de la distribución.'}
+                  </p>
+                )}
                 {guardada?.salonId === salon.id && (
                   <p className="mt-3 flex items-center gap-2 text-sm text-emerald-800">
                     <CheckCircle2 className="size-4" />

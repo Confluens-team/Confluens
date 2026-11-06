@@ -674,7 +674,10 @@ export function CotizarEvento({
                         </div>
                         <p className="text-xs text-muted-foreground">
                           Hasta {salon.capacidadMaxima} personas · {salon.superficie} m² ·{' '}
-                          {salon.distribuciones.map((d) => d.nombre).join(', ')}
+                          {salon.distribuciones
+                            .filter((d) => d.activo)
+                            .map((d) => d.nombre)
+                            .join(', ')}
                         </p>
                         {superaCapacidad && salonIds.length <= 1 && (
                           <p className="text-xs text-amber-700">
