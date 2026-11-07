@@ -22,8 +22,10 @@ import {
 
 import { Prisma } from '../../generated/prisma/client.js';
 import { alcanza, calcularBaseDeCobro, PORCENTAJE_TOTAL } from '../../lib/base-de-cobro.js';
+import { type Correo, enviarCorreo } from '../../lib/correo.js';
 import { ErrorApi } from '../../lib/errores.js';
 import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
+import { avisarConsultaRecibida } from './presupuestos.correo.js';
 import * as presupuestosRepositorioReal from './presupuestos.repositorio.js';
 import type { LineaNueva, PresupuestosRepositorio } from './presupuestos.repositorio.js';
 
@@ -241,6 +243,7 @@ export async function generarPresupuesto(
   datos: CrearPresupuesto,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
   usuarioCliente?: number,
+  enviar: (correo: Correo) => Promise<void> = enviarCorreo,
 ) {
   const clienteDeSesion =
     usuarioCliente === undefined ? null : await clienteDeLaSesion(usuarioCliente, repo);
@@ -304,7 +307,7 @@ export async function generarPresupuesto(
 
   const fechaEmision = new Date();
 
-  return repo.crearEnTransaccion(async (tx) => {
+  const presupuesto = await repo.crearEnTransaccion(async (tx) => {
     let cliente = clienteDeSesion ?? (await repo.buscarClientePorCorreo(datos.correo, tx));
     if (!cliente) {
       cliente = await repo.crearCliente(
@@ -342,6 +345,16 @@ export async function generarPresupuesto(
       tx,
     );
   });
+
+  // Solo cuando el cliente confirma en el cotizador: si cotiza el personal, no sale correo. Sin
+  // await: no frena la respuesta, y un fallo del envío no deshace la consulta ya guardada.
+  if (clienteDeSesion) {
+    void avisarConsultaRecibida(
+      { nombre: clienteDeSesion.nombre, correo: clienteDeSesion.correo, presupuesto },
+      enviar,
+    );
+  }
+  return presupuesto;
 }
 
 /**
