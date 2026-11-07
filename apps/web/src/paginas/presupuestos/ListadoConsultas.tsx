@@ -420,7 +420,7 @@ export function ListadoConsultas() {
                         {expirado && (
                           <p className="mt-1 flex items-start gap-1 text-xs font-medium text-estado-expirado-texto">
                             <AlertTriangle className="mt-px size-3 shrink-0" />
-                            Presupuesto vencido, recalcular
+                            Presupuesto vencido
                           </p>
                         )}
                         <p className="mt-1.5 flex items-center gap-2">
