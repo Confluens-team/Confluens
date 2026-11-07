@@ -47,40 +47,48 @@ administrar al personal.
 | HU-25 | Registrar el usuario y la fecha de cada modificación (auditoría) | SYS | 8 | `AuditLog` existe, pero solo se escribe al cambiar la landing de un salón |
 | HU-54 | Recalcular el presupuesto automáticamente | SYS | a estimar | Sin empezar. Hoy hay botón Recalcular |
 | HU-55 | Cobrar la seña de un presupuesto vencido | RF | a estimar | Sin empezar. Hoy la API rechaza la seña de un `Expirado` |
-| HU-30 | Modificar un usuario | GG / ADM | 3 | Sin empezar. Va con HU-31 |
-| HU-31 | Dar de baja un usuario | GG / ADM | 2 | Sin empezar. Cambio de modelo (`Usuario.activo`) |
-| HU-24 | Avisar por WhatsApp la recepción de la consulta y descargar su resumen en PDF | RE | 5 | Hecha en buena parte: hay que re-estimarla |
-| — | Enviar correo de confirmación de consulta | SYS | a estimar | Resend integrado; falta el correo y el dominio verificado (S-11) |
+| HU-30 | Modificar un usuario | GG / ADM | 3 | Sin empezar. Va con HU-31 y suma «Cambiar contraseña» en Mi cuenta |
+| HU-31 | Dar de baja un usuario | GG / ADM | 2 | Sin empezar. Cambio de modelo (`Usuario.activo`), confirmado por el PO |
+| HU-24 | Avisar por WhatsApp la recepción de la consulta y descargar su resumen en PDF | RE | 5 | Funciona según el PO: revisarla contra los criterios y re-estimarla |
+| — | Enviar correo de confirmación de consulta | SYS | a estimar | Definido. Necesita una dependencia para el PDF y el dominio (S-11) |
 | — | Cerrar sesión | todos | — | Existe (`POST /auth/logout`): cubrir con tests |
-| — | Cambiar contraseña | todos | — | Existe el restablecimiento por correo: a definir si alcanza |
+| — | Cambiar contraseña | todos | — | Restablecimiento por correo: cubrir con tests. Desde adentro, va con HU-30 |
 | | **Total estimado** | | **18 + a estimar** | |
 
 Velocidad de los sprints anteriores: 31, 32, 36 y 34. Con 18 SP estimados quedan unos 15 para
 HU-54, HU-55 y el correo. **Si en la Planning sobra lugar**, la siguiente candidata es HU-56
 (permisos por rol): sus reglas ya están en `dominio.md`.
 
-Correcciones sin historia que van a Jira como tareas de este sprint (`backlog.md`, reunión
-05/11/2026): el nombre del PDF del presupuesto (`presupuesto-AAAA-MM-DD-apellido.pdf`, con la fecha
-del evento), los campos de importe que solo aceptan dígitos y un separador decimal, y el botón
-«Salir» del cotizador, que no funciona y tiene que pedir confirmación.
+Correcciones sin historia (`backlog.md`, reunión 05/11/2026), que se arreglan en este sprint:
+
+- el nombre del PDF del presupuesto, `presupuesto-AAAA-MM-DD-apellido.pdf` con la fecha del evento;
+- los campos de importe, que solo aceptan dígitos y un separador decimal;
+- el botón «Salir» del cotizador, que no funciona y tiene que pedir confirmación («¿Seguro que querés
+  salir? Tu consulta todavía no se completó»).
+
+**Pendiente: cargar estas tres tareas en Jira** (no tienen historia propia; PO, 06/11/2026).
 
 Orden sugerido: HU-55 → HU-54 (las dos tocan el presupuesto y conviene no pisarse) en
 paralelo con HU-25; después HU-30 y HU-31 juntas; HU-24 y el correo al final.
 
-## Puntos a definir con el PO
+## Definiciones del PO (06/11/2026)
 
-**Bloquean la historia**: no se construye la parte afectada hasta definirlo.
-
-| Historia | Qué falta definir |
+| Historia | Definido |
 |---|---|
-| HU-25 | Qué se audita: todas las escrituras del panel o solo algunas entidades (presupuestos, pagos, eventos, precios, personal). Si este sprint incluye la pantalla para consultar la auditoría o solo el registro. |
-| HU-30 | Qué se modifica: correo y rol seguro; si el GG o el ADM pueden también cargarle una contraseña nueva a otro usuario. |
-| — Correo | Verificar un dominio propio en Resend (S-11): sin él, solo se puede enviar al correo del dueño de la cuenta. |
-| — Cerrar sesión, cambiar contraseña | Si se dan por cubiertas con lo que existe o si hace falta cambiar la contraseña desde «Mi cuenta». |
+| HU-25 | Se audita **todo el panel interno**: salones y distribuciones, landing, servicios y precios, medios de pago, clientes, consultas y presupuestos, eventos, pagos y personal. Se consulta en una pestaña **Auditoría** de Configuración de negocio, solo para el GG y el ADM, que se puede filtrar por el campo auditado. |
+| HU-30 | **La contraseña de otro usuario solo la cambia el ADM**, la de cualquiera. Fuera de él, cada usuario cambia solo la suya, desde Mi cuenta. |
+| HU-31 | Se construye con la baja lógica de `dominio.md`. El cambio de modelo (`Usuario.activo`) queda confirmado. |
+| HU-24 | Funciona bien: se revisa contra los criterios, sin trabajo nuevo salvo lo que falte. |
+| Cerrar sesión, cambiar contraseña | Se cubren con tests. El PO quiere revisar en la app cómo funciona el restablecimiento por correo. |
+| Correo | Se manda **solo cuando el cliente confirma la consulta en el cotizador**, no cuando la carga el personal. Lleva el **resumen en el cuerpo y el PDF del presupuesto adjunto**. **No hay dominio propio todavía** (S-11): hasta conseguirlo, solo llega al correo del dueño de la cuenta de Resend. |
 
-**Cambios de modelo que van a hacer falta** (cada uno se confirma antes de tocar `schema.prisma`,
-`AGENTS.md` §6): `Usuario.activo` (HU-31) y, según lo que se audite, nada o poco en `AuditLog`, que
-ya tiene usuario, fecha, entidad, valor anterior y valor nuevo.
+**Cambios de modelo** (cada uno se confirma antes de tocar `schema.prisma`, `AGENTS.md` §6):
+`Usuario.activo` (HU-31, confirmado) y, según cómo se guarde el campo auditado para filtrarlo, poco
+o nada en `AuditLog`, que ya tiene usuario, fecha, entidad, valor anterior y valor nuevo.
+
+**Dependencia nueva a confirmar** (`AGENTS.md` §6): generar el PDF del presupuesto en el servidor
+para adjuntarlo al correo. Hoy el PDF sale de la impresión del navegador (`window.print()`), que no
+sirve en la API. Se propone la librería al empezar esa parte.
 
 ## HU-25 del backlog — Registrar el usuario y la fecha de cada modificación
 
@@ -94,7 +102,13 @@ Criterios propuestos:
 - El registro se escribe en la misma transacción que el cambio: o quedan los dos o ninguno.
 - El registro es inmutable: no se modifica ni se borra.
 - Lo que hace el Sistema (tareas programadas, recálculos) queda con usuario vacío (`SYS`).
-- La auditoría la ven solo el GG y el ADM (`dominio.md`, «Roles»).
+- Se audita todo el panel interno (PO, 06/11/2026): salones y distribuciones, landing, servicios y
+  precios, medios de pago, clientes, consultas y presupuestos, eventos, pagos y personal.
+- La auditoría la ven solo el GG y el ADM (`dominio.md`, «Roles»), en una pestaña **Auditoría** de
+  Configuración de negocio: cada cambio con su fecha, usuario, parte del sistema, campo, valor
+  anterior y valor nuevo, del más reciente al más antiguo.
+- Se puede **filtrar por el campo auditado** (por ejemplo, «precio» o «estado») para encontrar
+  rápido lo que se busca revisar, además de por parte del sistema, usuario y fechas.
 
 **Implementación.** Hoy `actualizarLanding` en `salones.repositorio.ts` es la única escritura de
 auditoría, y su comentario anticipa que esta historia define el mecanismo general. Conviene un
@@ -135,19 +149,39 @@ propuestos (`dominio.md`, «Personal»):
 - La baja es lógica: el usuario queda inactivo, no puede iniciar sesión y se cierran sus sesiones
   (subir `versionSesion`). Se sigue viendo en la auditoría y en lo que registró, y se puede
   reactivar.
+- **Contraseñas** (PO, 06/11/2026): el ADM le puede cargar una contraseña nueva a cualquier usuario
+  del personal. Nadie más cambia la contraseña de otro. Cada usuario cambia la suya desde **Mi
+  cuenta**, con la contraseña actual y la nueva (mínimo 6 caracteres), sin pasar por el correo. Al
+  cambiarla se cierran sus otras sesiones.
 
 ## HU-24 del backlog — Aviso por WhatsApp y resumen en PDF
 
 Ya existen el botón `wa.me` (`BotonWhatsApp.tsx`, en el detalle y el seguimiento de la consulta) y
-la descarga del presupuesto en PDF con `window.print()`. Falta revisar contra los criterios de la
-Definición del Producto qué queda (el backlog menciona pdfmake, que no hace falta si la impresión
-alcanza) y re-estimarla.
+la descarga del presupuesto en PDF con `window.print()`. Según el PO funciona bien (06/11/2026): se
+revisa contra los criterios de la Definición del Producto y se re-estima.
+
+## Cerrar sesión y cambiar contraseña
+
+Ya existen y se cubren con tests: cerrar sesión (`POST /auth/logout`, invalida el token en todos los
+dispositivos) y el restablecimiento por correo («¿Olvidaste tu contraseña?»: un enlace que vence en
+30 minutos y sirve una sola vez, y al usarlo cierra las demás sesiones). El restablecimiento usa
+Resend, así que sin dominio (S-11) hoy solo le llega al dueño de la cuenta. El cambio desde adentro
+del panel va con HU-30.
 
 ## Enviar correo de confirmación de consulta
 
-Al confirmar una consulta desde el cotizador, el cliente recibe un correo de «consulta recibida»
-(HU-49 del backlog). Resend ya se usa para restablecer la contraseña (ADR 0006); falta el correo en
-sí y verificar el dominio (S-11).
+Criterios (PO, 06/11/2026):
+
+- Se manda cuando el **cliente confirma su consulta en el cotizador** de la web. Si la carga el
+  personal desde el panel, no sale correo.
+- Va al correo de la cuenta del cliente, con el **resumen** en el cuerpo (fecha, salón, personas,
+  servicios, subtotal, IVA 21% y total, y la leyenda de validez de 10 días) y el **PDF del
+  presupuesto adjunto**.
+- Si el correo falla, la consulta se guarda igual: el correo no bloquea la confirmación.
+
+Resend ya se usa para restablecer la contraseña (ADR 0006). **Falta el dominio** (S-11): hasta
+verificarlo, solo llega al dueño de la cuenta de Resend. El PDF en el servidor necesita una
+dependencia nueva, a confirmar antes de instalarla.
 
 ## Lo que no entra
 
