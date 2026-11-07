@@ -1183,17 +1183,16 @@ function Formulario({
               <CalendarCheck className="size-4 text-dorado" /> Cobrar la seña
             </h3>
             <p className="text-xs text-muted-foreground">
-              {expirado
-                ? 'La consulta está vencida: recalculala y guardá los cambios antes de cobrar la seña.'
-                : consulta.salones.length === 0
-                  ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
-                  : 'Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda (HU-13). Guardá antes los cambios de la consulta.'}
+              {/* HU-55: una consulta vencida se cobra igual, sin recalcular (RN-06). */}
+              {consulta.salones.length === 0
+                ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
+                : `${expirado ? 'La consulta está vencida, pero la seña se cobra igual, sin recalcular. ' : ''}Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda (HU-13). Guardá antes los cambios de la consulta.`}
             </p>
           </div>
           <Button
             type="button"
             variant="outline"
-            disabled={expirado || consulta.salones.length === 0}
+            disabled={consulta.salones.length === 0}
             onClick={() => onAbrirEvento(consulta.evento.id)}
           >
             <CalendarCheck /> Registrar pagos
