@@ -677,7 +677,8 @@ function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoR
  *   el vigente. `precioSalon` la ajusta a mano.
  * - Los adicionales escritos a mano entran con la descripción y el precio que se cargaron.
  * - Un tercerizado a cotizar sigue así hasta que llega su precio (HU-11).
- * - `requiereFactura` (RN-01) define si la base de cobro de la seña incluye el IVA.
+ * - La marca de factura (RN-01) no cambia: desde HU-53 todo presupuesto nuevo nace con factura y
+ *   uno anterior conserva la suya.
  * - «Recalcular» un Expirado es esto mismo, con los precios vigentes que arma la pantalla: el
  *   presupuesto sigue siendo el mismo (decisión del PO, 05/10/2026).
  * - El total suma todas las líneas, tercerizados incluidos.
@@ -810,11 +811,7 @@ export async function modificarPresupuesto(
       let estadoEvento: Prisma.EventoUpdateInput['estado'];
       if (confirmado) {
         const pagado = (await repo.sumarPagos(presupuesto.eventoId, tx)) ?? new Prisma.Decimal(0);
-        const base = calcularBaseDeCobro({
-          ...presupuesto,
-          total: new Prisma.Decimal(total),
-          requiereFactura: datos.requiereFactura ?? presupuesto.requiereFactura,
-        });
+        const base = calcularBaseDeCobro({ ...presupuesto, total: new Prisma.Decimal(total) });
         estadoEvento = alcanza(new Prisma.Decimal(pagado), base, PORCENTAJE_TOTAL)
           ? 'Cobrado'
           : 'Reservado';
@@ -843,14 +840,12 @@ export async function modificarPresupuesto(
               fechaEmision,
               venceEn: calcularVencimiento(fechaEmision),
               total: total.toFixed(2),
-              requiereFactura: datos.requiereFactura,
             }
           : {
               estado: 'Estimado',
               fechaEmision,
               venceEn: lineas.length > 0 ? calcularVencimiento(fechaEmision) : null,
               total: total.toFixed(2),
-              requiereFactura: datos.requiereFactura,
             },
         tx,
       );
