@@ -1,6 +1,7 @@
 import {
   compararMediosPago,
   type CrearPago,
+  hoyEnZonaEventos,
   esquemaCrearPago,
   type EventoDetallado,
   PORCENTAJE_SENA,
@@ -10,14 +11,13 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { Ban, Plus, X } from 'lucide-react';
 import { Dialog } from 'radix-ui';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { Link } from 'react-router';
 
 import { InputImporte } from '@/components/InputImporte';
-import { SelectorFechaHora } from '@/components/SelectorFechaHora';
+import { SelectorFecha, SelectorHora } from '@/components/SelectorFechaHora';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAgendarEvento } from '@/hooks/use-eventos';
@@ -29,7 +29,7 @@ import {
 } from '@/hooks/use-pagos';
 import { useSalones } from '@/hooks/use-salones';
 import { ErrorApiCliente } from '@/lib/api';
-import { fechaLocal, nombreCompleto } from '@/lib/formato';
+import { fechaLocal, formatearFechaNumerica, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { CLASES_SELECT } from './clases-select';
 
@@ -75,11 +75,16 @@ function jornadaDelEvento(evento: EventoDetallado): TipoJornada {
   return presupuesto?.lineas[0]?.descripcion.endsWith('(media jornada)') ? 'media' : 'completa';
 }
 
-// "YYYY-MM-DDTHH:mm" + horas, en la hora local (puede pasar al día siguiente).
-function sumarHoras(valor: string, horas: number): string {
-  const fecha = new Date(valor);
-  fecha.setHours(fecha.getHours() + horas);
-  return comoFechaHoraLocal(fecha.toISOString());
+// "HH:mm" + horas, dando la vuelta por la medianoche ("20:00" + 8 → "04:00").
+function sumarHoras(hora: string, horas: number): string {
+  const [h = 0, m = 0] = hora.split(':').map(Number);
+  return `${String((h + horas) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+// "YYYY-MM-DD" del día siguiente, sin pasar por la zona del navegador.
+function diaSiguiente(dia: string): string {
+  const [a = 1970, m = 1, d = 1] = dia.split('-').map(Number);
+  return new Date(Date.UTC(a, m - 1, d + 1)).toISOString().slice(0, 10);
 }
 
 /**
@@ -111,9 +116,11 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   const [volvioAConfirmado, setVolvioAConfirmado] = useState(false);
 
   // `fecha` viaja como medianoche UTC del día del evento: el día es la parte YYYY-MM-DD, sin pasar
-  // por Date (que lo correría al día anterior en Argentina). Es la fecha que se propone para el
-  // pago, a pedido del Responsable de Eventos.
+  // por Date (que lo correría al día anterior en Argentina). Agendar solo elige las horas de ese
+  // día: el día se cambia modificando la consulta, que además recalcula el presupuesto.
   const fechaDelEvento = evento.fecha.slice(0, 10);
+  // El pago se propone con la fecha de hoy, en la zona de los eventos (ADR 0010).
+  const hoy = hoyEnZonaEventos();
 
   // Agendar va en el mismo formulario del pago (ADR 0007: sin distribución y horario no se puede
   // reservar el salón). Se precargan con lo ya agendado o, si no, el inicio con la hora estimada
@@ -130,34 +137,43 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   function elegirDistribucion(salonId: number, distribucionId: string) {
     setDistribucionPorSalon((anteriores) => new Map(anteriores).set(salonId, distribucionId));
   }
-  const [inicio, setInicio] = useState(
-    evento.inicio
-      ? comoFechaHoraLocal(evento.inicio)
-      : evento.horaInicioEstimada
-        ? `${fechaDelEvento}T${evento.horaInicioEstimada}`
-        : '',
+  // Solo las horas ("HH:mm"): el día es siempre el del evento.
+  const horaInicioGuardada = evento.inicio ? comoFechaHoraLocal(evento.inicio).slice(11, 16) : '';
+  const horaFinGuardada = evento.fin ? comoFechaHoraLocal(evento.fin).slice(11, 16) : '';
+  const [horaInicio, setHoraInicio] = useState(
+    horaInicioGuardada || evento.horaInicioEstimada || '',
   );
-  const [fin, setFin] = useState(
-    evento.fin ? comoFechaHoraLocal(evento.fin) : inicio ? sumarHoras(inicio, horasJornada) : '',
+  const [horaFin, setHoraFin] = useState(
+    horaFinGuardada || (horaInicio ? sumarHoras(horaInicio, horasJornada) : ''),
   );
 
   // Cada vez que se elige el inicio, el fin se recalcula con la duración de la jornada. Después se
   // puede cambiar a mano; si se vuelve a tocar el inicio, se recalcula de nuevo.
   function elegirInicio(valor: string) {
-    setInicio(valor);
-    setFin(sumarHoras(valor, horasJornada));
+    setHoraInicio(valor);
+    setHoraFin(sumarHoras(valor, horasJornada));
   }
+
+  // El inicio cae siempre el día del evento. Un fin más temprano que el inicio es del día
+  // siguiente: el evento termina pasada la medianoche.
+  const inicio = horaInicio ? `${fechaDelEvento}T${horaInicio}` : '';
+  const fin = horaFin
+    ? `${horaFin < horaInicio ? diaSiguiente(fechaDelEvento) : fechaDelEvento}T${horaFin}`
+    : '';
+  const terminaAlDiaSiguiente = horaInicio !== '' && horaFin !== '' && horaFin < horaInicio;
 
   const {
     register,
     handleSubmit,
     reset,
     setValue,
+    control,
     formState: { errors },
   } = useForm<CrearPago>({
     resolver: zodResolver(esquemaCrearPago),
-    defaultValues: { fecha: fechaDelEvento, monto: '' },
+    defaultValues: { fecha: hoy, monto: '' },
   });
+  const fechaPago = useWatch({ control, name: 'fecha' });
 
   const enConsulta = evento.estado === 'EnConsulta';
   const cobrado = evento.estado === 'Cobrado';
@@ -236,7 +252,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
       // solo limpia lo que recibe en el objeto.
       onSuccess: () => {
         reset({
-          fecha: fechaDelEvento,
+          fecha: hoyEnZonaEventos(),
           monto: '',
           observacion: '',
           medioPagoId: datos.medioPagoId,
@@ -330,31 +346,37 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
           </p>
         )}
       </div>
+      <p className="text-sm">
+        Día del evento:{' '}
+        <span className="font-medium">{formatearFechaNumerica(fechaDelEvento)}</span>
+        <span className="block text-xs text-muted-foreground">
+          Para cambiar el día, modificá la consulta: así se recalcula el presupuesto.
+        </span>
+      </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="inicio">Hora de inicio</Label>
-          <SelectorFechaHora
+          <SelectorHora
             id="inicio"
-            value={inicio}
+            value={horaInicio}
             onChange={elegirInicio}
-            diaSugerido={fechaDelEvento}
             horaSugerida={evento.horaInicioEstimada ?? undefined}
           />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="fin">Hora de fin</Label>
-          <SelectorFechaHora
+          <SelectorHora
             id="fin"
-            value={fin}
-            onChange={setFin}
-            diaSugerido={inicio.slice(0, 10) || fechaDelEvento}
-            diaMinimo={inicio.slice(0, 10) || undefined}
+            value={horaFin}
+            onChange={setHoraFin}
+            horaSugerida={horaInicio ? sumarHoras(horaInicio, horasJornada) : undefined}
           />
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
         {jornada === 'media' ? 'Media jornada' : 'Jornada completa'}: el fin se calcula{' '}
         {horasJornada} h después del inicio. Podés cambiarlo.
+        {terminaAlDiaSiguiente && ' Termina al día siguiente.'}
       </p>
       {enConsulta && !horarioCompleto && faltaParaLaSena > 0 && (
         <p className="text-xs text-muted-foreground">
@@ -814,7 +836,11 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="fecha">Fecha</Label>
-                      <Input id="fecha" type="date" {...register('fecha')} />
+                      <SelectorFecha
+                        id="fecha"
+                        value={fechaPago ?? ''}
+                        onChange={(dia) => setValue('fecha', dia, { shouldValidate: true })}
+                      />
                       {errors.fecha && (
                         <p className="text-xs text-destructive">{errors.fecha.message}</p>
                       )}
