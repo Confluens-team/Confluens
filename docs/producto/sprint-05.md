@@ -24,6 +24,22 @@ pendientes (recálculo automático y seña de un presupuesto vencido), que deje 
 (auditoría, que la Definición de Terminado deja para este sprint) y que el GG y el ADM terminen de
 administrar al personal.
 
+## Rama del sprint
+
+**Decisión del PO (06/11/2026): el Sprint 5 se integra en la rama `sprint-05`, no en `develop`.**
+`develop` y `main` quedan como están para la exposición, y el sprint entra recién después.
+
+- `sprint-05` salió de `develop` con todo el Sprint 4 y HU-53.
+- Cada historia sale de `sprint-05` y vuelve a `sprint-05` por pull request, con la plantilla, CI en
+  verde y la revisión de otro integrante: lo mismo que pide `AGENTS.md` §3, cambiando `develop` por
+  `sprint-05`. El CI corre en cualquier pull request, también los que van a `sprint-05`.
+- Después de la exposición, `sprint-05` entra a `develop` por un pull request (merge commit, como
+  siempre) y se borra.
+- Si a `develop` le llega un arreglo urgente antes de eso, se mergea `develop` en `sprint-05` para
+  no divergir.
+- **Ojo:** el ruleset de GitHub protege solo `develop` y `main`. Hasta que se sume `sprint-05` al
+  ruleset, la rama acepta push directo: no hacerlo.
+
 ## Alcance propuesto
 
 | Backlog | Título | Actor | SP | Situación hoy |
