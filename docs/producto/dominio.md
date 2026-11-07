@@ -56,8 +56,7 @@ Estimado ──confirmar()──> Confirmado
 ```
 
 `Expirado ──confirmar()──> Confirmado` es nueva (reunión 05/11/2026, ver RN-06): la seña se cobra
-aunque el presupuesto esté vencido. **Reunión 05/11/2026 → HU-55.** Hasta entonces la API la
-rechaza (`pagos.servicio.ts`) y hay que modificar el presupuesto antes de cobrar la seña.
+aunque el presupuesto esté vencido, sin recalcularlo. Construido con HU-55 (Sprint 5).
 
 | Estado | Significado |
 |---|---|
@@ -83,9 +82,11 @@ Si el recálculo cambia el total de un evento con pagos, valen las reglas de sie
 no cubre el total nuevo, un `Cobrado` vuelve a `Reservado` (como al modificar, HU-12 del Sprint 2);
 si lo deja por debajo de lo pagado, vale «Saldo».
 
-**Reunión 05/11/2026 → HU-54.** Hasta entonces, el detalle tiene el botón Recalcular: actualiza el
-presupuesto con los precios vigentes y reinicia la vigencia, también en uno `Confirmado` (HU-27 del
-Sprint 4).
+Construido con HU-54 (Sprint 5). En el detalle, cambiar la fecha recalcula en pantalla el salón y
+los servicios del catálogo, y volver a la fecha original devuelve los precios congelados. Al
+cambiar el porcentaje, el recálculo masivo corre en la misma transacción que lo guarda. **Un precio
+ajustado a mano (RN-03) en una línea del catálogo se pisa** con el recálculo: el modelo no
+distingue un precio ajustado de uno tomado del catálogo.
 
 Modificar un presupuesto `Expirado` también edita el mismo presupuesto, pero las líneas que no se
 tocan conservan su precio; el evento sigue `EnConsulta` (decisiones del PO, 05/10/2026). **Cada
@@ -408,14 +409,20 @@ acceden a todo el sistema.
 - El GG puede modificar, cambiarle el rol o dar de baja a **otro GG**, siempre que quede al menos
   uno. A un **ADM** no lo puede tocar: ni modificarlo, ni cambiarle el rol, ni darlo de baja.
 - **El GG y el ADM no se pueden quitar el rol entre sí**: el sistema nunca queda sin alguien que
-  administre al personal.
+  administre al personal. Lo garantiza la regla de cantidad: el ADM le puede cambiar el rol a un GG
+  o darlo de baja, siempre que quede al menos un GG activo (PO, 07/11/2026).
+- **Nadie se toca a sí mismo desde Personal** (PO, 07/11/2026): no se da de baja ni se cambia el
+  propio rol; lo hace otro GG o ADM. El propio correo sí se puede corregir.
+- **Contraseñas** (PO, 06/11/2026): **solo el ADM cambia la contraseña de otro usuario**, la de
+  cualquiera del personal. Cada usuario cambia la suya desde **Mi cuenta**, con la actual. Al
+  cambiarla se cierran las demás sesiones de ese usuario.
 - **Baja lógica:** el usuario queda **inactivo**. No puede entrar y se cierran sus sesiones, pero se
   sigue viendo en la auditoría y en lo que registró. Se puede reactivar si después se recupera la
   cuenta.
 
-**Reunión 05/11/2026 → HU-56** (permisos por rol) y HU-28 a HU-31 del backlog (Personal; HU-30 y
-HU-31 del Sprint 4). La baja lógica cambia el modelo (`Usuario` no tiene `activo`). **Hasta
-entonces vale lo provisorio** (decisión del PO, 06/10/2026): todo el personal (RE, RF, GG y ADM)
+Personal está construido (HU-30 y HU-31 del Sprint 4; HU-30 y HU-31 del backlog en el Sprint 5,
+con `Usuario.activo`). **Reunión 05/11/2026 → HU-56** (permisos por rol): **hasta entonces vale lo
+provisorio** (decisión del PO, 06/10/2026): todo el personal (RE, RF, GG y ADM)
 entra al mismo panel interno (`/admin`) y puede ver y hacer todo lo que ahí existe, incluido el
 contenido de la landing. El Cliente sigue sin acceso al panel.
 
@@ -430,7 +437,7 @@ contenido de la landing. El Cliente sigue sin acceso al panel.
 | RN-03 | El precio informado es de referencia; el Responsable de Eventos puede ajustarlo comercialmente en casos particulares, y el ajuste queda auditado. |
 | RN-04 | Los servicios no necesariamente cubren a todos los asistentes: pueden contratarse para menos. |
 | RN-05 | **Todos los importes se guardan sin IVA.** El presupuesto (en pantalla y en PDF) muestra tres renglones: **subtotal sin IVA**, **IVA 21%** calculado sobre ese subtotal, y **total** = subtotal + IVA. La tasa del 21% va en una constante, no desparramada por el código. |
-| RN-06 | La seña es lo que congela el presupuesto (`Confirmado`) y pasa el evento a `Reservado`. **Se puede cobrar aunque el presupuesto esté vencido** (`Expirado`), sin recalcularlo: la vigencia de 10 días es para el cliente (RN-08) y el personal lo resuelve desde el panel (reunión 05/11/2026). Si vencen los 10 días sin seña, **no se cancela nada automáticamente**. Lo abonado no es reembolsable, tampoco lo pagado por encima de la seña ni por encima del total (ver «Saldo»). **Reunión 05/11/2026 → HU-55.** Hasta entonces la API rechaza la seña de un `Expirado` y hay que modificarlo antes. |
+| RN-06 | La seña es lo que congela el presupuesto (`Confirmado`) y pasa el evento a `Reservado`. **Se puede cobrar aunque el presupuesto esté vencido** (`Expirado`), sin recalcularlo: la vigencia de 10 días es para el cliente (RN-08) y el personal lo resuelve desde el panel (reunión 05/11/2026). Si vencen los 10 días sin seña, **no se cancela nada automáticamente**. Lo abonado no es reembolsable, tampoco lo pagado por encima de la seña ni por encima del total (ver «Saldo»). Construido con HU-55 (Sprint 5). |
 | RN-07 | La cancelación por parte del cliente requiere un mínimo de **48 horas corridas** de anticipación. **Fines de semana y feriados cuentan** (hay eventos todos los días), así que no hace falta calendario de feriados. El plazo aplica a un evento **confirmado** (`Reservado`); una consulta sin seña (`EnConsulta`) se cancela en cualquier momento (decisión del PO, 16/10/2026). |
 | RN-08 | El presupuesto tiene una **vigencia de 10 días** desde su emisión; **cada modificación la reinicia** (decisión del PO, 05/10/2026), también el recálculo por cambio de fecha; el recálculo por cambio de porcentaje **no** la reinicia (ver «Recálculo automático»). **Es una regla para el cliente** (reunión 05/11/2026): ve la leyenda «Este presupuesto tiene una validez de 10 días» en el PDF, en el cotizador, en la landing y en la cláusula o) de las condiciones. En el panel interno **no bloquea nada**: de la vigencia de los precios se encarga el incremento (RN-10) y la seña los congela. Vencida, un control automático lo pasa a `Expirado` y el sistema **muestra un aviso** al Responsable de Eventos («presupuesto vencido»); si le cambia la fecha, se recalcula y el aviso desaparece. El presupuesto **no se borra ni se cancela solo**: solo se da de baja a mano, si el Responsable de Eventos lo decide. |
 | RN-09 | **Modificaciones y plazo de 7 días.** El cliente puede modificar su consulta o evento hasta **7 días antes** de la fecha del evento; después, cualquier modificación del lado del cliente se **bloquea** (no solo se avisa). El Responsable de Eventos puede modificar **en todo momento**, sin límite de plazo. Esto reemplaza la condición del PDF sobre confirmar asistentes 7 días antes y sumar hasta 5 personas a 48 hs. |

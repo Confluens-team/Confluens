@@ -331,6 +331,21 @@ export async function obtenerPorcentajeMensual(tx: Prisma.TransactionClient = pr
   return configuracion?.porcentajeMensual.toString() ?? '0';
 }
 
+// HU-54: los presupuestos que se recalculan al cambiar el porcentaje de incremento: Estimado, de un
+// evento EnConsulta y ya armados (con vencimiento; una consulta social sin armar no tiene líneas).
+// Quedan afuera los Expirado (esperan un cambio de fecha), los Confirmado (congelados por la seña)
+// y los Estimado sobrantes de un evento ya confirmado con otro presupuesto.
+export async function listarEstimadosParaRecalcular(tx: Prisma.TransactionClient = prisma) {
+  return tx.presupuesto.findMany({
+    where: { estado: 'Estimado', venceEn: { not: null }, evento: { estado: 'EnConsulta' } },
+    select: {
+      id: true,
+      evento: { select: { fecha: true } },
+      lineas: { include: { servicio: true, salon: true }, orderBy: { id: 'asc' } },
+    },
+  });
+}
+
 // HU-24: el evento que se reutiliza, con sus salones (y la distribución de cada uno) y sus
 // presupuestos con las líneas. De cada servicio se trae lo necesario para saber si sigue en el
 // catálogo y con qué precio.
@@ -395,6 +410,7 @@ export type PresupuestosRepositorio = {
   sumarPagos: typeof sumarPagos;
   buscarDistribucionPorNombre: typeof buscarDistribucionPorNombre;
   obtenerPorcentajeMensual: typeof obtenerPorcentajeMensual;
+  listarEstimadosParaRecalcular: typeof listarEstimadosParaRecalcular;
   buscarEventoParaReutilizar: typeof buscarEventoParaReutilizar;
   buscarSalonesReservadosEseDia: typeof buscarSalonesReservadosEseDia;
 };

@@ -26,7 +26,6 @@ import {
   ClipboardList,
   Plus,
   Printer,
-  RefreshCw,
   Trash2,
   X,
 } from 'lucide-react';
@@ -116,8 +115,9 @@ const TIPOS_SOCIALES = Object.entries(ETIQUETAS_TIPO_EVENTO_SOCIAL) as [TipoEven
 // HU-12: una consulta abierta desde el listado. Después de hablar con el cliente, el personal
 // corrige fecha, salón, personas, jornada, servicios (del catálogo o escritos a mano), cantidades y
 // precios. Al guardar queda Estimado, la vigencia vuelve a contar 10 días y se vuelve al listado.
-// En una Expirado, «Recalcular» trae los precios vigentes al formulario: al guardar, la misma
-// consulta vuelve a Estimado. Los datos del cliente son suyos: acá solo se muestran.
+// HU-54: no hay botón Recalcular. Cambiar la fecha recalcula los precios del salón y del catálogo con
+// los de la fecha nueva (en cualquier estado); al guardar, una Expirado vuelve a Estimado. Los datos
+// del cliente son suyos: acá solo se muestran.
 // ADR 0008: también se corrigen el tipo de evento y la hora estimada. Una consulta social llega sin
 // salón ni servicios: el personal arma el presupuesto acá y la vigencia arranca al guardarlo.
 export function EditarConsulta({
@@ -258,24 +258,22 @@ function Formulario({
   const [horaEstimada, setHoraEstimada] = useState(consulta.evento.horaInicioEstimada ?? '');
   const [jornada, setJornada] = useState<TipoJornada>(consulta.tipoJornada);
   const [personas, setPersonas] = useState(String(consulta.evento.cantidadPersonas));
-  const [lineas, setLineas] = useState<LineaEditable[]>(
-    consulta.lineas
-      .filter((linea) => linea.tipo !== 'salon')
-      .map((linea) => ({
-        clave: `linea-${linea.id}`,
-        servicioId: linea.servicioId,
-        descripcion: linea.descripcion,
-        cantidad: String(linea.cantidad),
-        hora: linea.horaEstimada ?? '',
-        precio: linea.aCotizar ? '' : (linea.precioBase ?? linea.precioUnitario),
-        tercerizado: linea.tercerizado,
-        modalidad: linea.modalidad,
-        admiteModalidad: linea.admiteModalidad,
-      })),
-  );
+  const lineasIniciales: LineaEditable[] = consulta.lineas
+    .filter((linea) => linea.tipo !== 'salon')
+    .map((linea) => ({
+      clave: `linea-${linea.id}`,
+      servicioId: linea.servicioId,
+      descripcion: linea.descripcion,
+      cantidad: String(linea.cantidad),
+      hora: linea.horaEstimada ?? '',
+      precio: linea.aCotizar ? '' : (linea.precioBase ?? linea.precioUnitario),
+      tercerizado: linea.tercerizado,
+      modalidad: linea.modalidad,
+      admiteModalidad: linea.admiteModalidad,
+    }));
+  const [lineas, setLineas] = useState<LineaEditable[]>(lineasIniciales);
   const [agregar, setAgregar] = useState('');
   const [otro, setOtro] = useState({ descripcion: '', cantidad: '1', precio: '' });
-  const [recalculado, setRecalculado] = useState(false);
 
   const enCurso =
     (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
@@ -302,8 +300,9 @@ function Formulario({
 
   // RN-13: el precio vigente del catálogo, proyectado a la fecha del evento con el incremento
   // mensual. Es la misma cuenta que hace la API. Los tercerizados no se proyectan.
-  const proyectar = (precio: string) =>
-    proyectarPrecio(precio, porcentajeMensual, mesesHastaEvento(hoyEnZonaEventos(), fecha));
+  const proyectarA = (precio: string, aFecha: string) =>
+    proyectarPrecio(precio, porcentajeMensual, mesesHastaEvento(hoyEnZonaEventos(), aFecha));
+  const proyectar = (precio: string) => proyectarA(precio, fecha);
   const precioVigente = (servicio: Servicio) =>
     servicio.precio === null || servicio.tercerizado ? servicio.precio : proyectar(servicio.precio);
 
@@ -311,7 +310,9 @@ function Formulario({
   // original; si no, toma el vigente. Después se puede ajustar a mano (RN-03).
   function precioInicial(salonId: number, conJornada: TipoJornada): string {
     const congelado = preciosOriginales.get(salonId);
-    if (congelado && conJornada === consulta.tipoJornada && !recalculado) return congelado;
+    if (congelado && conJornada === consulta.tipoJornada && fecha === consulta.evento.fecha) {
+      return congelado;
+    }
     const salon = salonDe(salonId);
     return salon ? proyectar(precioDeSalon(salon, conJornada)) : '0.00';
   }
@@ -338,24 +339,41 @@ function Formulario({
     );
   }
 
-  // RN-06 / HU-12: un Expirado se recalcula con los precios vigentes del salón y de cada servicio
-  // del catálogo. Los adicionales escritos a mano conservan su precio. Se guarda con «Guardar».
-  function recalcularPrecios() {
+  // Precio de cada línea del catálogo tal como se guardó, para volver a él si la fecha vuelve a la
+  // original.
+  const preciosOriginalesLineas = new Map(
+    lineasIniciales.map((linea) => [linea.clave, linea.precio] as const),
+  );
+
+  // HU-54 (dominio.md, «Recálculo automático»): con otra fecha, el salón y los servicios del catálogo
+  // toman el precio de esa fecha, proyectado (RN-13), en cualquier estado del presupuesto. Si la
+  // fecha vuelve a la original, vuelven los precios congelados. Los tercerizados, lo que está a
+  // cotizar y lo escrito a mano no cambian. Después se pueden ajustar a mano (RN-03).
+  function cambiarFecha(nueva: string) {
+    setFecha(nueva);
+    if (!nueva) return;
+    const original = nueva === consulta.evento.fecha;
     setSalonesSel((anteriores) =>
       anteriores.map((s) => {
+        const congelado = preciosOriginales.get(s.salonId);
+        if (original && congelado && jornada === consulta.tipoJornada) {
+          return { ...s, precio: congelado };
+        }
         const salon = salonDe(s.salonId);
-        return salon ? { ...s, precio: proyectar(precioDeSalon(salon, jornada)) } : s;
+        return salon ? { ...s, precio: proyectarA(precioDeSalon(salon, jornada), nueva) } : s;
       }),
     );
     setLineas((anteriores) =>
       anteriores.map((linea) => {
         const servicio = catalogo.find((s) => s.id === linea.servicioId);
-        const vigente = servicio ? precioVigente(servicio) : null;
-        // Un tercerizado que sigue a cotizar en el catálogo conserva lo que tenía.
-        return vigente != null ? { ...linea, precio: vigente } : linea;
+        if (!servicio || servicio.tercerizado || servicio.precio === null || linea.precio === '') {
+          return linea;
+        }
+        const congelado = preciosOriginalesLineas.get(linea.clave);
+        if (original && congelado !== undefined) return { ...linea, precio: congelado };
+        return { ...linea, precio: proyectarA(servicio.precio, nueva) };
       }),
     );
-    setRecalculado(true);
   }
 
   function actualizarLinea(clave: string, cambios: Partial<LineaEditable>) {
@@ -579,15 +597,10 @@ function Formulario({
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-estado-expirado-fondo px-4 py-3 text-sm text-estado-expirado-texto ring-1 ring-estado-expirado/30">
           <p className="flex items-center gap-2 font-medium">
             <AlertTriangle className="size-4 shrink-0" />
-            {recalculado
-              ? 'Precios actualizados a los vigentes. Guardá los cambios para que vuelva a Estimado.'
-              : 'Presupuesto vencido, recalcular'}
+            {fecha !== consulta.evento.fecha
+              ? 'Presupuesto vencido: con la fecha nueva, los precios se recalcularon. Guardá para que vuelva a Estimado.'
+              : 'Presupuesto vencido. Si le cambiás la fecha, se recalcula con los precios de la fecha nueva.'}
           </p>
-          {!recalculado && (
-            <Button type="button" size="sm" variant="outline" onClick={recalcularPrecios}>
-              <RefreshCw /> Recalcular con precios vigentes
-            </Button>
-          )}
         </div>
       )}
       {confirmado && (
@@ -665,7 +678,7 @@ function Formulario({
                 id="consulta-fecha"
                 type="date"
                 value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
+                onChange={(e) => cambiarFecha(e.target.value)}
               />
             </div>
             <div className="space-y-1.5">
@@ -1183,17 +1196,16 @@ function Formulario({
               <CalendarCheck className="size-4 text-dorado" /> Cobrar la seña
             </h3>
             <p className="text-xs text-muted-foreground">
-              {expirado
-                ? 'La consulta está vencida: recalculala y guardá los cambios antes de cobrar la seña.'
-                : consulta.salones.length === 0
-                  ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
-                  : 'Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda (HU-13). Guardá antes los cambios de la consulta.'}
+              {/* HU-55: una consulta vencida se cobra igual, sin recalcular (RN-06). */}
+              {consulta.salones.length === 0
+                ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
+                : `${expirado ? 'La consulta está vencida, pero la seña se cobra igual, sin recalcular. ' : ''}Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda (HU-13). Guardá antes los cambios de la consulta.`}
             </p>
           </div>
           <Button
             type="button"
             variant="outline"
-            disabled={expirado || consulta.salones.length === 0}
+            disabled={consulta.salones.length === 0}
             onClick={() => onAbrirEvento(consulta.evento.id)}
           >
             <CalendarCheck /> Registrar pagos

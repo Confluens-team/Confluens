@@ -1,4 +1,5 @@
 import type {
+  CambiarMiContrasena,
   Credenciales,
   PerfilCliente,
   RegistroCliente,
@@ -49,7 +50,9 @@ export async function iniciarSesion(
   const hashAComparar = usuario?.hashContrasena ?? HASH_DUMMY;
   const contrasenaValida = await compararContrasena(credenciales.contrasena, hashAComparar);
 
-  if (!usuario || !contrasenaValida) {
+  // HU-31 del backlog: un usuario dado de baja no inicia sesión. Mismo error genérico que una
+  // contraseña incorrecta, para no revelar qué cuentas existen.
+  if (!usuario || !contrasenaValida || !usuario.activo) {
     throw ErrorApi.noAutenticado();
   }
 
@@ -154,7 +157,8 @@ export async function solicitarRestablecimiento(
   enviar: (correo: Correo) => Promise<void> = enviarCorreo,
 ): Promise<void> {
   const usuario = await repositorio.buscarUsuarioPorEmail(email);
-  if (!usuario) return;
+  // Un usuario dado de baja (HU-31 del backlog) tampoco recibe el enlace.
+  if (!usuario || !usuario.activo) return;
 
   const token = firmarTokenRestablecimiento(usuario.id, usuario.hashContrasena);
   const enlace = `${URL_FRONTEND}/restablecer-contrasena?token=${encodeURIComponent(token)}`;
@@ -173,7 +177,11 @@ export async function restablecerContrasena(
 ): Promise<{ sesion: Sesion; token: string }> {
   const id = usuarioDelTokenRestablecimiento(token);
   const usuario = id ? await repositorio.buscarUsuarioPorId(id) : null;
-  if (!usuario || !verificarTokenRestablecimiento(token, usuario.hashContrasena)) {
+  if (
+    !usuario ||
+    !usuario.activo ||
+    !verificarTokenRestablecimiento(token, usuario.hashContrasena)
+  ) {
     throw ErrorApi.reglaNegocio(MENSAJE_ENLACE_INVALIDO);
   }
 
@@ -182,6 +190,34 @@ export async function restablecerContrasena(
   const version = await repositorio.actualizarContrasena(
     usuario.id,
     await hashearContrasena(contrasena),
+  );
+  const sesion: Sesion = { id: usuario.id, email: usuario.email, rol: usuario.rol };
+  return { sesion, token: firmarToken(sesion, version) };
+}
+
+const MENSAJE_CONTRASENA_ACTUAL = 'La contraseña actual no es correcta';
+
+/**
+ * HU-30 del backlog: cada usuario cambia su contraseña desde Mi cuenta, con la actual (PO,
+ * 06/11/2026). Como restablecerla, sube la versión de sesión: las demás sesiones abiertas se cierran
+ * y queda viva solo la que se emite acá. Una contraseña actual incorrecta responde 422 y no 401,
+ * para no sacar de la sesión a quien solo se equivocó al tipearla.
+ */
+export async function cambiarMiContrasena(
+  usuarioId: number,
+  { actual, nueva }: CambiarMiContrasena,
+  repositorio: RestablecimientoRepositorio = authRepositorioReal,
+): Promise<{ sesion: Sesion; token: string }> {
+  const usuario = await repositorio.buscarUsuarioPorId(usuarioId);
+  if (!usuario) throw ErrorApi.noAutenticado();
+  if (!(await compararContrasena(actual, usuario.hashContrasena))) {
+    throw ErrorApi.reglaNegocio(MENSAJE_CONTRASENA_ACTUAL, [
+      { campo: 'actual', mensaje: MENSAJE_CONTRASENA_ACTUAL },
+    ]);
+  }
+  const version = await repositorio.actualizarContrasena(
+    usuario.id,
+    await hashearContrasena(nueva),
   );
   const sesion: Sesion = { id: usuario.id, email: usuario.email, rol: usuario.rol };
   return { sesion, token: firmarToken(sesion, version) };

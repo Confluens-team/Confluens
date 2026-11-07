@@ -457,19 +457,36 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
     expect(crearMock).not.toHaveBeenCalled();
   });
 
-  // HU-13 C3 / RN-06. La mitad que produce el estado Expirado es de HU-10: este test es el que
-  // deja comprobada la mitad que rechaza el pago, sin depender de que esa historia esté hecha.
-  it('responde 409 si el presupuesto vigente está Expirado, pidiendo recalcularlo', async () => {
+  // HU-55 (RN-06): se cobra aunque el presupuesto esté vencido, sin recalcularlo.
+  it('acepta un pago con el presupuesto Expirado, sin recalcularlo', async () => {
     buscarDetalladoMock.mockResolvedValue(
       eventoFixture({ presupuestos: [presupuestoFixture({ estado: 'Expirado' })] }),
     );
 
     const respuesta = await registrarPago('1000');
 
-    expect(respuesta.status).toBe(409);
-    expect(respuesta.body.error.code).toBe('CONFLICT');
-    expect(respuesta.body.error.message).toContain('vencido');
-    expect(crearMock).not.toHaveBeenCalled();
+    expect(respuesta.status).toBe(201);
+    expect(crearMock).toHaveBeenCalled();
+    expect(respuesta.body.data.estadoEvento).toBe('EnConsulta');
+    expect(confirmarPresupuestoYReservarMock).not.toHaveBeenCalled();
+  });
+
+  // HU-55: la seña de un Expirado lo confirma (Expirado → Confirmado) y reserva el salón, sobre la
+  // base del presupuesto vencido, sin precios nuevos.
+  it('la seña de un presupuesto Expirado lo confirma y reserva el salón', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ presupuestos: [presupuestoFixture({ estado: 'Expirado' })] }),
+    );
+
+    const respuesta = await registrarPago(SENA_SIN_FACTURA);
+
+    expect(respuesta.status).toBe(201);
+    expect(confirmarPresupuestoYReservarMock).toHaveBeenCalledWith(
+      { eventoId: 20, presupuestoId: 30 },
+      undefined,
+    );
+    expect(respuesta.body.data.estadoEvento).toBe('Reservado');
+    expect(respuesta.body.data.reservoElSalon).toBe(true);
   });
 
   it('ignora los presupuestos Cancelados al elegir el vigente', async () => {

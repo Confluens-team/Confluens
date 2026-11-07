@@ -27,6 +27,7 @@ const creado = (email: string, rol: Rol) => ({
   id: 7,
   email,
   rol,
+  activo: true,
   creadoEn: FECHA,
   actualizadoEn: FECHA,
 });
@@ -56,6 +57,7 @@ describe('POST /api/usuarios (HU-30 del Sprint 4)', () => {
         id: 7,
         email: 'fran@confluens.test',
         rol: 'RESPONSABLE_EVENTOS',
+        activo: true,
         creadoEn: FECHA.toISOString(),
         actualizadoEn: FECHA.toISOString(),
       },
@@ -236,6 +238,7 @@ describe('GET /api/usuarios (HU-31 del Sprint 4)', () => {
         id: 7,
         email: 're@confluens.test',
         rol: 'RESPONSABLE_EVENTOS',
+        activo: true,
         creadoEn: FECHA.toISOString(),
         actualizadoEn: FECHA.toISOString(),
       });

@@ -58,7 +58,7 @@ registroOpenApi.registerPath({
     404: { description: 'No existe el evento, o el medio de pago no existe o está inactivo' },
     409: {
       description:
-        'El evento está Cancelado o Cobrado, no tiene un presupuesto vigente, su presupuesto está Expirado (RN-06), o el salón ya está ocupado en esa franja por otro evento (RN-12)',
+        'El evento está Cancelado o Cobrado, no tiene un presupuesto vigente, o el salón ya está ocupado en esa franja por otro evento (RN-12). Un presupuesto Expirado se cobra igual (HU-55)',
     },
     422: {
       description:

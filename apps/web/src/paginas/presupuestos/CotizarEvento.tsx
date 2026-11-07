@@ -51,6 +51,8 @@ import { cn } from '@/lib/utils';
 
 interface ContactoCliente {
   nombre: string;
+  // El apellido del perfil, aparte: nombra el PDF del presupuesto (nombre-pdf.ts).
+  apellido?: string | null;
   telefono: string;
   correo: string;
 }
