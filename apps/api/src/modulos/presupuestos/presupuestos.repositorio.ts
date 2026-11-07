@@ -5,7 +5,12 @@ import type {
   TipoJornada,
 } from '@confluens/shared';
 
-import { enTransaccion, registrarAuditoria } from '../../lib/auditoria.js';
+import {
+  calcularDiferencia,
+  enTransaccion,
+  registrarAuditoria,
+  registrarAuditorias,
+} from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 
@@ -463,10 +468,62 @@ export async function listarEstimadosParaRecalcular(tx: Prisma.TransactionClient
     where: { estado: 'Estimado', venceEn: { not: null }, evento: { estado: 'EnConsulta' } },
     select: {
       id: true,
+      // El total y las líneas de antes sirven también para auditar sin volver a leerlos.
+      total: true,
       evento: { select: { fecha: true } },
       lineas: { include: { servicio: true, salon: true }, orderBy: { id: 'asc' } },
     },
   });
+}
+
+// Un presupuesto recalculado (HU-54), con lo que tenía antes, ya leído por listarEstimadosParaRecalcular.
+export interface PresupuestoRecalculado {
+  id: number;
+  totalAnterior: Prisma.Decimal;
+  lineasAnteriores: Parameters<typeof resumenDeLineas>[0];
+  lineas: LineaNueva[];
+  total: string;
+}
+
+/**
+ * HU-54 con HU-25 del backlog: guarda el recálculo masivo y lo audita a nombre del Sistema, con el
+ * menor número de consultas posible porque corre dentro de una sola transacción. El estado anterior
+ * ya viene leído, los presupuestos que no cambian no se escriben y la auditoría de todos va en un
+ * solo insert al final. Devuelve cuántos cambiaron.
+ */
+export async function guardarRecalculo(
+  recalculados: PresupuestoRecalculado[],
+  tx: Prisma.TransactionClient,
+): Promise<number> {
+  const cambios = recalculados.flatMap((recalculado) => {
+    const anterior = {
+      total: recalculado.totalAnterior,
+      lineas: resumenDeLineas(recalculado.lineasAnteriores),
+    };
+    const nuevo = { total: recalculado.total, lineas: resumenDeLineas(recalculado.lineas) };
+    return calcularDiferencia(anterior, nuevo) ? [{ recalculado, anterior, nuevo }] : [];
+  });
+  for (const { recalculado } of cambios) {
+    await tx.lineaPresupuesto.deleteMany({ where: { presupuestoId: recalculado.id } });
+    await tx.lineaPresupuesto.createMany({
+      data: recalculado.lineas.map((linea) => ({ ...linea, presupuestoId: recalculado.id })),
+    });
+    await tx.presupuesto.update({
+      where: { id: recalculado.id },
+      data: { total: recalculado.total },
+    });
+  }
+  await registrarAuditorias(
+    tx,
+    cambios.map(({ recalculado, anterior, nuevo }) => ({
+      usuarioId: null,
+      entidad: 'Presupuesto' as const,
+      entidadId: recalculado.id,
+      anterior,
+      nuevo,
+    })),
+  );
+  return cambios.length;
 }
 
 // HU-24: el evento que se reutiliza, con sus salones (y la distribución de cada uno) y sus
@@ -534,6 +591,7 @@ export type PresupuestosRepositorio = {
   buscarDistribucionPorNombre: typeof buscarDistribucionPorNombre;
   obtenerPorcentajeMensual: typeof obtenerPorcentajeMensual;
   listarEstimadosParaRecalcular: typeof listarEstimadosParaRecalcular;
+  guardarRecalculo: typeof guardarRecalculo;
   buscarEventoParaReutilizar: typeof buscarEventoParaReutilizar;
   buscarSalonesReservadosEseDia: typeof buscarSalonesReservadosEseDia;
 };

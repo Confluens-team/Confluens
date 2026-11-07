@@ -30,7 +30,9 @@ export async function guardar(porcentajeMensual: string, tx: Prisma.TransactionC
 export async function enTransaccion<T>(
   ejecutar: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
-  return prisma.$transaction((tx) => ejecutar(tx));
+  // 30 s en vez de los 5 de Prisma: el cambio de porcentaje recalcula en la misma transacción todos
+  // los presupuestos Estimado de eventos EnConsulta (HU-54), y contra Neon cada consulta cuesta.
+  return prisma.$transaction((tx) => ejecutar(tx), { timeout: 30_000 });
 }
 
 export type ConfiguracionPreciosRepositorio = {

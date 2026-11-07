@@ -126,24 +126,27 @@ describe('recalcularEstimadosEnConsulta (HU-54)', () => {
         {
           id: 31,
           evento: { fecha: new Date(`${hoyEnZonaEventos()}T00:00:00.000Z`) },
+          total: D('100800'),
           lineas: [lineasGuardadas[0], lineasGuardadas[1]],
         },
       ]),
-      reemplazarLineas: vi.fn(),
-      actualizarPresupuesto: vi.fn(),
+      guardarRecalculo: vi.fn(),
     } as unknown as PresupuestosRepositorio;
 
     const recalculados = await recalcularEstimadosEnConsulta('10', tx, repo);
 
     expect(recalculados).toBe(1);
     expect(repo.listarEstimadosParaRecalcular).toHaveBeenCalledWith(tx);
-    const [id, lineas, txLineas, usuarioLineas] = vi.mocked(repo.reemplazarLineas).mock.calls[0]!;
-    expect(id).toBe(31);
-    expect(txLineas).toBe(tx);
-    // HU-25 del backlog: el recálculo se audita a nombre del Sistema.
-    expect(usuarioLineas).toBeNull();
-    expect(lineas.map((l) => l.subtotal)).toEqual(['100000.00', '12000.00']);
-    // Solo el total: la vigencia no se reinicia y el estado no cambia.
-    expect(repo.actualizarPresupuesto).toHaveBeenCalledWith(31, { total: '112000.00' }, tx, null);
+    // Todo el recálculo se guarda junto, con lo de antes ya leído (HU-25 del backlog: sin volver a
+    // leer cada presupuesto para auditarlo).
+    const [guardados, txGuardado] = vi.mocked(repo.guardarRecalculo).mock.calls[0]!;
+    expect(txGuardado).toBe(tx);
+    expect(guardados).toHaveLength(1);
+    const [guardado] = guardados;
+    expect(guardado).toMatchObject({ id: 31, total: '112000.00' });
+    expect(guardado!.totalAnterior.toFixed(2)).toBe('100800.00');
+    expect(guardado!.lineasAnteriores).toEqual([lineasGuardadas[0], lineasGuardadas[1]]);
+    // Solo líneas y total: la vigencia no se reinicia y el estado no cambia.
+    expect(guardado!.lineas.map((l) => l.subtotal)).toEqual(['100000.00', '12000.00']);
   });
 });
