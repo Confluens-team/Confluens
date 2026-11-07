@@ -235,8 +235,56 @@ describe('PATCH /api/salones/:id/landing', () => {
     expect(actualizarLandingMock).not.toHaveBeenCalled();
   });
 
-  // Provisorio (06/10/2026): todo el personal puede editar la landing hasta que se dividan las
-  // funciones por rol; el Cliente sigue sin acceso.
+  // HU-56: el GG y el ADM cambian la foto; qué salones se publican lo decide solo el ADM.
+  describe('permisos por rol (HU-56)', () => {
+    const cookieDe = (rol: 'GERENTE_GENERAL' | 'RESPONSABLE_EVENTOS' | 'RESPONSABLE_FINANZAS') =>
+      `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 3, email: 'persona@confluens.test', rol })}`;
+
+    beforeEach(() => {
+      obtenerSalonPorIdMock.mockResolvedValue(auditorio as never);
+      actualizarLandingMock.mockResolvedValue(auditorio as never);
+    });
+
+    it('el GG puede cambiar la foto', async () => {
+      const respuesta = await request(app)
+        .patch('/api/salones/1/landing')
+        .set('Cookie', [cookieDe('GERENTE_GENERAL')])
+        .send({ fotoUrl: 'https://ejemplo.test/auditorio.jpg' });
+
+      expect(respuesta.status).toBe(200);
+      expect(actualizarLandingMock).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      ['solo la publicación', { visibleEnLanding: false }],
+      ['la publicación junto con la foto', { visibleEnLanding: true, fotoUrl: null }],
+    ])('el GG no puede cambiar %s: responde 403 y no escribe', async (_nombre, cuerpo) => {
+      const respuesta = await request(app)
+        .patch('/api/salones/1/landing')
+        .set('Cookie', [cookieDe('GERENTE_GENERAL')])
+        .send(cuerpo);
+
+      expect(respuesta.status).toBe(403);
+      expect(respuesta.body.error.code).toBe('FORBIDDEN');
+      expect(respuesta.body.error.message).toContain('Administrador del Sistema');
+      expect(actualizarLandingMock).not.toHaveBeenCalled();
+    });
+
+    it.each(['RESPONSABLE_EVENTOS', 'RESPONSABLE_FINANZAS'] as const)(
+      'el %s no toca la landing: responde 403',
+      async (rol) => {
+        const respuesta = await request(app)
+          .patch('/api/salones/1/landing')
+          .set('Cookie', [cookieDe(rol)])
+          .send({ fotoUrl: 'https://ejemplo.test/auditorio.jpg' });
+
+        expect(respuesta.status).toBe(403);
+        expect(respuesta.body.error.code).toBe('FORBIDDEN');
+        expect(actualizarLandingMock).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   it('con sesión de Cliente responde 403 FORBIDDEN (criterio 5)', async () => {
     const cookieDeCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
       id: 1,
