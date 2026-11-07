@@ -110,9 +110,10 @@ Criterios propuestos:
 - Se puede **filtrar por el campo auditado** (por ejemplo, «precio» o «estado») para encontrar
   rápido lo que se busca revisar, además de por parte del sistema, usuario y fechas.
 
-**Implementación.** Hoy `actualizarLanding` en `salones.repositorio.ts` es la única escritura de
-auditoría, y su comentario anticipa que esta historia define el mecanismo general. Conviene un
-helper común en `apps/api/src/lib/` que reciba el `tx` de cada módulo.
+**Implementación.** Un helper común en `apps/api/src/lib/auditoria.ts` que recibe el `tx` de cada
+repositorio y toma el usuario de la sesión que abrió `autenticar`. Se agrega `AuditLog.campos` y un
+trigger que impide modificar o borrar el registro (PO, 07/11/2026). El canal público queda afuera.
+Detalle en ADR 0013.
 
 ## HU-54 del backlog — Recalcular el presupuesto automáticamente
 
