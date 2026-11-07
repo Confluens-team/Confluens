@@ -60,6 +60,8 @@ describe('POST /api/auth/login', () => {
       email: 'ge@confluens.test',
       hashContrasena: hash,
       versionSesion: 0,
+
+      activo: true,
       rol: 'GERENTE_GENERAL',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -86,6 +88,8 @@ describe('POST /api/auth/login', () => {
       email: 'ana@empresa.com',
       hashContrasena: await hashearContrasena('secreta123'),
       versionSesion: 0,
+
+      activo: true,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -107,6 +111,8 @@ describe('POST /api/auth/login', () => {
       email: 'ge@confluens.test',
       hashContrasena: hash,
       versionSesion: 0,
+
+      activo: true,
       rol: 'GERENTE_GENERAL',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -239,6 +245,8 @@ describe('POST /api/auth/registro', () => {
       email: datos.email,
       hashContrasena: datos.hashContrasena,
       versionSesion: 0,
+
+      activo: true,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -268,6 +276,8 @@ describe('POST /api/auth/registro', () => {
       email: 'ana@empresa.com',
       hashContrasena: 'x',
       versionSesion: 0,
+
+      activo: true,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -305,6 +315,8 @@ describe('POST /api/auth/registro', () => {
       email: datos.email,
       hashContrasena: datos.hashContrasena,
       versionSesion: 0,
+
+      activo: true,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -384,6 +396,8 @@ describe('POST /api/auth/registro', () => {
       email: datos.email,
       hashContrasena: datos.hashContrasena,
       versionSesion: 0,
+
+      activo: true,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -469,6 +483,8 @@ describe('POST /api/auth/contrasena/olvido', () => {
       email: 're@confluens.test',
       hashContrasena: await hashearContrasena('x'),
       versionSesion: 0,
+
+      activo: true,
       rol: 'RESPONSABLE_EVENTOS',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -520,6 +536,8 @@ describe('POST /api/auth/contrasena/restablecer', () => {
       email: 're@confluens.test',
       hashContrasena: hashActual,
       versionSesion: 0,
+
+      activo: true,
       rol: 'RESPONSABLE_EVENTOS',
       creadoEn: new Date(),
       actualizadoEn: new Date(),

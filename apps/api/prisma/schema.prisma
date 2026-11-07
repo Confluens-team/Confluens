@@ -79,6 +79,9 @@ model Usuario {
   // Versión de las sesiones (M2 de la auditoría de seguridad). Viaja en el JWT; cerrar sesión o
   // restablecer la contraseña la incrementa y todos los tokens emitidos antes dejan de servir.
   versionSesion  Int        @default(0)
+  // Baja lógica del personal (HU-31 del backlog, Sprint 5): inactivo no inicia sesión y sus sesiones
+  // se cierran, pero se sigue viendo en la auditoría y en lo que registró. Se puede reactivar.
+  activo         Boolean    @default(true)
   cliente        Cliente?
   auditorias     AuditLog[]
   pagosAnulados  Pago[]     @relation("PagoAnuladoPor")
