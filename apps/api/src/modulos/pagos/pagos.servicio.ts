@@ -56,9 +56,8 @@ function armarSaldo(
 
 /**
  * El presupuesto contra el que se cobra. Un evento puede acumular varios (dominio.md:55), pero solo
- * uno está vigente: se toma el más reciente que no esté `Cancelado`. El `Expirado` entra a propósito
- * en la búsqueda, para poder rechazar el pago con «presupuesto vencido» en vez de con «el evento no
- * tiene presupuesto», que es lo que pasaría si lo filtráramos (HU-13 C3).
+ * uno está vigente: se toma el más reciente que no esté `Cancelado`. El `Expirado` también cuenta:
+ * desde HU-55 se cobra aunque el presupuesto esté vencido.
  */
 function presupuestoVigente(presupuestos: PresupuestoDeBase[]): PresupuestoDeBase | undefined {
   return presupuestos
@@ -98,12 +97,9 @@ export async function registrarPago(
       `El evento ${eventoId} no tiene un presupuesto vigente contra el que cobrar`,
     );
   }
-  // RN-06: pasados los 10 días el presupuesto vence y hay que rehacerlo con los precios del día.
-  if (presupuesto.estado === 'Expirado') {
-    throw ErrorApi.conflicto(
-      'El presupuesto está vencido: hay que recalcularlo antes de registrar un pago',
-    );
-  }
+  // RN-06 desde HU-55 (reunión con el cliente del 05/11/2026): se cobra aunque el presupuesto esté
+  // Expirado, sin recalcularlo. La vigencia de 10 días es una leyenda para el cliente (RN-08); la
+  // seña lo congela igual y lo pasa a Confirmado (Expirado → Confirmado).
 
   // RN-14 desde HU-53: cualquier medio activo vale en cualquier cobro, con factura o sin ella.
   const medioPago = await repo.buscarMedioPagoActivo(datos.medioPagoId);
