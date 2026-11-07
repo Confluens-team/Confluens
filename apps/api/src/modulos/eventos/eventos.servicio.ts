@@ -1,4 +1,4 @@
-import type { AgendarEvento, FiltrosAgenda } from '@confluens/shared';
+import { type AgendarEvento, type FiltrosAgenda, hoyEnZonaEventos } from '@confluens/shared';
 
 import { ErrorApi } from '../../lib/errores.js';
 import { esViolacionDeSolapamiento, mensajeDeSolapamiento } from '../../lib/prisma-errores.js';
@@ -137,6 +137,16 @@ export async function agendarEvento(
   const fin = new Date(datos.fin);
   if (fin <= inicio) {
     throw ErrorApi.reglaNegocio('El horario de fin debe ser posterior al de inicio');
+  }
+  // Agendar fija las horas del día del evento, no el día: el día se cambia modificando la consulta,
+  // que además recalcula el presupuesto. Si no, el evento quedaba con `fecha` en un día y el
+  // horario (y la reserva del salón) en otro. El día del inicio se lee en la zona de los eventos
+  // (ADR 0010); el fin puede caer al día siguiente, en un evento que termina pasada la medianoche.
+  const diaDelEvento = evento.fecha.toISOString().slice(0, 10);
+  if (hoyEnZonaEventos(inicio) !== diaDelEvento) {
+    throw ErrorApi.reglaNegocio(
+      'El horario tiene que empezar el día del evento. Para cambiar el día, modificá la consulta',
+    );
   }
 
   // RN-12 (parte "aplicación")

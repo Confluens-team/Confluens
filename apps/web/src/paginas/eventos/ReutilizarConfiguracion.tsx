@@ -8,6 +8,7 @@ import { AlertTriangle, CheckCircle2, Repeat2, X } from 'lucide-react';
 import { Dialog } from 'radix-ui';
 import { useState } from 'react';
 
+import { SelectorFecha } from '@/components/SelectorFechaHora';
 import { InputEntero } from '@/components/InputEntero';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -113,14 +114,11 @@ export function ReutilizarConfiguracion({
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-1.5">
                   <Label htmlFor="reutilizar-fecha">Fecha del evento nuevo</Label>
-                  <Input
+                  <SelectorFecha
                     id="reutilizar-fecha"
-                    type="date"
-                    min={minimo}
-                    required
+                    diaMinimo={minimo}
                     value={fecha}
-                    aria-invalid={!!fecha && !fechaValida}
-                    onChange={(e) => setFecha(e.target.value)}
+                    onChange={setFecha}
                   />
                   {fecha && !fechaValida && (
                     <p className="text-xs text-destructive">La fecha tiene que ser futura.</p>
