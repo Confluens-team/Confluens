@@ -408,14 +408,20 @@ acceden a todo el sistema.
 - El GG puede modificar, cambiarle el rol o dar de baja a **otro GG**, siempre que quede al menos
   uno. A un **ADM** no lo puede tocar: ni modificarlo, ni cambiarle el rol, ni darlo de baja.
 - **El GG y el ADM no se pueden quitar el rol entre sí**: el sistema nunca queda sin alguien que
-  administre al personal.
+  administre al personal. Lo garantiza la regla de cantidad: el ADM le puede cambiar el rol a un GG
+  o darlo de baja, siempre que quede al menos un GG activo (PO, 07/11/2026).
+- **Nadie se toca a sí mismo desde Personal** (PO, 07/11/2026): no se da de baja ni se cambia el
+  propio rol; lo hace otro GG o ADM. El propio correo sí se puede corregir.
+- **Contraseñas** (PO, 06/11/2026): **solo el ADM cambia la contraseña de otro usuario**, la de
+  cualquiera del personal. Cada usuario cambia la suya desde **Mi cuenta**, con la actual. Al
+  cambiarla se cierran las demás sesiones de ese usuario.
 - **Baja lógica:** el usuario queda **inactivo**. No puede entrar y se cierran sus sesiones, pero se
   sigue viendo en la auditoría y en lo que registró. Se puede reactivar si después se recupera la
   cuenta.
 
-**Reunión 05/11/2026 → HU-56** (permisos por rol) y HU-28 a HU-31 del backlog (Personal; HU-30 y
-HU-31 del Sprint 4). La baja lógica cambia el modelo (`Usuario` no tiene `activo`). **Hasta
-entonces vale lo provisorio** (decisión del PO, 06/10/2026): todo el personal (RE, RF, GG y ADM)
+Personal está construido (HU-30 y HU-31 del Sprint 4; HU-30 y HU-31 del backlog en el Sprint 5,
+con `Usuario.activo`). **Reunión 05/11/2026 → HU-56** (permisos por rol): **hasta entonces vale lo
+provisorio** (decisión del PO, 06/10/2026): todo el personal (RE, RF, GG y ADM)
 entra al mismo panel interno (`/admin`) y puede ver y hacer todo lo que ahí existe, incluido el
 contenido de la landing. El Cliente sigue sin acceso al panel.
 

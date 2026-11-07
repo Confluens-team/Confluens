@@ -1,4 +1,4 @@
-import { administraPersonal, type Rol, type Sesion } from '@confluens/shared';
+import { administraPersonal, type Sesion } from '@confluens/shared';
 import {
   Building2,
   CalendarDays,
@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { ListadoClientes } from '@/paginas/clientes/ListadoClientes';
 import { Agenda } from '@/paginas/eventos/Agenda';
 import { RegistrarMedioPago } from '@/paginas/medios-pago/RegistrarMedioPago';
+import { BotonCambiarMiContrasena } from '@/paginas/panel/CambiarMiContrasena';
 import { Personal } from '@/paginas/personal/Personal';
 import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
 import { ConsultarSalones } from '@/paginas/salones/ConsultarSalones';
@@ -107,7 +108,8 @@ const GRUPOS_DE_CONFIGURACION: {
 //
 // Personal la ven solo el GG y el ADM (dominio.md, «Personal»); la API también se lo niega al resto.
 // Las demás secciones las siguen viendo todos hasta HU-56 del backlog (permisos por rol).
-function ConfiguracionDeNegocio({ rol }: { rol: Rol }) {
+function ConfiguracionDeNegocio({ sesion }: { sesion: Sesion }) {
+  const rol = sesion.rol;
   const [seccion, setSeccion] = useState<SeccionConfiguracion>('servicios');
   const grupos = GRUPOS_DE_CONFIGURACION.filter(
     ({ secciones }) =>
@@ -147,7 +149,7 @@ function ConfiguracionDeNegocio({ rol }: { rol: Rol }) {
         {seccion === 'servicios' && <RegistrarServicio />}
         {seccion === 'medios' && <RegistrarMedioPago />}
         {seccion === 'landing' && <AdministrarLanding />}
-        {seccion === 'personal' && administraPersonal(rol) && <Personal rol={rol} />}
+        {seccion === 'personal' && administraPersonal(rol) && <Personal sesion={sesion} />}
       </div>
     </div>
   );
@@ -180,20 +182,12 @@ function MiCuenta({ sesion, onCerrarSesion }: { sesion: Sesion; onCerrarSesion: 
             <dd>Se cierra sola tras 2 horas sin actividad</dd>
           </div>
         </dl>
-        <Button variant="outline" className="mt-6" onClick={onCerrarSesion}>
-          <LogOut /> Cerrar sesión
-        </Button>
-      </section>
-
-      <section className="rounded-xl border border-dashed bg-card p-6">
-        <div className="flex items-center gap-2">
-          <Settings className="size-4 text-dorado" />
-          <h3 className="font-medium">Opciones de la cuenta</h3>
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={onCerrarSesion}>
+            <LogOut /> Cerrar sesión
+          </Button>
+          <BotonCambiarMiContrasena />
         </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Acá se van a sumar las opciones que agreguemos más adelante, como cambiar la contraseña o
-          administrar los usuarios del sistema.
-        </p>
       </section>
     </div>
   );
@@ -319,7 +313,7 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
         {pestania === 'eventos' && <Agenda key="eventos" vista="lista" />}
         {pestania === 'consultas' && <ListadoConsultas />}
         {pestania === 'clientes' && <ListadoClientes />}
-        {pestania === 'configuracion' && <ConfiguracionDeNegocio rol={sesion.rol} />}
+        {pestania === 'configuracion' && <ConfiguracionDeNegocio sesion={sesion} />}
         {pestania === 'cuenta' && <MiCuenta sesion={sesion} onCerrarSesion={salir} />}
       </main>
     </div>

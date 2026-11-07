@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { administraPersonal, puedeAsignarRol, rolesQueAsigna } from './personal.js';
+import {
+  administraPersonal,
+  puedeAdministrarA,
+  puedeAsignarRol,
+  rolesQueAsigna,
+} from './personal.js';
 
 describe('quién asigna qué rol (dominio.md, «Personal»)', () => {
   it('el ADM asigna cualquier rol del personal', () => {
@@ -28,6 +33,15 @@ describe('quién asigna qué rol (dominio.md, «Personal»)', () => {
       expect(administraPersonal(rol)).toBe(false);
     },
   );
+
+  it('el GG administra a GG, RE y RF pero no a un ADM; el ADM, a cualquiera', () => {
+    expect(puedeAdministrarA('GERENTE_GENERAL', 'GERENTE_GENERAL')).toBe(true);
+    expect(puedeAdministrarA('GERENTE_GENERAL', 'RESPONSABLE_FINANZAS')).toBe(true);
+    expect(puedeAdministrarA('GERENTE_GENERAL', 'ADMINISTRADOR_SISTEMA')).toBe(false);
+    expect(puedeAdministrarA('ADMINISTRADOR_SISTEMA', 'GERENTE_GENERAL')).toBe(true);
+    expect(puedeAdministrarA('ADMINISTRADOR_SISTEMA', 'ADMINISTRADOR_SISTEMA')).toBe(true);
+    expect(puedeAdministrarA('RESPONSABLE_EVENTOS', 'RESPONSABLE_FINANZAS')).toBe(false);
+  });
 
   it('el GG y el ADM administran al personal', () => {
     expect(administraPersonal('GERENTE_GENERAL')).toBe(true);

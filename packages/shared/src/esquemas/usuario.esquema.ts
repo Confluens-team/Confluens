@@ -17,6 +17,8 @@ export const esquemaUsuario = z.object({
   id: esquemaId,
   email: z.email(),
   rol: esquemaRol,
+  // Baja lógica (HU-31 del backlog): inactivo no inicia sesión. Se puede reactivar.
+  activo: z.boolean(),
   creadoEn: esquemaFechaHora,
   actualizadoEn: esquemaFechaHora,
 });
@@ -33,3 +35,10 @@ export type RolPersonal = z.infer<typeof esquemaRolPersonal>;
 // Query de GET /usuarios (HU-31 del Sprint 4): el filtro por rol es opcional.
 export const esquemaFiltrosUsuarios = z.object({ rol: esquemaRolPersonal.optional() });
 export type FiltrosUsuarios = z.infer<typeof esquemaFiltrosUsuarios>;
+
+// Body de PATCH /usuarios/:id/estado (HU-31 del backlog): `false` lo da de baja y `true` lo
+// reactiva.
+export const esquemaCambiarEstadoUsuario = z.object({
+  activo: z.boolean('Indicá si el usuario queda activo o dado de baja'),
+});
+export type CambiarEstadoUsuario = z.infer<typeof esquemaCambiarEstadoUsuario>;
