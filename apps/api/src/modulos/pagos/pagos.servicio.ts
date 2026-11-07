@@ -4,7 +4,7 @@ import type {
   FiltrosMediosPago,
   ModificarMedioPago,
 } from '@confluens/shared';
-import { admiteMedioPago, mediosPagoHabilitados, PORCENTAJE_SENA } from '@confluens/shared';
+import { PORCENTAJE_SENA } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
 import {
@@ -105,23 +105,10 @@ export async function registrarPago(
     );
   }
 
+  // RN-14 desde HU-53: cualquier medio activo vale en cualquier cobro, con factura o sin ella.
   const medioPago = await repo.buscarMedioPagoActivo(datos.medioPagoId);
   if (!medioPago) {
     throw ErrorApi.noEncontrado(`No existe un medio de pago activo con id ${datos.medioPagoId}`);
-  }
-  // RN-14: los medios disponibles dependen de la casilla «El cliente requiere factura» del
-  // presupuesto y de la habilitación de cada medio (con factura, sin factura o los dos), que se
-  // elige al darlo de alta (HU-19). La web ya filtra el desplegable; esto es lo que hace que la
-  // regla valga igual contra la API.
-  if (!admiteMedioPago(medioPago, presupuesto.requiereFactura)) {
-    const activos = await repo.listarMediosPagoActivos();
-    const habilitados = mediosPagoHabilitados(activos, presupuesto.requiereFactura)
-      .map((medio) => medio.nombre)
-      .join(', ');
-    const caso = presupuesto.requiereFactura ? 'con factura' : 'sin factura';
-    throw ErrorApi.reglaNegocio(
-      `No se puede cobrar con ${medioPago.nombre} en un evento ${caso}: los medios habilitados son ${habilitados}`,
-    );
   }
 
   const base = calcularBaseDeCobro(presupuesto);
@@ -386,8 +373,7 @@ export async function listarMediosPago(
 }
 
 /**
- * HU-19: alta de un medio de pago, con su habilitación para cobros con factura, sin factura o los
- * dos (RN-14). El nombre llega recortado por esquemaCrearMedioPago y es único sin distinguir
+ * HU-19: alta de un medio de pago. Desde HU-53 vale en todos los cobros (RN-14). El nombre llega recortado por esquemaCrearMedioPago y es único sin distinguir
  * mayúsculas: «efectivo» choca con «Efectivo», aunque ese medio esté dado de baja.
  */
 export async function crearMedioPago(
@@ -401,7 +387,7 @@ export async function crearMedioPago(
   return repo.crearMedioPago(datos);
 }
 
-// HU-33 del Sprint 4: modificar el nombre o la habilitación de un medio (RN-14). 404 si no existe y
+// HU-33 del Sprint 4: modificar el nombre de un medio (desde HU-53, solo el nombre). 404 si no existe y
 // 409 si el nombre ya es de otro medio, sin distinguir mayúsculas, como en el alta. Conservar el
 // propio nombre, o cambiarle solo las mayúsculas, no choca.
 export async function modificarMedioPago(

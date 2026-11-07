@@ -81,11 +81,13 @@ export async function buscarMedioPagoPorNombre(
   return tx.medioPago.findFirst({ where: { nombre: { equals: nombre, mode: 'insensitive' } } });
 }
 
+// Desde HU-53 todo medio vale en todos los cobros. Las marcas de factura ya no se usan, pero se
+// cargan en los dos casos para que la base no diga lo contrario.
 export async function crearMedioPago(
-  datos: { nombre: string; conFactura: boolean; sinFactura: boolean },
+  datos: { nombre: string },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.medioPago.create({ data: datos });
+  return tx.medioPago.create({ data: { ...datos, conFactura: true, sinFactura: true } });
 }
 
 // HU-33 del Sprint 4: el medio a modificar puede estar activo o dado de baja.
@@ -94,10 +96,10 @@ export async function buscarMedioPagoPorId(id: number, tx: Prisma.TransactionCli
 }
 
 // Los pagos ya registrados referencian el medio por id: siguen apuntando a él y muestran el nombre
-// nuevo. La habilitación nueva vale desde el próximo cobro, que la lee de acá (registrarPago).
+// nuevo. Desde HU-53 solo se modifica el nombre.
 export async function modificarMedioPago(
   id: number,
-  datos: { nombre: string; conFactura: boolean; sinFactura: boolean },
+  datos: { nombre: string },
   tx: Prisma.TransactionClient = prisma,
 ) {
   return tx.medioPago.update({ where: { id }, data: datos });

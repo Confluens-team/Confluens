@@ -1,5 +1,4 @@
 import request from 'supertest';
-import { MEDIOS_PAGO_INICIALES } from '@confluens/shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { crearApp } from '../../app.js';
@@ -599,105 +598,42 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
 
 // HU-13 C6: las consultas que pisan la franja no se cancelan (dominio.md:30, Cancelado es siempre
 // manual), se informan para que el Responsable de Eventos las gestione.
-// RN-14: con qué se puede cobrar depende de la casilla «El cliente requiere factura» del
-// presupuesto y de la habilitación de cada medio (con factura, sin factura o los dos, HU-19). Del
-// catálogo inicial, sin factura solo Efectivo, Transferencia y A la habitación; con factura se suman
-// Débito, Crédito y Cheque. La web filtra el desplegable, pero la regla la tiene que sostener la API.
-describe('POST /api/eventos/:id/pagos — medios de pago según la factura (RN-14)', () => {
-  const catalogo = MEDIOS_PAGO_INICIALES.map((medio, i) => ({
-    ...medioPagoFixture,
-    ...medio,
-    id: i + 1,
-  }));
-
+// RN-14 desde HU-53 (reunión con el cliente del 05/11/2026): todos los medios activos se pueden usar
+// en todos los cobros, con factura o sin ella. Las marcas viejas de cada medio ya no deciden nada.
+describe('POST /api/eventos/:id/pagos — medios de pago (RN-14, HU-53)', () => {
   function conMedio(
     nombre: string,
     requiereFactura: boolean,
-    habilitacion: { conFactura: boolean; sinFactura: boolean } = MEDIOS_PAGO_INICIALES.find(
-      (m) => m.nombre === nombre,
-    ) ?? { conFactura: false, sinFactura: false },
+    marcas = { conFactura: true, sinFactura: false },
   ) {
-    buscarMedioPagoActivoMock.mockResolvedValue({
-      ...medioPagoFixture,
-      id: 7,
-      nombre,
-      conFactura: habilitacion.conFactura,
-      sinFactura: habilitacion.sinFactura,
-    });
-    listarMediosPagoActivosMock.mockResolvedValue(catalogo);
+    buscarMedioPagoActivoMock.mockResolvedValue({ ...medioPagoFixture, id: 7, nombre, ...marcas });
     buscarDetalladoMock.mockResolvedValue(
       eventoFixture({ presupuestos: [presupuestoFixture({ requiereFactura })] }),
     );
   }
 
-  it.each(['Débito', 'Crédito', 'Cheque'])(
-    'responde 422 al cobrar con %s un presupuesto sin factura',
-    async (nombre) => {
-      conMedio(nombre, false);
-
-      const respuesta = await registrarPago('1000');
-
-      expect(respuesta.status).toBe(422);
-      expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
-      expect(respuesta.body.error.message).toContain(nombre);
-      expect(crearMock).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each(['Efectivo', 'Transferencia', 'A la habitación'])(
-    'acepta %s con un presupuesto sin factura',
-    async (nombre) => {
-      conMedio(nombre, false);
-
-      const respuesta = await registrarPago('1000');
-
-      expect(respuesta.status).toBe(201);
-    },
-  );
-
   it.each(['Efectivo', 'Transferencia', 'A la habitación', 'Débito', 'Crédito', 'Cheque'])(
-    'acepta %s con un presupuesto con factura',
+    'acepta %s con un presupuesto con factura y con uno anterior sin factura',
     async (nombre) => {
       conMedio(nombre, true);
+      const conFactura = await registrarPago('1000');
+      conMedio(nombre, false);
+      const sinFactura = await registrarPago('1000');
 
-      const respuesta = await registrarPago('1000');
-
-      expect(respuesta.status).toBe(201);
+      expect(conFactura.status).toBe(201);
+      expect(sinFactura.status).toBe(201);
     },
   );
 
-  // Los medios de versiones anteriores siguen en la base por los pagos históricos, pero ya no se
-  // cobra con ellos ni cuando el presupuesto se factura.
-  it('responde 422 con un medio que quedó fuera del catálogo', async () => {
-    conMedio('Tarjeta', true);
-
-    const respuesta = await registrarPago('1000');
-
-    expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
-    expect(crearMock).not.toHaveBeenCalled();
-  });
-
-  // CP-19-02: un medio dado de alta (HU-19) se puede usar en un cobro del caso que habilita.
-  it('acepta un medio dado de alta en el caso para el que se habilitó', async () => {
-    conMedio('Mercado Pago', false, { conFactura: true, sinFactura: true });
-
-    const respuesta = await registrarPago('1000');
-
-    expect(respuesta.status).toBe(201);
-  });
-
-  // CP-19-09: y se rechaza en el otro, informando con qué se puede cobrar.
-  it('responde 422 con un medio dado de alta solo con factura en un presupuesto sin factura', async () => {
+  // Antes de HU-53 un medio dado de alta solo con factura se rechazaba en un cobro sin factura
+  // (CP-19-09). Ahora vale igual.
+  it('acepta un medio dado de alta solo con factura en un presupuesto anterior sin factura', async () => {
     conMedio('Mercado Pago', false, { conFactura: true, sinFactura: false });
 
     const respuesta = await registrarPago('1000');
 
-    expect(respuesta.status).toBe(422);
-    expect(respuesta.body.error.message).toBe(
-      'No se puede cobrar con Mercado Pago en un evento sin factura: los medios habilitados son Efectivo, Transferencia, A la habitación',
-    );
-    expect(crearMock).not.toHaveBeenCalled();
+    expect(respuesta.status).toBe(201);
+    expect(crearMock).toHaveBeenCalled();
   });
 });
 
@@ -1078,34 +1014,20 @@ describe('POST /api/medios-pago (HU-19)', () => {
     }));
   });
 
-  // CP-19-01
-  it('crea el medio activo con su habilitación y el nombre recortado', async () => {
-    const respuesta = await alta({ nombre: '  Mercado Pago ', conFactura: true, sinFactura: true });
+  // CP-19-01. Desde HU-53 se carga solo el nombre: el medio vale en todos los cobros.
+  it('crea el medio activo con el nombre recortado', async () => {
+    const respuesta = await alta({ nombre: '  Mercado Pago ' });
 
     expect(respuesta.status).toBe(201);
-    expect(crearMedioPagoMock).toHaveBeenCalledWith({
-      nombre: 'Mercado Pago',
-      conFactura: true,
-      sinFactura: true,
-    });
-    expect(respuesta.body.data).toMatchObject({
-      id: 9,
-      nombre: 'Mercado Pago',
-      activo: true,
-      conFactura: true,
-      sinFactura: true,
-    });
+    expect(crearMedioPagoMock).toHaveBeenCalledWith({ nombre: 'Mercado Pago' });
+    expect(respuesta.body.data).toMatchObject({ id: 9, nombre: 'Mercado Pago', activo: true });
   });
 
-  it('se puede habilitar para un solo caso', async () => {
+  it('ignora las marcas de factura que todavía mande un cliente viejo (HU-53)', async () => {
     const respuesta = await alta({ nombre: 'Vale', sinFactura: true });
 
     expect(respuesta.status).toBe(201);
-    expect(crearMedioPagoMock).toHaveBeenCalledWith({
-      nombre: 'Vale',
-      conFactura: false,
-      sinFactura: true,
-    });
+    expect(crearMedioPagoMock).toHaveBeenCalledWith({ nombre: 'Vale' });
   });
 
   // CP-19-04
@@ -1116,15 +1038,6 @@ describe('POST /api/medios-pago (HU-19)', () => {
       expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
       expect(respuesta.body.error.details[0].campo).toBe('nombre');
     }
-    expect(crearMedioPagoMock).not.toHaveBeenCalled();
-  });
-
-  // CP-19-08
-  it('sin habilitarlo en ningún caso responde 400 VALIDATION_ERROR', async () => {
-    const respuesta = await alta({ nombre: 'Vale' });
-
-    expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.details[0].campo).toBe('conFactura');
     expect(crearMedioPagoMock).not.toHaveBeenCalled();
   });
 
@@ -1156,8 +1069,7 @@ describe('POST /api/medios-pago (HU-19)', () => {
   });
 });
 
-// HU-33 del Sprint 4 («Modificar medio de pago»). La habilitación de los seis medios del catálogo
-// inicial también se puede cambiar (equipo, 03/11/2026): por eso el caso base es Efectivo.
+// HU-33 del Sprint 4 («Modificar medio de pago»). Desde HU-53 solo se modifica el nombre.
 describe('PATCH /api/medios-pago/:id (HU-33)', () => {
   const modificar = (cuerpo: object, cookie = cookieResponsableEventos, id = 1) =>
     request(app).patch(`/api/medios-pago/${id}`).set('Cookie', [cookie]).send(cuerpo);
@@ -1175,22 +1087,11 @@ describe('PATCH /api/medios-pago/:id (HU-33)', () => {
     }));
   });
 
-  it('cambia la habilitación de un medio del catálogo inicial', async () => {
-    const respuesta = await modificar({ nombre: 'Efectivo', conFactura: false, sinFactura: true });
-
-    expect(respuesta.status).toBe(200);
-    expect(modificarMedioPagoMock).toHaveBeenCalledWith(1, {
-      nombre: 'Efectivo',
-      conFactura: false,
-      sinFactura: true,
-    });
-    expect(respuesta.body.data).toMatchObject({ conFactura: false, sinFactura: true });
-  });
-
   it('cambia el nombre, recortado', async () => {
-    const respuesta = await modificar({ nombre: '  Contado ', conFactura: true, sinFactura: true });
+    const respuesta = await modificar({ nombre: '  Contado ' });
 
     expect(respuesta.status).toBe(200);
+    expect(modificarMedioPagoMock).toHaveBeenCalledWith(1, { nombre: 'Contado' });
     expect(respuesta.body.data.nombre).toBe('Contado');
   });
 
@@ -1220,19 +1121,8 @@ describe('PATCH /api/medios-pago/:id (HU-33)', () => {
     expect(modificarMedioPagoMock).not.toHaveBeenCalled();
   });
 
-  it('sin habilitarlo en ningún caso responde 400 VALIDATION_ERROR', async () => {
-    const respuesta = await modificar({ nombre: 'Efectivo', conFactura: false, sinFactura: false });
-
-    expect(respuesta.status).toBe(400);
-    expect(respuesta.body.error.details[0].campo).toBe('conFactura');
-    expect(modificarMedioPagoMock).not.toHaveBeenCalled();
-  });
-
-  it('sin nombre o sin alguno de los dos casos responde 400 VALIDATION_ERROR', async () => {
-    for (const cuerpo of [
-      { nombre: '  ', conFactura: true, sinFactura: true },
-      { nombre: 'Efectivo', sinFactura: true },
-    ]) {
+  it('sin nombre o con el nombre solo con espacios responde 400 VALIDATION_ERROR', async () => {
+    for (const cuerpo of [{ nombre: '  ' }, {}]) {
       const respuesta = await modificar(cuerpo);
       expect(respuesta.status).toBe(400);
     }

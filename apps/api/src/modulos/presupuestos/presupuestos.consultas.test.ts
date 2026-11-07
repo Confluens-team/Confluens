@@ -616,13 +616,15 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
     expect(reemplazarLineasMock.mock.calls[0]![0]).toBe(31);
   });
 
-  it('marca si el cliente requiere factura, que define la base de cobro (RN-01)', async () => {
+  // HU-53: la marca de factura ya no se elige. Un presupuesto anterior conserva la suya aunque el
+  // pedido traiga otra (un cliente viejo de la web).
+  it('no cambia la marca de factura del presupuesto (HU-53)', async () => {
     await request(app)
       .patch('/api/presupuestos/31')
       .set('Cookie', [cookieRE])
       .send({ ...bodyBase, requiereFactura: true });
 
-    expect(datosDelPresupuesto()).toMatchObject({ requiereFactura: true });
+    expect(datosDelPresupuesto()).not.toHaveProperty('requiereFactura');
   });
 
   it('un Expirado modificado vuelve a Estimado', async () => {

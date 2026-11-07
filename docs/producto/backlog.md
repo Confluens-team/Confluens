@@ -78,7 +78,7 @@ RG-03. Gestionar los presupuestos.  ·  13 historias  ·  37 pts + HU-49 y HU-51
 | HU-49 | Armar un presupuesto estimado y confirmar la consulta en el canal público | — | a estimar | a definir | Cliente |
 | HU-51 | Agregar servicios propios a un evento | — | a estimar | a definir | Responsable de Eventos |
 | HU-52 | Registrar lo pagado de más como no reintegrable | — | a estimar | a definir | Responsable de Eventos |
-| HU-53 | Calcular todo presupuesto nuevo con IVA | — | a estimar | a definir | Sistema |
+| HU-53 | Calcular todo presupuesto nuevo con IVA | — | a estimar | 4 | Sistema |
 | HU-54 | Recalcular el presupuesto automáticamente | — | a estimar | a definir | Sistema |
 | HU-55 | Cobrar la seña de un presupuesto vencido | — | a estimar | a definir | Responsable de Finanzas |
 
@@ -250,10 +250,10 @@ provisoria del PO del 06/10/2026.
 | 1 | HU-01 · HU-09 · HU-14 · HU-15 · HU-27 · HU-32 · HU-46\* · HU-47\* | 53\* |
 | 2 | HU-04 · HU-10 · HU-11 · HU-12 · HU-13 · HU-17 · HU-40 | 48 |
 | 3 | HU-05 · HU-06 · HU-07 · HU-45 · HU-19 · HU-44 · HU-36 · HU-37 · HU-41 | 36 |
-| 4 | HU-02 · HU-03 · HU-16 · HU-18 · HU-20 · HU-22 · HU-28 · HU-29 · HU-33 · HU-38 | 41 |
+| 4 | HU-02 · HU-03 · HU-16 · HU-18 · HU-20 · HU-22 · HU-28 · HU-29 · HU-33 · HU-38 · HU-53 | 41 + HU-53 |
 | 5 | HU-43 · HU-24 · HU-25 · HU-30 · HU-31 · HU-34 | 34 |
 | 6 | HU-21 · HU-23 · HU-35 · HU-39 | 20 |
-| a definir | HU-48 · HU-49 · HU-50 · HU-51 · HU-52 · HU-53 · HU-54 · HU-55 · HU-56 | sin estimar |
+| a definir | HU-48 · HU-49 · HU-50 · HU-51 · HU-52 · HU-54 · HU-55 · HU-56 | sin estimar |
 
 Los puntos son los del backlog general (con HU-46 y HU-47 marcadas \*, ver nota de EPIC-10). Cada Sprint Planning re-estima según el alcance real: el Sprint 1 se cerró en 8 historias y 31 puntos tras re-estimar HU-27, HU-32, HU-01 y HU-09 a la baja (ver el documento de Sprint 1, que usa numeración local HU-01 a HU-08 para este subconjunto).
 
