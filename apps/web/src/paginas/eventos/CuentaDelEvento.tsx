@@ -449,16 +449,18 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
               <span className="text-muted-foreground">
                 {porcentajeAbonado}% abonado · {formateadorMoneda.format(Number(saldo.pagado))}
               </span>
-              {/* HU-21: la seña se ve en cualquier estado, con su importe y si ya se alcanzó. */}
+              {/* HU-21: la seña se ve en cualquier estado, con su importe y si ya se alcanzó. Si una
+                  anulación la dejó sin cubrir (HU-35), no se la muestra como cubierta: el aviso de
+                  abajo lo explica. */}
               <span
                 className={
-                  saldo.senaAlcanzada
+                  saldo.senaAlcanzada && !senaDescubierta
                     ? 'text-estado-confirmado-texto'
                     : 'text-estado-consulta-texto'
                 }
               >
                 Seña {PORCENTAJE_SENA}%: {formateadorMoneda.format(montoSena)}
-                {saldo.senaAlcanzada && ' · cubierta'}
+                {saldo.senaAlcanzada && !senaDescubierta && ' · cubierta'}
               </span>
             </div>
           </div>
@@ -466,8 +468,14 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
           {/* RN-01: la base incluye el IVA solo si el presupuesto se factura, así que la seña del
               20% cambia de monto según eso. Por eso se aclara sobre qué se calculó. */}
           {/* Una vez reservado, la seña ya se cobró aunque después suba el total (RN-09): no se
-              vuelve a pedir el 20%, se cobra el saldo. */}
-          <p className={cn('text-xs text-muted-foreground', (cobrado || cancelado) && 'hidden')}>
+              vuelve a pedir el 20%, se cobra el saldo. Con la seña descubierta por una anulación
+              (HU-35) el texto lo reemplaza el aviso de abajo. */}
+          <p
+            className={cn(
+              'text-xs text-muted-foreground',
+              (cobrado || cancelado || senaDescubierta) && 'hidden',
+            )}
+          >
             {enConsulta
               ? faltaParaLaSena > 0
                 ? `Faltan ${formateadorMoneda.format(faltaParaLaSena)} para la seña y reservar el salón.`
