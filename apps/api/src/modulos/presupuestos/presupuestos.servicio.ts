@@ -679,8 +679,10 @@ function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoR
  * - Un tercerizado a cotizar sigue así hasta que llega su precio (HU-11).
  * - La marca de factura (RN-01) no cambia: desde HU-53 todo presupuesto nuevo nace con factura y
  *   uno anterior conserva la suya.
- * - «Recalcular» un Expirado es esto mismo, con los precios vigentes que arma la pantalla: el
- *   presupuesto sigue siendo el mismo (decisión del PO, 05/10/2026).
+ * - HU-54: si cambia la fecha del evento, en cualquier estado (también Confirmado), lo que no trae
+ *   `precioUnitario` toma el precio de la fecha nueva (RN-13) en vez del congelado. La pantalla ya
+ *   manda los precios recalculados; esto lo sostiene para cualquier pedido. Sin cambio de fecha no
+ *   hay recálculo: no hay botón «Recalcular» (reunión 05/11/2026).
  * - El total suma todas las líneas, tercerizados incluidos.
  * - Queda Estimado y la vigencia vuelve a contar 10 días desde ahora (decisión del PO,
  *   05/10/2026), también si estaba Expirado. La fecha de emisión pasa a ser la del recálculo
@@ -706,6 +708,9 @@ export async function modificarPresupuesto(
     throw ErrorApi.reglaNegocio('Un evento confirmado necesita salón');
   }
   const tipo = resolverTipo(datos, presupuesto.evento);
+  // HU-54: con otra fecha, los precios congelados dejan de valer (dominio.md, «Recálculo
+  // automático»). `fecha` viaja como YYYY-MM-DD y el evento la guarda a medianoche UTC.
+  const cambioFecha = datos.fecha !== presupuesto.evento.fecha.toISOString().slice(0, 10);
 
   const salonIds = datos.salones.map((s) => s.salonId);
   const encontrados = new Map(
@@ -746,7 +751,9 @@ export async function modificarPresupuesto(
     // del catálogo proyectado a la fecha (RN-13), que también puede ser null (sigue a cotizar).
     // Cambiar la modalidad no cambia el base: el recargo se vuelve a calcular sobre él (RN-11).
     const congelado =
-      anterior && !anterior.aCotizar ? (anterior.precioBase ?? anterior.precioUnitario) : undefined;
+      anterior && !anterior.aCotizar && !cambioFecha
+        ? (anterior.precioBase ?? anterior.precioUnitario)
+        : undefined;
     const precioBase =
       elegido.precioUnitario ?? congelado ?? precioVigenteDeServicio(servicio, proyeccion);
     return lineaDeServicio(
@@ -771,7 +778,7 @@ export async function modificarPresupuesto(
     const anterior = salonesAnteriores.get(elegido.salonId);
     const mismaJornada =
       !!anterior && jornadaDeLineaSalon(anterior.descripcion) === datos.tipoJornada;
-    const congelado = mismaJornada ? anterior.precioUnitario : undefined;
+    const congelado = mismaJornada && !cambioFecha ? anterior.precioUnitario : undefined;
     return lineaDeSalon(
       salon,
       datos.tipoJornada,
@@ -1070,4 +1077,109 @@ export async function reutilizarConfiguracion(
     serviciosOmitidos,
     salonesEnConflicto,
   };
+}
+
+// Una línea guardada, con lo que hace falta para recalcularla: su servicio y su salón del catálogo.
+type LineaParaRecalcular = {
+  servicioId: number | null;
+  salonId: number | null;
+  descripcion: string;
+  cantidad: number;
+  modalidad: ModalidadServicio;
+  precioBase: Prisma.Decimal | null;
+  precioUnitario: Prisma.Decimal;
+  subtotal: Prisma.Decimal;
+  aCotizar: boolean;
+  horaEstimada: string | null;
+  servicio: {
+    id: number;
+    nombre: string;
+    precio: Prisma.Decimal | null;
+    tercerizado: boolean;
+  } | null;
+  salon: {
+    id: number;
+    nombre: string;
+    precioJornadaCompleta: Prisma.Decimal;
+    precioMediaJornada: Prisma.Decimal;
+  } | null;
+};
+
+/**
+ * HU-54: las líneas de un presupuesto con los precios del catálogo proyectados (RN-13) con un
+ * porcentaje y una cantidad de meses. Función pura: no lee la base.
+ *
+ * - El salón toma el precio de su jornada, proyectado.
+ * - Un servicio del catálogo toma su precio base proyectado y conserva la modalidad (el recargo se
+ *   vuelve a aplicar, RN-11), la cantidad, la hora y la descripción.
+ * - No cambian los tercerizados (no reciben incremento, RN-10), las líneas a cotizar ni los
+ *   adicionales escritos a mano.
+ *
+ * Un precio ajustado a mano en una línea del catálogo (RN-03) se pisa con el del catálogo: el modelo
+ * no distingue un precio ajustado de uno tomado del catálogo.
+ */
+export function recalcularLineas(
+  lineas: LineaParaRecalcular[],
+  proyeccion: Proyeccion,
+): { lineas: LineaCalculada[]; total: Prisma.Decimal } {
+  const nuevas = lineas.map((linea): LineaCalculada => {
+    if (linea.salon) {
+      const jornada = jornadaDeLineaSalon(linea.descripcion);
+      return lineaDeSalon(
+        linea.salon,
+        jornada,
+        precioProyectado(precioDeSalon(linea.salon, jornada), proyeccion),
+      );
+    }
+    const servicio = linea.servicio;
+    if (servicio && !linea.aCotizar && !servicio.tercerizado && servicio.precio !== null) {
+      return lineaDeServicio(
+        servicio,
+        linea.cantidad,
+        precioProyectado(servicio.precio, proyeccion),
+        linea.modalidad,
+        linea.horaEstimada,
+        linea.descripcion,
+      );
+    }
+    return {
+      servicioId: linea.servicioId,
+      salonId: linea.salonId,
+      descripcion: linea.descripcion,
+      cantidad: linea.cantidad,
+      modalidad: linea.modalidad,
+      precioBase: linea.precioBase === null ? null : linea.precioBase.toFixed(2),
+      precioUnitario: linea.precioUnitario.toFixed(2),
+      subtotal: linea.subtotal.toFixed(2),
+      aCotizar: linea.aCotizar,
+      horaEstimada: linea.horaEstimada,
+    };
+  });
+  return { lineas: nuevas, total: sumarLineas(nuevas) };
+}
+
+/**
+ * HU-54 (`dominio.md`, «Recálculo automático»): al cambiar el porcentaje de incremento se recalculan
+ * solo los presupuestos `Estimado` de eventos `EnConsulta`, con el porcentaje nuevo y proyectados a
+ * la fecha de cada evento. **No reinicia la vigencia**: la emisión y el vencimiento no cambian, es un
+ * recálculo masivo que nadie le comunica al cliente. Corre dentro de la transacción del que cambia
+ * el porcentaje (`tx`). Devuelve cuántos presupuestos recalculó.
+ */
+export async function recalcularEstimadosEnConsulta(
+  porcentaje: string,
+  tx: Prisma.TransactionClient,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+): Promise<number> {
+  const presupuestos = await repo.listarEstimadosParaRecalcular(tx);
+  const hoy = hoyEnZonaEventos();
+  for (const presupuesto of presupuestos) {
+    const proyeccion: Proyeccion = {
+      porcentaje,
+      meses: mesesHastaEvento(hoy, presupuesto.evento.fecha.toISOString().slice(0, 10)),
+    };
+    const { lineas, total } = recalcularLineas(presupuesto.lineas, proyeccion);
+    await repo.reemplazarLineas(presupuesto.id, lineas, tx);
+    await repo.actualizarPresupuesto(presupuesto.id, { total: total.toFixed(2) }, tx);
+  }
+  return presupuestos.length;
 }

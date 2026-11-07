@@ -4,15 +4,27 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { crearApp } from '../../app.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
+import type * as ServicioPresupuestos from '../presupuestos/presupuestos.servicio.js';
 
+// La transacción falsa pasa un tx simbólico, para comprobar que el porcentaje y el recálculo de
+// HU-54 van en la misma.
+const TX = { soy: 'tx' };
 vi.mock('./configuracion-precios.repositorio.js', () => ({
   obtener: vi.fn(),
   guardar: vi.fn(),
+  enTransaccion: vi.fn((ejecutar: (tx: unknown) => unknown) => ejecutar(TX)),
+}));
+// El recálculo se prueba en presupuestos.recalculo.test.ts; acá alcanza con saber que se pidió.
+vi.mock('../presupuestos/presupuestos.servicio.js', async (original) => ({
+  ...(await original<typeof ServicioPresupuestos>()),
+  recalcularEstimadosEnConsulta: vi.fn(),
 }));
 
 const repo = await import('./configuracion-precios.repositorio.js');
 const obtenerMock = vi.mocked(repo.obtener);
 const guardarMock = vi.mocked(repo.guardar);
+const { recalcularEstimadosEnConsulta } = await import('../presupuestos/presupuestos.servicio.js');
+const recalcularMock = vi.mocked(recalcularEstimadosEnConsulta);
 
 const app = crearApp();
 
@@ -72,8 +84,21 @@ describe('PUT /api/configuracion-precios (RN-10)', () => {
       .send({ porcentajeMensual: '3' });
 
     expect(respuesta.status).toBe(200);
-    expect(guardarMock).toHaveBeenCalledWith('3');
+    expect(guardarMock).toHaveBeenCalledWith('3', TX);
     expect(respuesta.body.data.porcentajeMensual).toBe('3.00');
+  });
+
+  // HU-54: los Estimado de eventos EnConsulta se recalculan con el porcentaje nuevo, en la misma
+  // transacción que lo guarda.
+  it('recalcula los presupuestos en consulta con el porcentaje nuevo, en la misma transacción', async () => {
+    guardarMock.mockResolvedValue(fila('3'));
+
+    await request(app)
+      .put('/api/configuracion-precios')
+      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')])
+      .send({ porcentajeMensual: '3' });
+
+    expect(recalcularMock).toHaveBeenCalledWith('3', TX);
   });
 
   it('responde 400 con un porcentaje mayor a 100 o mal escrito', async () => {
@@ -85,6 +110,7 @@ describe('PUT /api/configuracion-precios (RN-10)', () => {
       expect(respuesta.status).toBe(400);
     }
     expect(guardarMock).not.toHaveBeenCalled();
+    expect(recalcularMock).not.toHaveBeenCalled();
   });
 
   it('el cliente no lo puede cambiar', async () => {
