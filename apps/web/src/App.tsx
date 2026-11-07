@@ -82,6 +82,29 @@ function SitioPublico({ sesionCliente }: { sesionCliente: Sesion | null }) {
     else setAcceso({ abierto: true, salonId });
   }
 
+  // «Salir» (reunión con el cliente, 05/11/2026). Primero se va a la landing y recién con la landing
+  // en pantalla se cierra la sesión (el efecto de abajo): si la sesión se vaciaba con /cotizar todavía
+  // montado, esa ruta redirigía con el pedido de acceso y abría el registro, como si no hubiera
+  // salido. En el cotizador la consulta a medio armar se pierde, así que se pide confirmarlo.
+  const saliendo = (location.state as { salir?: boolean } | null)?.salir === true;
+  const { mutate: cerrar } = cerrarSesion;
+  useEffect(() => {
+    if (!saliendo) return;
+    cerrar();
+    navigate('/', { replace: true, state: null });
+  }, [saliendo, cerrar, navigate]);
+
+  function salir() {
+    const enCotizador = location.pathname === '/cotizar';
+    if (
+      enCotizador &&
+      !window.confirm('¿Seguro que querés salir? Tu consulta todavía no se completó.')
+    ) {
+      return;
+    }
+    navigate('/', { replace: true, state: { salir: true } });
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <EncabezadoSitio
@@ -89,7 +112,7 @@ function SitioPublico({ sesionCliente }: { sesionCliente: Sesion | null }) {
         sesionCliente={sesionCliente}
         onInicio={() => navigate('/')}
         onCotizar={() => cotizar()}
-        onCerrarSesion={() => cerrarSesion.mutate(undefined, { onSuccess: () => navigate('/') })}
+        onCerrarSesion={salir}
       />
       <Outlet context={{ cotizar }} />
       <AccesoCliente
