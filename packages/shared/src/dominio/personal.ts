@@ -42,3 +42,10 @@ export function puedeAdministrarA(quien: Rol, rolDelOtro: Rol): boolean {
 export function administraPersonal(rol: Rol): boolean {
   return ROLES_QUE_ASIGNA[rol].length > 0;
 }
+
+/** HU-25 del backlog: la auditoría la ven solo el GG y el ADM (dominio.md, «Roles»). */
+export const ROLES_QUE_VEN_AUDITORIA = ['GERENTE_GENERAL', 'ADMINISTRADOR_SISTEMA'] as const;
+
+export function veAuditoria(rol: Rol): boolean {
+  return (ROLES_QUE_VEN_AUDITORIA as readonly Rol[]).includes(rol);
+}

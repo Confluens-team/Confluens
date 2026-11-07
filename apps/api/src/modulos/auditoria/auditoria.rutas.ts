@@ -1,4 +1,8 @@
-import { esquemaFiltrosAuditoria, esquemaRegistroAuditoria } from '@confluens/shared';
+import {
+  esquemaFiltrosAuditoria,
+  esquemaRegistroAuditoria,
+  ROLES_QUE_VEN_AUDITORIA,
+} from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
 
@@ -50,7 +54,7 @@ registroOpenApi.registerPath({
 export const rutasAuditoria = Router();
 
 // La auditoría la ven solo el GG y el ADM (dominio.md, «Roles»).
-const soloGerencia = [autenticar, autorizar('GERENTE_GENERAL', 'ADMINISTRADOR_SISTEMA')] as const;
+const soloGerencia = [autenticar, autorizar(...ROLES_QUE_VEN_AUDITORIA)] as const;
 
 rutasAuditoria.get(
   '/',

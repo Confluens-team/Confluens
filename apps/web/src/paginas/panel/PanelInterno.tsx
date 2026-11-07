@@ -1,9 +1,10 @@
-import { administraPersonal, type Sesion } from '@confluens/shared';
+import { administraPersonal, veAuditoria, type Rol, type Sesion } from '@confluens/shared';
 import {
   Building2,
   CalendarDays,
   CreditCard,
   Globe,
+  History,
   Images,
   Inbox,
   List,
@@ -27,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { ListadoClientes } from '@/paginas/clientes/ListadoClientes';
 import { Agenda } from '@/paginas/eventos/Agenda';
 import { RegistrarMedioPago } from '@/paginas/medios-pago/RegistrarMedioPago';
+import { Auditoria } from '@/paginas/auditoria/Auditoria';
 import { BotonCambiarMiContrasena } from '@/paginas/panel/CambiarMiContrasena';
 import { Personal } from '@/paginas/personal/Personal';
 import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
@@ -76,7 +78,8 @@ const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: 
   },
 ];
 
-type SeccionConfiguracion = 'salones' | 'servicios' | 'medios' | 'landing' | 'personal';
+type SeccionConfiguracion =
+  'salones' | 'servicios' | 'medios' | 'landing' | 'personal' | 'auditoria';
 
 // Las secciones de la configuración, agrupadas como en el sidebar.
 const GRUPOS_DE_CONFIGURACION: {
@@ -98,23 +101,37 @@ const GRUPOS_DE_CONFIGURACION: {
   },
   {
     titulo: 'Equipo',
-    secciones: [{ valor: 'personal', texto: 'Personal', icono: ShieldCheck }],
+    secciones: [
+      { valor: 'personal', texto: 'Personal', icono: ShieldCheck },
+      { valor: 'auditoria', texto: 'Auditoría', icono: History },
+    ],
   },
 ];
+
+// Las secciones que no ve cualquier rol. El resto las ven todos hasta HU-56 del backlog.
+const SECCION_VISIBLE: Partial<Record<SeccionConfiguracion, (rol: Rol) => boolean>> = {
+  personal: administraPersonal,
+  auditoria: veAuditoria,
+};
+
+function seccionVisible(seccion: SeccionConfiguracion, rol: Rol): boolean {
+  return SECCION_VISIBLE[seccion]?.(rol) ?? true;
+}
 
 // Todo lo que se consulta o se carga del catálogo: salones (HU-03), servicios (HU-02), medios de pago
 // (HU-19), el contenido de la landing (HU-08) y el personal (HU-30 y HU-31 del Sprint 4). Cada
 // sección se elige desde el sidebar de la izquierda; en pantallas angostas el sidebar va arriba.
 //
-// Personal la ven solo el GG y el ADM (dominio.md, «Personal»); la API también se lo niega al resto.
+// Personal y Auditoría (HU-25 del backlog) las ven solo el GG y el ADM (dominio.md, «Personal» y
+// «Roles»); la API también se las niega al resto.
 // Las demás secciones las siguen viendo todos hasta HU-56 del backlog (permisos por rol).
 function ConfiguracionDeNegocio({ sesion }: { sesion: Sesion }) {
   const rol = sesion.rol;
   const [seccion, setSeccion] = useState<SeccionConfiguracion>('servicios');
-  const grupos = GRUPOS_DE_CONFIGURACION.filter(
-    ({ secciones }) =>
-      !secciones.some(({ valor }) => valor === 'personal') || administraPersonal(rol),
-  );
+  const grupos = GRUPOS_DE_CONFIGURACION.map((grupo) => ({
+    ...grupo,
+    secciones: grupo.secciones.filter(({ valor }) => seccionVisible(valor, rol)),
+  })).filter(({ secciones }) => secciones.length > 0);
   return (
     <div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start">
       {/* top-32: deja libre el encabezado fijo del panel con sus pestañas. */}
@@ -150,6 +167,7 @@ function ConfiguracionDeNegocio({ sesion }: { sesion: Sesion }) {
         {seccion === 'medios' && <RegistrarMedioPago />}
         {seccion === 'landing' && <AdministrarLanding />}
         {seccion === 'personal' && administraPersonal(rol) && <Personal sesion={sesion} />}
+        {seccion === 'auditoria' && veAuditoria(rol) && <Auditoria />}
       </div>
     </div>
   );
