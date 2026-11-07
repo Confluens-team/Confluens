@@ -27,7 +27,7 @@ import { cn } from '@/lib/utils';
 import { ListadoClientes } from '@/paginas/clientes/ListadoClientes';
 import { Agenda } from '@/paginas/eventos/Agenda';
 import { RegistrarMedioPago } from '@/paginas/medios-pago/RegistrarMedioPago';
-import { CambiarMiContrasena } from '@/paginas/panel/CambiarMiContrasena';
+import { BotonCambiarMiContrasena } from '@/paginas/panel/CambiarMiContrasena';
 import { Personal } from '@/paginas/personal/Personal';
 import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
 import { ConsultarSalones } from '@/paginas/salones/ConsultarSalones';
@@ -182,12 +182,13 @@ function MiCuenta({ sesion, onCerrarSesion }: { sesion: Sesion; onCerrarSesion: 
             <dd>Se cierra sola tras 2 horas sin actividad</dd>
           </div>
         </dl>
-        <Button variant="outline" className="mt-6" onClick={onCerrarSesion}>
-          <LogOut /> Cerrar sesión
-        </Button>
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={onCerrarSesion}>
+            <LogOut /> Cerrar sesión
+          </Button>
+          <BotonCambiarMiContrasena />
+        </div>
       </section>
-
-      <CambiarMiContrasena />
     </div>
   );
 }

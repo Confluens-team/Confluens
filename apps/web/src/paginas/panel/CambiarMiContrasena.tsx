@@ -5,22 +5,17 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { VentanaFormulario } from '@/components/VentanaFormulario';
 import { useCambiarMiContrasena } from '@/hooks/use-sesion';
 import { ErrorApiCliente } from '@/lib/api';
 
 const vacio = { actual: '', nueva: '', repetida: '' };
 
-// HU-30 del backlog: cada usuario cambia su contraseña desde Mi cuenta, con la actual (PO,
-// 06/11/2026). La nueva se pide dos veces para no dejarla mal tipeada. Al cambiarla se cierran las
-// demás sesiones abiertas; esta sigue.
-export function CambiarMiContrasena() {
+// La contraseña actual y la nueva dos veces, para no dejarla mal tipeada.
+function FormularioMiContrasena({ onGuardada }: { onGuardada: () => void }) {
   const cambiar = useCambiarMiContrasena();
   const [valores, setValores] = useState(vacio);
   const [errores, setErrores] = useState<Record<string, string>>({});
-
-  function actualizar(campo: keyof typeof vacio, valor: string) {
-    setValores((anteriores) => ({ ...anteriores, [campo]: valor }));
-  }
 
   function manejarEnvio(evento: React.FormEvent) {
     evento.preventDefault();
@@ -35,7 +30,7 @@ export function CambiarMiContrasena() {
     }
     setErrores(nuevos);
     if (!resultado.success || Object.keys(nuevos).length > 0) return;
-    cambiar.mutate(resultado.data, { onSuccess: () => setValores(vacio) });
+    cambiar.mutate(resultado.data, { onSuccess: onGuardada });
   }
 
   const campo = (id: keyof typeof vacio, etiqueta: string, autocompletar: string) => (
@@ -47,41 +42,69 @@ export function CambiarMiContrasena() {
         autoComplete={autocompletar}
         value={valores[id]}
         aria-invalid={!!errores[id]}
-        onChange={(e) => actualizar(id, e.target.value)}
+        onChange={(e) => setValores((anteriores) => ({ ...anteriores, [id]: e.target.value }))}
       />
       {errores[id] && <p className="text-sm text-destructive">{errores[id]}</p>}
     </div>
   );
 
   return (
-    <section className="rounded-xl bg-card p-6 ring-1 ring-border">
-      <div className="flex items-center gap-2">
-        <KeyRound className="size-4 text-dorado" />
-        <h3 className="font-medium">Cambiar contraseña</h3>
-      </div>
-      <p className="mt-2 text-sm text-muted-foreground">
-        Al menos 6 caracteres. Se cierran tus sesiones abiertas en otros dispositivos.
-      </p>
-      <form onSubmit={manejarEnvio} className="mt-4 space-y-4">
-        {campo('actual', 'Contraseña actual', 'current-password')}
-        {campo('nueva', 'Contraseña nueva', 'new-password')}
-        {campo('repetida', 'Repetí la contraseña nueva', 'new-password')}
-        {cambiar.isError && (
-          <p className="text-sm text-destructive">
-            {cambiar.error instanceof ErrorApiCliente
-              ? cambiar.error.message
-              : 'No se pudo cambiar la contraseña.'}
-          </p>
-        )}
-        {cambiar.isSuccess && (
-          <p className="flex items-center gap-2 text-sm text-emerald-800">
-            <CheckCircle2 className="size-4" /> Tu contraseña quedó cambiada.
-          </p>
-        )}
-        <Button type="submit" disabled={cambiar.isPending}>
-          {cambiar.isPending ? 'Guardando…' : 'Cambiar contraseña'}
-        </Button>
-      </form>
-    </section>
+    <form onSubmit={manejarEnvio} className="space-y-4">
+      {campo('actual', 'Contraseña actual', 'current-password')}
+      {campo('nueva', 'Contraseña nueva', 'new-password')}
+      {campo('repetida', 'Repetí la contraseña nueva', 'new-password')}
+      {cambiar.isError && (
+        <p className="text-sm text-destructive">
+          {cambiar.error instanceof ErrorApiCliente
+            ? cambiar.error.message
+            : 'No se pudo cambiar la contraseña.'}
+        </p>
+      )}
+      <Button type="submit" disabled={cambiar.isPending}>
+        {cambiar.isPending ? 'Guardando…' : 'Cambiar contraseña'}
+      </Button>
+    </form>
+  );
+}
+
+// HU-30 del backlog: cada usuario cambia su contraseña desde Mi cuenta, con la actual (PO,
+// 06/11/2026). Es opcional, así que queda como un botón chico que abre el formulario en una ventana
+// (PO, 07/11/2026). Al cambiarla se cierran las demás sesiones abiertas; esta sigue.
+export function BotonCambiarMiContrasena() {
+  const [abierto, setAbierto] = useState(false);
+  const [cambiada, setCambiada] = useState(false);
+
+  return (
+    <>
+      <Button
+        variant="outline"
+        onClick={() => {
+          setCambiada(false);
+          setAbierto(true);
+        }}
+      >
+        <KeyRound /> Cambiar contraseña
+      </Button>
+      {cambiada && (
+        <p className="flex items-center gap-2 text-sm text-emerald-800">
+          <CheckCircle2 className="size-4" /> Tu contraseña quedó cambiada.
+        </p>
+      )}
+      <VentanaFormulario
+        abierto={abierto}
+        onCambiarAbierto={setAbierto}
+        titulo="Cambiar contraseña"
+        descripcion="Al menos 6 caracteres. Se cierran tus sesiones abiertas en otros dispositivos."
+      >
+        {/* La key vacía el formulario cada vez que se abre la ventana. */}
+        <FormularioMiContrasena
+          key={String(abierto)}
+          onGuardada={() => {
+            setCambiada(true);
+            setAbierto(false);
+          }}
+        />
+      </VentanaFormulario>
+    </>
   );
 }
