@@ -4,54 +4,31 @@ import { esquemaFecha, esquemaFechaHora, esquemaId, esquemaImporte } from './com
 import { esquemaEstadoEvento } from './evento.esquema.js';
 
 // Catálogo de medios de pago (RN-14). Baja lógica con `activo`: un medio dado de baja no se borra,
-// para no romper los pagos históricos que lo referencian. `conFactura` y `sinFactura` dicen en qué
-// cobros se puede usar según el presupuesto requiera factura o no (dominio.md, RN-14).
+// para no romper los pagos históricos que lo referencian. Desde HU-53 todos los medios activos se
+// usan en todos los cobros: las columnas `conFactura` y `sinFactura` siguen en la base, sin uso, y
+// no viajan.
 export const esquemaMedioPago = z.object({
   id: esquemaId,
   nombre: z.string(),
   activo: z.boolean(),
-  conFactura: z.boolean(),
-  sinFactura: z.boolean(),
 });
 export type MedioPago = z.infer<typeof esquemaMedioPago>;
 
 // Contrato de POST /medios-pago (HU-19). El nombre es único sin distinguir mayúsculas (lo controla
-// el servicio) y hay que habilitarlo para al menos uno de los dos casos. Lo completa el personal en
-// el panel, así que los mensajes van en español.
-export const esquemaCrearMedioPago = z
-  .object({
-    nombre: z
-      .string('Escribí el nombre del medio de pago')
-      .trim()
-      .min(1, 'Escribí el nombre del medio de pago')
-      .max(40, 'El nombre admite hasta 40 caracteres'),
-    conFactura: z.boolean().default(false),
-    sinFactura: z.boolean().default(false),
-  })
-  .refine((medio) => medio.conFactura || medio.sinFactura, {
-    path: ['conFactura'],
-    message: 'Elegí si se puede usar con factura, sin factura o en los dos casos',
-  });
+// el servicio). Desde HU-53 no se elige en qué cobros se usa: vale en todos. Lo completa el personal
+// en el panel, así que los mensajes van en español.
+export const esquemaCrearMedioPago = z.object({
+  nombre: z
+    .string('Escribí el nombre del medio de pago')
+    .trim()
+    .min(1, 'Escribí el nombre del medio de pago')
+    .max(40, 'El nombre admite hasta 40 caracteres'),
+});
 export type CrearMedioPago = z.infer<typeof esquemaCrearMedioPago>;
 
-// Body de PATCH /medios-pago/:id (HU-33 del Sprint 4). Viaja el estado completo, como lo muestra el
-// formulario: sin defaults, porque un caso que no llega no es lo mismo que destildarlo. Mismas
-// reglas que el alta; la habilitación de los seis medios del catálogo inicial también se puede
-// cambiar (equipo, 03/11/2026). Que el nombre no sea de otro medio lo controla la API (409).
-export const esquemaModificarMedioPago = z
-  .object({
-    nombre: z
-      .string('Escribí el nombre del medio de pago')
-      .trim()
-      .min(1, 'Escribí el nombre del medio de pago')
-      .max(40, 'El nombre admite hasta 40 caracteres'),
-    conFactura: z.boolean(),
-    sinFactura: z.boolean(),
-  })
-  .refine((medio) => medio.conFactura || medio.sinFactura, {
-    path: ['conFactura'],
-    message: 'Elegí si se puede usar con factura, sin factura o en los dos casos',
-  });
+// Body de PATCH /medios-pago/:id (HU-33 del Sprint 4). Desde HU-53 solo se modifica el nombre. Que no
+// sea de otro medio lo controla la API (409).
+export const esquemaModificarMedioPago = esquemaCrearMedioPago;
 export type ModificarMedioPago = z.infer<typeof esquemaModificarMedioPago>;
 
 // Filtro de GET /medios-pago. Sin parámetros devuelve solo los activos, que es lo que usa el

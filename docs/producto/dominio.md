@@ -261,14 +261,13 @@ marca y se calcula con el 21% de IVA, y **no hay casilla** para cambiarla. Los p
 existían **conservan su marca**, con su base de cobro, su seña y su saldo, aunque después se
 modifiquen o se recalculen. Si más adelante vuelve el caso sin factura, tiene que ser **explícito**
 (por ejemplo, un campo que solo activa el ADM desde el panel, que se ve siempre ahí y no sale en el
-PDF del cliente), nunca escondido bajo un servicio u otro dato. **Reunión 05/11/2026 → HU-53.**
-Hasta entonces el Responsable de Eventos la marca en el presupuesto con la casilla Con o Sin
-factura.
+PDF del cliente), nunca escondido bajo un servicio u otro dato. Construido con HU-53, que el PO
+adelantó al cierre del Sprint 4 (06/11/2026).
 
 **Base de cobro.** Importe contra el que se miden la seña, el saldo y el cierre del evento. Si el
 presupuesto **requiere factura** es el **total con IVA**; si no, el **subtotal sin IVA** (total ÷
 1,21, no el total menos el 21%). No se guarda: se calcula a partir del presupuesto y de su marca de
-factura. Con HU-53, la de todo presupuesto nuevo es el total con IVA.
+factura. Desde HU-53, la de todo presupuesto nuevo es el total con IVA.
 
 **Varios salones.** Un evento puede realizarse en **más de un salón a la vez**, hasta los cinco:
 se reparte la gente entre varios espacios según cómo convenga armarlos. Todos comparten el horario
@@ -331,8 +330,8 @@ cuenta queda como estaba al cancelarse (PO, 06/11/2026).
 habitación. El Responsable de Finanzas puede dar de alta otros. Baja lógica: un medio dado de baja
 se sigue viendo en los pagos ya registrados. **Todos los medios activos se pueden usar en todos los
 cobros** (RN-14, reunión 05/11/2026): deja de elegirse si un medio va con factura, sin factura o en
-los dos casos. **Reunión 05/11/2026 → HU-53.** Hasta entonces cada medio guarda esa habilitación y
-se elige al darlo de alta o al modificarlo.
+los dos casos. Construido con HU-53: las marcas de habilitación de cada medio siguen en la base,
+sin uso.
 
 **Auditoría.** Registro inmutable de usuario, fecha, entidad, valor anterior y valor nuevo.
 Nadie lo edita ni lo borra. Se implementa con middleware de Prisma sobre `audit_log`.
@@ -426,7 +425,7 @@ contenido de la landing. El Cliente sigue sin acceso al panel.
 
 | Código | Regla |
 |---|---|
-| RN-01 | La seña equivale al **20% de la base de cobro del evento**. La base depende de si el presupuesto **requiere factura**: **con factura**, la base es el **total con IVA**; **sin factura**, el **subtotal sin IVA** (RN-05). El porcentaje es siempre 20%. **Reunión 05/11/2026 → HU-53:** todo presupuesto nuevo requiere factura, así que su base es el total con IVA; los anteriores conservan su marca. Hasta entonces el Responsable de Eventos la marca en el presupuesto. |
+| RN-01 | La seña equivale al **20% de la base de cobro del evento**. La base depende de si el presupuesto **requiere factura**: **con factura**, la base es el **total con IVA**; **sin factura**, el **subtotal sin IVA** (RN-05). El porcentaje es siempre 20%. **Desde HU-53** (reunión 05/11/2026; PO, 06/11/2026) todo presupuesto nuevo requiere factura y no hay casilla para cambiarlo, así que su base es el total con IVA; los anteriores conservan su marca. |
 | RN-02 | La prioridad entre clientes al reasignar salones la define la organización (el Responsable de Eventos). |
 | RN-03 | El precio informado es de referencia; el Responsable de Eventos puede ajustarlo comercialmente en casos particulares, y el ajuste queda auditado. |
 | RN-04 | Los servicios no necesariamente cubren a todos los asistentes: pueden contratarse para menos. |
@@ -439,7 +438,7 @@ contenido de la landing. El Cliente sigue sin acceso al panel.
 | RN-11 | **Recargo por modalidad.** Continuo en salón: +20%. En mesas con mozo: +30%. Se aplica **sobre el precio base por persona** del servicio, **sin IVA**, y **por cada servicio** en que el cliente elija esa modalidad (si elige tres coffees y marca continuo en dos, el recargo va solo en esos dos). Es opcional: el cliente elige. |
 | RN-12 | **El que seña primero se queda con el salón.** Puede haber varias consultas para el mismo salón, fecha y horario. Cuando una pasa a `Reservado`, las demás `EnConsulta` que se superponen **no se cancelan**: el sistema las marca como "en conflicto" y el Responsable de Eventos gestiona con esos clientes mover la fecha, el horario o el salón. Registrar la seña de una consulta cuyo horario ya está reservado por otro evento se rechaza. En un evento de varios días, el solapamiento se controla **por día y por salón** (HU-50). |
 | RN-13 | **Precios proyectados a la fecha del evento.** Cuando el cliente arma un presupuesto para una fecha futura, los precios de los servicios propios y del salón se proyectan aplicando el porcentaje mensual vigente, **compuesto**, una vez por cada mes entre el mes actual y el mes del evento: `precio_actual × (1 + p)^meses`. Sigue siendo compuesta porque se admiten porcentajes con decimales. Con tramos (RN-10), cada mes que atraviesa usa el porcentaje de su tramo, y un servicio con porcentaje propio usa el suyo (reunión 05/11/2026, HU-34 del backlog). Los tercerizados no se proyectan. Casos particulares los arregla a mano el Responsable de Eventos (RN-03). |
-| RN-14 | **Reunión 05/11/2026 → HU-53: todos los medios de pago activos quedan habilitados en todos los cobros**, con factura o sin ella, y la habilitación por caso deja de usarse. Lo que sigue describe cómo funciona hasta entonces. **Medios de pago habilitados según la factura.** Los medios con los que se puede registrar un pago dependen de la marca de **requiere factura** del presupuesto: **sin factura**, solo **Efectivo**, **Transferencia** y **A la habitación**; **con factura**, además **Débito**, **Crédito** y **Cheque**. Esa es la habilitación con que nace el catálogo inicial. Un medio dado de alta después se habilita según lo que se eligió al crearlo: con factura, sin factura o en los dos casos (decisión del PO, 16/10/2026; HU-19 del Sprint 3). Cada medio guarda esa habilitación en la base y el Responsable de Finanzas la puede modificar en cualquiera, también en los seis iniciales; el cambio vale desde el cobro siguiente y no toca los pagos ya registrados (equipo, 03/11/2026; HU-33 del Sprint 4). La regla la aplican la web (el desplegable del formulario de cobro) y la API (rechaza el pago con 422). «Tarjeta», el medio de la versión anterior que Débito y Crédito reemplazan, queda con **baja lógica**: los pagos ya registrados con él se siguen mostrando en el historial del evento, pero no se ofrece ni se acepta en un cobro nuevo. |
+| RN-14 | **Todos los medios de pago activos se pueden usar en todos los cobros**, con factura o sin ella (reunión 05/11/2026; HU-53, PO, 06/11/2026). El alta y la modificación de un medio piden solo el nombre. Antes de HU-53 cada medio se habilitaba con factura, sin factura o en los dos casos (HU-19 del Sprint 3, HU-33 del Sprint 4); esas marcas siguen en la base, sin uso. «Tarjeta», el medio de la versión anterior que Débito y Crédito reemplazan, queda con **baja lógica**: los pagos ya registrados con él se siguen mostrando en el historial del evento, pero no se ofrece ni se acepta en un cobro nuevo. |
 
 ---
 

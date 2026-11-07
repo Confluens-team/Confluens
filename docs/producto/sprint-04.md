@@ -1,6 +1,6 @@
 # Sprint 4 — Confluens
 
-Del 23/10/2026 al 06/11/2026 · Scrum Master: Ayrton Vanega · 11 historias · 34 puntos (backlog, sin Planning Poker; HU-36 eliminada por el PO, 06/11/2026)
+Del 23/10/2026 al 06/11/2026 · Scrum Master: Ayrton Vanega · 11 historias + HU-53 del backlog · 34 puntos (backlog, sin Planning Poker; HU-36 eliminada y HU-53 agregada por el PO, 06/11/2026)
 
 > **Fuentes.** `Seguimiento del Proyecto` v0.5 (sección 6, Sprint 4: alcance, Sprint Backlog y
 > puntos a definir con el PO) en Drive, y `Definicion_del_Producto` v0.6 (29/10/2026), que suma
@@ -47,7 +47,8 @@ Orden del Seguimiento: Salones → Eventos → Usuarios → Catálogos → Pagos
 | HU-34 | Consultar pagos de un evento | RF | — | 2 | Hecha: cubierta por HU-21, sin código nuevo |
 | HU-35 | Anular pago de un evento | RF | — | 2 | Hecha: anulación sin borrar el pago |
 | ~~HU-36~~ | ~~Generar y emitir un recibo como comprobante válido de pago~~ | RF | — | — | **Eliminada (PO, 06/11/2026)** |
-| | **Total** | | | **34** | **Hechos: 32** |
+| — | Calcular todo presupuesto nuevo con IVA | SYS | HU-53 | a estimar | Hecha: agregada por el PO al cierre del sprint |
+| | **Total (sin HU-53)** | | | **34** | **Hechos: 34** |
 
 Velocidad de los sprints anteriores: 31, 32 y 36. Con 34 puntos el sprint queda en línea, pero
 varias historias valen menos de lo estimado porque ya están hechas en parte (HU-29, HU-34 y, según
@@ -349,9 +350,9 @@ Criterios propuestos:
 se puede cambiar, igual que la de los dados de alta después; RN-14 quedó actualizada en
 `dominio.md`. La baja de un medio es HU-39 del backlog (Sprint 6).
 
-**Cambia con HU-53 del backlog** (reunión 05/11/2026): todos los medios quedan habilitados en todos
-los cobros, así que elegir con factura, sin factura o los dos deja de tener sentido y sale del alta
-y de la modificación.
+**Cambió con HU-53 del backlog** (reunión 05/11/2026), construida al cierre de este sprint: todos
+los medios quedan habilitados en todos los cobros, así que elegir con factura, sin factura o los dos
+salió del alta y de la modificación.
 
 **Implementación.** `PATCH /api/medios-pago/:id` (`409` por nombre repetido, `404` si no existe),
 reutilizando las validaciones de `esquemaCrearMedioPago`. Edición en `ListadoMediosPago.tsx`.
@@ -422,6 +423,29 @@ tachado con la fecha y el usuario. Tests en `pagos.rutas.test.ts`.
 ## HU-36 — Generar y emitir un recibo como comprobante válido de pago
 
 **Eliminada (PO, 06/11/2026).** No se construye.
+
+## HU-53 del backlog — Calcular todo presupuesto nuevo con IVA
+
+**Agregada por el PO al cierre del sprint (06/11/2026).** Venía de la reunión con el cliente del
+05/11/2026 y estaba sin sprint; se adelanta porque para la exposición todo tiene que estar
+calculado con IVA y sin la casilla de factura. Sin numeración local: se cita con el código del
+backlog. Se estima recién en la Definición del Producto.
+
+Criterios (`backlog.md` y RN-01, RN-14 de `dominio.md`):
+
+- Se saca la casilla «El cliente requiere factura»: todo presupuesto nuevo se crea con factura y su
+  base de cobro es el total con IVA. Vale para el cotizador del cliente, el alta del personal, la
+  consulta social y la reutilización de un evento.
+- La marca ya no se modifica: los presupuestos existentes conservan la suya aunque se modifiquen o
+  se recalculen (la base de producción se limpia antes de la exposición; PO, 06/11/2026).
+- Todos los medios de pago activos se pueden usar en todos los cobros, con factura o sin ella; el
+  alta y la modificación de un medio piden solo el nombre.
+
+**Implementación.** Sin cambio de modelo: `crearPresupuestoConLineas` crea con
+`requiereFactura: true` (la columna sigue con default `false`), `PATCH /api/presupuestos/:id` ya no
+recibe la marca, y las columnas `conFactura` y `sinFactura` de `MedioPago` quedan sin uso. Tests en
+`presupuestos.repositorio.test.ts`, `presupuestos.consultas.test.ts`, `pagos.rutas.test.ts` y
+`medios-pago.test.ts`.
 
 ## Casos de prueba
 

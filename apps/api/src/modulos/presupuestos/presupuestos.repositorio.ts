@@ -153,6 +153,10 @@ export async function crearPresupuestoConLineas(
       fechaEmision: datos.fechaEmision,
       venceEn: datos.venceEn,
       total: datos.total,
+      // HU-53 (reunión con el cliente del 05/11/2026): todo presupuesto nuevo requiere factura y su
+      // base de cobro es el total con IVA (RN-01). El default de la columna sigue en false para no
+      // cambiar el modelo; los presupuestos anteriores conservan su marca.
+      requiereFactura: true,
       lineas: { create: datos.lineas },
     },
     include: { lineas: true, evento: true },

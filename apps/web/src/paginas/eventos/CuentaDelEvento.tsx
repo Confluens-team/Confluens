@@ -1,8 +1,8 @@
 import {
+  compararMediosPago,
   type CrearPago,
   esquemaCrearPago,
   type EventoDetallado,
-  mediosPagoHabilitados,
   PORCENTAJE_SENA,
   type TipoJornada,
 } from '@confluens/shared';
@@ -255,12 +255,9 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
 
   const { pagos, saldo } = cuenta.data;
   const base = Number(saldo.baseDeCobro);
-  // RN-14: con qué se puede cobrar depende de la casilla «El cliente requiere factura» del
-  // presupuesto, que es lo mismo que `incluyeIva` (es la marca que define la base de cobro de
-  // RN-01), y de la habilitación de cada medio con o sin factura (HU-19). Primero los del catálogo
-  // inicial y después los dados de alta. La API aplica la misma regla, así que el filtro de acá no
-  // la sostiene solo.
-  const mediosHabilitados = mediosPagoHabilitados(mediosPago.data ?? [], saldo.incluyeIva);
+  // RN-14 desde HU-53: todos los medios activos se pueden usar en cualquier cobro. Primero los del
+  // catálogo inicial y después los dados de alta.
+  const mediosHabilitados = [...(mediosPago.data ?? [])].sort(compararMediosPago);
   // HU-21: el importe de la seña y si ya se alcanzó los calcula la API con Decimal (el 20% de la
   // base, redondeado para arriba al centavo). Acá solo se resta para mostrar cuánto falta.
   const montoSena = Number(saldo.montoSena);
@@ -843,14 +840,6 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                     </select>
                     {errors.medioPagoId && (
                       <p className="text-xs text-destructive">Elegí un medio de pago.</p>
-                    )}
-                    {/* RN-14: por qué faltan opciones. Sin la aclaración, el que cobra no sabe que
-                        la lista corta la define la casilla de factura del presupuesto. */}
-                    {!saldo.incluyeIva && (
-                      <p className="text-xs text-muted-foreground">
-                        Sin factura solo se puede cobrar en efectivo, por transferencia o a la
-                        habitación.
-                      </p>
                     )}
                   </div>
                   <div className="space-y-1.5">
