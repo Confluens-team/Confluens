@@ -2,12 +2,12 @@ import type { Sesion } from '@confluens/shared';
 
 import { prisma } from './prisma.js';
 
-type UsuarioDeSesion = Sesion & { versionSesion: number };
+type UsuarioDeSesion = Sesion & { versionSesion: number; activo: boolean };
 
 async function buscarUsuario(id: number): Promise<UsuarioDeSesion | null> {
   return prisma.usuario.findUnique({
     where: { id },
-    select: { id: true, email: true, rol: true, versionSesion: true },
+    select: { id: true, email: true, rol: true, versionSesion: true, activo: true },
   });
 }
 
@@ -20,7 +20,8 @@ async function buscarUsuario(id: number): Promise<UsuarioDeSesion | null> {
  * Devuelve la sesión tal como está HOY en la base (así un cambio de rol rige en el request
  * siguiente), o null si el usuario ya no existe o su versión de sesión cambió desde que se firmó
  * el token (cerró sesión o restableció la contraseña). Un token sin versión, firmado antes de este
- * control, también es null.
+ * control, también es null. Un usuario dado de baja (HU-31 del backlog) también: la baja ya sube la
+ * versión, y esto lo sostiene aunque no lo hiciera.
  */
 export async function sesionVigente(
   sesion: Sesion,
@@ -29,6 +30,6 @@ export async function sesionVigente(
 ): Promise<Sesion | null> {
   if (version === null) return null;
   const usuario = await buscar(sesion.id);
-  if (!usuario || usuario.versionSesion !== version) return null;
+  if (!usuario || !usuario.activo || usuario.versionSesion !== version) return null;
   return { id: usuario.id, email: usuario.email, rol: usuario.rol };
 }
