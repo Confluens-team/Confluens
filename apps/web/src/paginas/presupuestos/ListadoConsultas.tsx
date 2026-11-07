@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { type MouseEvent, useEffect, useState } from 'react';
 
+import { SelectorFecha } from '@/components/SelectorFechaHora';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
@@ -222,24 +223,21 @@ export function ListadoConsultas() {
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="filtro-desde">Evento desde</Label>
-            <Input
+            <SelectorFecha
               id="filtro-desde"
-              type="date"
               className="bg-card"
               value={desde}
-              onChange={(e) => setDesde(e.target.value)}
+              onChange={setDesde}
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="filtro-hasta">Evento hasta</Label>
-            <Input
+            <SelectorFecha
               id="filtro-hasta"
-              type="date"
               className="bg-card"
               value={hasta}
-              min={desde || undefined}
-              aria-invalid={rangoInvalido}
-              onChange={(e) => setHasta(e.target.value)}
+              diaMinimo={desde || undefined}
+              onChange={setHasta}
             />
           </div>
           <Button variant="outline" onClick={limpiarFiltros} disabled={!hayFiltros}>
