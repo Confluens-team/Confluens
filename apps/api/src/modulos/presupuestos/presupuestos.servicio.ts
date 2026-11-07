@@ -1164,6 +1164,10 @@ export function recalcularLineas(
  * la fecha de cada evento. **No reinicia la vigencia**: la emisión y el vencimiento no cambian, es un
  * recálculo masivo que nadie le comunica al cliente. Corre dentro de la transacción del que cambia
  * el porcentaje (`tx`). Devuelve cuántos presupuestos recalculó.
+ *
+ * En la auditoría (HU-25 del backlog) el recálculo queda a nombre del Sistema (`null`): el cambio
+ * de porcentaje sí queda a nombre de quien lo hizo. Se guarda todo junto con guardarRecalculo, que
+ * no vuelve a leer lo que ya se leyó acá y no escribe los presupuestos que no cambian.
  */
 export async function recalcularEstimadosEnConsulta(
   porcentaje: string,
@@ -1172,14 +1176,20 @@ export async function recalcularEstimadosEnConsulta(
 ): Promise<number> {
   const presupuestos = await repo.listarEstimadosParaRecalcular(tx);
   const hoy = hoyEnZonaEventos();
-  for (const presupuesto of presupuestos) {
+  const recalculados = presupuestos.map((presupuesto) => {
     const proyeccion: Proyeccion = {
       porcentaje,
       meses: mesesHastaEvento(hoy, presupuesto.evento.fecha.toISOString().slice(0, 10)),
     };
     const { lineas, total } = recalcularLineas(presupuesto.lineas, proyeccion);
-    await repo.reemplazarLineas(presupuesto.id, lineas, tx);
-    await repo.actualizarPresupuesto(presupuesto.id, { total: total.toFixed(2) }, tx);
-  }
+    return {
+      id: presupuesto.id,
+      totalAnterior: presupuesto.total,
+      lineasAnteriores: presupuesto.lineas,
+      lineas,
+      total: total.toFixed(2),
+    };
+  });
+  await repo.guardarRecalculo(recalculados, tx);
   return presupuestos.length;
 }

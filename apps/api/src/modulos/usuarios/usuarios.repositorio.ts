@@ -1,6 +1,7 @@
 import type { RolPersonal } from '@confluens/shared';
 
 import type { Prisma } from '../../generated/prisma/client.js';
+import { enTransaccion as enTransaccionAuditada, registrarAuditoria } from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
 
 // Capa de acceso a datos del módulo. Separada del servicio para poder mockearla en
@@ -28,7 +29,30 @@ export async function buscarPorId(id: number, tx: Prisma.TransactionClient = pri
 
 // Un usuario del personal no tiene ficha de Cliente: se crea solo el Usuario.
 export async function crear(datos: { email: string; hashContrasena: string; rol: RolPersonal }) {
-  return prisma.usuario.create({ data: datos, select: SELECCION });
+  return prisma.$transaction(async (tx) => {
+    const usuario = await tx.usuario.create({ data: datos, select: SELECCION });
+    await registrarAuditoria(tx, {
+      entidad: 'Usuario',
+      entidadId: usuario.id,
+      anterior: null,
+      nuevo: usuario,
+    });
+    return usuario;
+  });
+}
+
+// Actualiza un usuario y audita lo que cambió (HU-25 del backlog). SELECCION no trae el hash.
+async function actualizar(
+  id: number,
+  data: Prisma.UsuarioUpdateInput,
+  tx: Prisma.TransactionClient,
+) {
+  return enTransaccionAuditada(tx, async (t) => {
+    const anterior = await t.usuario.findUniqueOrThrow({ where: { id }, select: SELECCION });
+    const usuario = await t.usuario.update({ where: { id }, data, select: SELECCION });
+    await registrarAuditoria(t, { entidad: 'Usuario', entidadId: id, anterior, nuevo: usuario });
+    return usuario;
+  });
 }
 
 // Ordena por rol en el orden del enum Rol de schema.prisma (RE, RF, GG, ADM), que es el que usa
@@ -53,7 +77,7 @@ export async function modificar(
   datos: { email: string; rol: RolPersonal },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.usuario.update({ where: { id }, data: datos, select: SELECCION });
+  return actualizar(id, datos, tx);
 }
 
 // HU-31 del backlog: la baja sube la versión de sesión, así se cierran todas sus sesiones (M2).
@@ -63,19 +87,24 @@ export async function cambiarEstado(
   activo: boolean,
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.usuario.update({
-    where: { id },
-    data: activo ? { activo } : { activo, versionSesion: { increment: 1 } },
-    select: SELECCION,
-  });
+  return actualizar(id, activo ? { activo } : { activo, versionSesion: { increment: 1 } }, tx);
 }
 
 // HU-30 del backlog: la contraseña que el ADM le carga a un usuario. Sube la versión de sesión: las
 // sesiones abiertas con la contraseña anterior se cierran.
 export async function cambiarContrasena(id: number, hashContrasena: string) {
-  await prisma.usuario.update({
-    where: { id },
-    data: { hashContrasena, versionSesion: { increment: 1 } },
+  await prisma.$transaction(async (tx) => {
+    await tx.usuario.update({
+      where: { id },
+      data: { hashContrasena, versionSesion: { increment: 1 } },
+    });
+    // La contraseña nunca se guarda en la auditoría: solo que se cambió.
+    await registrarAuditoria(tx, {
+      entidad: 'Usuario',
+      entidadId: id,
+      anterior: { contrasena: null },
+      nuevo: { contrasena: '(cambiada)' },
+    });
   });
 }
 

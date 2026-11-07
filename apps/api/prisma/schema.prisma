@@ -382,7 +382,10 @@ model Pago {
   @@index([eventoId])
 }
 
-// Registro inmutable: nadie lo edita ni lo borra. usuarioId es null cuando actúa el Sistema (SYS).
+// Registro inmutable: nadie lo edita ni lo borra (un trigger de la migración `auditoria` rechaza
+// UPDATE y DELETE). usuarioId es null cuando actúa el Sistema (SYS). campos son las claves que
+// cambiaron, las mismas de valorAnterior y valorNuevo, para filtrar por campo (HU-25 del backlog,
+// ADR 0013).
 model AuditLog {
   id            Int      @id @default(autoincrement())
   usuarioId     Int?
@@ -390,8 +393,11 @@ model AuditLog {
   fecha         DateTime @default(now())
   entidad       String
   entidadId     String
+  campos        String[] @default([])
   valorAnterior Json?
   valorNuevo    Json?
 
+  @@index([fecha])
+  @@index([campos], type: Gin)
   @@map("audit_log")
 }
