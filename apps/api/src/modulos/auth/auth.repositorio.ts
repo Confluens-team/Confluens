@@ -1,3 +1,4 @@
+import { registrarAuditoria } from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
 
 // Capa de acceso a datos del módulo auth. Separada del servicio para poder
@@ -65,13 +66,27 @@ export async function buscarUsuarioPorId(id: number) {
 
 // Cambia la contraseña y sube la versión de sesión (M2): devuelve la versión nueva, con la que se
 // firma la única sesión que queda viva.
+//
+// HU-25 del backlog: si es del personal, queda en la auditoría a su nombre (la cambia él mismo, desde
+// Mi cuenta o con el enlace del correo), sin el valor. La del cliente no: es del canal público.
 export async function actualizarContrasena(id: number, hashContrasena: string): Promise<number> {
-  const usuario = await prisma.usuario.update({
-    where: { id },
-    data: { hashContrasena, versionSesion: { increment: 1 } },
-    select: { versionSesion: true },
+  return prisma.$transaction(async (tx) => {
+    const usuario = await tx.usuario.update({
+      where: { id },
+      data: { hashContrasena, versionSesion: { increment: 1 } },
+      select: { versionSesion: true, rol: true },
+    });
+    if (usuario.rol !== 'CLIENTE') {
+      await registrarAuditoria(tx, {
+        usuarioId: id,
+        entidad: 'Usuario',
+        entidadId: id,
+        anterior: { contrasena: null },
+        nuevo: { contrasena: '(cambiada)' },
+      });
+    }
+    return usuario.versionSesion;
   });
-  return usuario.versionSesion;
 }
 
 // Cierre de sesión (M2): subir la versión invalida todos los tokens emitidos hasta ahora para ese

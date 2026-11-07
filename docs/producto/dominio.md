@@ -334,8 +334,11 @@ cobros** (RN-14, reunión 05/11/2026): deja de elegirse si un medio va con factu
 los dos casos. Construido con HU-53: las marcas de habilitación de cada medio siguen en la base,
 sin uso.
 
-**Auditoría.** Registro inmutable de usuario, fecha, entidad, valor anterior y valor nuevo.
-Nadie lo edita ni lo borra. Se implementa con middleware de Prisma sobre `audit_log`.
+**Auditoría.** Registro inmutable de usuario, fecha, entidad, valor anterior y valor nuevo, solo
+de los campos que cambiaron. Nadie lo edita ni lo borra (la base lo rechaza). Se audita todo el panel
+interno; lo que hace el cliente desde el canal público no (PO, 07/11/2026). Lo que hace el Sistema
+(tareas programadas, el recálculo por el incremento) queda con usuario vacío. Se escribe en la misma
+transacción que el cambio, con un helper común sobre `audit_log` (HU-25 del backlog, ADR 0013).
 
 **Solapamiento.** Dos eventos **`Reservado` o `Cobrado`** en el mismo salón, fecha y horario.
 Prohibido. Se valida en la aplicación **y** con una restricción de exclusión de PostgreSQL

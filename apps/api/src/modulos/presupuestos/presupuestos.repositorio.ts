@@ -5,6 +5,12 @@ import type {
   TipoJornada,
 } from '@confluens/shared';
 
+import {
+  calcularDiferencia,
+  enTransaccion,
+  registrarAuditoria,
+  registrarAuditorias,
+} from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 
@@ -12,6 +18,9 @@ import type { Prisma } from '../../generated/prisma/client.js';
 // global) para poder correr dentro de la transacción que arma crearEnTransaccion, y para que los
 // tests puedan mockear el módulo entero sin simular una transacción real (mismo criterio que
 // solicitudes.repositorio.ts, HU-14).
+//
+// HU-25 del backlog: cada escritura deja su registro de auditoría en el mismo `tx`. Lo que hace el
+// cliente desde el cotizador no se audita (lo descarta lib/auditoria.ts por el rol de la sesión).
 
 export async function buscarClientePorCorreo(
   correo: string,
@@ -24,7 +33,16 @@ export async function crearCliente(
   datos: { nombre: string; telefono: string; correo: string },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.cliente.create({ data: datos });
+  return enTransaccion(tx, async (t) => {
+    const cliente = await t.cliente.create({ data: datos });
+    await registrarAuditoria(t, {
+      entidad: 'Cliente',
+      entidadId: cliente.id,
+      anterior: null,
+      nuevo: cliente,
+    });
+    return cliente;
+  });
 }
 
 // ADR 0008: la consulta social toma el cliente de la sesión. Nunca crea una ficha: los clientes
@@ -60,22 +78,42 @@ export async function reemplazarSalonesDelEvento(
   tx: Prisma.TransactionClient = prisma,
   distribuciones: Map<number, number> = new Map(),
 ) {
-  await tx.eventoSalon.deleteMany({ where: { eventoId, salonId: { notIn: salonIds } } });
-  const actuales = await tx.eventoSalon.findMany({
-    where: { eventoId },
-    select: { salonId: true },
-  });
-  const yaEstan = new Set(actuales.map((fila) => fila.salonId));
-  const nuevos = salonIds.filter((id) => !yaEstan.has(id));
-  if (nuevos.length > 0) {
+  await enTransaccion(tx, async (t) => {
+    const antes = await salonesDelEvento(eventoId, t);
+    await t.eventoSalon.deleteMany({ where: { eventoId, salonId: { notIn: salonIds } } });
+    const actuales = await t.eventoSalon.findMany({
+      where: { eventoId },
+      select: { salonId: true },
+    });
+    const yaEstan = new Set(actuales.map((fila) => fila.salonId));
+    const nuevos = salonIds.filter((id) => !yaEstan.has(id));
     // createMany no dispara el trigger BEFORE INSERT fila por fila en todos los casos; create sí,
     // y son a lo sumo cinco salones.
     for (const salonId of nuevos) {
-      await tx.eventoSalon.create({
+      await t.eventoSalon.create({
         data: { eventoId, salonId, distribucionId: distribuciones.get(salonId) ?? null },
       });
     }
-  }
+    // Los salones se auditan como un campo del evento: la lista antes y después.
+    await registrarAuditoria(t, {
+      entidad: 'Evento',
+      entidadId: eventoId,
+      anterior: { salones: antes },
+      nuevo: { salones: await salonesDelEvento(eventoId, t) },
+    });
+  });
+}
+
+// Los salones de un evento por nombre, con su distribución, para la auditoría.
+export async function salonesDelEvento(eventoId: number, tx: Prisma.TransactionClient) {
+  const filas = await tx.eventoSalon.findMany({
+    where: { eventoId },
+    select: { salon: { select: { nombre: true } }, distribucion: { select: { nombre: true } } },
+    orderBy: { salonId: 'asc' },
+  });
+  return filas.map((fila) =>
+    fila.distribucion ? `${fila.salon.nombre} (${fila.distribucion.nombre})` : fila.salon.nombre,
+  );
 }
 
 // No filtra por `activo`: el servicio necesita distinguir "no existe" (404) de "existe pero no
@@ -98,11 +136,21 @@ export async function vincularSolicitudAEvento(
   eventoId: number,
   tx: Prisma.TransactionClient = prisma,
 ): Promise<number> {
-  const { count } = await tx.solicitud.updateMany({
-    where: { id: solicitudId, eventoId: null },
-    data: { eventoId },
+  return enTransaccion(tx, async (t) => {
+    const { count } = await t.solicitud.updateMany({
+      where: { id: solicitudId, eventoId: null },
+      data: { eventoId },
+    });
+    if (count > 0) {
+      await registrarAuditoria(t, {
+        entidad: 'Solicitud',
+        entidadId: solicitudId,
+        anterior: { eventoId: null },
+        nuevo: { eventoId },
+      });
+    }
+    return count;
   });
-  return count;
 }
 
 // Un evento corporativo llega con salón; uno social, sin salón y con su tipo social (ADR 0008).
@@ -120,7 +168,37 @@ export async function crearEvento(
   tx: Prisma.TransactionClient = prisma,
 ) {
   // estado: EnConsulta es el default del schema, no hace falta pasarlo.
-  return tx.evento.create({ data: datos });
+  return enTransaccion(tx, async (t) => {
+    const evento = await t.evento.create({ data: datos });
+    await registrarAuditoria(t, {
+      entidad: 'Evento',
+      entidadId: evento.id,
+      anterior: null,
+      nuevo: evento,
+    });
+    return evento;
+  });
+}
+
+// Lo que se audita de las líneas de un presupuesto: lo que se lee en el documento.
+export function resumenDeLineas(
+  lineas: {
+    descripcion: string;
+    cantidad: number;
+    modalidad: ModalidadServicio;
+    precioUnitario: unknown;
+    subtotal: unknown;
+    aCotizar: boolean;
+  }[],
+) {
+  return lineas.map((linea) => ({
+    descripcion: linea.descripcion,
+    cantidad: linea.cantidad,
+    modalidad: linea.modalidad,
+    precioUnitario: linea.precioUnitario,
+    subtotal: linea.subtotal,
+    aCotizar: linea.aCotizar,
+  }));
 }
 
 // Una línea lista para guardar: el servicio ya resolvió precio, modalidad (RN-11) y subtotal.
@@ -146,6 +224,23 @@ export async function crearPresupuestoConLineas(
     lineas: LineaNueva[];
   },
   tx: Prisma.TransactionClient = prisma,
+) {
+  return enTransaccion(tx, async (t) => {
+    const presupuesto = await crearPresupuesto(datos, t);
+    const { lineas, evento: _evento, ...campos } = presupuesto;
+    await registrarAuditoria(t, {
+      entidad: 'Presupuesto',
+      entidadId: presupuesto.id,
+      anterior: null,
+      nuevo: { ...campos, lineas: resumenDeLineas(lineas) },
+    });
+    return presupuesto;
+  });
+}
+
+async function crearPresupuesto(
+  datos: Parameters<typeof crearPresupuestoConLineas>[0],
+  tx: Prisma.TransactionClient,
 ) {
   return tx.presupuesto.create({
     data: {
@@ -278,15 +373,33 @@ export async function actualizarEvento(
   datos: Prisma.EventoUpdateInput,
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.evento.update({ where: { id }, data: datos });
+  return enTransaccion(tx, async (t) => {
+    const anterior = await t.evento.findUniqueOrThrow({ where: { id } });
+    const evento = await t.evento.update({ where: { id }, data: datos });
+    await registrarAuditoria(t, { entidad: 'Evento', entidadId: id, anterior, nuevo: evento });
+    return evento;
+  });
 }
 
+// usuarioId: omitido, el de la sesión; null, el Sistema (el recálculo masivo de HU-54).
 export async function actualizarPresupuesto(
   id: number,
   datos: Prisma.PresupuestoUpdateInput,
   tx: Prisma.TransactionClient = prisma,
+  usuarioId?: number | null,
 ) {
-  return tx.presupuesto.update({ where: { id }, data: datos });
+  return enTransaccion(tx, async (t) => {
+    const anterior = await t.presupuesto.findUniqueOrThrow({ where: { id } });
+    const presupuesto = await t.presupuesto.update({ where: { id }, data: datos });
+    await registrarAuditoria(t, {
+      usuarioId,
+      entidad: 'Presupuesto',
+      entidadId: id,
+      anterior,
+      nuevo: presupuesto,
+    });
+    return presupuesto;
+  });
 }
 
 // HU-12: modificar reemplaza todas las líneas. Las que no cambiaron vuelven con su precio congelado,
@@ -295,10 +408,25 @@ export async function reemplazarLineas(
   presupuestoId: number,
   lineas: LineaNueva[],
   tx: Prisma.TransactionClient = prisma,
+  usuarioId?: number | null,
 ) {
-  await tx.lineaPresupuesto.deleteMany({ where: { presupuestoId } });
-  await tx.lineaPresupuesto.createMany({
-    data: lineas.map((linea) => ({ ...linea, presupuestoId })),
+  await enTransaccion(tx, async (t) => {
+    const antes = await t.lineaPresupuesto.findMany({
+      where: { presupuestoId },
+      orderBy: { id: 'asc' },
+    });
+    await t.lineaPresupuesto.deleteMany({ where: { presupuestoId } });
+    await t.lineaPresupuesto.createMany({
+      data: lineas.map((linea) => ({ ...linea, presupuestoId })),
+    });
+    // Las líneas se auditan como un campo del presupuesto: la lista antes y después.
+    await registrarAuditoria(t, {
+      usuarioId,
+      entidad: 'Presupuesto',
+      entidadId: presupuestoId,
+      anterior: { lineas: resumenDeLineas(antes) },
+      nuevo: { lineas: resumenDeLineas(lineas) },
+    });
   });
 }
 
@@ -340,10 +468,62 @@ export async function listarEstimadosParaRecalcular(tx: Prisma.TransactionClient
     where: { estado: 'Estimado', venceEn: { not: null }, evento: { estado: 'EnConsulta' } },
     select: {
       id: true,
+      // El total y las líneas de antes sirven también para auditar sin volver a leerlos.
+      total: true,
       evento: { select: { fecha: true } },
       lineas: { include: { servicio: true, salon: true }, orderBy: { id: 'asc' } },
     },
   });
+}
+
+// Un presupuesto recalculado (HU-54), con lo que tenía antes, ya leído por listarEstimadosParaRecalcular.
+export interface PresupuestoRecalculado {
+  id: number;
+  totalAnterior: Prisma.Decimal;
+  lineasAnteriores: Parameters<typeof resumenDeLineas>[0];
+  lineas: LineaNueva[];
+  total: string;
+}
+
+/**
+ * HU-54 con HU-25 del backlog: guarda el recálculo masivo y lo audita a nombre del Sistema, con el
+ * menor número de consultas posible porque corre dentro de una sola transacción. El estado anterior
+ * ya viene leído, los presupuestos que no cambian no se escriben y la auditoría de todos va en un
+ * solo insert al final. Devuelve cuántos cambiaron.
+ */
+export async function guardarRecalculo(
+  recalculados: PresupuestoRecalculado[],
+  tx: Prisma.TransactionClient,
+): Promise<number> {
+  const cambios = recalculados.flatMap((recalculado) => {
+    const anterior = {
+      total: recalculado.totalAnterior,
+      lineas: resumenDeLineas(recalculado.lineasAnteriores),
+    };
+    const nuevo = { total: recalculado.total, lineas: resumenDeLineas(recalculado.lineas) };
+    return calcularDiferencia(anterior, nuevo) ? [{ recalculado, anterior, nuevo }] : [];
+  });
+  for (const { recalculado } of cambios) {
+    await tx.lineaPresupuesto.deleteMany({ where: { presupuestoId: recalculado.id } });
+    await tx.lineaPresupuesto.createMany({
+      data: recalculado.lineas.map((linea) => ({ ...linea, presupuestoId: recalculado.id })),
+    });
+    await tx.presupuesto.update({
+      where: { id: recalculado.id },
+      data: { total: recalculado.total },
+    });
+  }
+  await registrarAuditorias(
+    tx,
+    cambios.map(({ recalculado, anterior, nuevo }) => ({
+      usuarioId: null,
+      entidad: 'Presupuesto' as const,
+      entidadId: recalculado.id,
+      anterior,
+      nuevo,
+    })),
+  );
+  return cambios.length;
 }
 
 // HU-24: el evento que se reutiliza, con sus salones (y la distribución de cada uno) y sus
@@ -411,6 +591,7 @@ export type PresupuestosRepositorio = {
   buscarDistribucionPorNombre: typeof buscarDistribucionPorNombre;
   obtenerPorcentajeMensual: typeof obtenerPorcentajeMensual;
   listarEstimadosParaRecalcular: typeof listarEstimadosParaRecalcular;
+  guardarRecalculo: typeof guardarRecalculo;
   buscarEventoParaReutilizar: typeof buscarEventoParaReutilizar;
   buscarSalonesReservadosEseDia: typeof buscarSalonesReservadosEseDia;
 };

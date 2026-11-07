@@ -1,4 +1,5 @@
 import type { Prisma } from '../../generated/prisma/client.js';
+import { enTransaccion, registrarAuditoria } from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
 
 // Capa de acceso a datos del módulo. Cada función acepta un `tx` opcional (default: el cliente
@@ -52,11 +53,23 @@ export async function anular(
   datos: { pagoId: number; usuarioId: number },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  const resultado = await tx.pago.updateMany({
-    where: { id: datos.pagoId, anuladoEn: null },
-    data: { anuladoEn: new Date(), anuladoPorId: datos.usuarioId },
+  return enTransaccion(tx, async (t) => {
+    const anuladoEn = new Date();
+    const resultado = await t.pago.updateMany({
+      where: { id: datos.pagoId, anuladoEn: null },
+      data: { anuladoEn, anuladoPorId: datos.usuarioId },
+    });
+    if (resultado.count > 0) {
+      await registrarAuditoria(t, {
+        usuarioId: datos.usuarioId,
+        entidad: 'Pago',
+        entidadId: datos.pagoId,
+        anterior: { anuladoEn: null, anuladoPorId: null },
+        nuevo: { anuladoEn, anuladoPorId: datos.usuarioId },
+      });
+    }
+    return resultado.count;
   });
-  return resultado.count;
 }
 
 export async function buscarMedioPagoActivo(id: number, tx: Prisma.TransactionClient = prisma) {
@@ -87,7 +100,18 @@ export async function crearMedioPago(
   datos: { nombre: string },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.medioPago.create({ data: { ...datos, conFactura: true, sinFactura: true } });
+  return enTransaccion(tx, async (t) => {
+    const medio = await t.medioPago.create({
+      data: { ...datos, conFactura: true, sinFactura: true },
+    });
+    await registrarAuditoria(t, {
+      entidad: 'MedioPago',
+      entidadId: medio.id,
+      anterior: null,
+      nuevo: medio,
+    });
+    return medio;
+  });
 }
 
 // HU-33 del Sprint 4: el medio a modificar puede estar activo o dado de baja.
@@ -102,7 +126,12 @@ export async function modificarMedioPago(
   datos: { nombre: string },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.medioPago.update({ where: { id }, data: datos });
+  return enTransaccion(tx, async (t) => {
+    const anterior = await t.medioPago.findUniqueOrThrow({ where: { id } });
+    const medio = await t.medioPago.update({ where: { id }, data: datos });
+    await registrarAuditoria(t, { entidad: 'MedioPago', entidadId: id, anterior, nuevo: medio });
+    return medio;
+  });
 }
 
 export async function crear(
@@ -115,7 +144,36 @@ export async function crear(
   },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.pago.create({ data: datos, include: INCLUIR_EN_PAGO });
+  return enTransaccion(tx, async (t) => {
+    const pago = await t.pago.create({ data: datos, include: INCLUIR_EN_PAGO });
+    await registrarAuditoria(t, {
+      entidad: 'Pago',
+      entidadId: pago.id,
+      anterior: null,
+      nuevo: {
+        eventoId: pago.eventoId,
+        fecha: pago.fecha,
+        monto: pago.monto,
+        medioPagoId: pago.medioPagoId,
+        observacion: pago.observacion,
+      },
+    });
+    return pago;
+  });
+}
+
+// Cambia el estado de un evento y lo audita (HU-25 del backlog).
+async function actualizarEvento(
+  id: number,
+  data: Prisma.EventoUpdateInput,
+  tx: Prisma.TransactionClient,
+) {
+  return enTransaccion(tx, async (t) => {
+    const anterior = await t.evento.findUniqueOrThrow({ where: { id } });
+    const evento = await t.evento.update({ where: { id }, data });
+    await registrarAuditoria(t, { entidad: 'Evento', entidadId: id, anterior, nuevo: evento });
+    return evento;
+  });
 }
 
 /**
@@ -129,24 +187,34 @@ export async function confirmarPresupuestoYReservar(
   datos: { eventoId: number; presupuestoId: number },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  await tx.presupuesto.update({
-    where: { id: datos.presupuestoId },
-    data: { estado: 'Confirmado' },
-  });
-  return tx.evento.update({
-    where: { id: datos.eventoId },
-    data: { estado: 'Reservado', senaRegistradaEn: new Date() },
+  return enTransaccion(tx, async (t) => {
+    const anterior = await t.presupuesto.findUniqueOrThrow({ where: { id: datos.presupuestoId } });
+    const presupuesto = await t.presupuesto.update({
+      where: { id: datos.presupuestoId },
+      data: { estado: 'Confirmado' },
+    });
+    await registrarAuditoria(t, {
+      entidad: 'Presupuesto',
+      entidadId: datos.presupuestoId,
+      anterior,
+      nuevo: presupuesto,
+    });
+    return actualizarEvento(
+      datos.eventoId,
+      { estado: 'Reservado', senaRegistradaEn: new Date() },
+      t,
+    );
   });
 }
 
 export async function marcarCobrado(eventoId: number, tx: Prisma.TransactionClient = prisma) {
-  return tx.evento.update({ where: { id: eventoId }, data: { estado: 'Cobrado' } });
+  return actualizarEvento(eventoId, { estado: 'Cobrado' }, tx);
 }
 
 // HU-35: un Cobrado al que una anulación deja por debajo del total vuelve a Reservado hasta cobrar la
 // diferencia. El salón sigue tomado: los dos estados bloquean la franja (RN-12).
 export async function volverAReservado(eventoId: number, tx: Prisma.TransactionClient = prisma) {
-  return tx.evento.update({ where: { id: eventoId }, data: { estado: 'Reservado' } });
+  return actualizarEvento(eventoId, { estado: 'Reservado' }, tx);
 }
 
 // HU-13 C6: los eventos que siguen EnConsulta y pisan la franja que este evento acaba de tomar.

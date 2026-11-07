@@ -4,9 +4,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // prueba qué recibe findMany con un cliente falso (sin Postgres, igual que el resto de los tests).
 const findMany = vi.fn();
 const create = vi.fn();
+const auditLog = { create: vi.fn() };
 
-vi.mock('../../lib/prisma.js', () => ({ prisma: { presupuesto: { findMany, create } } }));
+// $transaction corre el callback con el mismo cliente falso: alcanza para ver qué se escribe.
+vi.mock('../../lib/prisma.js', () => {
+  const prisma: Record<string, unknown> = { presupuesto: { findMany, create }, auditLog };
+  prisma['$transaction'] = (ejecutar: (tx: unknown) => unknown) => ejecutar(prisma);
+  return { prisma };
+});
 
+const { conActor } = await import('../../lib/auditoria.js');
 const { crearPresupuestoConLineas, obtenerPresupuestos } =
   await import('./presupuestos.repositorio.js');
 
@@ -14,17 +21,60 @@ const { crearPresupuestoConLineas, obtenerPresupuestos } =
 // cubre el cotizador, el alta del personal, la consulta social y la reutilización.
 describe('presupuestos.repositorio: crearPresupuestoConLineas (HU-53)', () => {
   it('crea el presupuesto con factura, aunque la columna tenga default false', async () => {
-    create.mockResolvedValue({});
+    create.mockResolvedValue({ id: 5, requiereFactura: true, lineas: [], evento: {} });
 
-    await crearPresupuestoConLineas({
-      eventoId: 20,
-      fechaEmision: new Date(),
-      venceEn: null,
-      total: '0.00',
-      lineas: [],
-    });
+    await conActor({ usuarioId: 1, rol: 'RESPONSABLE_EVENTOS' }, () =>
+      crearPresupuestoConLineas({
+        eventoId: 20,
+        fechaEmision: new Date(),
+        venceEn: null,
+        total: '0.00',
+        lineas: [],
+      }),
+    );
 
     expect(create.mock.calls[0]![0].data.requiereFactura).toBe(true);
+  });
+
+  // HU-25 del backlog: el alta del presupuesto queda en la auditoría, en la misma transacción.
+  it('registra el alta en la auditoría a nombre del usuario de la sesión', async () => {
+    auditLog.create.mockClear();
+    create.mockResolvedValue({ id: 5, estado: 'Estimado', lineas: [], evento: {} });
+
+    await conActor({ usuarioId: 3, rol: 'RESPONSABLE_EVENTOS' }, () =>
+      crearPresupuestoConLineas({
+        eventoId: 20,
+        fechaEmision: new Date(),
+        venceEn: null,
+        total: '0.00',
+        lineas: [],
+      }),
+    );
+
+    expect(auditLog.create.mock.calls[0]![0].data).toMatchObject({
+      usuarioId: 3,
+      entidad: 'Presupuesto',
+      entidadId: '5',
+      valorAnterior: undefined,
+      valorNuevo: { estado: 'Estimado', lineas: [] },
+    });
+  });
+
+  it('el alta que hace el cliente desde el cotizador no se audita', async () => {
+    auditLog.create.mockClear();
+    create.mockResolvedValue({ id: 6, estado: 'Estimado', lineas: [], evento: {} });
+
+    await conActor({ usuarioId: 40, rol: 'CLIENTE' }, () =>
+      crearPresupuestoConLineas({
+        eventoId: 21,
+        fechaEmision: new Date(),
+        venceEn: null,
+        total: '0.00',
+        lineas: [],
+      }),
+    );
+
+    expect(auditLog.create).not.toHaveBeenCalled();
   });
 });
 

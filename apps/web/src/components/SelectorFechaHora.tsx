@@ -23,10 +23,17 @@ const HORAS = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 const MINUTOS = Array.from({ length: 12 }, (_, i) => i * 5);
 
 const formateadorMes = new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric' });
+// Para leer en voz alta cada día del calendario (aria-label): "vie, 30 abr 2027".
 const formateadorDia = new Intl.DateTimeFormat('es-AR', {
   weekday: 'short',
   day: 'numeric',
   month: 'short',
+  year: 'numeric',
+});
+// Lo que muestra el selector ya elegido: siempre dd/mm/aaaa, como todas las fechas del sistema.
+const formateadorFecha = new Intl.DateTimeFormat('es-AR', {
+  day: '2-digit',
+  month: '2-digit',
   year: 'numeric',
 });
 
@@ -63,7 +70,7 @@ function aValor(borrador: Borrador): string {
 
 function textoDelValor(valor: string): string {
   const { dia, hora12, minuto, pm } = aBorrador(valor, '', '');
-  return `${formateadorDia.format(deDiaISO(dia))} · ${hora12}:${dosDigitos(minuto)} ${pm ? 'PM' : 'AM'}`;
+  return `${formateadorFecha.format(deDiaISO(dia))} · ${hora12}:${dosDigitos(minuto)} ${pm ? 'PM' : 'AM'}`;
 }
 
 // Las celdas del mes, de lunes a domingo; null en los huecos antes del día 1.
@@ -445,7 +452,7 @@ export function SelectorFecha({
     <Popover.Root open={abierto} onOpenChange={abrir}>
       <Disparador
         id={id}
-        texto={value ? formateadorDia.format(deDiaISO(value)) : placeholder}
+        texto={value ? formateadorFecha.format(deDiaISO(value)) : placeholder}
         vacio={!value}
         className={className}
       />

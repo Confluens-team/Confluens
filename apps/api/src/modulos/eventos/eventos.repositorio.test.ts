@@ -7,6 +7,7 @@ const findMany = vi.fn();
 
 vi.mock('../../lib/prisma.js', () => ({ prisma: { evento: { findMany } } }));
 
+const { conActor } = await import('../../lib/auditoria.js');
 const { cancelar, listarAgenda } = await import('./eventos.repositorio.js');
 
 const whereDeLaConsulta = () => findMany.mock.calls[0]![0].where;
@@ -72,19 +73,28 @@ describe('eventos.repositorio: listarAgenda', () => {
 // trigger de EventoSalon libera el salón al propagar el estado (ADR 0011).
 describe('eventos.repositorio: cancelar', () => {
   const presupuestoUpdateMany = vi.fn();
+  const presupuestoFindMany = vi.fn();
   const eventoUpdate = vi.fn();
+  const eventoFindUniqueOrThrow = vi.fn();
+  const auditLogCreateMany = vi.fn();
   const tx = {
-    presupuesto: { updateMany: presupuestoUpdateMany },
-    evento: { update: eventoUpdate },
+    presupuesto: { updateMany: presupuestoUpdateMany, findMany: presupuestoFindMany },
+    evento: { update: eventoUpdate, findUniqueOrThrow: eventoFindUniqueOrThrow },
+    auditLog: { createMany: auditLogCreateMany },
   };
+  // Cancela el personal: la auditoría toma el usuario de la sesión (HU-25 del backlog).
+  const cancelarComo = (usuarioId: number) =>
+    conActor({ usuarioId, rol: 'RESPONSABLE_EVENTOS' }, () => cancelar(20, tx as never));
 
   beforeEach(() => {
-    presupuestoUpdateMany.mockReset();
-    eventoUpdate.mockReset();
+    vi.clearAllMocks();
+    presupuestoFindMany.mockResolvedValue([{ id: 7, estado: 'Confirmado' }]);
+    eventoFindUniqueOrThrow.mockResolvedValue({ id: 20, estado: 'Reservado' });
+    eventoUpdate.mockResolvedValue({ id: 20, estado: 'Cancelado' });
   });
 
   it('pasa el evento y sus presupuestos Estimado y Confirmado a Cancelado', async () => {
-    await cancelar(20, tx as never);
+    await cancelarComo(1);
 
     expect(presupuestoUpdateMany).toHaveBeenCalledWith({
       where: { eventoId: 20, estado: { in: ['Estimado', 'Confirmado'] } },
@@ -97,8 +107,28 @@ describe('eventos.repositorio: cancelar', () => {
   });
 
   it('no toca los pagos del evento', async () => {
-    await cancelar(20, tx as never);
+    await cancelarComo(1);
 
-    expect(Object.keys(tx).sort()).toEqual(['evento', 'presupuesto']);
+    expect(Object.keys(tx).sort()).toEqual(['auditLog', 'evento', 'presupuesto']);
+  });
+
+  it('audita el estado del evento y el de cada presupuesto cancelado', async () => {
+    await cancelarComo(4);
+
+    expect(auditLogCreateMany.mock.calls[0]![0].data).toEqual([
+      expect.objectContaining({
+        usuarioId: 4,
+        entidad: 'Evento',
+        entidadId: '20',
+        valorAnterior: { estado: 'Reservado' },
+        valorNuevo: { estado: 'Cancelado' },
+      }),
+      expect.objectContaining({
+        entidad: 'Presupuesto',
+        entidadId: '7',
+        valorAnterior: { estado: 'Confirmado' },
+        valorNuevo: { estado: 'Cancelado' },
+      }),
+    ]);
   });
 });

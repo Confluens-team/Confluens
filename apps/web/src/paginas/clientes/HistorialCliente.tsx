@@ -1,9 +1,9 @@
 import { desglosarIva, type EstadoEvento, type FiltrosHistorialCliente } from '@confluens/shared';
 import { useState } from 'react';
 
+import { SelectorFecha } from '@/components/SelectorFechaHora';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { IconoEstado } from '@/components/IconoEstado';
 import { useHistorialCliente } from '@/hooks/use-clientes';
@@ -73,22 +73,15 @@ export function HistorialCliente({
       <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
         <div className="space-y-1.5">
           <Label htmlFor="historial-desde">Evento desde</Label>
-          <Input
-            id="historial-desde"
-            type="date"
-            value={desde}
-            onChange={(e) => setDesde(e.target.value)}
-          />
+          <SelectorFecha id="historial-desde" value={desde} onChange={setDesde} />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="historial-hasta">Evento hasta</Label>
-          <Input
+          <SelectorFecha
             id="historial-hasta"
-            type="date"
             value={hasta}
-            min={desde || undefined}
-            aria-invalid={rangoInvalido}
-            onChange={(e) => setHasta(e.target.value)}
+            diaMinimo={desde || undefined}
+            onChange={setHasta}
           />
         </div>
         <Button

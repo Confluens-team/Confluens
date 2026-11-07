@@ -5,6 +5,9 @@ import { crearApp } from '../../app.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 
+// El correo de la consulta recibida sale por Resend: en los tests no se manda nada.
+vi.mock('../../lib/correo.js', () => ({ enviarCorreo: vi.fn(() => Promise.resolve()) }));
+
 vi.mock('./presupuestos.repositorio.js', () => ({
   buscarClientePorCorreo: vi.fn(),
   buscarClientePorUsuarioId: vi.fn(),
@@ -58,6 +61,9 @@ const crearPresupuestoConLineasMock = vi.mocked(crearPresupuestoConLineas);
 const buscarEventoConPresupuestosMock = vi.mocked(buscarEventoConPresupuestos);
 const crearEnTransaccionMock = vi.mocked(crearEnTransaccion);
 const obtenerPresupuestosMock = vi.mocked(obtenerPresupuestos);
+
+const { enviarCorreo } = await import('../../lib/correo.js');
+const enviarCorreoMock = vi.mocked(enviarCorreo);
 
 const app = crearApp();
 
@@ -209,6 +215,68 @@ function prepararMocksDeCreacion() {
 
 describe('POST /api/presupuestos', () => {
   beforeEach(prepararMocksDeCreacion);
+
+  describe('correo de consulta recibida', () => {
+    beforeEach(() => {
+      enviarCorreoMock.mockReset();
+      enviarCorreoMock.mockResolvedValue(undefined);
+    });
+
+    it('le manda un correo al cliente de la sesión con el resumen de su consulta', async () => {
+      const respuesta = await request(app)
+        .post('/api/presupuestos')
+        .set('Cookie', [cookieDe('CLIENTE')])
+        .send(bodyBase);
+
+      expect(respuesta.status).toBe(201);
+      await vi.waitFor(() => expect(enviarCorreoMock).toHaveBeenCalledTimes(1));
+      const correo = enviarCorreoMock.mock.calls[0]![0];
+      // El destinatario es el correo de la ficha de la sesión, no el que viene en el body.
+      expect(correo.para).toBe(clienteFixture.correo);
+      expect(correo.asunto).toContain('N° 30');
+      expect(correo.texto).toContain('Salón Paraná');
+      expect(correo.texto).toContain('Coffee Refresh');
+    });
+
+    it('no manda correo cuando cotiza el personal', async () => {
+      buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+
+      const respuesta = await request(app)
+        .post('/api/presupuestos')
+        .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')])
+        .send(bodyBase);
+
+      expect(respuesta.status).toBe(201);
+      expect(enviarCorreoMock).not.toHaveBeenCalled();
+    });
+
+    it('no manda correo si la consulta no se pudo crear', async () => {
+      buscarSalonesPorIdsMock.mockResolvedValue([]);
+
+      const respuesta = await request(app)
+        .post('/api/presupuestos')
+        .set('Cookie', [cookieDe('CLIENTE')])
+        .send(bodyBase);
+
+      expect(respuesta.status).toBe(404);
+      expect(enviarCorreoMock).not.toHaveBeenCalled();
+    });
+
+    it('guarda la consulta y responde 201 aunque falle el envío del correo', async () => {
+      enviarCorreoMock.mockRejectedValue(new Error('Resend respondió 500'));
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const respuesta = await request(app)
+        .post('/api/presupuestos')
+        .set('Cookie', [cookieDe('CLIENTE')])
+        .send(bodyBase);
+
+      expect(respuesta.status).toBe(201);
+      expect(crearPresupuestoConLineasMock).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(error).toHaveBeenCalled());
+      error.mockRestore();
+    });
+  });
 
   it('crea el presupuesto con un cliente nuevo cuando el correo no existe', async () => {
     buscarClientePorCorreoMock.mockResolvedValue(null);

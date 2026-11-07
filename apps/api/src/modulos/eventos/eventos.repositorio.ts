@@ -1,6 +1,8 @@
 import { ESTADOS_QUE_OCUPAN_SALON, type FiltrosAgenda } from '@confluens/shared';
 
+import { enTransaccion, registrarAuditoria, registrarAuditorias } from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
+import { salonesDelEvento } from '../presupuestos/presupuestos.repositorio.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 
 // Capa de acceso a datos del módulo. Cada función acepta un `tx` opcional (default: el cliente
@@ -127,20 +129,31 @@ export async function agendarConDistribuciones(
   },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  await tx.evento.update({
-    where: { id: datos.eventoId },
-    data: {
-      inicio: datos.inicio,
-      fin: datos.fin,
-      modalidadSalonRestaurante: datos.modalidadSalonRestaurante,
-    },
-  });
-  for (const { salonId, distribucionId } of datos.distribuciones) {
-    await tx.eventoSalon.update({
-      where: { eventoId_salonId: { eventoId: datos.eventoId, salonId } },
-      data: { distribucionId },
+  await enTransaccion(tx, async (t) => {
+    const anterior = await t.evento.findUniqueOrThrow({ where: { id: datos.eventoId } });
+    const salonesAntes = await salonesDelEvento(datos.eventoId, t);
+    const evento = await t.evento.update({
+      where: { id: datos.eventoId },
+      data: {
+        inicio: datos.inicio,
+        fin: datos.fin,
+        modalidadSalonRestaurante: datos.modalidadSalonRestaurante,
+      },
     });
-  }
+    for (const { salonId, distribucionId } of datos.distribuciones) {
+      await t.eventoSalon.update({
+        where: { eventoId_salonId: { eventoId: datos.eventoId, salonId } },
+        data: { distribucionId },
+      });
+    }
+    // HU-25 del backlog: el horario y, como un campo más, los salones con su distribución.
+    await registrarAuditoria(t, {
+      entidad: 'Evento',
+      entidadId: datos.eventoId,
+      anterior: { ...anterior, salones: salonesAntes },
+      nuevo: { ...evento, salones: await salonesDelEvento(datos.eventoId, t) },
+    });
+  });
 }
 
 // Varias a la vez: las distribuciones de todos los salones del evento.
@@ -155,20 +168,40 @@ export async function guardarObservacionesComanda(
   observaciones: string,
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.evento.update({
-    where: { id },
-    data: { observacionesComanda: observaciones === '' ? null : observaciones },
+  return enTransaccion(tx, async (t) => {
+    const anterior = await t.evento.findUniqueOrThrow({ where: { id } });
+    const evento = await t.evento.update({
+      where: { id },
+      data: { observacionesComanda: observaciones === '' ? null : observaciones },
+    });
+    await registrarAuditoria(t, { entidad: 'Evento', entidadId: id, anterior, nuevo: evento });
+    return evento;
   });
 }
 
 // Cancelar el evento también cancela su(s) presupuesto(s) activos: un evento Cancelado no puede
 // dejar un Presupuesto Estimado/Confirmado huérfano.
 export async function cancelar(id: number, tx: Prisma.TransactionClient = prisma) {
-  await tx.presupuesto.updateMany({
-    where: { eventoId: id, estado: { in: ['Estimado', 'Confirmado'] } },
-    data: { estado: 'Cancelado' },
+  return enTransaccion(tx, async (t) => {
+    const activos = { eventoId: id, estado: { in: ['Estimado' as const, 'Confirmado' as const] } };
+    const presupuestos = await t.presupuesto.findMany({
+      where: activos,
+      select: { id: true, estado: true },
+    });
+    await t.presupuesto.updateMany({ where: activos, data: { estado: 'Cancelado' } });
+    const anterior = await t.evento.findUniqueOrThrow({ where: { id } });
+    const evento = await t.evento.update({ where: { id }, data: { estado: 'Cancelado' } });
+    await registrarAuditorias(t, [
+      { entidad: 'Evento', entidadId: id, anterior, nuevo: evento },
+      ...presupuestos.map((presupuesto) => ({
+        entidad: 'Presupuesto' as const,
+        entidadId: presupuesto.id,
+        anterior: { estado: presupuesto.estado },
+        nuevo: { estado: 'Cancelado' },
+      })),
+    ]);
+    return evento;
   });
-  return tx.evento.update({ where: { id }, data: { estado: 'Cancelado' } });
 }
 
 export async function crearEnTransaccion<T>(

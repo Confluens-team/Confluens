@@ -22,8 +22,10 @@ import {
 
 import { Prisma } from '../../generated/prisma/client.js';
 import { alcanza, calcularBaseDeCobro, PORCENTAJE_TOTAL } from '../../lib/base-de-cobro.js';
+import { type Correo, enviarCorreo } from '../../lib/correo.js';
 import { ErrorApi } from '../../lib/errores.js';
 import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
+import { avisarConsultaRecibida } from './presupuestos.correo.js';
 import * as presupuestosRepositorioReal from './presupuestos.repositorio.js';
 import type { LineaNueva, PresupuestosRepositorio } from './presupuestos.repositorio.js';
 
@@ -241,6 +243,7 @@ export async function generarPresupuesto(
   datos: CrearPresupuesto,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
   usuarioCliente?: number,
+  enviar: (correo: Correo) => Promise<void> = enviarCorreo,
 ) {
   const clienteDeSesion =
     usuarioCliente === undefined ? null : await clienteDeLaSesion(usuarioCliente, repo);
@@ -304,7 +307,7 @@ export async function generarPresupuesto(
 
   const fechaEmision = new Date();
 
-  return repo.crearEnTransaccion(async (tx) => {
+  const presupuesto = await repo.crearEnTransaccion(async (tx) => {
     let cliente = clienteDeSesion ?? (await repo.buscarClientePorCorreo(datos.correo, tx));
     if (!cliente) {
       cliente = await repo.crearCliente(
@@ -342,6 +345,16 @@ export async function generarPresupuesto(
       tx,
     );
   });
+
+  // Solo cuando el cliente confirma en el cotizador: si cotiza el personal, no sale correo. Sin
+  // await: no frena la respuesta, y un fallo del envío no deshace la consulta ya guardada.
+  if (clienteDeSesion) {
+    void avisarConsultaRecibida(
+      { nombre: clienteDeSesion.nombre, correo: clienteDeSesion.correo, presupuesto },
+      enviar,
+    );
+  }
+  return presupuesto;
 }
 
 /**
@@ -1164,6 +1177,10 @@ export function recalcularLineas(
  * la fecha de cada evento. **No reinicia la vigencia**: la emisión y el vencimiento no cambian, es un
  * recálculo masivo que nadie le comunica al cliente. Corre dentro de la transacción del que cambia
  * el porcentaje (`tx`). Devuelve cuántos presupuestos recalculó.
+ *
+ * En la auditoría (HU-25 del backlog) el recálculo queda a nombre del Sistema (`null`): el cambio
+ * de porcentaje sí queda a nombre de quien lo hizo. Se guarda todo junto con guardarRecalculo, que
+ * no vuelve a leer lo que ya se leyó acá y no escribe los presupuestos que no cambian.
  */
 export async function recalcularEstimadosEnConsulta(
   porcentaje: string,
@@ -1172,14 +1189,20 @@ export async function recalcularEstimadosEnConsulta(
 ): Promise<number> {
   const presupuestos = await repo.listarEstimadosParaRecalcular(tx);
   const hoy = hoyEnZonaEventos();
-  for (const presupuesto of presupuestos) {
+  const recalculados = presupuestos.map((presupuesto) => {
     const proyeccion: Proyeccion = {
       porcentaje,
       meses: mesesHastaEvento(hoy, presupuesto.evento.fecha.toISOString().slice(0, 10)),
     };
     const { lineas, total } = recalcularLineas(presupuesto.lineas, proyeccion);
-    await repo.reemplazarLineas(presupuesto.id, lineas, tx);
-    await repo.actualizarPresupuesto(presupuesto.id, { total: total.toFixed(2) }, tx);
-  }
+    return {
+      id: presupuesto.id,
+      totalAnterior: presupuesto.total,
+      lineasAnteriores: presupuesto.lineas,
+      lineas,
+      total: total.toFixed(2),
+    };
+  });
+  await repo.guardarRecalculo(recalculados, tx);
   return presupuestos.length;
 }
