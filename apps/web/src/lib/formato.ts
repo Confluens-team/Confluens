@@ -19,6 +19,12 @@ export function fechaLocal(fecha: string): Date {
   return new Date(anio ?? 1970, (mes ?? 1) - 1, dia ?? 1);
 }
 
+// Una fecha de calendario (YYYY-MM-DD) como dd/mm/aaaa, sin pasar por Date.
+export function formatearFechaNumerica(fecha: string): string {
+  const [anio, mes, dia] = fecha.slice(0, 10).split('-');
+  return `${dia}/${mes}/${anio}`;
+}
+
 export function formatearFecha(fecha: Date, conDiaSemana = false): string {
   return fecha.toLocaleDateString('es-AR', {
     weekday: conDiaSemana ? 'long' : undefined,

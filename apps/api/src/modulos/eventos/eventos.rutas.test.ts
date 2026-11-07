@@ -420,6 +420,37 @@ describe('POST /api/eventos/:id/agendar', () => {
     expect(crearEnTransaccionMock).not.toHaveBeenCalled();
   });
 
+  // Agendar no cambia el día del evento: un horario en otro día dejaba `fecha` y la reserva del
+  // salón apuntando a días distintos.
+  it('responde 422 si el horario empieza otro día que el del evento, sin escribir nada', async () => {
+    const respuesta = await agendar(
+      cuerpo({ inicio: '2026-11-30T17:00:00.000Z', fin: '2026-12-01T01:00:00.000Z' }),
+    );
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+
+  // El día se lee en la hora de Córdoba (ADR 0010): las 23:00 del 15 son las 02:00Z del 16.
+  it('acepta un inicio a la noche del día del evento aunque en UTC ya sea el día siguiente', async () => {
+    const respuesta = await agendar(
+      cuerpo({ inicio: '2026-11-16T02:00:00.000Z', fin: '2026-11-16T06:00:00.000Z' }),
+    );
+
+    expect(respuesta.status).toBe(200);
+    expect(agendarConDistribucionesMock).toHaveBeenCalled();
+  });
+
+  it('responde 422 si el inicio cae a la madrugada del día siguiente en Córdoba', async () => {
+    const respuesta = await agendar(
+      cuerpo({ inicio: '2026-11-16T04:00:00.000Z', fin: '2026-11-16T08:00:00.000Z' }),
+    );
+
+    expect(respuesta.status).toBe(422);
+    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+
   it('responde 409 si la constraint EXCLUDE de Postgres detecta una carrera de solapamiento', async () => {
     // Forma real verificada empíricamente contra Postgres (Prisma 7.10.0 + @prisma/adapter-pg):
     // code 'P2039' con el SQLSTATE real (23P01 = exclusion_violation) anidado en
