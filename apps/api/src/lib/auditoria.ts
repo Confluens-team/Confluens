@@ -3,6 +3,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Rol } from '@confluens/shared';
 
 import type { Prisma } from '../generated/prisma/client.js';
+import { prisma } from './prisma.js';
 
 // HU-25 del backlog (ADR 0013). Mecanismo común de auditoría: cada repositorio que modifica datos
 // del panel interno llama a registrarAuditoria con el `tx` de su transacción, así el cambio y su
@@ -152,6 +153,16 @@ export async function registrarAuditoria(tx: ClienteTx, cambio: CambioAuditado):
     },
   });
   return true;
+}
+
+// Para los repositorios cuyas funciones aceptan un `tx` opcional: si llega el cliente global (no
+// hay transacción abierta), abre una para que el cambio y su registro queden juntos.
+export async function enTransaccion<T>(
+  tx: ClienteTx,
+  ejecutar: (tx: ClienteTx) => Promise<T>,
+): Promise<T> {
+  if (tx === (prisma as unknown as ClienteTx)) return prisma.$transaction(ejecutar);
+  return ejecutar(tx);
 }
 
 // Varios registros de una sola vez, para las escrituras masivas (updateMany): por ejemplo, la

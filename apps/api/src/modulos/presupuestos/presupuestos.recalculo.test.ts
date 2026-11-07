@@ -137,11 +137,13 @@ describe('recalcularEstimadosEnConsulta (HU-54)', () => {
 
     expect(recalculados).toBe(1);
     expect(repo.listarEstimadosParaRecalcular).toHaveBeenCalledWith(tx);
-    const [id, lineas, txLineas] = vi.mocked(repo.reemplazarLineas).mock.calls[0]!;
+    const [id, lineas, txLineas, usuarioLineas] = vi.mocked(repo.reemplazarLineas).mock.calls[0]!;
     expect(id).toBe(31);
     expect(txLineas).toBe(tx);
+    // HU-25 del backlog: el recálculo se audita a nombre del Sistema.
+    expect(usuarioLineas).toBeNull();
     expect(lineas.map((l) => l.subtotal)).toEqual(['100000.00', '12000.00']);
     // Solo el total: la vigencia no se reinicia y el estado no cambia.
-    expect(repo.actualizarPresupuesto).toHaveBeenCalledWith(31, { total: '112000.00' }, tx);
+    expect(repo.actualizarPresupuesto).toHaveBeenCalledWith(31, { total: '112000.00' }, tx, null);
   });
 });
