@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-import type { Rol } from '@confluens/shared';
+import type { EntidadAuditada, Rol } from '@confluens/shared';
 
 import type { Prisma } from '../generated/prisma/client.js';
 import { prisma } from './prisma.js';
@@ -107,22 +107,6 @@ export function calcularDiferencia(anterior: Registro | null, nuevo: Registro): 
     valorNuevo: valorNuevo as Prisma.InputJsonObject,
   };
 }
-
-// Entidades auditadas: la «parte del sistema» por la que se filtra en la pestaña Auditoría.
-// Los nombres son los de las entidades de modelo-datos.md.
-export type EntidadAuditada =
-  | 'Salon'
-  | 'Distribucion'
-  | 'Servicio'
-  | 'ConfiguracionPrecios'
-  | 'MedioPago'
-  | 'Cliente'
-  | 'Etiqueta'
-  | 'Solicitud'
-  | 'Evento'
-  | 'Presupuesto'
-  | 'Pago'
-  | 'Usuario';
 
 export type CambioAuditado = {
   // Omitido: el usuario de la sesión (ver resolverUsuario).
