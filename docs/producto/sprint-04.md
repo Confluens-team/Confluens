@@ -171,7 +171,7 @@ Criterios propuestos:
 - Al recalcular un presupuesto, la fecha de emisión pasa a ser la del recálculo y la vigencia vuelve
   a contar 10 días desde ahí, como en toda modificación (RN-08; Franco, 03/11/2026). Vale también
   para un evento `Reservado` o `Cobrado`: su presupuesto sigue `Confirmado`, porque el control de
-  vigencia solo vence los `Estimado`. **Cambia con HU-54 del backlog** (reunión 05/11/2026): se saca
+  vigencia solo vence los `Estimado`. **Cambió con HU-54 del backlog** (Sprint 5): se sacó
   el botón y el sistema recalcula solo. Un presupuesto `Confirmado` ya no se recalcula por un
   cambio de porcentaje; solo por un cambio de fecha del evento, que reinicia la vigencia.
 - Solo el personal interno modifica eventos; el rol Cliente no.
