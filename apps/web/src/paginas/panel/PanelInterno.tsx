@@ -1,4 +1,9 @@
-import { administraPersonal, veAuditoria, type Rol, type Sesion } from '@confluens/shared';
+import {
+  puedePublicarEnLanding,
+  veSeccion,
+  type SeccionConfiguracion,
+  type Sesion,
+} from '@confluens/shared';
 import {
   Building2,
   CalendarDays,
@@ -78,9 +83,6 @@ const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: 
   },
 ];
 
-type SeccionConfiguracion =
-  'salones' | 'servicios' | 'medios' | 'landing' | 'personal' | 'auditoria';
-
 // Las secciones de la configuración, agrupadas como en el sidebar.
 const GRUPOS_DE_CONFIGURACION: {
   titulo: string;
@@ -108,29 +110,18 @@ const GRUPOS_DE_CONFIGURACION: {
   },
 ];
 
-// Las secciones que no ve cualquier rol. El resto las ven todos hasta HU-56 del backlog.
-const SECCION_VISIBLE: Partial<Record<SeccionConfiguracion, (rol: Rol) => boolean>> = {
-  personal: administraPersonal,
-  auditoria: veAuditoria,
-};
-
-function seccionVisible(seccion: SeccionConfiguracion, rol: Rol): boolean {
-  return SECCION_VISIBLE[seccion]?.(rol) ?? true;
-}
-
 // Todo lo que se consulta o se carga del catálogo: salones (HU-03), servicios (HU-02), medios de pago
 // (HU-19), el contenido de la landing (HU-08) y el personal (HU-30 y HU-31 del Sprint 4). Cada
 // sección se elige desde el sidebar de la izquierda; en pantallas angostas el sidebar va arriba.
 //
-// Personal y Auditoría (HU-25 del backlog) las ven solo el GG y el ADM (dominio.md, «Personal» y
-// «Roles»); la API también se las niega al resto.
-// Las demás secciones las siguen viendo todos hasta HU-56 del backlog (permisos por rol).
+// Cada rol ve solo sus secciones (HU-56 del backlog, dominio.md «Configuración de negocio por rol»);
+// la matriz vive en shared y la API también rechaza con 403 lo que el rol no puede hacer.
 function ConfiguracionDeNegocio({ sesion }: { sesion: Sesion }) {
   const rol = sesion.rol;
   const [seccion, setSeccion] = useState<SeccionConfiguracion>('servicios');
   const grupos = GRUPOS_DE_CONFIGURACION.map((grupo) => ({
     ...grupo,
-    secciones: grupo.secciones.filter(({ valor }) => seccionVisible(valor, rol)),
+    secciones: grupo.secciones.filter(({ valor }) => veSeccion(rol, valor)),
   })).filter(({ secciones }) => secciones.length > 0);
   return (
     <div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start">
@@ -162,12 +153,14 @@ function ConfiguracionDeNegocio({ sesion }: { sesion: Sesion }) {
         ))}
       </nav>
       <div className="rounded-xl bg-card ring-1 ring-border">
-        {seccion === 'salones' && <ConsultarSalones />}
-        {seccion === 'servicios' && <RegistrarServicio />}
-        {seccion === 'medios' && <RegistrarMedioPago />}
-        {seccion === 'landing' && <AdministrarLanding />}
-        {seccion === 'personal' && administraPersonal(rol) && <Personal sesion={sesion} />}
-        {seccion === 'auditoria' && veAuditoria(rol) && <Auditoria />}
+        {seccion === 'salones' && veSeccion(rol, 'salones') && <ConsultarSalones />}
+        {seccion === 'servicios' && veSeccion(rol, 'servicios') && <RegistrarServicio />}
+        {seccion === 'medios' && veSeccion(rol, 'medios') && <RegistrarMedioPago />}
+        {seccion === 'landing' && veSeccion(rol, 'landing') && (
+          <AdministrarLanding puedePublicar={puedePublicarEnLanding(rol)} />
+        )}
+        {seccion === 'personal' && veSeccion(rol, 'personal') && <Personal sesion={sesion} />}
+        {seccion === 'auditoria' && veSeccion(rol, 'auditoria') && <Auditoria />}
       </div>
     </div>
   );
