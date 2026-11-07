@@ -1,21 +1,12 @@
 import type { MedioPago } from '@confluens/shared';
-import { Check, Minus, Pencil } from 'lucide-react';
+import { Pencil } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { useListadoMediosPago } from '@/hooks/use-pagos';
 import { cn } from '@/lib/utils';
 
-function Habilitado({ si, caso }: { si: boolean; caso: string }) {
-  return si ? (
-    <Check className="mx-auto size-4 text-emerald-700" aria-label={`Se usa ${caso}`} />
-  ) : (
-    <Minus className="mx-auto size-4 text-muted-foreground" aria-label={`No se usa ${caso}`} />
-  );
-}
-
-// HU-20: el catálogo de medios de pago, activos y dados de baja, en orden alfabético, con su estado
-// y en qué cobros se puede usar cada uno (RN-14). Al cobrar se ofrecen solo los activos habilitados
-// para el caso del presupuesto (CuentaDelEvento). Cada fila se puede modificar (HU-33).
+// HU-20: el catálogo de medios de pago, activos y dados de baja, en orden alfabético, con su estado.
+// Al cobrar se ofrecen todos los activos (RN-14 desde HU-53). Cada fila se puede modificar (HU-33).
 export function ListadoMediosPago({ onModificar }: { onModificar: (medio: MedioPago) => void }) {
   const { data: medios, isLoading, isError } = useListadoMediosPago();
 
@@ -36,8 +27,6 @@ export function ListadoMediosPago({ onModificar }: { onModificar: (medio: MedioP
               <tr className="border-b text-left text-[0.65rem] tracking-[0.15em] text-muted-foreground uppercase">
                 <th className="px-3 py-2 font-semibold">Medio</th>
                 <th className="px-3 py-2 font-semibold">Estado</th>
-                <th className="px-3 py-2 text-center font-semibold">Con factura</th>
-                <th className="px-3 py-2 text-center font-semibold">Sin factura</th>
                 <th className="px-3 py-2">
                   <span className="sr-only">Acciones</span>
                 </th>
@@ -58,12 +47,6 @@ export function ListadoMediosPago({ onModificar }: { onModificar: (medio: MedioP
                     >
                       {medio.activo ? 'Activo' : 'Inactivo'}
                     </span>
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <Habilitado si={medio.conFactura} caso="con factura" />
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <Habilitado si={medio.sinFactura} caso="sin factura" />
                   </td>
                   <td className="px-1 py-1 text-right">
                     <Button

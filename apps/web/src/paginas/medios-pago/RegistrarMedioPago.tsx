@@ -7,7 +7,6 @@ import { CheckCircle2, Plus } from 'lucide-react';
 import { useState } from 'react';
 
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { VentanaFormulario } from '@/components/VentanaFormulario';
@@ -16,16 +15,14 @@ import { ErrorApiCliente } from '@/lib/api';
 
 import { ListadoMediosPago } from './ListadoMediosPago';
 
-const valoresIniciales = { nombre: '', conFactura: false, sinFactura: false };
+const valoresIniciales = { nombre: '' };
 
-// HU-19: alta de un medio de pago. Además del nombre se elige en qué cobros se puede usar: con
-// factura, sin factura o en los dos casos (RN-14, decisión del PO del 16/10/2026). Mismo patrón que
-// RegistrarServicio: estado controlado y validación con el schema de shared antes de enviar, para
-// mostrar el mismo error que devolvería la API sin esperar el round-trip.
+// HU-19: alta de un medio de pago. Desde HU-53 se carga solo el nombre: todos los medios se pueden
+// usar en todos los cobros (RN-14). Mismo patrón que RegistrarServicio: estado controlado y
+// validación con el schema de shared antes de enviar, para mostrar el mismo error que devolvería la
+// API sin esperar el round-trip.
 //
-// Con `medio` el mismo formulario lo modifica (HU-33): arranca con sus datos y se valida con el
-// schema de la modificación. La habilitación de los medios del catálogo inicial también se puede
-// cambiar (equipo, 03/11/2026).
+// Con `medio` el mismo formulario lo modifica (HU-33): arranca con su nombre.
 function FormularioMedioPago({
   medio,
   onGuardado,
@@ -36,11 +33,7 @@ function FormularioMedioPago({
   const crearMedioPago = useCrearMedioPago();
   const modificarMedioPago = useModificarMedioPago();
   const guardar = medio ? modificarMedioPago : crearMedioPago;
-  const [valores, setValores] = useState(
-    medio
-      ? { nombre: medio.nombre, conFactura: medio.conFactura, sinFactura: medio.sinFactura }
-      : valoresIniciales,
-  );
+  const [valores, setValores] = useState(medio ? { nombre: medio.nombre } : valoresIniciales);
   const [erroresCampos, setErroresCampos] = useState<Record<string, string>>({});
 
   function actualizarCampo<K extends keyof typeof valoresIniciales>(
@@ -87,33 +80,9 @@ function FormularioMedioPago({
         )}
       </div>
 
-      <fieldset className="space-y-2">
-        <legend className="text-sm font-medium">Se puede usar en cobros…</legend>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="medio-con-factura"
-            checked={valores.conFactura}
-            onCheckedChange={(marcado) => actualizarCampo('conFactura', marcado === true)}
-          />
-          <Label htmlFor="medio-con-factura">Con factura</Label>
-        </div>
-        <div className="flex items-center gap-2">
-          <Checkbox
-            id="medio-sin-factura"
-            checked={valores.sinFactura}
-            onCheckedChange={(marcado) => actualizarCampo('sinFactura', marcado === true)}
-          />
-          <Label htmlFor="medio-sin-factura">Sin factura</Label>
-        </div>
-        {erroresCampos['conFactura'] && (
-          <p className="text-sm text-destructive">{erroresCampos['conFactura']}</p>
-        )}
-      </fieldset>
-
       {medio && (
         <p className="text-xs text-muted-foreground">
-          Los pagos ya registrados con este medio no cambian y lo muestran con el nombre nuevo. La
-          habilitación nueva vale desde el próximo cobro.
+          Los pagos ya registrados con este medio no cambian y lo muestran con el nombre nuevo.
         </p>
       )}
 
@@ -145,8 +114,8 @@ export function RegistrarMedioPago() {
       <div>
         <h1 className="text-2xl font-semibold">Medios de pago</h1>
         <p className="text-sm text-muted-foreground">
-          Registrá los medios con los que se puede cobrar un evento y en qué casos se pueden usar,
-          según el cliente requiera factura o no (HU-19 y HU-20).
+          Registrá los medios con los que se puede cobrar un evento. Todos se pueden usar en
+          cualquier cobro (HU-19 y HU-20).
         </p>
         <Button
           className="mt-4"
@@ -168,7 +137,7 @@ export function RegistrarMedioPago() {
         abierto={abierto}
         onCambiarAbierto={setAbierto}
         titulo="Nuevo medio de pago"
-        descripcion="Elegí en qué cobros se puede usar: con factura, sin factura o en los dos casos."
+        descripcion="Se puede usar en cualquier cobro."
       >
         {/* La key vacía el formulario cada vez que se abre la ventana. */}
         <FormularioMedioPago
@@ -184,7 +153,7 @@ export function RegistrarMedioPago() {
         abierto={enEdicion !== null}
         onCambiarAbierto={(abiertoEdicion) => !abiertoEdicion && setEnEdicion(null)}
         titulo="Modificar medio de pago"
-        descripcion="Cambiá el nombre o en qué cobros se puede usar."
+        descripcion="Cambiá el nombre del medio de pago."
       >
         {/* Se desmonta al cerrar: cada apertura arranca con los datos guardados del medio. */}
         {enEdicion && (

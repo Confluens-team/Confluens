@@ -258,7 +258,6 @@ function Formulario({
   const [horaEstimada, setHoraEstimada] = useState(consulta.evento.horaInicioEstimada ?? '');
   const [jornada, setJornada] = useState<TipoJornada>(consulta.tipoJornada);
   const [personas, setPersonas] = useState(String(consulta.evento.cantidadPersonas));
-  const [requiereFactura, setRequiereFactura] = useState(consulta.requiereFactura);
   const [lineas, setLineas] = useState<LineaEditable[]>(
     consulta.lineas
       .filter((linea) => linea.tipo !== 'salon')
@@ -509,7 +508,6 @@ function Formulario({
         tipoSocial: tipo === 'Social' && tipoSocial ? tipoSocial : null,
         tipoSocialDetalle: tipo === 'Social' && tipoSocial === 'Otro' ? detalleOtro.trim() : null,
         horaInicioEstimada: horaEstimada || null,
-        requiereFactura,
         servicios: lineas
           .filter((l) => l.servicioId !== null)
           .map((l) => ({
@@ -802,17 +800,6 @@ function Formulario({
               ? `${armado} · de ${hora(inicio)} a ${hora(fin)}`
               : 'sin agendar todavía (se cargan al registrar el pago)'}
           </p>
-          <label className="mt-4 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={requiereFactura}
-              onChange={(e) => setRequiereFactura(e.target.checked)}
-            />
-            El cliente requiere factura
-            <span className="text-xs text-muted-foreground">
-              (la seña y el saldo se calculan sobre el total con IVA)
-            </span>
-          </label>
         </section>
 
         {tipo === 'Social' && (
