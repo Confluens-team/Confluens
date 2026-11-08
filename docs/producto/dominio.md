@@ -237,6 +237,12 @@ hora es válido y no cambia nada del cálculo. Mientras el evento está `EnConsu
 horario cargado, así que se acepta cualquier hora; una vez **agendado** (con `inicio` y `fin`), una
 hora fuera de esa franja se rechaza. Decisión del equipo, 08/10/2026.
 
+**Eventos que terminan después de la medianoche** (PO, 07/11/2026). Un evento puede seguir pasada
+la medianoche: lo que cae después de las 00:00 se toma como del **día siguiente**, y el evento
+termina ese día. En esos eventos la hora esperada de un servicio **no se controla** contra la
+franja, porque el rango da la vuelta: se acepta cualquier hora. Vale lo mismo que para el resto del
+evento: el día del evento se lee en la hora de Córdoba (ADR 0010).
+
 **Servicio propio de un evento** (reunión 05/11/2026). Un servicio que no está en el catálogo y
 se agrega a un evento puntual, social o corporativo. **No se guarda en el catálogo** ni lo ve nadie
 fuera de ese evento.
@@ -246,6 +252,9 @@ fuera de ese evento.
 - **Cada línea lleva su propia observación**, para saber a qué corresponde. Reemplaza a la caja de
   texto única del evento social, y en la observación no se escriben importes.
 - Sale en el **PDF del presupuesto** y en la **comanda** (eso último puede cambiar más adelante).
+- **Puede valer $0** (PO, 08/11/2026): una cortesía de la casa. Es una línea con precio —no «a
+  cotizar»—, sale en el presupuesto y no suma al total. Vale para los adicionales escritos a mano, que
+  son la base de esta funcionalidad.
 
 **Reunión 05/11/2026 → HU-51.** Hasta entonces los adicionales no llevan observación propia.
 
@@ -297,6 +306,10 @@ Hasta entonces un evento ocupa un solo día.
 
 **Pago.** Importe recibido con fecha y medio de pago. Monto libre, sin mínimo. Un pago que excede
 el saldo se rechaza: un pago nunca genera saldo a favor.
+- **Tope por pago: $500.000.000** (PO, 08/11/2026; antes era de 100 millones y lo subió «por las
+  dudas»). No es una regla del negocio sino una red de seguridad contra un cero de más al tipear.
+- **La fecha del pago no tiene límite** (PO, 07/11/2026): se puede cargar un pago de cualquier día,
+  anterior o posterior a hoy. Solo tiene que ser una fecha real.
 
 **Saldo.** Base de cobro menos la suma de los pagos registrados, **nunca negativo**. Si un cambio
 baja el total por debajo de lo pagado (quitar un servicio, bajar la cantidad de personas, quitar un
@@ -398,7 +411,21 @@ el ADM**, como hasta ahora: la reunión no la mencionó.
 acceden a todo el sistema.
 - Muestra los **usuarios del panel interno** (no los clientes). Desde ahí se los **registra,
   modifica y da de baja**. Al registrar un usuario, el GG o el ADM le carga la **contraseña
-  inicial**, con al menos 6 caracteres y sin otros requisitos (PO, 06/11/2026).
+  inicial**.
+- **Política de contraseñas** (PO, 08/11/2026). Rige para toda contraseña que se crea o se cambia:
+  la inicial del personal, el registro del cliente y restablecerla por correo. Prioriza el largo y
+  frena lo obvio; **no exige mayúsculas, minúsculas ni
+  símbolos**, porque empujan a contraseñas como `Contraseña1!` sin hacerlas más fuertes.
+  - **Al menos 8 caracteres.** Antes eran 6 (PO, 06/11/2026).
+  - **No puede ser solo espacios** ni **un único carácter repetido** (`aaaaaaaa`).
+  - **No puede ser una de las contraseñas más comunes** (`12345678`, `password`, `contraseña`,
+    `bienvenido`, `confluens`, y unas veinte más). Se compara sin distinguir mayúsculas ni tildes.
+  - **Máximo de 72 bytes** (PO, 07/11/2026): el algoritmo que guarda la contraseña (bcrypt) lee solo
+    los primeros 72, así que dos contraseñas largas iguales hasta ahí valdrían lo mismo. Se mide en
+    bytes: una tilde o un emoji ocupan más de uno.
+  - Los espacios de los bordes cuentan como caracteres: la contraseña no se recorta.
+  - **El inicio de sesión no aplica la política**, para que entren las cuentas que ya tienen una
+    contraseña más corta o común.
 - Cada usuario tiene **un solo rol a la vez**. Al marcarle un rol nuevo, se desmarca el anterior.
 - **Quién asigna qué rol:** el ADM asigna cualquiera (ADM, GG, RE, RF). El GG asigna GG, RE y RF,
   pero **no ADM**.
