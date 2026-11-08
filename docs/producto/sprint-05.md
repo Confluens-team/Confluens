@@ -50,7 +50,7 @@ administrar al personal.
 | HU-30 | Modificar un usuario | GG / ADM | 3 | Construida (PR #114): modificar el rol y cambiar la contraseña, también desde Mi cuenta |
 | HU-31 | Dar de baja un usuario | GG / ADM | 2 | Construida (PR #114), con `Usuario.activo` |
 | HU-24 | Avisar por WhatsApp la recepción de la consulta y descargar su resumen en PDF | RE | 5 | Revisada contra los criterios en el PR #116, sin cambios. Falta re-estimarla en la Planning |
-| — | Enviar correo de confirmación de consulta | SYS | a estimar | Construido (PR #121), sin PDF adjunto (PO, 07/11/2026): no necesitó dependencia nueva. Sin dominio (S-11) solo llega al dueño de la cuenta de Resend |
+| — | Enviar correo de confirmación de consulta | SYS | a estimar | Construido (PR #121 y siguientes): confirmación breve, sin resumen ni PDF adjunto (PO, 07/11/2026); no necesitó dependencia nueva. Sin dominio (S-11) solo llega al dueño de la cuenta de Resend |
 | — | Cerrar sesión | todos | — | Cubierta con tests (PR #116) |
 | — | Cambiar contraseña | todos | — | Restablecimiento por correo cubierto con tests (PR #116). Desde Mi cuenta, con HU-30 (PR #114) |
 | | **Total estimado** | | **18 + a estimar** | |
@@ -80,15 +80,15 @@ paralelo con HU-25; después HU-30 y HU-31 juntas; HU-24 y el correo al final.
 | HU-31 | Se construye con la baja lógica de `dominio.md`. El cambio de modelo (`Usuario.activo`) queda confirmado. |
 | HU-24 | Funciona bien: se revisa contra los criterios, sin trabajo nuevo salvo lo que falte. |
 | Cerrar sesión, cambiar contraseña | Se cubren con tests. El PO quiere revisar en la app cómo funciona el restablecimiento por correo. |
-| Correo | Se manda **solo cuando el cliente confirma la consulta en el cotizador**, no cuando la carga el personal. Lleva el **resumen en el cuerpo, sin PDF adjunto** (PO, 07/11/2026: el PDF se descarga desde el cotizador). **No hay dominio propio todavía** (S-11): hasta conseguirlo, solo llega al correo del dueño de la cuenta de Resend. |
+| Correo | Se manda **solo cuando el cliente confirma la consulta en el cotizador**, no cuando la carga el personal. Es una **confirmación breve, sin resumen del evento ni PDF adjunto** (PO, 07/11/2026): el cliente ya descarga su presupuesto estimado desde el cotizador y el definitivo se lo envía el Responsable de Eventos. **No hay dominio propio todavía** (S-11): hasta conseguirlo, solo llega al correo del dueño de la cuenta de Resend. |
 
 **Cambios de modelo** (cada uno se confirma antes de tocar `schema.prisma`, `AGENTS.md` §6):
 `Usuario.activo` (HU-31, confirmado) y, según cómo se guarde el campo auditado para filtrarlo, poco
 o nada en `AuditLog`, que ya tiene usuario, fecha, entidad, valor anterior y valor nuevo.
 
-**Sin dependencias nuevas.** El correo no lleva el PDF adjunto (PO, 07/11/2026): el resumen va en el
-cuerpo y el PDF se sigue descargando desde el cotizador con la impresión del navegador. Así no hace
-falta una librería de PDF en el servidor ni adjuntos en `correo.ts`.
+**Sin dependencias nuevas.** El correo no lleva el PDF adjunto ni un resumen (PO, 07/11/2026): el PDF
+se sigue descargando desde el cotizador con la impresión del navegador. Así no hace falta una
+librería de PDF en el servidor ni adjuntos en `correo.ts`.
 
 ## HU-25 del backlog — Registrar el usuario y la fecha de cada modificación
 
@@ -171,19 +171,24 @@ del panel va con HU-30.
 
 ## Enviar correo de confirmación de consulta
 
-Criterios (PO, 06/11/2026; sin el PDF adjunto desde el 07/11/2026):
+Criterios (PO, 06/11/2026; simplificados el 07/11/2026, ver más abajo):
 
-- Se manda cuando el **cliente confirma su consulta en el cotizador** de la web (`POST /presupuestos`
-  con la sesión de un cliente). Si la carga el personal desde el panel, no sale correo.
-- **La consulta social también manda correo** (PO, 07/11/2026): es la confirmación de la consulta, se
-  envía desde la misma pantalla del cotizador (`POST /presupuestos/social`, ADR 0008). Como no tiene
-  salón, servicios ni precio, el resumen repite lo que contó el cliente (tipo de evento, fecha,
-  personas, jornada y hora estimada) y avisa que el equipo arma el presupuesto después.
-- Va al correo de la ficha del cliente de la sesión, con el **resumen** en el cuerpo (fecha, personas,
-  salón y servicios con su importe, subtotal, IVA 21% y total, y la leyenda de validez de 10 días).
-  **No lleva el PDF adjunto**: el cliente lo descarga desde el cotizador.
+- Se manda cuando el **cliente confirma su consulta**, en el cotizador (`POST /presupuestos`, con la
+  sesión de un cliente) o en la consulta social (`POST /presupuestos/social`, ADR 0008), que se envía
+  desde la misma pantalla. Si la carga el personal desde el panel, no sale correo.
+- Va al correo de la ficha del cliente de la sesión.
+- **Es solo una confirmación** (PO, 07/11/2026): le deja tranquilo de que su consulta llegó y repite
+  el mensaje que ya ve en pantalla (el del cotizador o el de la consulta social), con el teléfono de
+  su ficha y el número de consulta. **No lleva resumen del evento, importes ni PDF adjunto**: el
+  presupuesto estimado ya lo descarga desde el cotizador y el definitivo se lo envía el Responsable
+  de Eventos. Lleva el sello de Los Abuelos (bordó, dorado y crema de la web), hecho con texto y no
+  con una imagen remota.
 - Si el correo falla, la consulta se guarda igual: el correo no bloquea la confirmación. El envío no
   espera a Resend para responder, y un fallo queda en el log de la API.
+
+Antes de esta simplificación el correo llevaba el resumen del evento (fecha, salón y servicios con su
+importe, subtotal, IVA y total, y la vigencia de 10 días) y la aclaración de que no reserva el salón.
+Esa versión se mergeó en el PR #121 y la reemplaza este cambio.
 
 Resend ya se usa para restablecer la contraseña (ADR 0006). **Falta el dominio** (S-11): hasta
 verificarlo, el remitente de prueba solo entrega al dueño de la cuenta de Resend, así que un cliente
