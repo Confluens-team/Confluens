@@ -174,9 +174,11 @@ del panel va con HU-30.
 Criterios (PO, 06/11/2026; sin el PDF adjunto desde el 07/11/2026):
 
 - Se manda cuando el **cliente confirma su consulta en el cotizador** de la web (`POST /presupuestos`
-  con la sesión de un cliente). Si la carga el personal desde el panel, no sale correo. **A confirmar
-  por el PO:** la consulta social se envía desde la misma pantalla del cotizador (`POST
-  /presupuestos/social`, ADR 0008), pero no tiene precios que resumir; por ahora no manda correo.
+  con la sesión de un cliente). Si la carga el personal desde el panel, no sale correo.
+- **La consulta social también manda correo** (PO, 07/11/2026): es la confirmación de la consulta, se
+  envía desde la misma pantalla del cotizador (`POST /presupuestos/social`, ADR 0008). Como no tiene
+  salón, servicios ni precio, el resumen repite lo que contó el cliente (tipo de evento, fecha,
+  personas, jornada y hora estimada) y avisa que el equipo arma el presupuesto después.
 - Va al correo de la ficha del cliente de la sesión, con el **resumen** en el cuerpo (fecha, personas,
   salón y servicios con su importe, subtotal, IVA 21% y total, y la leyenda de validez de 10 días).
   **No lleva el PDF adjunto**: el cliente lo descarga desde el cotizador.
