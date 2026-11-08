@@ -25,7 +25,7 @@ import { alcanza, calcularBaseDeCobro, PORCENTAJE_TOTAL } from '../../lib/base-d
 import { type Correo, enviarCorreo } from '../../lib/correo.js';
 import { ErrorApi } from '../../lib/errores.js';
 import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
-import { avisarConsultaRecibida } from './presupuestos.correo.js';
+import { avisarConsultaRecibida, avisarConsultaSocialRecibida } from './presupuestos.correo.js';
 import * as presupuestosRepositorioReal from './presupuestos.repositorio.js';
 import type { LineaNueva, PresupuestosRepositorio } from './presupuestos.repositorio.js';
 
@@ -372,6 +372,7 @@ export async function registrarConsultaSocial(
   usuarioId: number,
   datos: CrearConsultaSocial,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+  enviar: (correo: Correo) => Promise<void> = enviarCorreo,
 ) {
   const cliente = await clienteDeLaSesion(usuarioId, repo);
 
@@ -379,7 +380,7 @@ export async function registrarConsultaSocial(
     await exigirSolicitudDisponible(datos.solicitudId, cliente.id, repo);
   }
 
-  return repo.crearEnTransaccion(async (tx) => {
+  const presupuesto = await repo.crearEnTransaccion(async (tx) => {
     const evento = await repo.crearEvento(
       {
         clienteId: cliente.id,
@@ -403,6 +404,13 @@ export async function registrarConsultaSocial(
       tx,
     );
   });
+
+  // Igual que en el cotizador: sin await y sin que un fallo del envío deshaga la consulta.
+  void avisarConsultaSocialRecibida(
+    { nombre: cliente.nombre, correo: cliente.correo, presupuesto },
+    enviar,
+  );
+  return presupuesto;
 }
 
 async function clienteDeLaSesion(usuarioId: number, repo: PresupuestosRepositorio) {

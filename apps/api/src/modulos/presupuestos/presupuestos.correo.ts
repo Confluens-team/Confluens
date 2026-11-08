@@ -1,17 +1,22 @@
 import {
   DIAS_VIGENCIA_PRESUPUESTO,
   desglosarIva,
+  etiquetaTipoEvento,
   type ModalidadServicio,
   NOMBRE_MODALIDAD,
   PORCENTAJE_IVA,
+  type TipoEvento,
+  type TipoEventoSocial,
+  type TipoJornada,
   ZONA_HORARIA_EVENTOS,
 } from '@confluens/shared';
 
 import { type Correo, enviarCorreo } from '../../lib/correo.js';
 
 // Correo de confirmación de la consulta (Sprint 5, definición del PO del 07/11/2026): se manda solo
-// cuando el cliente confirma su consulta en el cotizador, con el resumen en el cuerpo y sin adjunto.
-// El PDF se descarga desde el cotizador.
+// cuando el cliente confirma su consulta, con el resumen en el cuerpo y sin adjunto. El PDF se
+// descarga desde el cotizador. Lo mandan la consulta corporativa (con precios) y la social (sin
+// precios, ADR 0008): las dos son la confirmación de la consulta (PO, 07/11/2026).
 
 type Importe = number | string | { toString(): string };
 
@@ -46,6 +51,9 @@ const FECHA_VENCIMIENTO = new Intl.DateTimeFormat('es-AR', {
   timeZone: ZONA_HORARIA_EVENTOS,
 });
 
+// RN-06 y ADR 0007: la reserva la dispara el pago de la seña, no la consulta.
+const AVISO_RESERVA = 'Esto no reserva el salón: la reserva se confirma con el pago de la seña.';
+
 const escapar = (texto: string) =>
   texto
     .replaceAll('&', '&amp;')
@@ -70,7 +78,7 @@ export function correoDeConsulta({ nombre, correo, presupuesto }: DatosCorreoCon
       importe: linea.aCotizar ? 'A cotizar' : pesos(linea.subtotal),
     };
   });
-  const aviso = 'Esto no reserva el salón: la reserva se confirma con el pago de la seña.';
+  const aviso = AVISO_RESERVA;
 
   const asunto = `Recibimos tu consulta N° ${id} en Los Abuelos`;
   const texto = [
@@ -107,21 +115,104 @@ export function correoDeConsulta({ nombre, correo, presupuesto }: DatosCorreoCon
   return { para: correo, asunto, texto, html };
 }
 
+export interface DatosCorreoConsultaSocial {
+  // Nombre de pila del cliente, para el saludo.
+  nombre: string;
+  correo: string;
+  presupuesto: {
+    id: number;
+    evento: {
+      fecha: Date;
+      cantidadPersonas: number;
+      tipo: TipoEvento;
+      tipoSocial: TipoEventoSocial | null;
+      tipoSocialDetalle: string | null;
+      tipoJornada: TipoJornada | null;
+      horaInicioEstimada: string | null;
+    };
+  };
+}
+
+const NOMBRE_JORNADA: Record<TipoJornada, string> = {
+  completa: 'Jornada completa',
+  media: 'Media jornada',
+};
+
+// ADR 0008: la consulta social no tiene salón, servicios ni precio. El resumen repite lo que contó
+// el cliente y avisa que el presupuesto lo arma el equipo después.
+export function correoDeConsultaSocial({
+  nombre,
+  correo,
+  presupuesto,
+}: DatosCorreoConsultaSocial): Correo {
+  const { id, evento } = presupuesto;
+  const datos = [
+    ['Tipo de evento', etiquetaTipoEvento(evento)],
+    ['Fecha del evento', FECHA_EVENTO.format(evento.fecha)],
+    ['Personas', String(evento.cantidadPersonas)],
+    ...(evento.tipoJornada ? [['Jornada', NOMBRE_JORNADA[evento.tipoJornada]]] : []),
+    ...(evento.horaInicioEstimada
+      ? [['Hora estimada de inicio', `${evento.horaInicioEstimada} h`]]
+      : []),
+  ] as [string, string][];
+  const aviso =
+    'Todavía no tiene precio: nuestro equipo arma el presupuesto a partir de tu consulta.';
+
+  const asunto = `Recibimos tu consulta N° ${id} en Los Abuelos`;
+  const texto = [
+    `Hola ${nombre}, recibimos tu consulta.`,
+    '',
+    ...datos.map(([campo, valor]) => `${campo}: ${valor}`),
+    '',
+    aviso,
+    AVISO_RESERVA,
+  ].join('\n');
+  const html =
+    `<p>Hola ${escapar(nombre)}, recibimos tu consulta.</p>` +
+    '<table cellpadding="4" cellspacing="0">' +
+    datos
+      .map(
+        ([campo, valor]) => `<tr><td>${campo}</td><td><strong>${escapar(valor)}</strong></td></tr>`,
+      )
+      .join('') +
+    '</table>' +
+    `<p>${aviso}</p>` +
+    `<p>${AVISO_RESERVA}</p>`;
+  return { para: correo, asunto, texto, html };
+}
+
+// Nunca rechaza: si el armado o el envío fallan, la consulta ya está guardada, así que se registra
+// el error y no se le devuelve al cliente.
+async function enviarSinFallar(
+  armar: () => Correo,
+  consultaId: number,
+  enviar: (correo: Correo) => Promise<void>,
+): Promise<void> {
+  try {
+    await enviar(armar());
+  } catch (error) {
+    console.error(
+      `No se pudo enviar el correo de la consulta ${consultaId}:`,
+      error instanceof Error ? error.message : error,
+    );
+  }
+}
+
 /**
- * Avisa al cliente que recibimos su consulta. Nunca rechaza: si el correo falla, la consulta ya
- * está guardada y se registra el error, pero no se le devuelve al cliente. Quien la llama no hace
- * `await` para no frenar la respuesta del cotizador.
+ * Avisa al cliente que recibimos su consulta. Nunca rechaza (ver enviarSinFallar). Quien la llama no
+ * hace `await` para no frenar la respuesta del cotizador.
  */
 export async function avisarConsultaRecibida(
   datos: DatosCorreoConsulta,
   enviar: (correo: Correo) => Promise<void> = enviarCorreo,
 ): Promise<void> {
-  try {
-    await enviar(correoDeConsulta(datos));
-  } catch (error) {
-    console.error(
-      `No se pudo enviar el correo de la consulta ${datos.presupuesto.id}:`,
-      error instanceof Error ? error.message : error,
-    );
-  }
+  await enviarSinFallar(() => correoDeConsulta(datos), datos.presupuesto.id, enviar);
+}
+
+/** Lo mismo que `avisarConsultaRecibida`, para la consulta social. */
+export async function avisarConsultaSocialRecibida(
+  datos: DatosCorreoConsultaSocial,
+  enviar: (correo: Correo) => Promise<void> = enviarCorreo,
+): Promise<void> {
+  await enviarSinFallar(() => correoDeConsultaSocial(datos), datos.presupuesto.id, enviar);
 }

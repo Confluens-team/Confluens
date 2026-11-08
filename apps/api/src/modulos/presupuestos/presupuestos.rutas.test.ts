@@ -1001,10 +1001,67 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
           requiereFactura: false,
           creadoEn: new Date(),
           actualizadoEn: new Date(),
-          evento: { ...eventoFixture, tipo: 'Social', salonId: null },
+          evento: {
+            ...eventoFixture,
+            tipo: 'Social',
+            tipoSocial: 'Casamiento',
+            tipoJornada: 'completa',
+            horaInicioEstimada: '21:00',
+            salonId: null,
+          },
           lineas: [],
         }) as never,
     );
+  });
+
+  describe('correo de consulta recibida', () => {
+    beforeEach(() => {
+      enviarCorreoMock.mockReset();
+      enviarCorreoMock.mockResolvedValue(undefined);
+    });
+
+    it('le manda al cliente de la sesión el resumen de lo que contó, sin precios', async () => {
+      const respuesta = await request(app)
+        .post('/api/presupuestos/social')
+        .set('Cookie', [cookieDe('CLIENTE')])
+        .send(bodySocial);
+
+      expect(respuesta.status).toBe(201);
+      await vi.waitFor(() => expect(enviarCorreoMock).toHaveBeenCalledTimes(1));
+      const correo = enviarCorreoMock.mock.calls[0]![0];
+      expect(correo.para).toBe(clienteFixture.correo);
+      expect(correo.asunto).toContain('N° 40');
+      expect(correo.texto).toContain('Social · Casamiento');
+      expect(correo.texto).toContain('Todavía no tiene precio');
+      expect(correo.texto).not.toContain('IVA');
+    });
+
+    it('no manda correo si la consulta no se pudo registrar', async () => {
+      buscarClientePorUsuarioIdMock.mockResolvedValue(null);
+
+      const respuesta = await request(app)
+        .post('/api/presupuestos/social')
+        .set('Cookie', [cookieDe('CLIENTE')])
+        .send(bodySocial);
+
+      expect(respuesta.status).toBe(404);
+      expect(enviarCorreoMock).not.toHaveBeenCalled();
+    });
+
+    it('guarda la consulta y responde 201 aunque falle el envío del correo', async () => {
+      enviarCorreoMock.mockRejectedValue(new Error('Resend respondió 500'));
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const respuesta = await request(app)
+        .post('/api/presupuestos/social')
+        .set('Cookie', [cookieDe('CLIENTE')])
+        .send(bodySocial);
+
+      expect(respuesta.status).toBe(201);
+      expect(crearPresupuestoConLineasMock).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(error).toHaveBeenCalled());
+      error.mockRestore();
+    });
   });
 
   it('crea el evento social sin salón, del cliente de la sesión, con el presupuesto sin armar', async () => {
