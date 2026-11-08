@@ -193,8 +193,9 @@ propuestos (`dominio.md`, «Personal»):
   reactivar.
 - **Contraseñas** (PO, 06/11/2026): el ADM le puede cargar una contraseña nueva a cualquier usuario
   del personal. Nadie más cambia la contraseña de otro. Cada usuario cambia la suya desde **Mi
-  cuenta**, con la contraseña actual y la nueva (mínimo 6 caracteres), sin pasar por el correo. Al
-  cambiarla se cierran sus otras sesiones.
+  cuenta**, con la contraseña actual y la nueva (que cumple la política de `dominio.md`, «Personal»:
+  desde el 08/11/2026 son 8 caracteres como mínimo), sin pasar por el correo. Al cambiarla se cierran
+  sus otras sesiones.
 
 ## HU-24 del backlog — Aviso por WhatsApp y resumen en PDF
 

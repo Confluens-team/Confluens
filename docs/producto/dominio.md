@@ -455,8 +455,8 @@ acceden a todo el sistema.
   modifica y da de baja**. Al registrar un usuario, el GG o el ADM le carga la **contraseña
   inicial**.
 - **Política de contraseñas** (PO, 08/11/2026). Rige para toda contraseña que se crea o se cambia:
-  la inicial del personal, el registro del cliente y restablecerla por correo. Prioriza el largo y
-  frena lo obvio; **no exige mayúsculas, minúsculas ni
+  la inicial del personal, el registro del cliente, restablecerla por correo y cambiarla desde Mi
+  cuenta o por el ADM. Prioriza el largo y frena lo obvio; **no exige mayúsculas, minúsculas ni
   símbolos**, porque empujan a contraseñas como `Contraseña1!` sin hacerlas más fuertes.
   - **Al menos 8 caracteres.** Antes eran 6 (PO, 06/11/2026).
   - **No puede ser solo espacios** ni **un único carácter repetido** (`aaaaaaaa`).
@@ -467,7 +467,7 @@ acceden a todo el sistema.
     bytes: una tilde o un emoji ocupan más de uno.
   - Los espacios de los bordes cuentan como caracteres: la contraseña no se recorta.
   - **El inicio de sesión no aplica la política**, para que entren las cuentas que ya tienen una
-    contraseña más corta o común.
+    contraseña más corta o común. Tampoco se revisa la contraseña actual al cambiarla.
 - Cada usuario tiene **un solo rol a la vez**. Al marcarle un rol nuevo, se desmarca el anterior.
 - **Quién asigna qué rol:** el ADM asigna cualquiera (ADM, GG, RE, RF). El GG asigna GG, RE y RF,
   pero **no ADM**.

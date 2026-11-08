@@ -479,7 +479,7 @@ ellas no se frenan. Cerrarlo pide un índice sobre `lower(nombre)`, que es un ca
 confirma antes (`AGENTS.md` §6).
 
 **Dos arreglos más de la misma ronda** (08/11/2026). La respuesta de `/usuarios` devuelve solo los
-campos públicos (id, correo, rol y fechas), aunque el repositorio trajera de más. Y los errores
+campos públicos (id, correo, rol, estado y fechas), aunque el repositorio trajera de más. Y los errores
 por HTML en un campo nombran la posición de las listas con puntos (`adicionales.0.descripcion`), igual
 que los de Zod; la web no lee ese nombre, así que no cambia nada visible.
 
