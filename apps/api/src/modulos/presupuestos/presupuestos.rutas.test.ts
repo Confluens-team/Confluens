@@ -222,7 +222,7 @@ describe('POST /api/presupuestos', () => {
       enviarCorreoMock.mockResolvedValue(undefined);
     });
 
-    it('le manda un correo al cliente de la sesión con el resumen de su consulta', async () => {
+    it('le manda un correo de confirmación al cliente de la sesión', async () => {
       const respuesta = await request(app)
         .post('/api/presupuestos')
         .set('Cookie', [cookieDe('CLIENTE')])
@@ -234,8 +234,10 @@ describe('POST /api/presupuestos', () => {
       // El destinatario es el correo de la ficha de la sesión, no el que viene en el body.
       expect(correo.para).toBe(clienteFixture.correo);
       expect(correo.asunto).toContain('N° 30');
-      expect(correo.texto).toContain('Salón Paraná');
-      expect(correo.texto).toContain('Coffee Refresh');
+      // Repite el mensaje de la pantalla, con el teléfono de la ficha, y no resume el evento.
+      expect(correo.texto).toContain('generamos tu presupuesto estimado');
+      expect(correo.texto).toContain(clienteFixture.telefono);
+      expect(correo.texto).not.toContain('Coffee Refresh');
     });
 
     it('no manda correo cuando cotiza el personal', async () => {
@@ -1020,7 +1022,7 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
       enviarCorreoMock.mockResolvedValue(undefined);
     });
 
-    it('le manda al cliente de la sesión el resumen de lo que contó, sin precios', async () => {
+    it('le manda al cliente de la sesión el correo de confirmación de la consulta social', async () => {
       const respuesta = await request(app)
         .post('/api/presupuestos/social')
         .set('Cookie', [cookieDe('CLIENTE')])
@@ -1031,8 +1033,8 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
       const correo = enviarCorreoMock.mock.calls[0]![0];
       expect(correo.para).toBe(clienteFixture.correo);
       expect(correo.asunto).toContain('N° 40');
-      expect(correo.texto).toContain('Social · Casamiento');
-      expect(correo.texto).toContain('Todavía no tiene precio');
+      expect(correo.texto).toContain('Cada evento social es único');
+      expect(correo.texto).toContain(clienteFixture.telefono);
       expect(correo.texto).not.toContain('IVA');
     });
 

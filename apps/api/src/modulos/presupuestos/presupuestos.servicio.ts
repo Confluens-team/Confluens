@@ -25,7 +25,7 @@ import { alcanza, calcularBaseDeCobro, PORCENTAJE_TOTAL } from '../../lib/base-d
 import { type Correo, enviarCorreo } from '../../lib/correo.js';
 import { ErrorApi } from '../../lib/errores.js';
 import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
-import { avisarConsultaRecibida, avisarConsultaSocialRecibida } from './presupuestos.correo.js';
+import { avisarConsultaRecibida } from './presupuestos.correo.js';
 import * as presupuestosRepositorioReal from './presupuestos.repositorio.js';
 import type { LineaNueva, PresupuestosRepositorio } from './presupuestos.repositorio.js';
 
@@ -350,7 +350,13 @@ export async function generarPresupuesto(
   // await: no frena la respuesta, y un fallo del envío no deshace la consulta ya guardada.
   if (clienteDeSesion) {
     void avisarConsultaRecibida(
-      { nombre: clienteDeSesion.nombre, correo: clienteDeSesion.correo, presupuesto },
+      {
+        nombre: clienteDeSesion.nombre,
+        correo: clienteDeSesion.correo,
+        telefono: clienteDeSesion.telefono,
+        consultaId: presupuesto.id,
+        tipo: 'Corporativo',
+      },
       enviar,
     );
   }
@@ -406,8 +412,14 @@ export async function registrarConsultaSocial(
   });
 
   // Igual que en el cotizador: sin await y sin que un fallo del envío deshaga la consulta.
-  void avisarConsultaSocialRecibida(
-    { nombre: cliente.nombre, correo: cliente.correo, presupuesto },
+  void avisarConsultaRecibida(
+    {
+      nombre: cliente.nombre,
+      correo: cliente.correo,
+      telefono: cliente.telefono,
+      consultaId: presupuesto.id,
+      tipo: 'Social',
+    },
     enviar,
   );
   return presupuesto;
