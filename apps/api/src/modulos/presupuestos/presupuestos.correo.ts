@@ -1,50 +1,27 @@
-import {
-  DIAS_VIGENCIA_PRESUPUESTO,
-  desglosarIva,
-  type ModalidadServicio,
-  NOMBRE_MODALIDAD,
-  PORCENTAJE_IVA,
-  ZONA_HORARIA_EVENTOS,
-} from '@confluens/shared';
+import type { TipoEvento } from '@confluens/shared';
 
 import { type Correo, enviarCorreo } from '../../lib/correo.js';
 
-// Correo de confirmación de la consulta (Sprint 5, definición del PO del 07/11/2026): se manda solo
-// cuando el cliente confirma su consulta en el cotizador, con el resumen en el cuerpo y sin adjunto.
-// El PDF se descarga desde el cotizador.
-
-type Importe = number | string | { toString(): string };
+// Correo de confirmación de la consulta (Sprint 5, PO, 07/11/2026): le avisa al cliente que su
+// consulta llegó y repite el mensaje que ya vio en pantalla. No lleva resumen del evento ni PDF: el
+// presupuesto estimado se descarga desde el cotizador y el definitivo lo envía el Responsable de
+// Eventos. Lo mandan las dos consultas, la corporativa del cotizador y la social (ADR 0008).
 
 export interface DatosCorreoConsulta {
   // Nombre de pila del cliente, para el saludo.
   nombre: string;
   correo: string;
-  presupuesto: {
-    id: number;
-    total: Importe;
-    venceEn: Date | null;
-    evento: { fecha: Date; cantidadPersonas: number };
-    lineas: {
-      descripcion: string;
-      cantidad: number;
-      subtotal: Importe;
-      modalidad: ModalidadServicio;
-      aCotizar: boolean;
-      horaEstimada: string | null;
-    }[];
-  };
+  // El teléfono de la ficha del cliente: es al que lo va a llamar el Responsable de Eventos.
+  telefono: string;
+  consultaId: number;
+  tipo: TipoEvento;
 }
 
-const PESOS = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
-const pesos = (importe: Importe) => PESOS.format(Number(importe.toString()));
-
-// Evento.fecha es una fecha de calendario (@db.Date): se lee en UTC para no correrla un día.
-const FECHA_EVENTO = new Intl.DateTimeFormat('es-AR', { dateStyle: 'full', timeZone: 'UTC' });
-// venceEn es un instante: se lee en la zona de los eventos, no en la del contenedor (ADR 0010).
-const FECHA_VENCIMIENTO = new Intl.DateTimeFormat('es-AR', {
-  dateStyle: 'long',
-  timeZone: ZONA_HORARIA_EVENTOS,
-});
+// Los colores de la web (index.css): bordó del logo, dorado de los filetes y papel crema.
+const BORDO = '#5e1f1a';
+const DORADO = '#b08d57';
+const DORADO_TEXTO = '#6a4e1c';
+const CREMA = '#f6f1ea';
 
 const escapar = (texto: string) =>
   texto
@@ -53,64 +30,70 @@ const escapar = (texto: string) =>
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;');
 
-export function correoDeConsulta({ nombre, correo, presupuesto }: DatosCorreoConsulta): Correo {
-  const { id, evento, lineas, venceEn } = presupuesto;
-  const { subtotal, iva, total } = desglosarIva(presupuesto.total.toString());
-  const fecha = FECHA_EVENTO.format(evento.fecha);
-  const vigencia = venceEn
-    ? `Este presupuesto estimado es válido por ${DIAS_VIGENCIA_PRESUPUESTO} días, hasta el ${FECHA_VENCIMIENTO.format(venceEn)}.`
-    : `Este presupuesto estimado es válido por ${DIAS_VIGENCIA_PRESUPUESTO} días.`;
-  const detalle = lineas.map((linea) => {
-    const hora = linea.horaEstimada ? ` (${linea.horaEstimada} h)` : '';
-    const cantidad = linea.cantidad > 1 ? ` x ${linea.cantidad}` : '';
-    // RN-11: el precio ya incluye el recargo, así que la modalidad tiene que verse.
-    const modalidad = linea.modalidad === 'Normal' ? '' : ` - ${NOMBRE_MODALIDAD[linea.modalidad]}`;
+// Los mismos textos que ve el cliente al terminar de cargar la consulta (PresupuestoEstimado.tsx y
+// ConsultaRecibida.tsx de la web), para que el correo y la pantalla no se contradigan.
+function mensajes(tipo: TipoEvento, telefono: string): { saludo: string; detalle: string } {
+  if (tipo === 'Social') {
     return {
-      texto: `${linea.descripcion}${modalidad}${hora}${cantidad}`,
-      importe: linea.aCotizar ? 'A cotizar' : pesos(linea.subtotal),
+      saludo: 'recibimos tu consulta.',
+      detalle: `Cada evento social es único. Un responsable de eventos se va a comunicar con vos al ${telefono} para elegir juntos el salón, la gastronomía y armar tu presupuesto.`,
     };
-  });
-  const aviso = 'Esto no reserva el salón: la reserva se confirma con el pago de la seña.';
+  }
+  return {
+    saludo: 'generamos tu presupuesto estimado.',
+    detalle: `Un responsable de eventos va a revisar la disponibilidad del salón y se va a comunicar con vos al ${telefono}.`,
+  };
+}
 
-  const asunto = `Recibimos tu consulta N° ${id} en Los Abuelos`;
+export function correoDeConsulta({
+  nombre,
+  correo,
+  telefono,
+  consultaId,
+  tipo,
+}: DatosCorreoConsulta): Correo {
+  const { saludo, detalle } = mensajes(tipo, telefono);
+  const asunto = `Recibimos tu consulta N° ${consultaId} en Los Abuelos`;
   const texto = [
-    `Hola ${nombre}, recibimos tu consulta.`,
+    'LOS ABUELOS',
     '',
-    `Fecha del evento: ${fecha}`,
-    `Personas: ${evento.cantidadPersonas}`,
+    `Hola ${nombre}, ${saludo}`,
     '',
-    ...detalle.map(({ texto: linea, importe }) => `- ${linea}: ${importe}`),
+    detalle,
     '',
-    `Subtotal: ${pesos(subtotal)}`,
-    `IVA ${PORCENTAJE_IVA}%: ${pesos(iva)}`,
-    `Total: ${pesos(total)}`,
+    `Número de consulta: ${consultaId}`,
     '',
-    vigencia,
-    aviso,
+    'Los Abuelos Servicios Gastronómicos',
   ].join('\n');
+
+  // Maquetado con tablas y estilos en línea: es lo que soportan los clientes de correo. El sello es
+  // texto y no una imagen, porque las imágenes remotas se bloquean por defecto y dependerían de una
+  // URL pública de la web.
   const html =
-    `<p>Hola ${escapar(nombre)}, recibimos tu consulta.</p>` +
-    `<p>Fecha del evento: <strong>${escapar(fecha)}</strong><br>Personas: <strong>${evento.cantidadPersonas}</strong></p>` +
-    '<table cellpadding="4" cellspacing="0">' +
-    detalle
-      .map(
-        ({ texto: linea, importe }) =>
-          `<tr><td>${escapar(linea)}</td><td align="right">${escapar(importe)}</td></tr>`,
-      )
-      .join('') +
-    `<tr><td>Subtotal</td><td align="right">${pesos(subtotal)}</td></tr>` +
-    `<tr><td>IVA ${PORCENTAJE_IVA}%</td><td align="right">${pesos(iva)}</td></tr>` +
-    `<tr><td><strong>Total</strong></td><td align="right"><strong>${pesos(total)}</strong></td></tr>` +
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${CREMA};padding:24px 0;">` +
+    '<tr><td align="center">' +
+    `<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border:1px solid ${DORADO};font-family:Georgia,'Times New Roman',serif;color:#2b2b2b;">` +
+    `<tr><td align="center" style="background:${BORDO};padding:24px 16px;">` +
+    '<table role="presentation" cellpadding="0" cellspacing="0"><tr>' +
+    `<td align="center" width="44" height="44" style="width:44px;height:44px;border-radius:22px;background:${CREMA};color:${BORDO};font-size:18px;font-weight:bold;border:1px solid ${DORADO};">LA</td>` +
+    `<td style="padding-left:12px;color:${CREMA};font-size:20px;letter-spacing:3px;">LOS ABUELOS</td>` +
+    '</tr></table>' +
+    '</td></tr>' +
+    '<tr><td style="padding:28px 32px;font-size:16px;line-height:1.6;">' +
+    `<p style="margin:0 0 16px;">Hola ${escapar(nombre)}, ${saludo}</p>` +
+    `<p style="margin:0 0 16px;">${escapar(detalle)}</p>` +
+    `<p style="margin:0;color:${DORADO_TEXTO};font-size:14px;">Número de consulta: <strong>${consultaId}</strong></p>` +
+    '</td></tr>' +
+    `<tr><td align="center" style="border-top:1px solid ${DORADO};padding:16px;font-size:12px;letter-spacing:1px;color:${DORADO_TEXTO};">Los Abuelos Servicios Gastronómicos</td></tr>` +
     '</table>' +
-    `<p>${vigencia}</p>` +
-    `<p>${aviso}</p>`;
+    '</td></tr></table>';
   return { para: correo, asunto, texto, html };
 }
 
 /**
- * Avisa al cliente que recibimos su consulta. Nunca rechaza: si el correo falla, la consulta ya
- * está guardada y se registra el error, pero no se le devuelve al cliente. Quien la llama no hace
- * `await` para no frenar la respuesta del cotizador.
+ * Avisa al cliente que recibimos su consulta. Nunca rechaza: si el armado o el envío fallan, la
+ * consulta ya está guardada, así que se registra el error y no se le devuelve al cliente. Quien la
+ * llama no hace `await` para no frenar la respuesta.
  */
 export async function avisarConsultaRecibida(
   datos: DatosCorreoConsulta,
@@ -120,7 +103,7 @@ export async function avisarConsultaRecibida(
     await enviar(correoDeConsulta(datos));
   } catch (error) {
     console.error(
-      `No se pudo enviar el correo de la consulta ${datos.presupuesto.id}:`,
+      `No se pudo enviar el correo de la consulta ${datos.consultaId}:`,
       error instanceof Error ? error.message : error,
     );
   }
