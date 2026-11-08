@@ -1,10 +1,10 @@
-import { esquemaFirmaSubida, esquemaPedidoFirma } from '@confluens/shared';
+import { esquemaFirmaSubida, esquemaPedidoFirma, ROLES_QUE_CAMBIAN_FOTOS } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
 
 import { registroOpenApi } from '../../docs/openapi.js';
 import { autenticar } from '../../middlewares/autenticar.js';
-import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
+import { autorizar } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
 import { firmar } from './fotos.controlador.js';
 
@@ -21,18 +21,19 @@ registroOpenApi.registerPath({
     },
     400: { description: 'Destino inválido' },
     401: { description: 'Sin sesión activa' },
-    403: { description: 'La sesión no es del personal' },
+    403: { description: 'Solo el Gerente General y el Administrador del Sistema' },
     422: { description: 'Cloudinary no está configurado' },
   },
 });
 
-// Mismos roles que el PATCH /:id/landing de salones y servicios, que es donde termina la URL.
+// Mismos roles que el PATCH /:id/landing de salones y servicios, que es donde termina la URL: las
+// fotos las cambian el GG y el ADM (HU-56).
 export const rutasFotos = Router();
 
 rutasFotos.post(
   '/firma',
   autenticar,
-  autorizar(...ROLES_PERSONAL),
+  autorizar(...ROLES_QUE_CAMBIAN_FOTOS),
   validar({ body: esquemaPedidoFirma }),
   // Síncrono: Express 4 ya pasa al manejador de errores lo que se lance acá.
   firmar,

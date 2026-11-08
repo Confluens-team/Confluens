@@ -260,8 +260,40 @@ describe('PATCH /api/servicios/:id/landing', () => {
     expect(actualizarLandingMock).not.toHaveBeenCalled();
   });
 
-  // Provisorio (06/10/2026): todo el personal puede editar la landing hasta que se dividan las
-  // funciones por rol; el Cliente sigue sin acceso.
+  // HU-56: la foto de un servicio la cambian el GG y el ADM.
+  it('el GG puede cambiar la foto', async () => {
+    buscarPorIdMock.mockResolvedValue(servicioDb);
+    actualizarLandingMock.mockResolvedValue({ ...servicioDb, fotoUrl: null });
+
+    const respuesta = await request(app)
+      .patch('/api/servicios/1/landing')
+      .set(
+        'Cookie',
+        `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 3, email: 'gg@confluens.test', rol: 'GERENTE_GENERAL' })}`,
+      )
+      .send({ fotoUrl: null });
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it.each(['RESPONSABLE_EVENTOS', 'RESPONSABLE_FINANZAS'] as const)(
+    'el %s no puede cambiar la foto: responde 403',
+    async (rol) => {
+      const respuesta = await request(app)
+        .patch('/api/servicios/1/landing')
+        .set(
+          'Cookie',
+          `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 3, email: 'persona@confluens.test', rol })}`,
+        )
+        .send({ fotoUrl: null });
+
+      expect(respuesta.status).toBe(403);
+      expect(respuesta.body.error.code).toBe('FORBIDDEN');
+      expect(actualizarLandingMock).not.toHaveBeenCalled();
+    },
+  );
+
+  // El Cliente sigue sin acceso.
   it('con sesión de Cliente responde 403 FORBIDDEN (criterio 5)', async () => {
     const cookieDeCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
       id: 1,

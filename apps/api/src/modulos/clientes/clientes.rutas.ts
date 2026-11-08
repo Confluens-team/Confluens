@@ -127,8 +127,8 @@ registroOpenApi.registerPath({
 export const rutasClientes = Router();
 
 // Solo para el personal: tiene datos de contacto de los clientes y su etiqueta, que es interna.
-// Provisorio (decisión del PO, 06/10/2026): todo el personal ve y hace todo hasta que se dividan
-// las funciones por rol.
+// Fuera de Configuración de negocio los cuatro roles del personal ven y hacen todo (HU-56,
+// dominio.md «Roles»).
 rutasClientes.get(
   '/',
   autenticar,
