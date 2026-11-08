@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  esquemaCambiarContrasenaUsuario,
+  esquemaCambiarMiContrasena,
   esquemaCredenciales,
   esquemaRegistrarUsuario,
   esquemaRegistroCliente,
@@ -134,7 +136,7 @@ describe('contraseña nueva — largo', () => {
     }
   });
 
-  it('el mismo techo rige en el registro y al restablecerla', () => {
+  it('el mismo techo rige en el registro, al restablecer y al cambiarla', () => {
     const larga = contrasenaDe(73);
     expect(esquemaRegistroCliente.safeParse({ ...registro, contrasena: larga }).success).toBe(
       false,
@@ -142,12 +144,16 @@ describe('contraseña nueva — largo', () => {
     expect(
       esquemaRestablecerContrasena.safeParse({ token: 'abc', contrasena: larga }).success,
     ).toBe(false);
-    // Y las dos aceptan el largo máximo.
+    expect(esquemaCambiarContrasenaUsuario.safeParse({ contrasena: larga }).success).toBe(false);
+    expect(esquemaCambiarMiContrasena.safeParse({ actual: 'vieja', nueva: larga }).success).toBe(
+      false,
+    );
+    // Y todas aceptan el largo máximo.
     const justa = contrasenaDe(72);
-    expect(esquemaRegistroCliente.safeParse({ ...registro, contrasena: justa }).success).toBe(true);
-    expect(
-      esquemaRestablecerContrasena.safeParse({ token: 'abc', contrasena: justa }).success,
-    ).toBe(true);
+    expect(esquemaCambiarContrasenaUsuario.safeParse({ contrasena: justa }).success).toBe(true);
+    expect(esquemaCambiarMiContrasena.safeParse({ actual: 'vieja', nueva: justa }).success).toBe(
+      true,
+    );
   });
 
   it('el login no impone política: una cuenta con una contraseña vieja, corta o larga, tiene que poder entrar', () => {
@@ -237,22 +243,34 @@ describe('contraseña nueva — política', () => {
     }
   });
 
-  it('la política rige en el alta del personal, el registro del cliente y al restablecerla', () => {
+  it('la política rige en todos los lugares donde se crea o cambia una contraseña', () => {
     const comun = '12345678';
     const buena = 'clave-2026';
 
-    expect(esquemaRegistrarUsuario.safeParse({ ...alta, contrasena: comun }).success).toBe(false);
     expect(esquemaRegistroCliente.safeParse({ ...registro, contrasena: comun }).success).toBe(
       false,
     );
     expect(
       esquemaRestablecerContrasena.safeParse({ token: 'abc', contrasena: comun }).success,
     ).toBe(false);
+    expect(esquemaCambiarContrasenaUsuario.safeParse({ contrasena: comun }).success).toBe(false);
+    expect(esquemaCambiarMiContrasena.safeParse({ actual: 'vieja', nueva: comun }).success).toBe(
+      false,
+    );
 
-    expect(esquemaRegistrarUsuario.safeParse({ ...alta, contrasena: buena }).success).toBe(true);
     expect(esquemaRegistroCliente.safeParse({ ...registro, contrasena: buena }).success).toBe(true);
     expect(
       esquemaRestablecerContrasena.safeParse({ token: 'abc', contrasena: buena }).success,
+    ).toBe(true);
+    expect(esquemaCambiarContrasenaUsuario.safeParse({ contrasena: buena }).success).toBe(true);
+    expect(esquemaCambiarMiContrasena.safeParse({ actual: 'vieja', nueva: buena }).success).toBe(
+      true,
+    );
+  });
+
+  it('la contraseña actual, al cambiarla, no se revisa: puede ser una vieja y floja', () => {
+    expect(
+      esquemaCambiarMiContrasena.safeParse({ actual: '123', nueva: 'clave-2026' }).success,
     ).toBe(true);
   });
 
