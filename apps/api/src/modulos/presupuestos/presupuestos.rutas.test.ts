@@ -958,7 +958,7 @@ describe('GET /api/presupuestos (HU-10)', () => {
     expect(respuesta.body.error.code).toBe('UNAUTHENTICATED');
   });
 
-  // Provisorio (06/10/2026): todo el personal ve las consultas hasta que se dividan las funciones.
+  // HU-56: los cuatro roles del personal ven las consultas.
   it('otro rol del personal también accede', async () => {
     const respuesta = await request(app)
       .get('/api/presupuestos')
