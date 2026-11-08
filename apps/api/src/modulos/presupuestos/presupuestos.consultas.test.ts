@@ -1661,3 +1661,287 @@ describe('PATCH /api/presupuestos/:id — modalidad (RN-11) y proyección (RN-13
     expect(respuesta.status).toBe(400);
   });
 });
+
+// HU-27 / HU-12: validación de la entrada del PATCH y casos límite de los números. El PATCH manda el
+// estado completo de la consulta, así que cada campo mal formado se corta con 400 antes de calcular.
+describe('PATCH /api/presupuestos/:id — validación de la entrada y bordes', () => {
+  const modificar = (cuerpo: object, id = 31) =>
+    request(app).patch(`/api/presupuestos/${id}`).set('Cookie', [cookieRE]).send(cuerpo);
+  const lineasGuardadas = () => reemplazarLineasMock.mock.calls[0]![1];
+
+  it.each([
+    ['en cero', 0],
+    ['negativa', -1],
+    ['decimal', 12.5],
+    ['como texto', '12'],
+    ['nula', null],
+    ['de 501, por encima del tope de 500', 501],
+    ['enorme', 1_000_000],
+  ])('una cantidad de personas %s responde 400 y no escribe', async (_caso, cantidadPersonas) => {
+    const respuesta = await modificar({ ...bodyBase, servicios: [], cantidadPersonas });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details[0].campo).toBe('cantidadPersonas');
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+  });
+
+  it('acepta una persona y el tope de 500', async () => {
+    const una = await modificar({ ...bodyBase, servicios: [], cantidadPersonas: 1 });
+    const tope = await modificar({ ...bodyBase, servicios: [], cantidadPersonas: 500 });
+
+    expect(una.status).toBe(200);
+    expect(tope.status).toBe(200);
+  });
+
+  it.each([
+    ['imposible', '2026-02-30'],
+    ['con otro formato', '15/11/2026'],
+    ['con hora', '2026-11-15T10:00:00Z'],
+    ['vacía', ''],
+    ['nula', null],
+    ['numérica', 20261115],
+  ])('una fecha %s responde 400 y no escribe', async (_caso, fecha) => {
+    const respuesta = await modificar({ ...bodyBase, fecha });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details[0].campo).toBe('fecha');
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['en cero', 0],
+    ['negativa', -3],
+    ['decimal', 1.5],
+    ['como texto', '3'],
+    ['nula', null],
+  ])('una cantidad de servicio %s responde 400 y no escribe', async (_caso, cantidad) => {
+    const respuesta = await modificar({ ...bodyBase, servicios: [{ servicioId: 1, cantidad }] });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details[0].campo).toBe('servicios.0.cantidad');
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['en cero', 0],
+    ['negativo', -1],
+    ['decimal', 1.5],
+    ['como texto', '1'],
+  ])('un id de servicio %s responde 400', async (_caso, servicioId) => {
+    const respuesta = await modificar({ ...bodyBase, servicios: [{ servicioId, cantidad: 3 }] });
+
+    expect(respuesta.status).toBe(400);
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['con letras', 'abc'],
+    ['negativo', '-1'],
+    ['con tres decimales', '10.123'],
+    ['con coma', '10,50'],
+    ['numérico', 10],
+  ])('un precio ajustado de servicio %s responde 400', async (_caso, precioUnitario) => {
+    const respuesta = await modificar({
+      ...bodyBase,
+      servicios: [{ servicioId: 1, cantidad: 3, precioUnitario }],
+    });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details[0].campo).toBe('servicios.0.precioUnitario');
+  });
+
+  it.each([
+    ['de cantidad cero', { descripcion: 'Flores', cantidad: 0, precioUnitario: '100' }],
+    ['de cantidad decimal', { descripcion: 'Flores', cantidad: 1.5, precioUnitario: '100' }],
+    ['con precio negativo', { descripcion: 'Flores', cantidad: 1, precioUnitario: '-100' }],
+    [
+      'con precio de tres decimales',
+      { descripcion: 'Flores', cantidad: 1, precioUnitario: '1.234' },
+    ],
+    [
+      'con descripción de solo espacios',
+      { descripcion: '   ', cantidad: 1, precioUnitario: '100' },
+    ],
+    [
+      'con descripción de 121 caracteres',
+      { descripcion: 'a'.repeat(121), cantidad: 1, precioUnitario: '100' },
+    ],
+    [
+      'con HTML en la descripción',
+      { descripcion: '<b>Flores</b>', cantidad: 1, precioUnitario: '100' },
+    ],
+  ])('un adicional %s responde 400 y no escribe', async (_caso, adicional) => {
+    const respuesta = await modificar({ ...bodyBase, adicionales: [adicional] });
+
+    expect(respuesta.status).toBe(400);
+    // Zod y el middleware de HTML nombran el campo igual: `adicionales.0.x`.
+    expect(respuesta.body.error.details[0].campo).toMatch(/^adicionales\.0\./);
+    expect(reemplazarLineasMock).not.toHaveBeenCalled();
+  });
+
+  // El PO decidió que un adicional puede valer $0, como cortesía (08/11/2026): se carga en el
+  // presupuesto, sale en el detalle y no suma al total.
+  it('un adicional de $0 se acepta como cortesía y no suma al total', async () => {
+    const respuesta = await modificar({
+      ...bodyBase,
+      adicionales: [{ descripcion: 'Brindis de cortesía', cantidad: 12, precioUnitario: '0' }],
+    });
+
+    expect(respuesta.status).toBe(200);
+    const cortesia = lineasGuardadas().find((l) => l.descripcion === 'Brindis de cortesía');
+    expect(cortesia).toMatchObject({
+      servicioId: null,
+      salonId: null,
+      cantidad: 12,
+      precioUnitario: '0.00',
+      subtotal: '0.00',
+      aCotizar: false,
+    });
+    // Lo mismo que sin el adicional: 142200 (salón) + 96000 (12 coffees a 8000).
+    expect((actualizarPresupuestoMock.mock.calls[0]![1] as { total: string }).total).toBe(
+      '238200.00',
+    );
+  });
+
+  it('un adicional de $0 no se confunde con uno a cotizar: es una línea con precio', async () => {
+    await modificar({
+      ...bodyBase,
+      adicionales: [{ descripcion: 'Brindis de cortesía', cantidad: 1, precioUnitario: '0.00' }],
+    });
+
+    const cortesia = lineasGuardadas().find((l) => l.descripcion === 'Brindis de cortesía');
+    expect(cortesia?.aCotizar).toBe(false);
+  });
+
+  it('un adicional de $0 junto a uno con precio suma solo el que tiene precio', async () => {
+    await modificar({
+      ...bodyBase,
+      adicionales: [
+        { descripcion: 'Brindis de cortesía', cantidad: 12, precioUnitario: '0' },
+        { descripcion: 'Centros de mesa', cantidad: 4, precioUnitario: '1500' },
+      ],
+    });
+
+    expect((actualizarPresupuestoMock.mock.calls[0]![1] as { total: string }).total).toBe(
+      '244200.00',
+    );
+  });
+
+  it('un adicional con la descripción de exactamente 120 caracteres se acepta', async () => {
+    const respuesta = await modificar({
+      ...bodyBase,
+      adicionales: [{ descripcion: 'a'.repeat(120), cantidad: 1, precioUnitario: '100' }],
+    });
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it.each([
+    ['de media noche', '24:00'],
+    ['con minutos imposibles', '10:60'],
+    ['sin cero adelante', '9:30'],
+    ['con segundos', '10:30:00'],
+    ['en texto', 'mediodía'],
+  ])('una hora %s en un servicio responde 400', async (_caso, horaEstimada) => {
+    const respuesta = await modificar({
+      ...bodyBase,
+      servicios: [{ servicioId: 1, cantidad: 3, horaEstimada }],
+    });
+
+    expect(respuesta.status).toBe(400);
+  });
+
+  it.each(['00:00', '09:05', '23:59'])('acepta la hora %s en un servicio', async (horaEstimada) => {
+    const respuesta = await modificar({
+      ...bodyBase,
+      servicios: [{ servicioId: 1, cantidad: 3, horaEstimada }],
+    });
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('una jornada que no es completa ni media responde 400', async () => {
+    const respuesta = await modificar({ ...bodyBase, tipoJornada: 'noche' });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details[0].campo).toBe('tipoJornada');
+  });
+
+  it('un body vacío responde 400 con fecha, cantidad de personas y jornada', async () => {
+    const respuesta = await modificar({});
+
+    expect(respuesta.status).toBe(400);
+    const campos = respuesta.body.error.details.map((detalle: { campo: string }) => detalle.campo);
+    expect(campos).toEqual(expect.arrayContaining(['fecha', 'cantidadPersonas', 'tipoJornada']));
+  });
+
+  it('un JSON malformado responde 400 VALIDATION_ERROR', async () => {
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .set('Content-Type', 'application/json')
+      .send('{"fecha": "2026-11-15", ');
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('con un id de presupuesto que no es entero positivo responde 400 sin consultar', async () => {
+    for (const id of ['abc', '0', '-1', '1.5']) {
+      const respuesta = await request(app)
+        .patch(`/api/presupuestos/${id}`)
+        .set('Cookie', [cookieRE])
+        .send(bodyBase);
+      expect(respuesta.status, id).toBe(400);
+    }
+    expect(buscarPresupuestoDetalladoMock).not.toHaveBeenCalled();
+  });
+
+  it('el body no puede cambiar la marca de factura, el estado ni el total del presupuesto', async () => {
+    await modificar({ ...bodyBase, requiereFactura: true, estado: 'Confirmado', total: '1' });
+
+    const datos = actualizarPresupuestoMock.mock.calls[0]![1] as Record<string, unknown>;
+    expect(datos).not.toHaveProperty('requiereFactura');
+    expect(datos['estado']).toBe('Estimado');
+    expect(datos['total']).toBe('238200.00');
+  });
+
+  // Dinero: los importes se suman como decimales exactos, sin errores de punto flotante.
+  it('suma los centavos sin error de redondeo (0,1 × 3 no da 0,30000000000000004)', async () => {
+    const barato = servicio({ id: 3, nombre: 'Gaseosa', precio: '0.10' });
+    buscarServiciosPorIdsMock.mockResolvedValue([coffee, barato]);
+
+    const respuesta = await modificar({
+      ...bodyBase,
+      servicios: [
+        { servicioId: 1, cantidad: 12 },
+        { servicioId: 3, cantidad: 3 },
+      ],
+    });
+
+    expect(respuesta.status).toBe(200);
+    // 142200 (salón congelado) + 12 × 8000 (coffee congelado) + 3 × 0,10.
+    expect((actualizarPresupuestoMock.mock.calls[0]![1] as { total: string }).total).toBe(
+      '238200.30',
+    );
+  });
+
+  it('un precio con centavos por cantidad queda exacto al centavo', async () => {
+    const raro = servicio({ id: 3, nombre: 'Postre', precio: '1234.56' });
+    buscarServiciosPorIdsMock.mockResolvedValue([coffee, raro]);
+
+    const respuesta = await modificar({
+      ...bodyBase,
+      servicios: [
+        { servicioId: 1, cantidad: 12 },
+        { servicioId: 3, cantidad: 7 },
+      ],
+    });
+
+    expect(respuesta.status).toBe(200);
+    // 142200 + 96000 + 7 × 1234,56 (= 8641,92)
+    expect((actualizarPresupuestoMock.mock.calls[0]![1] as { total: string }).total).toBe(
+      '246841.92',
+    );
+  });
+});
