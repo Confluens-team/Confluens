@@ -44,29 +44,29 @@ administrar al personal.
 
 | Backlog | Título | Actor | SP | Situación hoy |
 |---|---|---|---|---|
-| HU-25 | Registrar el usuario y la fecha de cada modificación (auditoría) | SYS | 8 | `AuditLog` existe, pero solo se escribe al cambiar la landing de un salón |
-| HU-54 | Recalcular el presupuesto automáticamente | SYS | a estimar | Sin empezar. Hoy hay botón Recalcular |
-| HU-55 | Cobrar la seña de un presupuesto vencido | RF | a estimar | Sin empezar. Hoy la API rechaza la seña de un `Expirado` |
-| HU-30 | Modificar un usuario | GG / ADM | 3 | Sin empezar. Va con HU-31 y suma «Cambiar contraseña» en Mi cuenta |
-| HU-31 | Dar de baja un usuario | GG / ADM | 2 | Sin empezar. Cambio de modelo (`Usuario.activo`), confirmado por el PO |
-| HU-24 | Avisar por WhatsApp la recepción de la consulta y descargar su resumen en PDF | RE | 5 | Funciona según el PO: revisarla contra los criterios y re-estimarla |
-| — | Enviar correo de confirmación de consulta | SYS | a estimar | Sin PDF adjunto (PO, 07/11/2026): no necesita dependencia nueva. Sin dominio (S-11) solo llega al dueño de la cuenta de Resend |
-| — | Cerrar sesión | todos | — | Existe (`POST /auth/logout`): cubrir con tests |
-| — | Cambiar contraseña | todos | — | Restablecimiento por correo: cubrir con tests. Desde adentro, va con HU-30 |
+| HU-25 | Registrar el usuario y la fecha de cada modificación (auditoría) | SYS | 8 | Construida (PR #118): mecanismo común, consulta para el GG y el ADM y pestaña Auditoría (ADR 0013) |
+| HU-54 | Recalcular el presupuesto automáticamente | SYS | a estimar | Construida (PR #113) |
+| HU-55 | Cobrar la seña de un presupuesto vencido | RF | a estimar | Construida (PR #112) |
+| HU-30 | Modificar un usuario | GG / ADM | 3 | Construida (PR #114): modificar el rol y cambiar la contraseña, también desde Mi cuenta |
+| HU-31 | Dar de baja un usuario | GG / ADM | 2 | Construida (PR #114), con `Usuario.activo` |
+| HU-24 | Avisar por WhatsApp la recepción de la consulta y descargar su resumen en PDF | RE | 5 | Revisada contra los criterios en el PR #116, sin cambios. Falta re-estimarla en la Planning |
+| — | Enviar correo de confirmación de consulta | SYS | a estimar | Construido (PR #121), sin PDF adjunto (PO, 07/11/2026): no necesitó dependencia nueva. Sin dominio (S-11) solo llega al dueño de la cuenta de Resend |
+| — | Cerrar sesión | todos | — | Cubierta con tests (PR #116) |
+| — | Cambiar contraseña | todos | — | Restablecimiento por correo cubierto con tests (PR #116). Desde Mi cuenta, con HU-30 (PR #114) |
 | | **Total estimado** | | **18 + a estimar** | |
 
 Velocidad de los sprints anteriores: 31, 32, 36 y 34. Con 18 SP estimados quedan unos 15 para
 HU-54, HU-55 y el correo. **Si en la Planning sobra lugar**, la siguiente candidata es HU-56
 (permisos por rol): sus reglas ya están en `dominio.md`.
 
-Correcciones sin historia (`backlog.md`, reunión 05/11/2026), que se arreglan en este sprint:
+Correcciones sin historia (`backlog.md`, reunión 05/11/2026), que se arreglan en este sprint y ya están hechas (PR #115):
 
 - el nombre del PDF del presupuesto, `presupuesto-AAAA-MM-DD-apellido.pdf` con la fecha del evento;
 - los campos de importe, que solo aceptan dígitos y un separador decimal;
 - el botón «Salir» del cotizador, que no funciona y tiene que pedir confirmación («¿Seguro que querés
   salir? Tu consulta todavía no se completó»).
 
-**Pendiente: cargar estas tres tareas en Jira** (no tienen historia propia; PO, 06/11/2026).
+Los campos de importe ya los cubría `InputImporte`. **Pendiente: cargar estas tres tareas en Jira** (no tienen historia propia; PO, 06/11/2026).
 
 Orden sugerido: HU-55 → HU-54 (las dos tocan el presupuesto y conviene no pisarse) en
 paralelo con HU-25; después HU-30 y HU-31 juntas; HU-24 y el correo al final.
