@@ -1,4 +1,34 @@
 import { Prisma } from '../generated/prisma/client.js';
+import { ErrorApi } from './errores.js';
+
+/**
+ * Detecta la violación de un índice único. Prisma la informa como P2002; si el driver adapter no la
+ * mapea, llega el SQLSTATE de Postgres (23505 = unique_violation) anidado en el meta, igual que la
+ * de exclusión de abajo.
+ */
+export function esViolacionDeUnicidad(error: unknown): boolean {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError)) return false;
+  if (error.code === 'P2002') return true;
+  const meta = error.meta as { driverAdapterError?: { cause?: { code?: string } } } | undefined;
+  return meta?.driverAdapterError?.cause?.code === '23505';
+}
+
+/**
+ * Corre una escritura y, si el índice único de la base la frena, responde 409 con `mensaje` en lugar
+ * de dejar pasar un 500. Los servicios controlan el nombre repetido con una búsqueda previa; dos
+ * pedidos simultáneos con el mismo nombre pasan los dos esa búsqueda, y el segundo choca acá.
+ */
+export async function comoConflictoSiYaExiste<T>(
+  escribir: () => Promise<T>,
+  mensaje: string,
+): Promise<T> {
+  try {
+    return await escribir();
+  } catch (error) {
+    if (esViolacionDeUnicidad(error)) throw ErrorApi.conflicto(mensaje);
+    throw error;
+  }
+}
 
 /**
  * RN-12: detecta una violación de la constraint EXCLUDE `evento_sin_solapamiento`.
