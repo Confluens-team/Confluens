@@ -25,7 +25,9 @@ export interface Desglose {
 const redondear = (importe: number) => Math.round(importe * 100) / 100;
 
 // RN-05: tres renglones. El IVA se calcula sobre el subtotal sin IVA y el total es la suma.
-// Cálculo de presentación: trabaja con `number` y solo se usa en la web.
+// Cálculo de presentación: trabaja con `number`. Lo usa la web para mostrar el desglose y la API
+// para el resumen del correo de la consulta, que tiene que mostrar las mismas cifras que ve el
+// cliente en pantalla. La base de cobro de RN-01 no pasa por acá: se calcula con `Prisma.Decimal`.
 export function desglosarIva(subtotalSinIva: number | string): Desglose {
   const subtotal = redondear(Number(subtotalSinIva));
   const iva = redondear((subtotal * PORCENTAJE_IVA) / 100);
