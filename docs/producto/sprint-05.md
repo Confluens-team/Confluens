@@ -34,11 +34,21 @@ administrar al personal.
   verde y la revisión de otro integrante: lo mismo que pide `AGENTS.md` §3, cambiando `develop` por
   `sprint-05`. El CI corre en cualquier pull request, también los que van a `sprint-05`.
 - Después de la exposición, `sprint-05` entra a `develop` por un pull request (merge commit, como
-  siempre) y se borra.
+  siempre).
 - Si a `develop` le llega un arreglo urgente antes de eso, se mergea `develop` en `sprint-05` para
   no divergir.
-- **Ojo:** el ruleset de GitHub protege solo `develop` y `main`. Hasta que se sume `sprint-05` al
-  ruleset, la rama acepta push directo: no hacerlo.
+- **Protección:** desde el 07/11/2026 la rama tiene su propio ruleset de GitHub, «Flujo equipos:
+  proteger sprint-05», con las mismas reglas que el de `develop` y `main` (pull request con 1
+  aprobación, solo merge commit, los cinco checks del CI con la rama al día, sin borrado ni push
+  forzado). No hay push directo, ni siquiera de quien administra el repositorio.
+- **Al mergear `sprint-05` a `develop`, hay que borrar el ruleset y después la rama.** Los dos pasos
+  son manuales y van en este orden:
+  1. Borrar el ruleset «Flujo equipos: proteger sprint-05» (GitHub → Settings → Rules → Rulesets).
+     Tiene la regla de no-borrado, así que mientras exista GitHub no deja borrar la rama, tampoco
+     el borrado automático que hace al mergear el pull request.
+  2. Borrar la rama `sprint-05`, en GitHub o con `git push origin --delete sprint-05`.
+
+  El ruleset de `develop` y `main` no se toca.
 
 ## Alcance propuesto
 
