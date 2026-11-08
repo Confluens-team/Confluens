@@ -72,7 +72,7 @@ export async function modificar(req: Request, res: Response): Promise<void> {
     req.body as ModificarUsuario,
     req.usuario!,
   );
-  const cuerpo: RespuestaExito<Usuario> = { data: usuario as unknown as Usuario };
+  const cuerpo: RespuestaExito<Usuario> = { data: comoRespuesta(usuario) };
   res.json(cuerpo);
 }
 
@@ -83,7 +83,7 @@ export async function cambiarEstado(req: Request, res: Response): Promise<void> 
     (req.body as CambiarEstadoUsuario).activo,
     req.usuario!,
   );
-  const cuerpo: RespuestaExito<Usuario> = { data: usuario as unknown as Usuario };
+  const cuerpo: RespuestaExito<Usuario> = { data: comoRespuesta(usuario) };
   res.json(cuerpo);
 }
 
