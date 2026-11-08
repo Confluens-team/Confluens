@@ -241,6 +241,8 @@ const cookieDe = (rol: string, email: string) =>
   `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 1, email, rol: rol as 'RESPONSABLE_EVENTOS' })}`;
 
 const cookieResponsableEventos = cookieDe('RESPONSABLE_EVENTOS', 're@confluens.test');
+// HU-56: el RE no administra medios de pago; los administra el RF (y el GG y el ADM).
+const cookieAdministraMedios = cookieDe('RESPONSABLE_FINANZAS', 'rf@confluens.test');
 
 function registrarPago(monto: string, cookie = cookieResponsableEventos) {
   return request(app).post('/api/eventos/20/pagos').set('Cookie', [cookie]).send(cuerpoPago(monto));
@@ -1017,7 +1019,7 @@ describe('GET /api/medios-pago', () => {
 });
 
 describe('POST /api/medios-pago (HU-19)', () => {
-  const alta = (cuerpo: object, cookie = cookieResponsableEventos) =>
+  const alta = (cuerpo: object, cookie = cookieAdministraMedios) =>
     request(app).post('/api/medios-pago').set('Cookie', [cookie]).send(cuerpo);
 
   beforeEach(() => {
@@ -1029,6 +1031,23 @@ describe('POST /api/medios-pago (HU-19)', () => {
       id: 9,
       ...datos,
     }));
+  });
+
+  // HU-56: el RE no administra medios de pago; el RF, el GG y el ADM sí.
+  it.each([
+    ['RESPONSABLE_FINANZAS', 201],
+    ['GERENTE_GENERAL', 201],
+    ['ADMINISTRADOR_SISTEMA', 201],
+    ['RESPONSABLE_EVENTOS', 403],
+    ['CLIENTE', 403],
+  ] as const)('con el rol %s responde %i', async (rol, status) => {
+    const respuesta = await alta({ nombre: 'Vale' }, cookieDe(rol, 'persona@confluens.test'));
+
+    expect(respuesta.status).toBe(status);
+    if (status === 403) {
+      expect(respuesta.body.error.code).toBe('FORBIDDEN');
+      expect(crearMedioPagoMock).not.toHaveBeenCalled();
+    }
   });
 
   // CP-19-01. Desde HU-53 se carga solo el nombre: el medio vale en todos los cobros.
@@ -1088,7 +1107,7 @@ describe('POST /api/medios-pago (HU-19)', () => {
 
 // HU-33 del Sprint 4 («Modificar medio de pago»). Desde HU-53 solo se modifica el nombre.
 describe('PATCH /api/medios-pago/:id (HU-33)', () => {
-  const modificar = (cuerpo: object, cookie = cookieResponsableEventos, id = 1) =>
+  const modificar = (cuerpo: object, cookie = cookieAdministraMedios, id = 1) =>
     request(app).patch(`/api/medios-pago/${id}`).set('Cookie', [cookie]).send(cuerpo);
 
   beforeEach(() => {
@@ -1102,6 +1121,22 @@ describe('PATCH /api/medios-pago/:id (HU-33)', () => {
       id,
       ...datos,
     }));
+  });
+
+  it.each([
+    ['RESPONSABLE_FINANZAS', 200],
+    ['GERENTE_GENERAL', 200],
+    ['ADMINISTRADOR_SISTEMA', 200],
+    ['RESPONSABLE_EVENTOS', 403],
+    ['CLIENTE', 403],
+  ] as const)('HU-56: con el rol %s responde %i', async (rol, status) => {
+    const respuesta = await modificar(
+      { nombre: 'Contado' },
+      cookieDe(rol, 'persona@confluens.test'),
+    );
+
+    expect(respuesta.status).toBe(status);
+    if (status === 403) expect(modificarMedioPagoMock).not.toHaveBeenCalled();
   });
 
   it('cambia el nombre, recortado', async () => {
@@ -1151,7 +1186,7 @@ describe('PATCH /api/medios-pago/:id (HU-33)', () => {
 
     const respuesta = await modificar(
       { nombre: 'Efectivo', conFactura: true, sinFactura: true },
-      cookieResponsableEventos,
+      cookieAdministraMedios,
       99,
     );
 

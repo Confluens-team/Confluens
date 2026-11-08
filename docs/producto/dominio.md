@@ -424,10 +424,13 @@ acceden a todo el sistema.
   cuenta.
 
 Personal está construido (HU-30 y HU-31 del Sprint 4; HU-30 y HU-31 del backlog en el Sprint 5,
-con `Usuario.activo`). **Reunión 05/11/2026 → HU-56** (permisos por rol): **hasta entonces vale lo
-provisorio** (decisión del PO, 06/10/2026): todo el personal (RE, RF, GG y ADM)
-entra al mismo panel interno (`/admin`) y puede ver y hacer todo lo que ahí existe, incluido el
-contenido de la landing. El Cliente sigue sin acceso al panel.
+con `Usuario.activo`). Los permisos por rol (HU-56) también: los cuatro roles del personal entran al
+mismo panel interno (`/admin`) y ven todo lo que no sea Configuración de negocio; adentro de la
+configuración, cada rol ve las secciones de la tabla de arriba. La API rechaza con `403` lo que el
+rol no puede hacer. Eso incluye que el GG cambie las fotos de la landing pero no decida qué salones
+se publican, que es solo del ADM. El listado de medios de pago queda abierto a todo el personal
+porque el cobro lo necesita; administrarlos (alta y modificación) es del RF, el GG y el ADM. El
+Cliente sigue sin acceso al panel. La matriz está en `packages/shared/src/dominio/permisos.ts`.
 
 ---
 
