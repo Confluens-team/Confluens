@@ -94,7 +94,7 @@ export function BotonCambiarMiContrasena() {
         abierto={abierto}
         onCambiarAbierto={setAbierto}
         titulo="Cambiar contraseña"
-        descripcion="Al menos 6 caracteres. Se cierran tus sesiones abiertas en otros dispositivos."
+        descripcion="Al menos 8 caracteres, y no una contraseña común. Se cierran tus sesiones abiertas en otros dispositivos."
       >
         {/* La key vacía el formulario cada vez que se abre la ventana. */}
         <FormularioMiContrasena

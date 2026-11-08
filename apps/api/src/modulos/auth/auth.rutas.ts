@@ -147,7 +147,10 @@ registroOpenApi.registerPath({
       description: 'Contraseña cambiada; la cookie de sesión se renueva',
       content: { 'application/json': { schema: z.object({ data: esquemaSesion }) } },
     },
-    400: { description: 'Falta la contraseña actual o la nueva tiene menos de 6 caracteres' },
+    400: {
+      description:
+        'Falta la contraseña actual o la nueva no cumple la política (8 a 72 bytes, sin ser trivial)',
+    },
     401: { description: 'Sin sesión' },
     422: { description: 'La contraseña actual no es correcta' },
     429: { description: 'Demasiados intentos; el límite es por IP y ventana (H2)' },
