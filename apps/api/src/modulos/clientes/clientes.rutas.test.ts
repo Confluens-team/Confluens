@@ -92,7 +92,7 @@ describe('GET /api/clientes', () => {
     expect(listarConResumenMock).not.toHaveBeenCalled();
   });
 
-  // Provisorio (06/10/2026): todo el personal ve todo hasta que se dividan las funciones por rol.
+  // HU-56: fuera de Configuración de negocio los cuatro roles del personal ven todo.
   it('otro rol del personal también accede', async () => {
     listarConResumenMock.mockResolvedValue([]);
 

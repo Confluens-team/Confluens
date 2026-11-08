@@ -347,7 +347,7 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
     expect(respuesta.status).toBe(404);
   });
 
-  // Provisorio (06/10/2026): todo el personal entra; el Cliente no.
+  // HU-56: los cuatro roles del personal entran; el Cliente no.
   it('responde 401 sin sesión, 403 al Cliente y deja entrar a cualquier rol del personal', async () => {
     expect((await request(app).get('/api/presupuestos/31')).status).toBe(401);
     const cliente = await request(app)
