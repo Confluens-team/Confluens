@@ -5,8 +5,15 @@ Todo nombre de entidad, campo, enum y endpoint tiene que corresponderse con este
 
 Fuentes: Plan de Proyecto, Seguimiento del Proyecto, Sprint 1 y máquina de estados (drawio),
 todos aprobados por la cátedra, más la **entrevista con el Responsable de Eventos del 24/09/2026**,
-que redefinió el canal público, la vigencia del presupuesto, el IVA y la política de precios.
+que redefinió el canal público, la vigencia del presupuesto, el IVA y la política de precios, y la
+**reunión con el cliente del 05/11/2026** (validada por el PO el 06/11/2026), que cambió los roles,
+la factura, el saldo, el recálculo, el incremento de precios y los eventos de varios días.
 Donde este archivo contradiga a un documento anterior, vale este archivo.
+
+**Decidido, todavía sin construir.** Las reglas de la reunión del 05/11/2026 que el código todavía
+no cumple llevan la marca **«Reunión 05/11/2026 → HU-xx»** con la historia del backlog que las
+implementa, y dicen cómo funciona el sistema hasta entonces. No «corregir» el código por una regla
+con esa marca fuera de su historia.
 
 ---
 
@@ -44,20 +51,44 @@ Estimado ──confirmar()──> Confirmado
     ├──cancelar()──> Cancelado
     └──controlarVigencia()──> Expirado ──modificar()──> Estimado
                                   │
+                                  ├──confirmar()──> Confirmado
                                   └──cancelar()──> Cancelado
 ```
+
+`Expirado ──confirmar()──> Confirmado` es nueva (reunión 05/11/2026, ver RN-06): la seña se cobra
+aunque el presupuesto esté vencido. **Reunión 05/11/2026 → HU-55.** Hasta entonces la API la
+rechaza (`pagos.servicio.ts`) y hay que modificar el presupuesto antes de cobrar la seña.
 
 | Estado | Significado |
 |---|---|
 | `Estimado` | Recién generado. Editable. Vigente durante 10 días desde su emisión o su última modificación (RN-08). |
-| `Confirmado` | Se abonó la seña dentro de la vigencia. **La seña congela el presupuesto**: sus precios ya no cambian aunque suba el tarifario. Bloqueado para edición por el cliente. |
+| `Confirmado` | Se abonó la seña, esté vigente o vencido el presupuesto (RN-06). **La seña congela el presupuesto**: sus precios ya no cambian aunque suba el tarifario o cambie el porcentaje de incremento. Solo los mueve un cambio de fecha del evento (ver «Recálculo automático»). Bloqueado para edición por el cliente. |
 | `Cancelado` | Dado de baja sin confirmarse. Solo manual. |
-| `Expirado` | Pasaron 10 días sin seña. **No se borra ni cancela nada**: el presupuesto queda visible, marcado con un aviso para que el Responsable de Eventos sepa que hay que recalcularlo. También se puede modificar (vuelve a `Estimado`) o dar de baja. |
+| `Expirado` | Pasaron 10 días sin seña. **No se borra ni cancela nada**: el presupuesto queda visible, marcado con un aviso de que está vencido. Se puede modificar (vuelve a `Estimado`), confirmar con la seña o dar de baja. |
 
-Recalcular un presupuesto `Expirado` = actualizar **ese mismo** presupuesto con los precios
-vigentes del salón y de los servicios del catálogo; al guardarlo vuelve a `Estimado` con 10 días
-nuevos. Modificarlo también edita el mismo presupuesto, pero las líneas que no se tocan conservan
-su precio. En los dos casos el evento sigue `EnConsulta` (decisiones del PO, 05/10/2026). **Cada
+**Recálculo automático** (reunión 05/11/2026). **No hay botón Recalcular: el sistema recalcula
+solo**, siempre sobre **ese mismo** presupuesto, en dos casos:
+- **Cambia la fecha del evento** (la cambie el cliente o el Responsable de Eventos): se toman los
+  precios de la fecha nueva, proyectados con RN-13. Por ejemplo, de enero a febrero se aplica el
+  porcentaje de febrero. Vale **en cualquier estado**, también con el presupuesto `Confirmado`: con
+  otra fecha no tiene sentido que los precios queden congelados. **Reinicia la vigencia** de 10 días
+  como cualquier modificación (RN-08), así que un `Expirado` vuelve a `Estimado` y su aviso
+  desaparece.
+- **Cambia el porcentaje de incremento** (o un tramo, RN-10): se recalculan **solo los presupuestos
+  `Estimado` de eventos `EnConsulta`**. Los `Confirmado` quedan congelados y los `Expirado` esperan a
+  que se les cambie la fecha, para no calcular de más. **No reinicia la vigencia**: es un recálculo
+  masivo que nadie le comunica al cliente.
+
+Si el recálculo cambia el total de un evento con pagos, valen las reglas de siempre: si lo pagado
+no cubre el total nuevo, un `Cobrado` vuelve a `Reservado` (como al modificar, HU-12 del Sprint 2);
+si lo deja por debajo de lo pagado, vale «Saldo».
+
+**Reunión 05/11/2026 → HU-54.** Hasta entonces, el detalle tiene el botón Recalcular: actualiza el
+presupuesto con los precios vigentes y reinicia la vigencia, también en uno `Confirmado` (HU-27 del
+Sprint 4).
+
+Modificar un presupuesto `Expirado` también edita el mismo presupuesto, pero las líneas que no se
+tocan conservan su precio; el evento sigue `EnConsulta` (decisiones del PO, 05/10/2026). **Cada
 evento tiene un solo presupuesto** (decisión del PO, 06/10/2026), así que dar de baja una consulta
 cancela también su evento.
 
@@ -118,7 +149,10 @@ completa y media jornada. Capacidades y precios reales en `../negocio/tarifario-
 media jornada). **Jornada completa: más de 4 horas.** Se deriva del horario del evento.
 
 **Distribución.** Forma de armado de un salón con su propia capacidad: conferencia, mesas de
-trabajo, banquete. Nombre único por salón. Su capacidad nunca supera la del salón.
+trabajo, banquete. Nombre único por salón. Su capacidad nunca supera la del salón. **Baja lógica**
+(PO, 06/11/2026): se da de baja aunque la use un evento. Dada de baja no se ofrece al presupuestar
+ni al agendar, ni se publica en la landing, pero los eventos que ya la tienen la conservan. Sigue
+ocupando su nombre en el salón y se puede reactivar.
 
 **Cliente.** Persona u organización que contrata. Datos: nombre, apellido (o razón social),
 teléfono y correo. **No hay baja por inactividad**: el cliente se conserva siempre con su
@@ -203,17 +237,46 @@ hora es válido y no cambia nada del cálculo. Mientras el evento está `EnConsu
 horario cargado, así que se acepta cualquier hora; una vez **agendado** (con `inicio` y `fin`), una
 hora fuera de esa franja se rechaza. Decisión del equipo, 08/10/2026.
 
+**Eventos que terminan después de la medianoche** (PO, 07/11/2026). Un evento puede seguir pasada
+la medianoche: lo que cae después de las 00:00 se toma como del **día siguiente**, y el evento
+termina ese día. En esos eventos la hora esperada de un servicio **no se controla** contra la
+franja, porque el rango da la vuelta: se acepta cualquier hora. Vale lo mismo que para el resto del
+evento: el día del evento se lee en la hora de Córdoba (ADR 0010).
+
+**Servicio propio de un evento** (reunión 05/11/2026). Un servicio que no está en el catálogo y
+se agrega a un evento puntual, social o corporativo. **No se guarda en el catálogo** ni lo ve nadie
+fuera de ese evento.
+- Lo crea el personal (RE, RF, GG o ADM) desde el detalle del presupuesto. Es una **línea** con su
+  precio y su cantidad, y **suma al total**. Se construye sobre los adicionales escritos a mano que
+  ya existen.
+- **Cada línea lleva su propia observación**, para saber a qué corresponde. Reemplaza a la caja de
+  texto única del evento social, y en la observación no se escriben importes.
+- Sale en el **PDF del presupuesto** y en la **comanda** (eso último puede cambiar más adelante).
+- **Puede valer $0** (PO, 08/11/2026): una cortesía de la casa. Es una línea con precio —no «a
+  cotizar»—, sale en el presupuesto y no suma al total. Vale para los adicionales escritos a mano, que
+  son la base de esta funcionalidad.
+
+**Reunión 05/11/2026 → HU-51.** Hasta entonces los adicionales no llevan observación propia.
+
 **Presupuesto.** Valorización del evento, detallada línea por línea. Guarda los importes **sin
 IVA** y se presenta con **subtotal sin IVA, IVA 21% y total**. Al emitirse congela los precios de
-sus líneas, aunque después cambie el catálogo. Lleva la leyenda **"Este presupuesto tiene una
-validez de 10 días"**.
+sus líneas, aunque después cambie el catálogo; solo los mueve el recálculo automático (ver
+«Recálculo automático» en Estados). Lleva la leyenda **"Este presupuesto tiene una validez de 10
+días"**.
 
-**Requiere factura.** Marca que el Responsable de Eventos pone en el presupuesto al recibirlo,
-según si el cliente pide factura o no. Define la **base de cobro** (ver RN-01).
+**Requiere factura.** Marca del presupuesto que define la **base de cobro** (ver RN-01). **Por
+ahora se elimina el caso sin factura** (reunión 05/11/2026): todo presupuesto nuevo nace con la
+marca y se calcula con el 21% de IVA, y **no hay casilla** para cambiarla. Los presupuestos que ya
+existían **conservan su marca**, con su base de cobro, su seña y su saldo, aunque después se
+modifiquen o se recalculen. Si más adelante vuelve el caso sin factura, tiene que ser **explícito**
+(por ejemplo, un campo que solo activa el ADM desde el panel, que se ve siempre ahí y no sale en el
+PDF del cliente), nunca escondido bajo un servicio u otro dato. Construido con HU-53, que el PO
+adelantó al cierre del Sprint 4 (06/11/2026).
 
 **Base de cobro.** Importe contra el que se miden la seña, el saldo y el cierre del evento. Si el
-cliente **requiere factura** es el **total con IVA**; si no, el **subtotal sin IVA**. No se guarda:
-se calcula a partir del presupuesto y de su marca de factura.
+presupuesto **requiere factura** es el **total con IVA**; si no, el **subtotal sin IVA** (total ÷
+1,21, no el total menos el 21%). No se guarda: se calcula a partir del presupuesto y de su marca de
+factura. Desde HU-53, la de todo presupuesto nuevo es el total con IVA.
 
 **Varios salones.** Un evento puede realizarse en **más de un salón a la vez**, hasta los cinco:
 se reparte la gente entre varios espacios según cómo convenga armarlos. Todos comparten el horario
@@ -225,19 +288,63 @@ solapamiento de RN-12 se mide por cada salón que el evento ocupa. Decisión del
 **Evento.** Entidad central: cliente, tipo de evento, salón, distribución, fecha, horario,
 cantidad de personas, servicios, presupuesto y pagos. El salón es obligatorio para reservar; una
 consulta social puede estar `EnConsulta` sin salón hasta que el Responsable de Eventos lo carga
-(ADR 0008).
+(ADR 0008). El personal puede modificarlo **aunque su fecha ya haya pasado** (por ejemplo, sumar un
+servicio de último momento): ningún control bloquea un evento por su fecha, y el evento se cierra
+por pago (`Cobrado`), nunca por fecha (reunión 05/11/2026).
+
+**Evento de varios días** (reunión 05/11/2026). Un evento se puede reservar por varios **días
+consecutivos**:
+- Cada día tiene **su propio horario, su jornada, sus salones, sus servicios y su cantidad de
+  personas**. La jornada sale de cada día, así que el salón se cobra con el precio de media o de
+  jornada completa según el día.
+- El no solapamiento (RN-12) se controla **por día y por salón**.
+- La comanda sale **una por día**.
+- Todo va en **un solo presupuesto y una sola seña**.
+
+Cambia el modelo del evento. **Reunión 05/11/2026 → HU-50**, que hay que pulir antes de estimar.
+Hasta entonces un evento ocupa un solo día.
 
 **Pago.** Importe recibido con fecha y medio de pago. Monto libre, sin mínimo. Un pago que excede
 el saldo se rechaza: un pago nunca genera saldo a favor.
+- **Tope por pago: $500.000.000** (PO, 08/11/2026; antes era de 100 millones y lo subió «por las
+  dudas»). No es una regla del negocio sino una red de seguridad contra un cero de más al tipear.
+- **La fecha del pago no tiene límite** (PO, 07/11/2026): se puede cargar un pago de cualquier día,
+  anterior o posterior a hoy. Solo tiene que ser una fecha real.
 
-**Saldo.** Base de cobro menos la suma de los pagos registrados. Puede quedar **negativo** si se
-modifica un presupuesto ya confirmado y su total baja por debajo de lo pagado (08/10/2026): se
-muestra como **saldo a favor del cliente** y se resuelve a mano con él. Decisión del PO, 16/10/2026.
+**Saldo.** Base de cobro menos la suma de los pagos registrados, **nunca negativo**. Si un cambio
+baja el total por debajo de lo pagado (quitar un servicio, bajar la cantidad de personas, quitar un
+salón; por ejemplo, el cliente quita un servicio que ya pagó), el sistema muestra antes un
+**cartel** que avisa la situación y pregunta si se sigue con el cambio o se cancela. Si se confirma:
+- el saldo queda en **$0**;
+- lo pagado de más se registra aparte como **no reintegrable**: se muestra en la cuenta del evento a
+  modo informativo y no se descuenta de nada;
+- lo que se agregue después se suma desde $0 y el cliente lo paga completo.
+
+Lo pagado de más **no se devuelve ni queda como crédito**: si el cliente pagó de más es porque lo
+pidió, y concuerda con la cláusula g) de las condiciones de contratación («el monto de la reserva no
+será reintegrado»). El sistema no compensa nada por su cuenta; trasladar un pago a otro evento del
+mismo cliente lo hace el personal a mano (ver «Pasar un pago a otro evento»). Reemplaza el saldo a
+favor del cliente que había decidido el PO el 16/10/2026. **Reunión 05/11/2026 → HU-52** (cambia el
+modelo). Hasta entonces el saldo puede quedar negativo y se muestra como saldo a favor.
+
+**Pasar un pago a otro evento.** Caso poco frecuente: el cliente pagó un servicio que no usó y se
+lo pasa a otro evento **suyo**. Se hace a mano: se **anula** el pago en el evento original (HU-35
+del Sprint 4) y se registra en el otro. No hay una acción de «transferir». Si el evento original
+queda por debajo de la seña, **sigue `Reservado`** y el sistema avisa que lo pagado no cubre la
+seña: no hay transición `Reservado → EnConsulta`. Si estaba `Cobrado` y lo pagado queda por debajo
+del total, **vuelve a `Reservado`** hasta cobrar la diferencia, como al modificar el presupuesto
+(reunión 05/11/2026; PO, 06/11/2026). La misma anulación sirve para corregir un pago registrado con un error, por ejemplo en su observación: se anula y se
+registra de nuevo. La anulación guarda la fecha y el usuario que anuló, sin motivo, y la puede hacer
+cualquier rol del personal (PO, 06/11/2026). El pago anulado sigue en la cuenta del evento, marcado,
+y no suma a lo pagado. En un evento `Cancelado` no se anulan pagos, igual que no se registran: su
+cuenta queda como estaba al cancelarse (PO, 06/11/2026).
 
 **Medio de pago.** El catálogo inicial es Efectivo, Transferencia, Débito, Crédito, Cheque y A la
-habitación. El Responsable de Finanzas puede dar de alta otros, eligiendo en cada uno si se puede
-usar **con factura, sin factura o en los dos casos** (ver RN-14). Baja lógica: un medio dado de
-baja se sigue viendo en los pagos ya registrados.
+habitación. El Responsable de Finanzas puede dar de alta otros. Baja lógica: un medio dado de baja
+se sigue viendo en los pagos ya registrados. **Todos los medios activos se pueden usar en todos los
+cobros** (RN-14, reunión 05/11/2026): deja de elegirse si un medio va con factura, sin factura o en
+los dos casos. Construido con HU-53: las marcas de habilitación de cada medio siguen en la base,
+sin uso.
 
 **Auditoría.** Registro inmutable de usuario, fecha, entidad, valor anterior y valor nuevo.
 Nadie lo edita ni lo borra. Se implementa con middleware de Prisma sobre `audit_log`.
@@ -264,7 +371,9 @@ por la hora a la que se los espera. **Nunca lleva precios**: no es un documento 
 alergias, a quién buscar en el salón— que salen solo en esa hoja y que el cliente nunca ve. No
 entran la línea del salón, cuyo horario ya encabeza la hoja, ni los servicios tercerizados, que son
 audiovisual y pantallas y no pasan por cocina. Integrarse con el sistema de cocina o con los de los
-proveedores sigue fuera de alcance (S-07). Decisión del equipo, 09/10/2026.
+proveedores sigue fuera de alcance (S-07). Decisión del equipo, 09/10/2026. Lleva también los
+servicios propios del evento con su observación (HU-51), y un evento de varios días tiene **una
+comanda por día** (HU-50).
 
 **Comedor.** Servicio gastronómico del hotel, con sistema propio. Fuera de alcance (EXC-04).
 
@@ -274,17 +383,68 @@ proveedores sigue fuera de alcance (S-07). Decisión del equipo, 09/10/2026.
 
 | Rol | Código | Alcance |
 |---|---|---|
-| Responsable de Eventos | `RE` | Consulta, presupuesto, agenda y reserva. **También administra los precios**: porcentaje de incremento mensual, ajustes por servicio y precios de los tercerizados. Mayor uso diario. En las entrevistas es "Fran". |
-| Responsable de Finanzas | `RF` | Cobros, medios de pago, seguimiento de deuda. |
-| Gerente General | `GG` | Reportes, usuarios. Lectura de todo. Único que ve la auditoría. **También registra pagos**, igual que el RE y el RF (HU-14). |
-| Administrador del Sistema | `ADM` | Acceso completo: todo lo del Gerente General más el contenido público de la landing (qué salones se publican y qué fotos se muestran). |
+| Responsable de Eventos | `RE` | Ve todo el panel interno. Consulta, presupuesto, agenda y reserva. **También administra los precios**: porcentaje de incremento, ajustes por servicio, precios de los tercerizados y precios de los salones. En Configuración de negocio solo accede a Salones y a Servicios y precios. Mayor uso diario. En las entrevistas es "Fran". |
+| Responsable de Finanzas | `RF` | Cobros, medios de pago, seguimiento de deuda. **Por ahora ve y hace lo mismo que el RE, más Medios de pago**, porque todavía no tiene sus módulos definidos. |
+| Gerente General | `GG` | Ve y hace todo, incluidos los reportes y la auditoría. Administra al personal desde **Personal**. **También registra pagos**, igual que el RE y el RF (HU-14 del Sprint 2). |
+| Administrador del Sistema | `ADM` | A la par del Gerente General: ve y hace todo, incluida Personal. Además es el **único que modifica el contenido de la landing** (qué salones se publican y sus textos); las fotos las cambia también el GG. |
 | Sistema | `SYS` | Actor no humano: tareas programadas, cálculos, auditoría, envío de correos. |
 | Cliente | `CLI` | Externo a la organización, con credenciales propias. Solo el canal público: ve precios, arma y confirma consultas, consulta las suyas. Nunca accede al panel interno. Se implementa en el Sprint 2. |
 
-**Provisorio (decisión del PO, 06/10/2026).** Mientras no se dividan las funciones por rol, todo el
-personal (RE, RF, GG y ADM) entra al mismo panel interno (`/admin`) y puede ver y hacer todo lo que
-ahí existe, incluido el contenido de la landing. El Cliente sigue sin acceso al panel. La tabla de
-arriba describe la división a la que se apunta, que se implementa más adelante.
+«Gerente de pagos», como lo llama a veces el cliente, es el Responsable de Finanzas. La división
+por rol se mantiene aunque hoy todos los que usan el sistema son gerentes generales, porque el
+sistema está pensado para una estructura jerárquica (reunión 05/11/2026).
+
+**Configuración de negocio por rol** (reunión 05/11/2026):
+
+| Sección | GG | ADM | RE | RF |
+|---|---|---|---|---|
+| Salones | ✅ | ✅ | ✅ | ✅ |
+| Servicios y precios (incluye el incremento) | ✅ | ✅ | ✅ | ✅ |
+| Medios de pago | ✅ | ✅ | — | ✅ |
+| Landing y fotos | Solo fotos | ✅ | — | — |
+| Personal | ✅ | ✅ | — | — |
+
+Fuera de Configuración de negocio, los cuatro ven todo el panel. **La auditoría la ven solo el GG y
+el ADM**, como hasta ahora: la reunión no la mencionó.
+
+**Personal.** Sección nueva de Configuración de negocio. La usan solo el GG y el ADM, que son los que
+acceden a todo el sistema.
+- Muestra los **usuarios del panel interno** (no los clientes). Desde ahí se los **registra,
+  modifica y da de baja**. Al registrar un usuario, el GG o el ADM le carga la **contraseña
+  inicial**.
+- **Política de contraseñas** (PO, 08/11/2026). Rige para toda contraseña que se crea o se cambia:
+  la inicial del personal, el registro del cliente y restablecerla por correo. Prioriza el largo y
+  frena lo obvio; **no exige mayúsculas, minúsculas ni
+  símbolos**, porque empujan a contraseñas como `Contraseña1!` sin hacerlas más fuertes.
+  - **Al menos 8 caracteres.** Antes eran 6 (PO, 06/11/2026).
+  - **No puede ser solo espacios** ni **un único carácter repetido** (`aaaaaaaa`).
+  - **No puede ser una de las contraseñas más comunes** (`12345678`, `password`, `contraseña`,
+    `bienvenido`, `confluens`, y unas veinte más). Se compara sin distinguir mayúsculas ni tildes.
+  - **Máximo de 72 bytes** (PO, 07/11/2026): el algoritmo que guarda la contraseña (bcrypt) lee solo
+    los primeros 72, así que dos contraseñas largas iguales hasta ahí valdrían lo mismo. Se mide en
+    bytes: una tilde o un emoji ocupan más de uno.
+  - Los espacios de los bordes cuentan como caracteres: la contraseña no se recorta.
+  - **El inicio de sesión no aplica la política**, para que entren las cuentas que ya tienen una
+    contraseña más corta o común.
+- Cada usuario tiene **un solo rol a la vez**. Al marcarle un rol nuevo, se desmarca el anterior.
+- **Quién asigna qué rol:** el ADM asigna cualquiera (ADM, GG, RE, RF). El GG asigna GG, RE y RF,
+  pero **no ADM**.
+- **Cantidad por rol:** siempre tiene que haber **al menos un GG y al menos un ADM** activos; el
+  sistema rechaza el cambio de rol o la baja que los deje en cero. De RE y RF puede no haber ninguno.
+  Ningún rol tiene máximo.
+- El GG puede modificar, cambiarle el rol o dar de baja a **otro GG**, siempre que quede al menos
+  uno. A un **ADM** no lo puede tocar: ni modificarlo, ni cambiarle el rol, ni darlo de baja.
+- **El GG y el ADM no se pueden quitar el rol entre sí**: el sistema nunca queda sin alguien que
+  administre al personal.
+- **Baja lógica:** el usuario queda **inactivo**. No puede entrar y se cierran sus sesiones, pero se
+  sigue viendo en la auditoría y en lo que registró. Se puede reactivar si después se recupera la
+  cuenta.
+
+**Reunión 05/11/2026 → HU-56** (permisos por rol) y HU-28 a HU-31 del backlog (Personal; HU-30 y
+HU-31 del Sprint 4). La baja lógica cambia el modelo (`Usuario` no tiene `activo`). **Hasta
+entonces vale lo provisorio** (decisión del PO, 06/10/2026): todo el personal (RE, RF, GG y ADM)
+entra al mismo panel interno (`/admin`) y puede ver y hacer todo lo que ahí existe, incluido el
+contenido de la landing. El Cliente sigue sin acceso al panel.
 
 ---
 
@@ -292,20 +452,20 @@ arriba describe la división a la que se apunta, que se implementa más adelante
 
 | Código | Regla |
 |---|---|
-| RN-01 | La seña equivale al **20% de la base de cobro del evento**. La base depende de si el cliente **requiere factura**, dato que el Responsable de Eventos marca en el presupuesto: **con factura**, la base es el **total con IVA**; **sin factura**, el **subtotal sin IVA** (RN-05). El porcentaje es siempre 20%. |
+| RN-01 | La seña equivale al **20% de la base de cobro del evento**. La base depende de si el presupuesto **requiere factura**: **con factura**, la base es el **total con IVA**; **sin factura**, el **subtotal sin IVA** (RN-05). El porcentaje es siempre 20%. **Desde HU-53** (reunión 05/11/2026; PO, 06/11/2026) todo presupuesto nuevo requiere factura y no hay casilla para cambiarlo, así que su base es el total con IVA; los anteriores conservan su marca. |
 | RN-02 | La prioridad entre clientes al reasignar salones la define la organización (el Responsable de Eventos). |
 | RN-03 | El precio informado es de referencia; el Responsable de Eventos puede ajustarlo comercialmente en casos particulares, y el ajuste queda auditado. |
 | RN-04 | Los servicios no necesariamente cubren a todos los asistentes: pueden contratarse para menos. |
 | RN-05 | **Todos los importes se guardan sin IVA.** El presupuesto (en pantalla y en PDF) muestra tres renglones: **subtotal sin IVA**, **IVA 21%** calculado sobre ese subtotal, y **total** = subtotal + IVA. La tasa del 21% va en una constante, no desparramada por el código. |
-| RN-06 | La seña se abona **dentro de la vigencia del presupuesto (10 días)** y es lo que lo congela (`Confirmado`) y pasa el evento a `Reservado`. Si vencen los 10 días sin seña, **no se cancela nada automáticamente**: el presupuesto pasa a `Expirado` y hay que recalcularlo (con los precios vigentes) antes de cobrar la seña. Lo abonado no es reembolsable. |
+| RN-06 | La seña es lo que congela el presupuesto (`Confirmado`) y pasa el evento a `Reservado`. **Se puede cobrar aunque el presupuesto esté vencido** (`Expirado`), sin recalcularlo: la vigencia de 10 días es para el cliente (RN-08) y el personal lo resuelve desde el panel (reunión 05/11/2026). Si vencen los 10 días sin seña, **no se cancela nada automáticamente**. Lo abonado no es reembolsable, tampoco lo pagado por encima de la seña ni por encima del total (ver «Saldo»). **Reunión 05/11/2026 → HU-55.** Hasta entonces la API rechaza la seña de un `Expirado` y hay que modificarlo antes. |
 | RN-07 | La cancelación por parte del cliente requiere un mínimo de **48 horas corridas** de anticipación. **Fines de semana y feriados cuentan** (hay eventos todos los días), así que no hace falta calendario de feriados. El plazo aplica a un evento **confirmado** (`Reservado`); una consulta sin seña (`EnConsulta`) se cancela en cualquier momento (decisión del PO, 16/10/2026). |
-| RN-08 | El presupuesto tiene una **vigencia de 10 días** desde su emisión; **cada modificación la reinicia** (decisión del PO, 05/10/2026). Vencida, un control automático lo pasa a `Expirado` y el sistema **muestra un aviso** al Responsable de Eventos ("presupuesto vencido, recalcular"). El presupuesto **no se borra ni se cancela solo**: solo se da de baja a mano, si el Responsable de Eventos lo decide. |
+| RN-08 | El presupuesto tiene una **vigencia de 10 días** desde su emisión; **cada modificación la reinicia** (decisión del PO, 05/10/2026), también el recálculo por cambio de fecha; el recálculo por cambio de porcentaje **no** la reinicia (ver «Recálculo automático»). **Es una regla para el cliente** (reunión 05/11/2026): ve la leyenda «Este presupuesto tiene una validez de 10 días» en el PDF, en el cotizador, en la landing y en la cláusula o) de las condiciones. En el panel interno **no bloquea nada**: de la vigencia de los precios se encarga el incremento (RN-10) y la seña los congela. Vencida, un control automático lo pasa a `Expirado` y el sistema **muestra un aviso** al Responsable de Eventos («presupuesto vencido»); si le cambia la fecha, se recalcula y el aviso desaparece. El presupuesto **no se borra ni se cancela solo**: solo se da de baja a mano, si el Responsable de Eventos lo decide. |
 | RN-09 | **Modificaciones y plazo de 7 días.** El cliente puede modificar su consulta o evento hasta **7 días antes** de la fecha del evento; después, cualquier modificación del lado del cliente se **bloquea** (no solo se avisa). El Responsable de Eventos puede modificar **en todo momento**, sin límite de plazo. Esto reemplaza la condición del PDF sobre confirmar asistentes 7 días antes y sumar hasta 5 personas a 48 hs. |
-| RN-10 | **Incremento de precios.** El Responsable de Eventos define un **porcentaje de incremento mensual**, modificable en cualquier momento. Se aplica automáticamente al tarifario una vez por mes. Además puede aplicar aumentos **a mitad de mes**, **a todo el catálogo** o **a servicios puntuales**. No afecta a los servicios tercerizados ni a presupuestos ya emitidos. |
+| RN-10 | **Incremento de precios.** El Responsable de Eventos define un **porcentaje de incremento mensual**, modificable en cualquier momento. Se aplica automáticamente al tarifario una vez por mes. Además puede aplicar aumentos **a mitad de mes**, **a todo el catálogo** o **a servicios puntuales**. No afecta a los servicios tercerizados ni a los presupuestos `Confirmado`; los `Estimado` de eventos `EnConsulta` se recalculan solos (ver «Recálculo automático»). **Tramos y porcentaje por servicio** (reunión 05/11/2026): el porcentaje general se carga en **tramos** con fecha de inicio y de fin, con un botón «+» para sumar tramos. Los tramos son **consecutivos**: el inicio de cada uno es el día siguiente al fin del anterior, y el sistema lo completa solo; si se cambia el fin de un tramo, el inicio del siguiente se corre solo, y si el fin nuevo cae después del fin del siguiente, el cambio se rechaza hasta ajustar o borrar ese tramo. **El último tramo no tiene fin**, así nunca queda un período sin porcentaje. Un servicio puede tener **su propio porcentaje**, que **reemplaza** al general (no se suman); al cambiar el general, el sistema avisa qué servicios tienen porcentaje propio y deja elegir rápido, en cada uno, si lo conserva o pasa al general. **Reunión 05/11/2026 → HU-34 del backlog.** Hasta entonces hay un solo porcentaje mensual (`ConfiguracionPrecios`). |
 | RN-11 | **Recargo por modalidad.** Continuo en salón: +20%. En mesas con mozo: +30%. Se aplica **sobre el precio base por persona** del servicio, **sin IVA**, y **por cada servicio** en que el cliente elija esa modalidad (si elige tres coffees y marca continuo en dos, el recargo va solo en esos dos). Es opcional: el cliente elige. |
-| RN-12 | **El que seña primero se queda con el salón.** Puede haber varias consultas para el mismo salón, fecha y horario. Cuando una pasa a `Reservado`, las demás `EnConsulta` que se superponen **no se cancelan**: el sistema las marca como "en conflicto" y el Responsable de Eventos gestiona con esos clientes mover la fecha, el horario o el salón. Registrar la seña de una consulta cuyo horario ya está reservado por otro evento se rechaza. |
-| RN-13 | **Precios proyectados a la fecha del evento.** Cuando el cliente arma un presupuesto para una fecha futura, los precios de los servicios propios y del salón se proyectan aplicando el porcentaje mensual vigente, **compuesto**, una vez por cada mes entre el mes actual y el mes del evento: `precio_actual × (1 + p)^meses`. Los tercerizados no se proyectan. Casos particulares los arregla a mano el Responsable de Eventos (RN-03). |
-| RN-14 | **Medios de pago habilitados según la factura.** Los medios con los que se puede registrar un pago dependen de la marca de **requiere factura** del presupuesto: **sin factura**, solo **Efectivo**, **Transferencia** y **A la habitación**; **con factura**, además **Débito**, **Crédito** y **Cheque**. Un medio dado de alta después se habilita según lo que se eligió al crearlo: con factura, sin factura o en los dos casos (decisión del PO, 16/10/2026; HU-19 del Sprint 3). Cada medio guarda esa habilitación en la base. La regla la aplican la web (el desplegable del formulario de cobro) y la API (rechaza el pago con 422). «Tarjeta», el medio de la versión anterior que Débito y Crédito reemplazan, queda con **baja lógica**: los pagos ya registrados con él se siguen mostrando en el historial del evento, pero no se ofrece ni se acepta en un cobro nuevo. |
+| RN-12 | **El que seña primero se queda con el salón.** Puede haber varias consultas para el mismo salón, fecha y horario. Cuando una pasa a `Reservado`, las demás `EnConsulta` que se superponen **no se cancelan**: el sistema las marca como "en conflicto" y el Responsable de Eventos gestiona con esos clientes mover la fecha, el horario o el salón. Registrar la seña de una consulta cuyo horario ya está reservado por otro evento se rechaza. En un evento de varios días, el solapamiento se controla **por día y por salón** (HU-50). |
+| RN-13 | **Precios proyectados a la fecha del evento.** Cuando el cliente arma un presupuesto para una fecha futura, los precios de los servicios propios y del salón se proyectan aplicando el porcentaje mensual vigente, **compuesto**, una vez por cada mes entre el mes actual y el mes del evento: `precio_actual × (1 + p)^meses`. Sigue siendo compuesta porque se admiten porcentajes con decimales. Con tramos (RN-10), cada mes que atraviesa usa el porcentaje de su tramo, y un servicio con porcentaje propio usa el suyo (reunión 05/11/2026, HU-34 del backlog). Los tercerizados no se proyectan. Casos particulares los arregla a mano el Responsable de Eventos (RN-03). |
+| RN-14 | **Todos los medios de pago activos se pueden usar en todos los cobros**, con factura o sin ella (reunión 05/11/2026; HU-53, PO, 06/11/2026). El alta y la modificación de un medio piden solo el nombre. Antes de HU-53 cada medio se habilitaba con factura, sin factura o en los dos casos (HU-19 del Sprint 3, HU-33 del Sprint 4); esas marcas siguen en la base, sin uso. «Tarjeta», el medio de la versión anterior que Débito y Crédito reemplazan, queda con **baja lógica**: los pagos ya registrados con él se siguen mostrando en el historial del evento, pero no se ofrece ni se acepta en un cobro nuevo. |
 
 ---
 
@@ -315,9 +475,10 @@ arriba describe la división a la que se apunta, que se implementa más adelante
   `Confirmado`: hoy es solo una etiqueta de pantalla).
 - Cambiar el porcentaje de la seña, la base de cobro de RN-01, la vigencia de 10 días, el plazo de
   48 horas o el de 7 días.
-- Cambiar el catálogo de medios de pago o qué medios habilita cada caso de RN-14.
+- Cambiar el catálogo de medios de pago o volver a habilitarlos por caso (RN-14).
 - Cambiar la tasa de IVA o dejar de guardar los importes sin IVA.
-- Definir qué pasa con lo abonado por encima de la seña ante una cancelación en plazo.
+- Volver a ofrecer el caso sin factura, o cambiar qué pasa con lo pagado de más («Saldo»).
+- Cambiar los permisos por rol, las reglas de Personal o cuándo se recalcula un presupuesto.
 - Cancelar o dar de baja automáticamente un evento o un presupuesto: todas las bajas son manuales.
 - Cualquier punto abierto de `pendientes.md`.
 

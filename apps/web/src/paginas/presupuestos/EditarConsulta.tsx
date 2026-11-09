@@ -32,10 +32,12 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { SelectorFecha } from '@/components/SelectorFechaHora';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { IconoEstado } from '@/components/IconoEstado';
 import { InputEntero } from '@/components/InputEntero';
+import { InputImporte } from '@/components/InputImporte';
 import { SelectorModalidad } from '@/components/SelectorModalidad';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -257,7 +259,6 @@ function Formulario({
   const [horaEstimada, setHoraEstimada] = useState(consulta.evento.horaInicioEstimada ?? '');
   const [jornada, setJornada] = useState<TipoJornada>(consulta.tipoJornada);
   const [personas, setPersonas] = useState(String(consulta.evento.cantidadPersonas));
-  const [requiereFactura, setRequiereFactura] = useState(consulta.requiereFactura);
   const [lineas, setLineas] = useState<LineaEditable[]>(
     consulta.lineas
       .filter((linea) => linea.tipo !== 'salon')
@@ -281,12 +282,18 @@ function Formulario({
     (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
     consulta.evento.estado === 'EnConsulta';
   // RN-09: el Responsable de Eventos modifica en todo momento, también un evento ya confirmado
-  // (decisión de Franco, 08/10/2026). Sigue Confirmado: ni vigencia ni baja, y el estado del evento
-  // (Reservado o Cobrado) lo recalcula la API con lo pagado contra el total nuevo.
+  // (decisión de Franco, 08/10/2026). Sigue Confirmado y sin baja; como en toda modificación, se
+  // vuelve a emitir con la fecha de hoy y la vigencia cuenta 10 días desde ahí (RN-08, HU-27), y el
+  // estado del evento (Reservado o Cobrado) lo recalcula la API con lo pagado contra el total nuevo.
   const confirmado =
     consulta.estado === 'Confirmado' &&
     (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');
   const editable = enCurso || confirmado;
+  // Un Estimado o Expirado que quedó de más: el evento ya está confirmado con otro presupuesto. No
+  // se recalcula; solo se da de baja, sin tocar el evento (la API lo resuelve igual).
+  const sobrante =
+    (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
+    (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');
   const expirado = consulta.estado === 'Expirado';
   const salonDe = (salonId: number) => salones.find((s) => s.id === salonId);
   const capacidadElegida = salonesSel.reduce(
@@ -502,7 +509,6 @@ function Formulario({
         tipoSocial: tipo === 'Social' && tipoSocial ? tipoSocial : null,
         tipoSocialDetalle: tipo === 'Social' && tipoSocial === 'Otro' ? detalleOtro.trim() : null,
         horaInicioEstimada: horaEstimada || null,
-        requiereFactura,
         servicios: lineas
           .filter((l) => l.servicioId !== null)
           .map((l) => ({
@@ -531,10 +537,12 @@ function Formulario({
   // presupuesto, así que el evento también se cancela; los pagos que ya hubo no se reintegran
   // (RN-06) y quedan en el estado de cuenta.
   function confirmarBaja() {
-    const mensaje =
-      `¿Dar de baja la consulta ${consulta.id}? El presupuesto y su evento van a quedar como ` +
-      'Cancelado y no se van a poder modificar. Si hubo pagos, se conservan en la cuenta del evento ' +
-      'y no se reintegran.';
+    const mensaje = sobrante
+      ? `¿Dar de baja la consulta ${consulta.id}? Este presupuesto va a quedar como Cancelado. El ` +
+        'evento sigue con su presupuesto confirmado y no cambia.'
+      : `¿Dar de baja la consulta ${consulta.id}? El presupuesto y su evento van a quedar como ` +
+        'Cancelado y no se van a poder modificar. Si hubo pagos, se conservan en la cuenta del evento ' +
+        'y no se reintegran.';
     if (!window.confirm(mensaje)) return;
     darDeBaja.mutate(undefined, { onSuccess: onDadaDeBaja });
   }
@@ -601,7 +609,24 @@ function Formulario({
           )}
         </div>
       )}
-      {!editable && (
+      {sobrante && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
+          <p>
+            Este presupuesto quedó de más: el evento ya está confirmado con otro presupuesto, así
+            que no se puede recalcular. Podés darlo de baja sin tocar el evento.
+          </p>
+          <Button
+            type="button"
+            variant="ghost"
+            className="text-destructive"
+            disabled={darDeBaja.isPending}
+            onClick={confirmarBaja}
+          >
+            <Trash2 /> Dar de baja
+          </Button>
+        </div>
+      )}
+      {!editable && !sobrante && (
         <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
           {consulta.estado === 'Cancelado'
             ? 'Esta consulta se dio de baja'
@@ -637,12 +662,7 @@ function Formulario({
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
               <Label htmlFor="consulta-fecha">Fecha</Label>
-              <Input
-                id="consulta-fecha"
-                type="date"
-                value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
-              />
+              <SelectorFecha id="consulta-fecha" value={fecha} onChange={setFecha} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="consulta-personas">Personas</Label>
@@ -776,17 +796,6 @@ function Formulario({
               ? `${armado} · de ${hora(inicio)} a ${hora(fin)}`
               : 'sin agendar todavía (se cargan al registrar el pago)'}
           </p>
-          <label className="mt-4 flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={requiereFactura}
-              onChange={(e) => setRequiereFactura(e.target.checked)}
-            />
-            El cliente requiere factura
-            <span className="text-xs text-muted-foreground">
-              (la seña y el saldo se calculan sobre el total con IVA)
-            </span>
-          </label>
         </section>
 
         {tipo === 'Social' && (
@@ -850,9 +859,8 @@ function Formulario({
                       <td className="py-2 pr-3 text-muted-foreground">1</td>
                       <td className="py-2 pr-3 text-muted-foreground">—</td>
                       <td className="py-2 pr-3">
-                        <Input
+                        <InputImporte
                           aria-label={`Precio del salón ${nombre}`}
-                          inputMode="decimal"
                           value={sel.precio}
                           aria-invalid={!esImporte(sel.precio)}
                           onChange={(e) => cambiarPrecioSalon(sel.salonId, e.target.value)}
@@ -926,9 +934,9 @@ function Formulario({
                       />
                     </td>
                     <td className="py-2 pr-3">
-                      <Input
+                      <InputImporte
                         aria-label={`Precio unitario de ${linea.descripcion}`}
-                        inputMode="decimal"
+                        sinSigno={aCotizar(linea)}
                         value={linea.precio}
                         placeholder={linea.tercerizado ? 'A cotizar' : undefined}
                         aria-invalid={!precioValido(linea)}
@@ -1049,10 +1057,9 @@ function Formulario({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="otro-precio">Precio sin IVA</Label>
-                  <Input
+                  <InputImporte
                     id="otro-precio"
                     className="bg-card"
-                    inputMode="decimal"
                     placeholder="0.00"
                     value={otro.precio}
                     onChange={(e) => setOtro({ ...otro, precio: e.target.value })}

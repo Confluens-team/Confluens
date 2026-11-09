@@ -1,17 +1,21 @@
-import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock } from 'lucide-react';
 import { Popover } from 'radix-ui';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
-// Selector de día y hora uno al lado del otro: un calendario mensual y, a su derecha, la hora en
-// formato de 12 horas con AM/PM (columnas de hora y minutos). Reemplaza al <input
-// type="datetime-local">, que cada navegador dibuja distinto y separa el día de la hora.
+// Selectores de día y hora con el mismo diseño en toda la app: un calendario mensual y la hora en
+// formato de 12 horas con AM/PM (columnas de hora y minutos). Reemplazan a los <input type="date">,
+// "time" y "datetime-local", que cada navegador dibuja distinto.
 //
-// Trabaja con el mismo valor que ese input, "YYYY-MM-DDTHH:mm" en la hora local, para que quien lo
-// usa lo convierta a ISO igual que antes. Sin dependencias nuevas: Popover de radix-ui (ya
-// instalado) y la grilla del mes armada a mano.
+// - SelectorFechaHora: día y hora juntos, con el valor de un datetime-local ("YYYY-MM-DDTHH:mm" en
+//   la hora local), para que quien lo usa lo convierta a ISO igual que antes. Lo usa el horario
+//   del evento en el panel.
+// - SelectorFecha ("YYYY-MM-DD") y SelectorHora ("HH:mm"): cada uno por separado, con los mismos
+//   valores que el input nativo que reemplazan. Los usa el cotizador del cliente.
+//
+// Sin dependencias nuevas: Popover de radix-ui (ya instalado) y la grilla del mes armada a mano.
 
 const DIAS_SEMANA = ['lu', 'ma', 'mi', 'ju', 'vi', 'sá', 'do'];
 const HORAS = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
@@ -19,10 +23,17 @@ const HORAS = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
 const MINUTOS = Array.from({ length: 12 }, (_, i) => i * 5);
 
 const formateadorMes = new Intl.DateTimeFormat('es-AR', { month: 'long', year: 'numeric' });
+// Para leer en voz alta cada día del calendario (aria-label): "vie, 30 abr 2027".
 const formateadorDia = new Intl.DateTimeFormat('es-AR', {
   weekday: 'short',
   day: 'numeric',
   month: 'short',
+  year: 'numeric',
+});
+// Lo que muestra el selector ya elegido: siempre dd/mm/aaaa, como todas las fechas del sistema.
+const formateadorFecha = new Intl.DateTimeFormat('es-AR', {
+  day: '2-digit',
+  month: '2-digit',
   year: 'numeric',
 });
 
@@ -48,14 +59,18 @@ function aBorrador(valor: string, diaSugerido: string, horaSugerida: string): Bo
   return { dia, hora12: h % 12 === 0 ? 12 : h % 12, minuto: m - (m % 5), pm: h >= 12 };
 }
 
-function aValor({ dia, hora12, minuto, pm }: Borrador): string {
-  const h24 = (hora12 % 12) + (pm ? 12 : 0);
-  return `${dia}T${dosDigitos(h24)}:${dosDigitos(minuto)}`;
+// "HH:mm" en 24 horas, como el valor de un <input type="time">.
+function aHora({ hora12, minuto, pm }: Pick<Borrador, 'hora12' | 'minuto' | 'pm'>): string {
+  return `${dosDigitos((hora12 % 12) + (pm ? 12 : 0))}:${dosDigitos(minuto)}`;
+}
+
+function aValor(borrador: Borrador): string {
+  return `${borrador.dia}T${aHora(borrador)}`;
 }
 
 function textoDelValor(valor: string): string {
   const { dia, hora12, minuto, pm } = aBorrador(valor, '', '');
-  return `${formateadorDia.format(deDiaISO(dia))} · ${hora12}:${dosDigitos(minuto)} ${pm ? 'PM' : 'AM'}`;
+  return `${formateadorFecha.format(deDiaISO(dia))} · ${hora12}:${dosDigitos(minuto)} ${pm ? 'PM' : 'AM'}`;
 }
 
 // Las celdas del mes, de lunes a domingo; null en los huecos antes del día 1.
@@ -122,6 +137,221 @@ function ColumnaRueda({
   );
 }
 
+// El botón que abre el popover: se ve como un Input. `className` ajusta el alto o el ancho.
+function Disparador({
+  id,
+  texto,
+  vacio,
+  className,
+  icono: Icono = CalendarDays,
+}: {
+  id?: string;
+  texto: string;
+  vacio: boolean;
+  className?: string;
+  icono?: typeof CalendarDays;
+}) {
+  return (
+    <Popover.Trigger asChild>
+      <button
+        id={id}
+        type="button"
+        className={cn(
+          'flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-input bg-transparent px-2.5 py-1 text-left text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30',
+          className,
+        )}
+      >
+        <span className={cn('truncate', vacio && 'text-muted-foreground')}>{texto}</span>
+        <Icono className="size-4 shrink-0 text-muted-foreground" />
+      </button>
+    </Popover.Trigger>
+  );
+}
+
+function Contenido({ children }: { children: React.ReactNode }) {
+  return (
+    <Popover.Portal>
+      <Popover.Content
+        align="start"
+        sideOffset={6}
+        collisionPadding={16}
+        className="z-50 rounded-xl bg-popover p-4 text-popover-foreground shadow-lg ring-1 ring-border"
+      >
+        {children}
+      </Popover.Content>
+    </Popover.Portal>
+  );
+}
+
+function Calendario({
+  dia,
+  onElegir,
+  mesVisible,
+  onCambiarMes,
+  diaMinimo,
+}: {
+  dia: string;
+  onElegir: (dia: string) => void;
+  mesVisible: Date;
+  onCambiarMes: (mes: Date) => void;
+  diaMinimo?: string;
+}) {
+  const anio = mesVisible.getFullYear();
+  const mes = mesVisible.getMonth();
+  const hoy = diaISO(new Date());
+
+  return (
+    <div className="w-64">
+      <div className="mb-2 flex items-center justify-between">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Mes anterior"
+          onClick={() => onCambiarMes(new Date(anio, mes - 1, 1))}
+        >
+          <ChevronLeft />
+        </Button>
+        <span className="text-sm font-medium capitalize">{formateadorMes.format(mesVisible)}</span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Mes siguiente"
+          onClick={() => onCambiarMes(new Date(anio, mes + 1, 1))}
+        >
+          <ChevronRight />
+        </Button>
+      </div>
+      <div className="grid grid-cols-7 gap-y-1 text-center text-xs">
+        {DIAS_SEMANA.map((nombre) => (
+          <span key={nombre} className="py-1 text-muted-foreground">
+            {nombre}
+          </span>
+        ))}
+        {celdasDelMes(anio, mes).map((fecha, i) => {
+          if (!fecha) return <span key={`hueco-${i}`} />;
+          const iso = diaISO(fecha);
+          const elegido = iso === dia;
+          const deshabilitado = diaMinimo !== undefined && iso < diaMinimo;
+          return (
+            <button
+              key={iso}
+              type="button"
+              disabled={deshabilitado}
+              aria-pressed={elegido}
+              aria-label={formateadorDia.format(fecha)}
+              onClick={() => onElegir(iso)}
+              className={cn(
+                'mx-auto flex size-8 items-center justify-center rounded-full text-sm transition-colors disabled:pointer-events-none disabled:opacity-30',
+                elegido ? 'bg-bordo font-semibold text-white' : 'hover:bg-muted',
+                !elegido && iso === hoy && 'ring-1 ring-dorado',
+              )}
+            >
+              {fecha.getDate()}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+type HoraDelBorrador = Pick<Borrador, 'hora12' | 'minuto' | 'pm'>;
+
+function Reloj({
+  hora,
+  onCambiar,
+  className,
+}: {
+  hora: HoraDelBorrador;
+  onCambiar: (cambio: Partial<HoraDelBorrador>) => void;
+  className?: string;
+}) {
+  return (
+    <div className={cn('flex flex-col', className)}>
+      <span className="mb-2 text-xs text-muted-foreground">Seleccionar hora</span>
+      <div className="flex items-center gap-2">
+        <span className="rounded-lg bg-muted px-3 py-1.5 text-3xl tabular-nums">
+          {dosDigitos(hora.hora12)}
+        </span>
+        <span className="text-2xl">:</span>
+        <span className="rounded-lg bg-muted px-3 py-1.5 text-3xl tabular-nums">
+          {dosDigitos(hora.minuto)}
+        </span>
+        <div className="ml-1 flex flex-col overflow-hidden rounded-lg ring-1 ring-border">
+          {(['AM', 'PM'] as const).map((sufijo) => {
+            const activo = (sufijo === 'PM') === hora.pm;
+            return (
+              <button
+                key={sufijo}
+                type="button"
+                aria-pressed={activo}
+                onClick={() => onCambiar({ pm: sufijo === 'PM' })}
+                className={cn(
+                  'px-2.5 py-1 text-xs font-medium transition-colors',
+                  activo ? 'bg-bordo/10 text-bordo' : 'text-muted-foreground hover:bg-muted',
+                )}
+              >
+                {sufijo}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <div className="mt-2 flex justify-center gap-2">
+        <ColumnaRueda
+          etiqueta="Hora"
+          opciones={HORAS}
+          elegida={hora.hora12}
+          onElegir={(hora12) => onCambiar({ hora12 })}
+          formato={String}
+        />
+        <ColumnaRueda
+          etiqueta="Minutos"
+          opciones={MINUTOS}
+          elegida={hora.minuto}
+          onElegir={(minuto) => onCambiar({ minuto })}
+          formato={dosDigitos}
+        />
+      </div>
+    </div>
+  );
+}
+
+function Botones({
+  onCancelar,
+  onAceptar,
+  aceptarDeshabilitado,
+  onQuitar,
+}: {
+  onCancelar: () => void;
+  onAceptar: () => void;
+  aceptarDeshabilitado?: boolean;
+  onQuitar?: () => void;
+}) {
+  return (
+    <div className="mt-3 flex items-center justify-end gap-2">
+      {onQuitar && (
+        <Button type="button" variant="ghost" size="sm" className="mr-auto" onClick={onQuitar}>
+          Quitar
+        </Button>
+      )}
+      <Button type="button" variant="ghost" size="sm" onClick={onCancelar}>
+        Cancelar
+      </Button>
+      <Button type="button" size="sm" disabled={aceptarDeshabilitado} onClick={onAceptar}>
+        Aceptar
+      </Button>
+    </div>
+  );
+}
+
+const mesDe = (dia: string) => {
+  const fecha = deDiaISO(dia);
+  return new Date(fecha.getFullYear(), fecha.getMonth(), 1);
+};
+
 interface SelectorFechaHoraProps {
   id?: string;
   value: string;
@@ -152,8 +382,7 @@ export function SelectorFechaHora({
     if (estado) {
       const inicial = aBorrador(value, diaSugerido, horaSugerida);
       setBorrador(inicial);
-      const dia = deDiaISO(inicial.dia || diaSugerido);
-      setMesVisible(new Date(dia.getFullYear(), dia.getMonth(), 1));
+      setMesVisible(mesDe(inicial.dia || diaSugerido));
     }
     setAbierto(estado);
   }
@@ -164,151 +393,145 @@ export function SelectorFechaHora({
     setAbierto(false);
   }
 
-  const anio = mesVisible.getFullYear();
-  const mes = mesVisible.getMonth();
-  const hoy = diaISO(new Date());
+  return (
+    <Popover.Root open={abierto} onOpenChange={abrir}>
+      <Disparador id={id} texto={value ? textoDelValor(value) : placeholder} vacio={!value} />
+      <Contenido>
+        <div className="flex flex-col gap-4 sm:flex-row">
+          <Calendario
+            dia={borrador.dia}
+            onElegir={(dia) => setBorrador((b) => ({ ...b, dia }))}
+            mesVisible={mesVisible}
+            onCambiarMes={setMesVisible}
+            diaMinimo={diaMinimo}
+          />
+          <Reloj
+            hora={borrador}
+            onCambiar={(cambio) => setBorrador((b) => ({ ...b, ...cambio }))}
+            className="border-border sm:border-l sm:pl-4"
+          />
+        </div>
+        <Botones
+          onCancelar={() => setAbierto(false)}
+          onAceptar={aceptar}
+          aceptarDeshabilitado={!borrador.dia}
+        />
+      </Contenido>
+    </Popover.Root>
+  );
+}
+
+interface SelectorFechaProps {
+  id?: string;
+  // "YYYY-MM-DD" o '' sin elegir, como un <input type="date">.
+  value: string;
+  onChange: (valor: string) => void;
+  diaMinimo?: string;
+  placeholder?: string;
+  className?: string;
+}
+
+// Solo el día: se elige con un clic en el calendario, sin botón de aceptar.
+export function SelectorFecha({
+  id,
+  value,
+  onChange,
+  diaMinimo,
+  placeholder = 'Elegir día',
+  className,
+}: SelectorFechaProps) {
+  const [abierto, setAbierto] = useState(false);
+  const [mesVisible, setMesVisible] = useState(() => new Date());
+
+  function abrir(estado: boolean) {
+    if (estado) setMesVisible(mesDe(value || diaMinimo || diaISO(new Date())));
+    setAbierto(estado);
+  }
 
   return (
     <Popover.Root open={abierto} onOpenChange={abrir}>
-      <Popover.Trigger asChild>
-        <button
-          id={id}
-          type="button"
-          className="flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-input bg-transparent px-2.5 py-1 text-left text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30"
-        >
-          <span className={cn('truncate', !value && 'text-muted-foreground')}>
-            {value ? textoDelValor(value) : placeholder}
-          </span>
-          <CalendarDays className="size-4 shrink-0 text-muted-foreground" />
-        </button>
-      </Popover.Trigger>
-      <Popover.Portal>
-        <Popover.Content
-          align="start"
-          sideOffset={6}
-          collisionPadding={16}
-          className="z-50 rounded-xl bg-popover p-4 text-popover-foreground shadow-lg ring-1 ring-border"
-        >
-          <div className="flex flex-col gap-4 sm:flex-row">
-            {/* Día */}
-            <div className="w-64">
-              <div className="mb-2 flex items-center justify-between">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Mes anterior"
-                  onClick={() => setMesVisible(new Date(anio, mes - 1, 1))}
-                >
-                  <ChevronLeft />
-                </Button>
-                <span className="text-sm font-medium capitalize">
-                  {formateadorMes.format(mesVisible)}
-                </span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  aria-label="Mes siguiente"
-                  onClick={() => setMesVisible(new Date(anio, mes + 1, 1))}
-                >
-                  <ChevronRight />
-                </Button>
-              </div>
-              <div className="grid grid-cols-7 gap-y-1 text-center text-xs">
-                {DIAS_SEMANA.map((dia) => (
-                  <span key={dia} className="py-1 text-muted-foreground">
-                    {dia}
-                  </span>
-                ))}
-                {celdasDelMes(anio, mes).map((fecha, i) => {
-                  if (!fecha) return <span key={`hueco-${i}`} />;
-                  const iso = diaISO(fecha);
-                  const elegido = iso === borrador.dia;
-                  const deshabilitado = diaMinimo !== undefined && iso < diaMinimo;
-                  return (
-                    <button
-                      key={iso}
-                      type="button"
-                      disabled={deshabilitado}
-                      aria-pressed={elegido}
-                      aria-label={formateadorDia.format(fecha)}
-                      onClick={() => setBorrador((b) => ({ ...b, dia: iso }))}
-                      className={cn(
-                        'mx-auto flex size-8 items-center justify-center rounded-full text-sm transition-colors disabled:pointer-events-none disabled:opacity-30',
-                        elegido ? 'bg-bordo font-semibold text-white' : 'hover:bg-muted',
-                        !elegido && iso === hoy && 'ring-1 ring-dorado',
-                      )}
-                    >
-                      {fecha.getDate()}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+      <Disparador
+        id={id}
+        texto={value ? formateadorFecha.format(deDiaISO(value)) : placeholder}
+        vacio={!value}
+        className={className}
+      />
+      <Contenido>
+        <Calendario
+          dia={value}
+          onElegir={(dia) => {
+            onChange(dia);
+            setAbierto(false);
+          }}
+          mesVisible={mesVisible}
+          onCambiarMes={setMesVisible}
+          diaMinimo={diaMinimo}
+        />
+      </Contenido>
+    </Popover.Root>
+  );
+}
 
-            {/* Hora */}
-            <div className="flex flex-col border-border sm:border-l sm:pl-4">
-              <span className="mb-2 text-xs text-muted-foreground">Seleccionar hora</span>
-              <div className="flex items-center gap-2">
-                <span className="rounded-lg bg-muted px-3 py-1.5 text-3xl tabular-nums">
-                  {dosDigitos(borrador.hora12)}
-                </span>
-                <span className="text-2xl">:</span>
-                <span className="rounded-lg bg-muted px-3 py-1.5 text-3xl tabular-nums">
-                  {dosDigitos(borrador.minuto)}
-                </span>
-                <div className="ml-1 flex flex-col overflow-hidden rounded-lg ring-1 ring-border">
-                  {(['AM', 'PM'] as const).map((sufijo) => {
-                    const activo = (sufijo === 'PM') === borrador.pm;
-                    return (
-                      <button
-                        key={sufijo}
-                        type="button"
-                        aria-pressed={activo}
-                        onClick={() => setBorrador((b) => ({ ...b, pm: sufijo === 'PM' }))}
-                        className={cn(
-                          'px-2.5 py-1 text-xs font-medium transition-colors',
-                          activo
-                            ? 'bg-bordo/10 text-bordo'
-                            : 'text-muted-foreground hover:bg-muted',
-                        )}
-                      >
-                        {sufijo}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="mt-2 flex justify-center gap-2">
-                <ColumnaRueda
-                  etiqueta="Hora"
-                  opciones={HORAS}
-                  elegida={borrador.hora12}
-                  onElegir={(hora12) => setBorrador((b) => ({ ...b, hora12 }))}
-                  formato={String}
-                />
-                <ColumnaRueda
-                  etiqueta="Minutos"
-                  opciones={MINUTOS}
-                  elegida={borrador.minuto}
-                  onElegir={(minuto) => setBorrador((b) => ({ ...b, minuto }))}
-                  formato={dosDigitos}
-                />
-              </div>
-            </div>
-          </div>
+interface SelectorHoraProps {
+  id?: string;
+  // "HH:mm" o '' sin elegir, como un <input type="time">.
+  value: string;
+  onChange: (valor: string) => void;
+  // Hora que se propone al abrir si todavía no hay valor.
+  horaSugerida?: string;
+  // Muestra «Quitar» para dejarla vacía otra vez (una hora opcional).
+  opcional?: boolean;
+  placeholder?: string;
+  className?: string;
+}
 
-          <div className="mt-3 flex justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => setAbierto(false)}>
-              Cancelar
-            </Button>
-            <Button type="button" size="sm" disabled={!borrador.dia} onClick={aceptar}>
-              Aceptar
-            </Button>
-          </div>
-        </Popover.Content>
-      </Popover.Portal>
+export function SelectorHora({
+  id,
+  value,
+  onChange,
+  horaSugerida = '12:00',
+  opcional = false,
+  placeholder = 'Elegir hora',
+  className,
+}: SelectorHoraProps) {
+  const [abierto, setAbierto] = useState(false);
+  const [borrador, setBorrador] = useState(() => aBorrador('', '', value || horaSugerida));
+
+  function abrir(estado: boolean) {
+    if (estado) setBorrador(aBorrador('', '', value || horaSugerida));
+    setAbierto(estado);
+  }
+
+  function aceptar() {
+    onChange(aHora(borrador));
+    setAbierto(false);
+  }
+
+  const { hora12, minuto, pm } = aBorrador('', '', value || '00:00');
+  return (
+    <Popover.Root open={abierto} onOpenChange={abrir}>
+      <Disparador
+        id={id}
+        texto={value ? `${hora12}:${dosDigitos(minuto)} ${pm ? 'PM' : 'AM'}` : placeholder}
+        vacio={!value}
+        className={className}
+        icono={Clock}
+      />
+      <Contenido>
+        <Reloj hora={borrador} onCambiar={(cambio) => setBorrador((b) => ({ ...b, ...cambio }))} />
+        <Botones
+          onCancelar={() => setAbierto(false)}
+          onAceptar={aceptar}
+          onQuitar={
+            opcional && value
+              ? () => {
+                  onChange('');
+                  setAbierto(false);
+                }
+              : undefined
+          }
+        />
+      </Contenido>
     </Popover.Root>
   );
 }

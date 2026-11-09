@@ -1,4 +1,4 @@
-import type { AgendarEvento, FiltrosAgenda } from '@confluens/shared';
+import { type AgendarEvento, type FiltrosAgenda, hoyEnZonaEventos } from '@confluens/shared';
 
 import { ErrorApi } from '../../lib/errores.js';
 import { esViolacionDeSolapamiento, mensajeDeSolapamiento } from '../../lib/prisma-errores.js';
@@ -110,6 +110,14 @@ export async function agendarEvento(
         `No existe la distribución ${distribucionId} para el salón ${salonId}`,
       );
     }
+    // HU-25 del Sprint 4: una dada de baja no se elige de nuevo, pero el evento que ya la tenía en
+    // ese salón la conserva al reagendar (PO, 06/11/2026: la baja no lo afecta).
+    const yaLaTenia = evento.salones.some(
+      (s) => s.salonId === salonId && s.distribucionId === distribucionId,
+    );
+    if (!distribucion.activo && !yaLaTenia) {
+      throw ErrorApi.reglaNegocio(`La distribución "${distribucion.nombre}" está dada de baja`);
+    }
   }
 
   // Con varios salones la gente se reparte: cuenta la capacidad sumada. Es un aviso, no un tope.
@@ -129,6 +137,16 @@ export async function agendarEvento(
   const fin = new Date(datos.fin);
   if (fin <= inicio) {
     throw ErrorApi.reglaNegocio('El horario de fin debe ser posterior al de inicio');
+  }
+  // Agendar fija las horas del día del evento, no el día: el día se cambia modificando la consulta,
+  // que además recalcula el presupuesto. Si no, el evento quedaba con `fecha` en un día y el
+  // horario (y la reserva del salón) en otro. El día del inicio se lee en la zona de los eventos
+  // (ADR 0010); el fin puede caer al día siguiente, en un evento que termina pasada la medianoche.
+  const diaDelEvento = evento.fecha.toISOString().slice(0, 10);
+  if (hoyEnZonaEventos(inicio) !== diaDelEvento) {
+    throw ErrorApi.reglaNegocio(
+      'El horario tiene que empezar el día del evento. Para cambiar el día, modificá la consulta',
+    );
   }
 
   // RN-12 (parte "aplicación")

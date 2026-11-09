@@ -1,5 +1,9 @@
 import type {
   ActualizarLandingSalon,
+  CrearDistribucion,
+  Distribucion,
+  ModificarDistribucion,
+  ModificarSalon,
   RespuestaExito,
   Salon,
   SalonConDistribuciones,
@@ -51,6 +55,113 @@ export function useActualizarLandingSalon() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(cambios),
       });
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['salones'] });
+    },
+  });
+}
+
+// HU-25: alta de una distribución. Las distribuciones llegan anidadas en useSalones, que es lo que
+// leen el cotizador, la edición del presupuesto y la agenda; invalidar ['salones'] alcanza para que
+// la nueva aparezca en todos esos lugares (criterio 5) y también en la landing.
+export function useCrearDistribucion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ salonId, datos }: { salonId: number; datos: CrearDistribucion }) => {
+      const respuesta = await apiFetch<RespuestaExito<Distribucion>>(
+        `/salones/${salonId}/distribuciones`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(datos),
+        },
+      );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['salones'] });
+    },
+  });
+}
+
+// HU-26: modificar los precios del salón. Invalidar ['salones'] actualiza el cotizador y la edición
+// del presupuesto, que los leen de useSalones.
+export function useModificarSalon() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, datos }: { id: number; datos: ModificarSalon }) => {
+      const respuesta = await apiFetch<RespuestaExito<SalonConDistribuciones>>(`/salones/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
+      });
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['salones'] });
+    },
+  });
+}
+
+// HU-26: editar una distribución. Como en el alta, invalidar ['salones'] alcanza para que el nombre
+// y la capacidad nuevos se vean al presupuestar, al agendar y en los eventos que ya la usan.
+export function useModificarDistribucion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      salonId,
+      distribucionId,
+      datos,
+    }: {
+      salonId: number;
+      distribucionId: number;
+      datos: ModificarDistribucion;
+    }) => {
+      const respuesta = await apiFetch<RespuestaExito<Distribucion>>(
+        `/salones/${salonId}/distribuciones/${distribucionId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(datos),
+        },
+      );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['salones'] });
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
+    },
+  });
+}
+
+// HU-25 del Sprint 4: baja lógica (`activo: false`) o reactivación de una distribución. Invalida
+// ['salones'] para que deje de ofrecerse (o vuelva) al presupuestar y al agendar.
+export function useCambiarEstadoDistribucion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      salonId,
+      distribucionId,
+      activo,
+    }: {
+      salonId: number;
+      distribucionId: number;
+      activo: boolean;
+    }) => {
+      const respuesta = await apiFetch<RespuestaExito<Distribucion>>(
+        `/salones/${salonId}/distribuciones/${distribucionId}/estado`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ activo }),
+        },
+      );
       return respuesta.data;
     },
     onSuccess: () => {

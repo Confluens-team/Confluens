@@ -4,35 +4,32 @@ import { esquemaFecha, esquemaFechaHora, esquemaId, esquemaImporte } from './com
 import { esquemaEstadoEvento } from './evento.esquema.js';
 
 // Catálogo de medios de pago (RN-14). Baja lógica con `activo`: un medio dado de baja no se borra,
-// para no romper los pagos históricos que lo referencian. `conFactura` y `sinFactura` dicen en qué
-// cobros se puede usar según el presupuesto requiera factura o no (dominio.md, RN-14).
+// para no romper los pagos históricos que lo referencian. Desde HU-53 todos los medios activos se
+// usan en todos los cobros: las columnas `conFactura` y `sinFactura` siguen en la base, sin uso, y
+// no viajan.
 export const esquemaMedioPago = z.object({
   id: esquemaId,
   nombre: z.string(),
   activo: z.boolean(),
-  conFactura: z.boolean(),
-  sinFactura: z.boolean(),
 });
 export type MedioPago = z.infer<typeof esquemaMedioPago>;
 
 // Contrato de POST /medios-pago (HU-19). El nombre es único sin distinguir mayúsculas (lo controla
-// el servicio) y hay que habilitarlo para al menos uno de los dos casos. Lo completa el personal en
-// el panel, así que los mensajes van en español.
-export const esquemaCrearMedioPago = z
-  .object({
-    nombre: z
-      .string('Escribí el nombre del medio de pago')
-      .trim()
-      .min(1, 'Escribí el nombre del medio de pago')
-      .max(40, 'El nombre admite hasta 40 caracteres'),
-    conFactura: z.boolean().default(false),
-    sinFactura: z.boolean().default(false),
-  })
-  .refine((medio) => medio.conFactura || medio.sinFactura, {
-    path: ['conFactura'],
-    message: 'Elegí si se puede usar con factura, sin factura o en los dos casos',
-  });
+// el servicio). Desde HU-53 no se elige en qué cobros se usa: vale en todos. Lo completa el personal
+// en el panel, así que los mensajes van en español.
+export const esquemaCrearMedioPago = z.object({
+  nombre: z
+    .string('Escribí el nombre del medio de pago')
+    .trim()
+    .min(1, 'Escribí el nombre del medio de pago')
+    .max(40, 'El nombre admite hasta 40 caracteres'),
+});
 export type CrearMedioPago = z.infer<typeof esquemaCrearMedioPago>;
+
+// Body de PATCH /medios-pago/:id (HU-33 del Sprint 4). Desde HU-53 solo se modifica el nombre. Que no
+// sea de otro medio lo controla la API (409).
+export const esquemaModificarMedioPago = esquemaCrearMedioPago;
+export type ModificarMedioPago = z.infer<typeof esquemaModificarMedioPago>;
 
 // Filtro de GET /medios-pago. Sin parámetros devuelve solo los activos, que es lo que usa el
 // formulario de cobro; el listado de HU-20 pide también los dados de baja.
@@ -53,14 +50,28 @@ export const esquemaPago = z.object({
   medioPago: esquemaMedioPago,
   observacion: z.string().nullable(),
   creadoEn: esquemaFechaHora,
+  // HU-35 del Sprint 4: un pago anulado sigue en la cuenta, pero no suma. Se guarda cuándo y quién lo
+  // anuló (PO, 06/11/2026); los dos son null mientras el pago está vigente.
+  anuladoEn: esquemaFechaHora.nullable(),
+  anuladoPor: z.object({ id: esquemaId, email: z.email() }).nullable(),
 });
 export type Pago = z.infer<typeof esquemaPago>;
 
 // Contrato de POST /eventos/:id/pagos (HU-14). El monto viaja como string para no perder precisión
 // (Decimal(12,2) de Prisma); esquemaImporte ya acepta "0", así que hace falta exigir que sea > 0.
+export const MONTO_MAXIMO_PAGO = 500_000_000;
+
 export const esquemaCrearPago = z.object({
+  // Sin tope de fecha: se puede cargar un pago de cualquier día (PO, 07/11/2026).
   fecha: esquemaFecha,
-  monto: esquemaImporte.refine((valor) => Number(valor) > 0, 'El monto debe ser mayor a cero'),
+  // Tope de 500 millones por pago, para atajar un cero de más al tipear. Era de 100 millones; el PO
+  // lo subió a 500 «por las dudas» (08/11/2026).
+  monto: esquemaImporte
+    .refine((valor) => Number(valor) > 0, 'El monto debe ser mayor a cero')
+    .refine(
+      (valor) => Number(valor) <= MONTO_MAXIMO_PAGO,
+      'El monto no puede superar $500.000.000',
+    ),
   medioPagoId: esquemaId,
   observacion: z.string().trim().min(1).max(500).optional(),
 });
@@ -92,6 +103,10 @@ export const esquemaSaldoEvento = z.object({
   porcentajeAbonado: z.number(),
   montoSena: esquemaImporte,
   senaAlcanzada: z.boolean(),
+  // Si lo pagado hoy, sin los pagos anulados, llega al 20% de la base. A diferencia de
+  // `senaAlcanzada`, no queda fijo al reservar: si una anulación (HU-35) deja lo pagado por debajo
+  // de la seña, el evento sigue Reservado y la cuenta lo avisa (reunión 05/11/2026).
+  cubreSena: z.boolean(),
 });
 export type SaldoEvento = z.infer<typeof esquemaSaldoEvento>;
 
@@ -116,6 +131,16 @@ export const esquemaResultadoPago = z.object({
   consultasEnConflicto: z.array(esquemaConsultaEnConflicto),
 });
 export type ResultadoPago = z.infer<typeof esquemaResultadoPago>;
+
+// Respuesta de POST /eventos/:id/pagos/:pagoId/anular (HU-35 del Sprint 4): el pago ya anulado, el
+// saldo sin él y el estado del evento, que vuelve de Cobrado a Reservado si lo pagado no llega al
+// total. Si queda por debajo de la seña sigue Reservado y `saldo.cubreSena` lo avisa.
+export const esquemaResultadoAnulacion = z.object({
+  pago: esquemaPago,
+  saldo: esquemaSaldoEvento,
+  estadoEvento: esquemaEstadoEvento,
+});
+export type ResultadoAnulacion = z.infer<typeof esquemaResultadoAnulacion>;
 
 // Un pago dentro del estado de cuenta (HU-21), con los dos hitos que puede haber disparado: el que
 // completó la seña y reservó el salón (HU-13) y el que completó el total y dejó el evento Cobrado.

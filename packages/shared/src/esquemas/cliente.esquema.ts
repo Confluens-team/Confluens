@@ -57,6 +57,7 @@ export const esquemaModificarCliente = z.object({
     .string()
     .trim()
     .toLowerCase()
+    .max(254, { error: 'El email admite hasta 254 caracteres' })
     .pipe(z.email({ error: 'Ingresá un correo válido (por ejemplo: nombre@empresa.com)' }))
     .optional(),
 });

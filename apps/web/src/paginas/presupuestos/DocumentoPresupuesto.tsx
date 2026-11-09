@@ -112,7 +112,7 @@ export function DocumentoPresupuesto({
           <tr className="border-y border-bordo/20 text-left text-[0.65rem] tracking-[0.15em] text-muted-foreground uppercase">
             <th className="py-3 font-semibold">Concepto</th>
             <th className="py-3 text-right font-semibold">Cant.</th>
-            <th className="hidden py-3 text-right font-semibold sm:table-cell">Unitario</th>
+            <th className="hidden py-3 text-right font-semibold sm:table-cell">Precio unitario</th>
             <th className="py-3 text-right font-semibold">Subtotal</th>
           </tr>
         </thead>

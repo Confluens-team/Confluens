@@ -677,17 +677,20 @@ function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoR
  *   el vigente. `precioSalon` la ajusta a mano.
  * - Los adicionales escritos a mano entran con la descripción y el precio que se cargaron.
  * - Un tercerizado a cotizar sigue así hasta que llega su precio (HU-11).
- * - `requiereFactura` (RN-01) define si la base de cobro de la seña incluye el IVA.
+ * - La marca de factura (RN-01) no cambia: desde HU-53 todo presupuesto nuevo nace con factura y
+ *   uno anterior conserva la suya.
  * - «Recalcular» un Expirado es esto mismo, con los precios vigentes que arma la pantalla: el
  *   presupuesto sigue siendo el mismo (decisión del PO, 05/10/2026).
  * - El total suma todas las líneas, tercerizados incluidos.
  * - Queda Estimado y la vigencia vuelve a contar 10 días desde ahora (decisión del PO,
- *   05/10/2026), también si estaba Expirado.
+ *   05/10/2026), también si estaba Expirado. La fecha de emisión pasa a ser la del recálculo
+ *   (Franco, 03/11/2026, HU-27): es el presupuesto que se le vuelve a mandar al cliente.
  * - Una consulta social puede seguir sin salón (no hay línea del salón). Si no queda ninguna línea,
  *   el presupuesto sigue sin armar y sin vencimiento: los 10 días arrancan cuando el personal carga
  *   la primera (decisión del PO, 07/10/2026).
- * - Un Confirmado sigue Confirmado y no vuelve a contar vigencia: ya se cobró la seña. Necesita
- *   salón, se le corre el horario si cambia la fecha (ver `reubicarHorario`) y su evento queda
+ * - Un Confirmado sigue Confirmado, pero la vigencia también vuelve a contar 10 días: cada
+ *   modificación la reinicia (RN-08; Franco, 03/11/2026, HU-27). No lo puede vencer: el control
+ *   de vigencia solo pasa a Expirado los Estimado. Necesita salón, se le corre el horario si cambia la fecha (ver `reubicarHorario`) y su evento queda
  *   Cobrado si lo pagado cubre el total nuevo, o Reservado si no. Si el total queda por debajo de
  *   lo pagado, se guarda igual y el saldo queda negativo (decisión de Franco, 08/10/2026).
  */
@@ -792,6 +795,7 @@ export async function modificarPresupuesto(
   const total = sumarLineas(lineas);
   const horario = confirmado ? reubicarHorario(presupuesto.evento, datos) : {};
   const heredados = await armadosHeredados(presupuesto.evento, salonIds, repo);
+  const fechaEmision = new Date();
   // Contra el horario que va a quedar: si cambió la fecha de un evento confirmado, reubicarHorario
   // ya corrió inicio y fin los mismos días.
   exigirHorasDentroDelEvento(
@@ -807,11 +811,7 @@ export async function modificarPresupuesto(
       let estadoEvento: Prisma.EventoUpdateInput['estado'];
       if (confirmado) {
         const pagado = (await repo.sumarPagos(presupuesto.eventoId, tx)) ?? new Prisma.Decimal(0);
-        const base = calcularBaseDeCobro({
-          ...presupuesto,
-          total: new Prisma.Decimal(total),
-          requiereFactura: datos.requiereFactura ?? presupuesto.requiereFactura,
-        });
+        const base = calcularBaseDeCobro({ ...presupuesto, total: new Prisma.Decimal(total) });
         estadoEvento = alcanza(new Prisma.Decimal(pagado), base, PORCENTAJE_TOTAL)
           ? 'Cobrado'
           : 'Reservado';
@@ -836,12 +836,16 @@ export async function modificarPresupuesto(
       await repo.actualizarPresupuesto(
         id,
         confirmado
-          ? { total: total.toFixed(2), requiereFactura: datos.requiereFactura }
+          ? {
+              fechaEmision,
+              venceEn: calcularVencimiento(fechaEmision),
+              total: total.toFixed(2),
+            }
           : {
               estado: 'Estimado',
-              venceEn: lineas.length > 0 ? calcularVencimiento(new Date()) : null,
+              fechaEmision,
+              venceEn: lineas.length > 0 ? calcularVencimiento(fechaEmision) : null,
               total: total.toFixed(2),
-              requiereFactura: datos.requiereFactura,
             },
         tx,
       );
@@ -901,15 +905,34 @@ export async function registrarSeguimiento(
   return obtenerConsulta(id, repo);
 }
 
+// Un Estimado o Expirado cuyo evento ya está Reservado o Cobrado: quedó de cuando un evento podía
+// tener más de un presupuesto, y el evento ya tiene el suyo Confirmado. No se recalcula, solo se
+// da de baja.
+export function esPresupuestoSobrante(presupuesto: {
+  estado: string;
+  evento: { estado: string };
+}): boolean {
+  return (
+    (presupuesto.estado === 'Estimado' || presupuesto.estado === 'Expirado') &&
+    (presupuesto.evento.estado === 'Reservado' || presupuesto.evento.estado === 'Cobrado')
+  );
+}
+
 /**
  * HU-12: dar de baja una consulta la pasa a Cancelado (RN-08: solo se da de baja a mano). El
  * evento también se cancela: cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026).
+ * Un presupuesto sobrante (ver `esPresupuestoSobrante`) se da de baja solo: su evento sigue con el
+ * presupuesto Confirmado y no se toca.
  */
 export async function darDeBajaPresupuesto(
   id: number,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
 ): Promise<ConsultaDetallada> {
   const presupuesto = await buscarOFallar(id, repo);
+  if (esPresupuestoSobrante(presupuesto)) {
+    await repo.actualizarPresupuesto(id, { estado: 'Cancelado' });
+    return obtenerConsulta(id, repo);
+  }
   exigirConsultaEnCurso(presupuesto, 'dar de baja');
 
   await repo.crearEnTransaccion(async (tx) => {
@@ -1001,9 +1024,13 @@ export async function reutilizarConfiguracion(
   const lineas = [...lineasSalones, ...lineasServicios, ...adicionales];
   const total = sumarLineas(lineas);
   const salonIds = original.salones.map((s) => s.salonId);
+  // Una distribución dada de baja (HU-25 del Sprint 4) no se copia: el evento nuevo la elegiría de
+  // nuevo. Ese salón queda sin armado, para elegirlo al agendar.
   const distribuciones = new Map(
     original.salones.flatMap((s) =>
-      s.distribucionId === null ? [] : [[s.salonId, s.distribucionId] as const],
+      s.distribucionId === null || !s.distribucion?.activo
+        ? []
+        : [[s.salonId, s.distribucionId] as const],
     ),
   );
   const fecha = new Date(datos.fecha);

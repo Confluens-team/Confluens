@@ -43,3 +43,18 @@ describe('esquemaModificarCliente', () => {
     expect(resultado.error?.issues.map((i) => i.path[0])).toContain(campo);
   });
 });
+
+describe('esquemaModificarCliente — largo del correo', () => {
+  const correoLargo = (largo: number) => `${'a'.repeat(largo - '@e.co'.length)}@e.co`;
+
+  it('acepta un correo de exactamente 254 caracteres y rechaza uno de 255', () => {
+    expect(correoLargo(254)).toHaveLength(254);
+    expect(esquemaModificarCliente.safeParse({ ...valido, correo: correoLargo(254) }).success).toBe(
+      true,
+    );
+
+    const resultado = esquemaModificarCliente.safeParse({ ...valido, correo: correoLargo(255) });
+    expect(resultado.success).toBe(false);
+    expect(resultado.error?.issues[0]?.message).toBe('El email admite hasta 254 caracteres');
+  });
+});

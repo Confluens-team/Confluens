@@ -12,20 +12,51 @@ export { buscarDetallado, buscarSolapamiento } from '../eventos/eventos.reposito
 // Solo para el `typeof` de PagosRepositorio; el re-export de arriba es el que las expone.
 import type { buscarDetallado, buscarSolapamiento } from '../eventos/eventos.repositorio.js';
 
+// Lo que acompaña a cada pago en las respuestas: el medio y, si está anulado, quién lo anuló (HU-35).
+const INCLUIR_EN_PAGO = {
+  medioPago: true,
+  anuladoPor: { select: { id: true, email: true } },
+} as const;
+
+// El historial completo, con los pagos anulados: siguen en la cuenta, marcados (HU-35).
 export async function listarDeEvento(eventoId: number, tx: Prisma.TransactionClient = prisma) {
   return tx.pago.findMany({
     where: { eventoId },
     orderBy: [{ fecha: 'asc' }, { id: 'asc' }],
-    include: { medioPago: true },
+    include: INCLUIR_EN_PAGO,
   });
 }
 
-// Suma de lo entregado hasta ahora. Devuelve null si el evento no tiene ningún pago, por eso el
-// servicio lo normaliza a 0. Se consulta dentro de la transacción al registrar un pago, para que
-// el acumulado con el que se decide la reserva no quede desactualizado.
+// Suma de lo entregado hasta ahora, sin los pagos anulados (HU-35). Devuelve null si el evento no
+// tiene ningún pago vigente, por eso el servicio lo normaliza a 0. Se consulta dentro de la
+// transacción al registrar o anular un pago, para que el acumulado con el que se decide el estado
+// no quede desactualizado.
 export async function sumarPagos(eventoId: number, tx: Prisma.TransactionClient = prisma) {
-  const resultado = await tx.pago.aggregate({ where: { eventoId }, _sum: { monto: true } });
+  const resultado = await tx.pago.aggregate({
+    where: { eventoId, anuladoEn: null },
+    _sum: { monto: true },
+  });
   return resultado._sum.monto;
+}
+
+export async function buscarPago(id: number, tx: Prisma.TransactionClient = prisma) {
+  return tx.pago.findUnique({ where: { id }, include: INCLUIR_EN_PAGO });
+}
+
+/**
+ * HU-35: marca el pago como anulado, con la fecha y el usuario. Solo si todavía está vigente: con dos
+ * anulaciones simultáneas del mismo pago, la segunda no encuentra nada que actualizar y devuelve 0,
+ * así el servicio la rechaza en vez de pisar quién y cuándo lo anuló.
+ */
+export async function anular(
+  datos: { pagoId: number; usuarioId: number },
+  tx: Prisma.TransactionClient = prisma,
+) {
+  const resultado = await tx.pago.updateMany({
+    where: { id: datos.pagoId, anuladoEn: null },
+    data: { anuladoEn: new Date(), anuladoPorId: datos.usuarioId },
+  });
+  return resultado.count;
 }
 
 export async function buscarMedioPagoActivo(id: number, tx: Prisma.TransactionClient = prisma) {
@@ -50,11 +81,28 @@ export async function buscarMedioPagoPorNombre(
   return tx.medioPago.findFirst({ where: { nombre: { equals: nombre, mode: 'insensitive' } } });
 }
 
+// Desde HU-53 todo medio vale en todos los cobros. Las marcas de factura ya no se usan, pero se
+// cargan en los dos casos para que la base no diga lo contrario.
 export async function crearMedioPago(
-  datos: { nombre: string; conFactura: boolean; sinFactura: boolean },
+  datos: { nombre: string },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.medioPago.create({ data: datos });
+  return tx.medioPago.create({ data: { ...datos, conFactura: true, sinFactura: true } });
+}
+
+// HU-33 del Sprint 4: el medio a modificar puede estar activo o dado de baja.
+export async function buscarMedioPagoPorId(id: number, tx: Prisma.TransactionClient = prisma) {
+  return tx.medioPago.findUnique({ where: { id } });
+}
+
+// Los pagos ya registrados referencian el medio por id: siguen apuntando a él y muestran el nombre
+// nuevo. Desde HU-53 solo se modifica el nombre.
+export async function modificarMedioPago(
+  id: number,
+  datos: { nombre: string },
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.medioPago.update({ where: { id }, data: datos });
 }
 
 export async function crear(
@@ -67,7 +115,7 @@ export async function crear(
   },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.pago.create({ data: datos, include: { medioPago: true } });
+  return tx.pago.create({ data: datos, include: INCLUIR_EN_PAGO });
 }
 
 /**
@@ -93,6 +141,12 @@ export async function confirmarPresupuestoYReservar(
 
 export async function marcarCobrado(eventoId: number, tx: Prisma.TransactionClient = prisma) {
   return tx.evento.update({ where: { id: eventoId }, data: { estado: 'Cobrado' } });
+}
+
+// HU-35: un Cobrado al que una anulación deja por debajo del total vuelve a Reservado hasta cobrar la
+// diferencia. El salón sigue tomado: los dos estados bloquean la franja (RN-12).
+export async function volverAReservado(eventoId: number, tx: Prisma.TransactionClient = prisma) {
+  return tx.evento.update({ where: { id: eventoId }, data: { estado: 'Reservado' } });
 }
 
 // HU-13 C6: los eventos que siguen EnConsulta y pisan la franja que este evento acaba de tomar.
@@ -133,14 +187,19 @@ export type PagosRepositorio = {
   buscarSolapamiento: typeof buscarSolapamiento;
   listarDeEvento: typeof listarDeEvento;
   sumarPagos: typeof sumarPagos;
+  buscarPago: typeof buscarPago;
+  anular: typeof anular;
   buscarMedioPagoActivo: typeof buscarMedioPagoActivo;
   listarMediosPagoActivos: typeof listarMediosPagoActivos;
   listarTodosLosMediosPago: typeof listarTodosLosMediosPago;
   buscarMedioPagoPorNombre: typeof buscarMedioPagoPorNombre;
   crearMedioPago: typeof crearMedioPago;
+  buscarMedioPagoPorId: typeof buscarMedioPagoPorId;
+  modificarMedioPago: typeof modificarMedioPago;
   crear: typeof crear;
   confirmarPresupuestoYReservar: typeof confirmarPresupuestoYReservar;
   marcarCobrado: typeof marcarCobrado;
+  volverAReservado: typeof volverAReservado;
   buscarConsultasSuperpuestas: typeof buscarConsultasSuperpuestas;
   crearEnTransaccion: typeof crearEnTransaccion;
 };

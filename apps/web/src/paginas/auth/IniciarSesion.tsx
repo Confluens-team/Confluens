@@ -4,6 +4,7 @@ import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router';
 
 import { Button } from '@/components/ui/button';
+import { InputContrasena } from '@/components/InputContrasena';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ariaDeCampo, idDeError } from '@/lib/campo-accesible';
@@ -57,9 +58,8 @@ export function IniciarSesion() {
 
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="contrasena">Contraseña</Label>
-          <Input
+          <InputContrasena
             id="contrasena"
-            type="password"
             autoComplete="current-password"
             {...ariaDeCampo('contrasena', errors.contrasena?.message)}
             {...register('contrasena')}

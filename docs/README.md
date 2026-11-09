@@ -3,9 +3,13 @@
 Esta carpeta es la fuente de verdad para cualquier agente de IA que trabaje en este repo.
 Se deriva de la documentación aprobada por la cátedra (carpeta de Drive "Documentación para subir")
 y de la máquina de estados corregida.
-Última actualización de reglas: entrevista con el Responsable de Eventos del **24/09/2026**
-(canal público, IVA, vigencia de 10 días, incremento de precios, recargos). Si otro documento
-contradice a `producto/dominio.md`, vale `dominio.md`.
+Última actualización de reglas: reunión con el cliente del **05/11/2026**, validada por el PO el
+06/11/2026 (roles y Personal, factura, saldo, recálculo automático, vigencia, tramos del
+incremento, eventos de varios días, servicios propios). Después, las decisiones del PO sobre los
+casos límite del Sprint 4 (07 y 08/11/2026: largo de la contraseña, tope y fecha del pago, eventos
+que cruzan la medianoche). Antes, la entrevista con el Responsable de Eventos del 24/09/2026. Si
+otro documento contradice a `producto/dominio.md`, vale `dominio.md`.
+Las reglas decididas que el código todavía no cumple llevan la marca «Reunión 05/11/2026 → HU-xx».
 
 ## Protocolo de carga
 
@@ -15,7 +19,7 @@ No leas esta carpeta entera. Abrí solo lo que la tarea necesita.
 |---|---|
 | Escribir cualquier código | `/AGENTS.md` (raíz) + `producto/dominio.md` |
 | Crear archivos, nombrar cosas o correr comandos | + `tecnico/convenciones.md` |
-| Implementar una historia del sprint en curso | + `producto/sprint-03.md` |
+| Implementar una historia del sprint en curso | + `producto/sprint-04.md` |
 | Tocar el modelo de datos o los enums | + `tecnico/modelo-datos.md` |
 | Cargar datos de prueba o precios | + `negocio/tarifario-2026.md` |
 | Entender por qué algo está hecho así | + `tecnico/adr/` |
@@ -34,7 +38,8 @@ docs/
 │   ├── backlog.md               Las 46 historias en una línea cada una, con Epic, RD y sprint.
 │   ├── sprint-01.md             Las 8 historias del Sprint 1, cerrado. Se conserva como referencia.
 │   ├── sprint-02.md             Las 7 historias del Sprint 2, cerrado. Se conserva como referencia.
-│   ├── sprint-03.md             Las 9 historias del Sprint 3 (en curso), con criterios completos.
+│   ├── sprint-03.md             Las 9 historias del Sprint 3, cerrado. Se conserva como referencia.
+│   ├── sprint-04.md             Las 12 historias del Sprint 4 (en curso), con criterios propuestos.
 │   └── pendientes.md            Lo que todavía no definió el cliente. Qué NO asumir.
 ├── tecnico/
 │   ├── arquitectura.md          Monorepo, capas y límites entre workspaces.

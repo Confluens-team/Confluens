@@ -1,7 +1,8 @@
-import type { CrearServicio } from '@confluens/shared';
+import type { CrearServicio, ModificarServicio } from '@confluens/shared';
 
 import { borrarFotoReemplazada } from '../../lib/cloudinary.js';
 import { ErrorApi } from '../../lib/errores.js';
+import { comoConflictoSiYaExiste } from '../../lib/prisma-errores.js';
 import * as serviciosRepositorioReal from './servicios.repositorio.js';
 import type { ServiciosRepositorio } from './servicios.repositorio.js';
 
@@ -35,10 +36,13 @@ export async function crearServicio(
 ) {
   const existente = await repo.buscarPorNombre(datos.nombre);
   if (existente) {
-    throw ErrorApi.conflicto(`Ya existe un servicio con el nombre "${datos.nombre}"`);
+    throw ErrorApi.conflicto(`Ya existe un servicio con el nombre "${existente.nombre}"`);
   }
 
-  return repo.crear(datos);
+  return comoConflictoSiYaExiste(
+    () => repo.crear(datos),
+    `Ya existe un servicio con el nombre "${datos.nombre}"`,
+  );
 }
 
 // HU-08: asigna (o quita, con null) la foto del servicio en la landing. Igual que en salones, se
@@ -58,4 +62,26 @@ export async function actualizarLandingServicio(
   const actualizado = await repo.actualizarLanding(id, fotoUrl, fotoAnterior, usuarioId);
   await fotos.borrarFotoReemplazada(fotoAnterior, fotoUrl);
   return actualizado;
+}
+
+// HU-32 (Sprint 4): modificar un servicio del catálogo. 404 si no existe y 409 si el nombre nuevo ya
+// es de otro servicio, con el mismo criterio que el alta (sin distinguir mayúsculas). Conservar el
+// propio nombre, o cambiarle solo las mayúsculas, no choca. Se corta antes de escribir.
+export async function modificarServicio(
+  id: number,
+  datos: ModificarServicio,
+  repo: ServiciosRepositorio = serviciosRepositorioReal,
+) {
+  const servicio = await repo.buscarPorId(id);
+  if (!servicio) throw ErrorApi.noEncontrado('No existe el servicio indicado');
+
+  const conEseNombre = await repo.buscarPorNombre(datos.nombre);
+  if (conEseNombre && conEseNombre.id !== id) {
+    throw ErrorApi.conflicto(`Ya existe un servicio con el nombre "${conEseNombre.nombre}"`);
+  }
+
+  return comoConflictoSiYaExiste(
+    () => repo.modificar(id, datos),
+    `Ya existe un servicio con el nombre "${datos.nombre}"`,
+  );
 }

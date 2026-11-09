@@ -16,6 +16,7 @@ import { type Resolver, useForm, useWatch } from 'react-hook-form';
 
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
+import { InputContrasena } from '@/components/InputContrasena';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useIniciarSesion, useRegistrarCliente } from '@/hooks/use-sesion';
@@ -197,9 +198,8 @@ function FormularioRegistro({
         </p>
       </Campo>
       <Campo id="reg-contrasena" etiqueta="Contraseña" error={errors.contrasena?.message}>
-        <Input
+        <InputContrasena
           id="reg-contrasena"
-          type="password"
           autoComplete="new-password"
           className="h-10"
           {...ariaDeCampo('reg-contrasena', errors.contrasena?.message)}
@@ -256,9 +256,8 @@ function FormularioIngreso({
         />
       </Campo>
       <Campo id="ing-contrasena" etiqueta="Contraseña" error={errors.contrasena?.message}>
-        <Input
+        <InputContrasena
           id="ing-contrasena"
-          type="password"
           autoComplete="current-password"
           className="h-10"
           {...ariaDeCampo('ing-contrasena', errors.contrasena?.message)}

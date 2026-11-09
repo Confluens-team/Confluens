@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { InputContrasena } from '@/components/InputContrasena';
 import { Label } from '@/components/ui/label';
 import { ariaDeCampo, idDeError } from '@/lib/campo-accesible';
 import { useRestablecerContrasena } from '@/hooks/use-sesion';
@@ -75,9 +75,8 @@ export function RestablecerContrasena({
       <form onSubmit={onSubmit} className="flex flex-col gap-4" noValidate>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="nueva-contrasena">Contraseña nueva</Label>
-          <Input
+          <InputContrasena
             id="nueva-contrasena"
-            type="password"
             autoComplete="new-password"
             className="h-10"
             {...ariaDeCampo('nueva-contrasena', errors.contrasena?.message)}
@@ -92,9 +91,8 @@ export function RestablecerContrasena({
         </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="repetir-contrasena">Repetí la contraseña</Label>
-          <Input
+          <InputContrasena
             id="repetir-contrasena"
-            type="password"
             autoComplete="new-password"
             className="h-10"
             {...ariaDeCampo('repetir-contrasena', errors.repetir?.message)}

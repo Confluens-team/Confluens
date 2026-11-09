@@ -1,5 +1,10 @@
-import type { CrearMedioPago, CrearPago, FiltrosMediosPago } from '@confluens/shared';
-import { admiteMedioPago, mediosPagoHabilitados, PORCENTAJE_SENA } from '@confluens/shared';
+import type {
+  CrearMedioPago,
+  CrearPago,
+  FiltrosMediosPago,
+  ModificarMedioPago,
+} from '@confluens/shared';
+import { PORCENTAJE_SENA } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
 import {
@@ -9,15 +14,22 @@ import {
   type PresupuestoDeBase,
 } from '../../lib/base-de-cobro.js';
 import { ErrorApi } from '../../lib/errores.js';
-import { esViolacionDeSolapamiento, mensajeDeSolapamiento } from '../../lib/prisma-errores.js';
+import {
+  comoConflictoSiYaExiste,
+  esViolacionDeSolapamiento,
+  mensajeDeSolapamiento,
+} from '../../lib/prisma-errores.js';
 import * as pagosRepositorioReal from './pagos.repositorio.js';
 import type { PagosRepositorio } from './pagos.repositorio.js';
 
 const CIEN = new Prisma.Decimal(100);
 
 /**
- * El saldo del evento. `senaRegistrada` dice si el evento ya se reservó (tiene `senaRegistradaEn`):
- * en ese caso la seña cuenta como alcanzada aunque después haya subido el total (RN-09).
+ * El saldo del evento. `pagado` es la suma de los pagos vigentes, sin los anulados (HU-35).
+ * `senaRegistrada` dice si el evento ya se reservó (tiene `senaRegistradaEn`): en ese caso la seña
+ * cuenta como alcanzada aunque después haya subido el total (RN-09) o se haya anulado un pago.
+ * `cubreSena`, en cambio, mira lo pagado hoy: es el aviso de que una anulación dejó lo pagado por
+ * debajo de la seña.
  */
 function armarSaldo(
   base: Prisma.Decimal,
@@ -42,6 +54,7 @@ function armarSaldo(
       .toDecimalPlaces(2, Prisma.Decimal.ROUND_UP)
       .toFixed(2),
     senaAlcanzada: senaRegistrada || (!base.isZero() && alcanza(pagado, base, PORCENTAJE_SENA)),
+    cubreSena: !base.isZero() && alcanza(pagado, base, PORCENTAJE_SENA),
   };
 }
 
@@ -96,23 +109,10 @@ export async function registrarPago(
     );
   }
 
+  // RN-14 desde HU-53: cualquier medio activo vale en cualquier cobro, con factura o sin ella.
   const medioPago = await repo.buscarMedioPagoActivo(datos.medioPagoId);
   if (!medioPago) {
     throw ErrorApi.noEncontrado(`No existe un medio de pago activo con id ${datos.medioPagoId}`);
-  }
-  // RN-14: los medios disponibles dependen de la casilla «El cliente requiere factura» del
-  // presupuesto y de la habilitación de cada medio (con factura, sin factura o los dos), que se
-  // elige al darlo de alta (HU-19). La web ya filtra el desplegable; esto es lo que hace que la
-  // regla valga igual contra la API.
-  if (!admiteMedioPago(medioPago, presupuesto.requiereFactura)) {
-    const activos = await repo.listarMediosPagoActivos();
-    const habilitados = mediosPagoHabilitados(activos, presupuesto.requiereFactura)
-      .map((medio) => medio.nombre)
-      .join(', ');
-    const caso = presupuesto.requiereFactura ? 'con factura' : 'sin factura';
-    throw ErrorApi.reglaNegocio(
-      `No se puede cobrar con ${medioPago.nombre} en un evento ${caso}: los medios habilitados son ${habilitados}`,
-    );
   }
 
   const base = calcularBaseDeCobro(presupuesto);
@@ -212,7 +212,12 @@ export async function registrarPago(
   }
 }
 
-type PagoParaHitos = { id: number; monto: Prisma.Decimal | string; creadoEn: Date };
+type PagoParaHitos = {
+  id: number;
+  monto: Prisma.Decimal | string;
+  creadoEn: Date;
+  anuladoEn: Date | null;
+};
 
 /**
  * HU-21: marca en el historial el pago que completó la seña y el que completó el total, para que la
@@ -225,6 +230,9 @@ type PagoParaHitos = { id: number; monto: Prisma.Decimal | string; creadoEn: Dat
  *   Reservado o Cobrado sin esa marca (datos anteriores a HU-13) usa el primero cuyo acumulado
  *   llega al 20% de la base actual. Un evento que nunca se reservó no tiene pago de seña.
  * - **Pago completo:** el último registrado, solo si el evento está Cobrado.
+ *
+ * Los pagos anulados (HU-35) no marcan ningún hito ni suman al acumulado. Si el anulado era el de la
+ * seña, la seña queda sin pago marcado: el evento sigue Reservado y la cuenta avisa con `cubreSena`.
  */
 export function marcarHitos<P extends PagoParaHitos>(
   pagos: P[],
@@ -232,11 +240,14 @@ export function marcarHitos<P extends PagoParaHitos>(
   base: Prisma.Decimal,
 ): (P & { completaSena: boolean; completaPago: boolean })[] {
   const porRegistro = [...pagos].sort((a, b) => a.id - b.id);
+  const vigentes = porRegistro.filter((pago) => pago.anuladoEn === null);
 
   let senaId: number | undefined;
   if (evento.senaRegistradaEn) {
+    // El más cercano se busca entre todos: si es uno anulado, la seña se queda sin pago marcado en
+    // vez de pasarle la marca a otro que no la completó.
     const instante = evento.senaRegistradaEn.getTime();
-    senaId = porRegistro.reduce<P | undefined>(
+    const delInstante = porRegistro.reduce<P | undefined>(
       (masCercano, pago) =>
         !masCercano ||
         Math.abs(pago.creadoEn.getTime() - instante) <
@@ -244,15 +255,16 @@ export function marcarHitos<P extends PagoParaHitos>(
           ? pago
           : masCercano,
       undefined,
-    )?.id;
+    );
+    senaId = delInstante?.anuladoEn === null ? delInstante.id : undefined;
   } else if (evento.estado === 'Reservado' || evento.estado === 'Cobrado') {
     let acumulado = new Prisma.Decimal(0);
-    senaId = porRegistro.find((pago) => {
+    senaId = vigentes.find((pago) => {
       acumulado = acumulado.plus(new Prisma.Decimal(pago.monto));
       return alcanza(acumulado, base, PORCENTAJE_SENA);
     })?.id;
   }
-  const pagoCompletoId = evento.estado === 'Cobrado' ? porRegistro.at(-1)?.id : undefined;
+  const pagoCompletoId = evento.estado === 'Cobrado' ? vigentes.at(-1)?.id : undefined;
 
   return pagos.map((pago) => ({
     ...pago,
@@ -277,10 +289,9 @@ export async function obtenerCuenta(
     [...evento.presupuestos].sort((a, b) => b.id - a.id).at(0);
   const base = presupuesto ? calcularBaseDeCobro(presupuesto) : new Prisma.Decimal(0);
   const pagos = await repo.listarDeEvento(eventoId);
-  const pagado = pagos.reduce(
-    (suma, pago) => suma.plus(new Prisma.Decimal(pago.monto)),
-    new Prisma.Decimal(0),
-  );
+  const pagado = pagos
+    .filter((pago) => pago.anuladoEn === null)
+    .reduce((suma, pago) => suma.plus(new Prisma.Decimal(pago.monto)), new Prisma.Decimal(0));
 
   return {
     pagos: marcarHitos(pagos, evento, base),
@@ -293,6 +304,69 @@ export async function obtenerCuenta(
   };
 }
 
+const MENSAJE_YA_ANULADO = 'El pago ya está anulado';
+
+/**
+ * HU-35 del Sprint 4: anula un pago registrado por error sin borrarlo. Queda en la cuenta con la
+ * fecha y el usuario que lo anuló (PO, 06/11/2026) y deja de sumar a lo pagado. Anular es también la
+ * forma de pasar un pago a otro evento del mismo cliente o de corregirlo: se anula y se registra de
+ * nuevo (dominio.md, «Pasar un pago a otro evento»).
+ *
+ * El estado del evento, en la misma transacción que la anulación:
+ * - `Cobrado` que queda por debajo del total → vuelve a `Reservado` hasta cobrar la diferencia.
+ * - `Reservado` que queda por debajo de la seña → sigue `Reservado`; `saldo.cubreSena` lo avisa.
+ *   No hay `Reservado → EnConsulta` en la máquina de estados (reunión 05/11/2026).
+ *
+ * Un evento `Cancelado` no admite anulaciones, igual que no admite pagos: su cuenta queda como
+ * estaba al cancelarse.
+ */
+export async function anularPago(
+  eventoId: number,
+  pagoId: number,
+  usuarioId: number,
+  repo: PagosRepositorio = pagosRepositorioReal,
+) {
+  const evento = await repo.buscarDetallado(eventoId);
+  if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${eventoId}`);
+
+  const pago = await repo.buscarPago(pagoId);
+  if (!pago || pago.eventoId !== eventoId) {
+    throw ErrorApi.noEncontrado(`El evento ${eventoId} no tiene un pago ${pagoId}`);
+  }
+  if (evento.estado === 'Cancelado') {
+    throw ErrorApi.conflicto('El evento está cancelado: sus pagos no se pueden anular');
+  }
+  if (pago.anuladoEn) throw ErrorApi.conflicto(MENSAJE_YA_ANULADO);
+
+  const presupuesto = presupuestoVigente(evento.presupuestos);
+  const base = presupuesto ? calcularBaseDeCobro(presupuesto) : new Prisma.Decimal(0);
+
+  return repo.crearEnTransaccion(async (tx) => {
+    // Dos anulaciones simultáneas pasan las dos el chequeo de arriba; solo una encuentra el pago
+    // vigente al escribir.
+    const anulados = await repo.anular({ pagoId, usuarioId }, tx);
+    if (anulados === 0) throw ErrorApi.conflicto(MENSAJE_YA_ANULADO);
+
+    const pagado = new Prisma.Decimal((await repo.sumarPagos(eventoId, tx)) ?? 0);
+
+    let estadoEvento = evento.estado;
+    if (estadoEvento === 'Cobrado' && !alcanza(pagado, base, PORCENTAJE_TOTAL)) {
+      estadoEvento = (await repo.volverAReservado(eventoId, tx)).estado;
+    }
+
+    return {
+      pago: await repo.buscarPago(pagoId, tx),
+      saldo: armarSaldo(
+        base,
+        pagado,
+        presupuesto?.requiereFactura ?? false,
+        evento.senaRegistradaEn !== null,
+      ),
+      estadoEvento,
+    };
+  });
+}
+
 // Sin filtros, los activos: es lo que usa el formulario de cobro. El listado de HU-20 pide también
 // los dados de baja, para mostrar el estado de cada medio.
 export async function listarMediosPago(
@@ -303,8 +377,7 @@ export async function listarMediosPago(
 }
 
 /**
- * HU-19: alta de un medio de pago, con su habilitación para cobros con factura, sin factura o los
- * dos (RN-14). El nombre llega recortado por esquemaCrearMedioPago y es único sin distinguir
+ * HU-19: alta de un medio de pago. Desde HU-53 vale en todos los cobros (RN-14). El nombre llega recortado por esquemaCrearMedioPago y es único sin distinguir
  * mayúsculas: «efectivo» choca con «Efectivo», aunque ese medio esté dado de baja.
  */
 export async function crearMedioPago(
@@ -315,5 +388,30 @@ export async function crearMedioPago(
   if (existente) {
     throw ErrorApi.conflicto(`Ya existe un medio de pago llamado «${existente.nombre}»`);
   }
-  return repo.crearMedioPago(datos);
+  return comoConflictoSiYaExiste(
+    () => repo.crearMedioPago(datos),
+    `Ya existe un medio de pago llamado «${datos.nombre}»`,
+  );
+}
+
+// HU-33 del Sprint 4: modificar el nombre de un medio (desde HU-53, solo el nombre). 404 si no existe y
+// 409 si el nombre ya es de otro medio, sin distinguir mayúsculas, como en el alta. Conservar el
+// propio nombre, o cambiarle solo las mayúsculas, no choca.
+export async function modificarMedioPago(
+  id: number,
+  datos: ModificarMedioPago,
+  repo: PagosRepositorio = pagosRepositorioReal,
+) {
+  const medio = await repo.buscarMedioPagoPorId(id);
+  if (!medio) throw ErrorApi.noEncontrado('No existe el medio de pago indicado');
+
+  const conEseNombre = await repo.buscarMedioPagoPorNombre(datos.nombre);
+  if (conEseNombre && conEseNombre.id !== id) {
+    throw ErrorApi.conflicto(`Ya existe un medio de pago llamado «${conEseNombre.nombre}»`);
+  }
+
+  return comoConflictoSiYaExiste(
+    () => repo.modificarMedioPago(id, datos),
+    `Ya existe un medio de pago llamado «${datos.nombre}»`,
+  );
 }

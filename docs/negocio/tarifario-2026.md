@@ -124,9 +124,9 @@ Son las que dan origen a las reglas de negocio del sistema.
 | Condición | Detalle | Regla |
 |---|---|---|
 | Seña | 20% del total, dentro de la vigencia del presupuesto (10 días). Congela los precios | RN-01, RN-06 |
-| Falta de anticipo | El presupuesto vence y hay que recalcularlo. No se cancela nada automáticamente | RN-06, RN-08 |
+| Falta de anticipo | El presupuesto vence y queda marcado con un aviso. No se cancela nada automáticamente, y el personal puede cobrar la seña igual, sin recalcular (reunión 05/11/2026) | RN-06, RN-08 |
 | Cancelación | Hasta 48 horas **corridas** antes del evento (feriados incluidos) | RN-07 |
-| Reintegro | La seña no se reintegra ni se aplica a otros servicios | RN-06 |
+| Reintegro | La seña no se reintegra ni se aplica a otros servicios. Tampoco lo pagado de más si el presupuesto baja (reunión 05/11/2026) | RN-06 |
 | Validez del presupuesto | **10 días** (el PDF dice 30; vale lo acordado en la entrevista del 24/09) | RN-08 |
 | Modificaciones y asistentes | El cliente no puede modificar nada a menos de 7 días del evento; el Responsable de Eventos sí, siempre | RN-09 |
 | Ausencias | Se cobra la cantidad contratada | — |

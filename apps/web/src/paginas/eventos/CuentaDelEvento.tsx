@@ -1,29 +1,35 @@
 import {
+  compararMediosPago,
   type CrearPago,
+  hoyEnZonaEventos,
   esquemaCrearPago,
   type EventoDetallado,
-  mediosPagoHabilitados,
   PORCENTAJE_SENA,
   type TipoJornada,
 } from '@confluens/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, X } from 'lucide-react';
+import { Ban, Plus, X } from 'lucide-react';
 import { Dialog } from 'radix-ui';
 import { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useWatch } from 'react-hook-form';
 import { Link } from 'react-router';
 
-import { SelectorFechaHora } from '@/components/SelectorFechaHora';
+import { InputImporte } from '@/components/InputImporte';
+import { SelectorFecha, SelectorHora } from '@/components/SelectorFechaHora';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAgendarEvento } from '@/hooks/use-eventos';
-import { useMediosPago, usePagosDeEvento, useRegistrarPago } from '@/hooks/use-pagos';
+import {
+  useAnularPago,
+  useMediosPago,
+  usePagosDeEvento,
+  useRegistrarPago,
+} from '@/hooks/use-pagos';
 import { useSalones } from '@/hooks/use-salones';
 import { ErrorApiCliente } from '@/lib/api';
-import { fechaLocal, nombreCompleto } from '@/lib/formato';
+import { fechaLocal, formatearFechaNumerica, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { CLASES_SELECT } from './clases-select';
 
@@ -69,11 +75,16 @@ function jornadaDelEvento(evento: EventoDetallado): TipoJornada {
   return presupuesto?.lineas[0]?.descripcion.endsWith('(media jornada)') ? 'media' : 'completa';
 }
 
-// "YYYY-MM-DDTHH:mm" + horas, en la hora local (puede pasar al día siguiente).
-function sumarHoras(valor: string, horas: number): string {
-  const fecha = new Date(valor);
-  fecha.setHours(fecha.getHours() + horas);
-  return comoFechaHoraLocal(fecha.toISOString());
+// "HH:mm" + horas, dando la vuelta por la medianoche ("20:00" + 8 → "04:00").
+function sumarHoras(hora: string, horas: number): string {
+  const [h = 0, m = 0] = hora.split(':').map(Number);
+  return `${String((h + horas) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
+// "YYYY-MM-DD" del día siguiente, sin pasar por la zona del navegador.
+function diaSiguiente(dia: string): string {
+  const [a = 1970, m = 1, d = 1] = dia.split('-').map(Number);
+  return new Date(Date.UTC(a, m - 1, d + 1)).toISOString().slice(0, 10);
 }
 
 /**
@@ -94,13 +105,22 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   const registrarPago = useRegistrarPago(eventoId);
   const agendarEvento = useAgendarEvento(eventoId);
   const salones = useSalones();
+  const anularPago = useAnularPago(eventoId);
   const [dialogoAbierto, setDialogoAbierto] = useState(false);
   const [editandoHorario, setEditandoHorario] = useState(false);
+  // HU-35: el pago cuya anulación se está confirmando. Anular pide una confirmación explícita en la
+  // misma fila antes de llamar a la API.
+  const [pagoAAnular, setPagoAAnular] = useState<number | null>(null);
+  // Si la última anulación sacó al evento de Cobrado: el detalle ya muestra el estado nuevo, pero se
+  // avisa por qué cambió.
+  const [volvioAConfirmado, setVolvioAConfirmado] = useState(false);
 
   // `fecha` viaja como medianoche UTC del día del evento: el día es la parte YYYY-MM-DD, sin pasar
-  // por Date (que lo correría al día anterior en Argentina). Es la fecha que se propone para el
-  // pago, a pedido del Responsable de Eventos.
+  // por Date (que lo correría al día anterior en Argentina). Agendar solo elige las horas de ese
+  // día: el día se cambia modificando la consulta, que además recalcula el presupuesto.
   const fechaDelEvento = evento.fecha.slice(0, 10);
+  // El pago se propone con la fecha de hoy, en la zona de los eventos (ADR 0010).
+  const hoy = hoyEnZonaEventos();
 
   // Agendar va en el mismo formulario del pago (ADR 0007: sin distribución y horario no se puede
   // reservar el salón). Se precargan con lo ya agendado o, si no, el inicio con la hora estimada
@@ -117,41 +137,55 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   function elegirDistribucion(salonId: number, distribucionId: string) {
     setDistribucionPorSalon((anteriores) => new Map(anteriores).set(salonId, distribucionId));
   }
-  const [inicio, setInicio] = useState(
-    evento.inicio
-      ? comoFechaHoraLocal(evento.inicio)
-      : evento.horaInicioEstimada
-        ? `${fechaDelEvento}T${evento.horaInicioEstimada}`
-        : '',
+  // Solo las horas ("HH:mm"): el día es siempre el del evento.
+  const horaInicioGuardada = evento.inicio ? comoFechaHoraLocal(evento.inicio).slice(11, 16) : '';
+  const horaFinGuardada = evento.fin ? comoFechaHoraLocal(evento.fin).slice(11, 16) : '';
+  const [horaInicio, setHoraInicio] = useState(
+    horaInicioGuardada || evento.horaInicioEstimada || '',
   );
-  const [fin, setFin] = useState(
-    evento.fin ? comoFechaHoraLocal(evento.fin) : inicio ? sumarHoras(inicio, horasJornada) : '',
+  const [horaFin, setHoraFin] = useState(
+    horaFinGuardada || (horaInicio ? sumarHoras(horaInicio, horasJornada) : ''),
   );
 
   // Cada vez que se elige el inicio, el fin se recalcula con la duración de la jornada. Después se
   // puede cambiar a mano; si se vuelve a tocar el inicio, se recalcula de nuevo.
   function elegirInicio(valor: string) {
-    setInicio(valor);
-    setFin(sumarHoras(valor, horasJornada));
+    setHoraInicio(valor);
+    setHoraFin(sumarHoras(valor, horasJornada));
   }
+
+  // El inicio cae siempre el día del evento. Un fin más temprano que el inicio es del día
+  // siguiente: el evento termina pasada la medianoche.
+  const inicio = horaInicio ? `${fechaDelEvento}T${horaInicio}` : '';
+  const fin = horaFin
+    ? `${horaFin < horaInicio ? diaSiguiente(fechaDelEvento) : fechaDelEvento}T${horaFin}`
+    : '';
+  const terminaAlDiaSiguiente = horaInicio !== '' && horaFin !== '' && horaFin < horaInicio;
 
   const {
     register,
     handleSubmit,
     reset,
     setValue,
+    control,
     formState: { errors },
   } = useForm<CrearPago>({
     resolver: zodResolver(esquemaCrearPago),
-    defaultValues: { fecha: fechaDelEvento, monto: '' },
+    defaultValues: { fecha: hoy, monto: '' },
   });
+  const fechaPago = useWatch({ control, name: 'fecha' });
 
   const enConsulta = evento.estado === 'EnConsulta';
   const cobrado = evento.estado === 'Cobrado';
   // Las distribuciones posibles de cada salón del evento, con la elegida.
   const porSalon = evento.salones.map((salonDelEvento) => {
-    const opciones =
-      salones.data?.find((salon) => salon.id === salonDelEvento.id)?.distribuciones ?? [];
+    // HU-25 del Sprint 4: las dadas de baja no se ofrecen, salvo la que el evento ya tiene en ese
+    // salón, que conserva (la baja no lo afecta). La API aplica la misma regla.
+    const opciones = (
+      salones.data?.find((salon) => salon.id === salonDelEvento.id)?.distribuciones ?? []
+    ).filter(
+      (distribucion) => distribucion.activo || distribucion.id === salonDelEvento.distribucion?.id,
+    );
     const elegidaId = distribucionPorSalon.get(salonDelEvento.id) ?? '';
     return {
       salon: salonDelEvento,
@@ -197,6 +231,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
     if (abrir) {
       registrarPago.reset();
       agendarEvento.reset();
+      anularPago.reset();
     }
     setDialogoAbierto(abrir);
   }
@@ -217,7 +252,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
       // solo limpia lo que recibe en el objeto.
       onSuccess: () => {
         reset({
-          fecha: fechaDelEvento,
+          fecha: hoyEnZonaEventos(),
           monto: '',
           observacion: '',
           medioPagoId: datos.medioPagoId,
@@ -236,12 +271,9 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
 
   const { pagos, saldo } = cuenta.data;
   const base = Number(saldo.baseDeCobro);
-  // RN-14: con qué se puede cobrar depende de la casilla «El cliente requiere factura» del
-  // presupuesto, que es lo mismo que `incluyeIva` (es la marca que define la base de cobro de
-  // RN-01), y de la habilitación de cada medio con o sin factura (HU-19). Primero los del catálogo
-  // inicial y después los dados de alta. La API aplica la misma regla, así que el filtro de acá no
-  // la sostiene solo.
-  const mediosHabilitados = mediosPagoHabilitados(mediosPago.data ?? [], saldo.incluyeIva);
+  // RN-14 desde HU-53: todos los medios activos se pueden usar en cualquier cobro. Primero los del
+  // catálogo inicial y después los dados de alta.
+  const mediosHabilitados = [...(mediosPago.data ?? [])].sort(compararMediosPago);
   // HU-21: el importe de la seña y si ya se alcanzó los calcula la API con Decimal (el 20% de la
   // base, redondeado para arriba al centavo). Acá solo se resta para mostrar cuánto falta.
   const montoSena = Number(saldo.montoSena);
@@ -256,6 +288,20 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   // Decisión del PO (16/10/2026): si el total bajó por debajo de lo pagado, la diferencia es un
   // saldo a favor del cliente, no un saldo pendiente con signo menos.
   const saldoAFavor = saldoPendiente < 0;
+  // HU-35: una anulación puede dejar lo pagado por debajo de la seña. El evento sigue Reservado (no
+  // vuelve a consulta), pero se avisa. Solo si hay un pago anulado: que el total haya subido después
+  // de reservar no vuelve a pedir la seña (RN-09).
+  const senaDescubierta =
+    !enConsulta && !cancelado && !saldo.cubreSena && pagos.some((pago) => pago.anuladoEn);
+
+  function confirmarAnulacion(pagoId: number) {
+    registrarPago.reset();
+    anularPago.mutate(pagoId, {
+      onSuccess: (resultadoAnulacion) =>
+        setVolvioAConfirmado(cobrado && resultadoAnulacion.estadoEvento === 'Reservado'),
+      onSettled: () => setPagoAAnular(null),
+    });
+  }
 
   const errorAgendar =
     agendarEvento.isError &&
@@ -300,31 +346,37 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
           </p>
         )}
       </div>
+      <p className="text-sm">
+        Día del evento:{' '}
+        <span className="font-medium">{formatearFechaNumerica(fechaDelEvento)}</span>
+        <span className="block text-xs text-muted-foreground">
+          Para cambiar el día, modificá la consulta: así se recalcula el presupuesto.
+        </span>
+      </p>
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
           <Label htmlFor="inicio">Hora de inicio</Label>
-          <SelectorFechaHora
+          <SelectorHora
             id="inicio"
-            value={inicio}
+            value={horaInicio}
             onChange={elegirInicio}
-            diaSugerido={fechaDelEvento}
             horaSugerida={evento.horaInicioEstimada ?? undefined}
           />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="fin">Hora de fin</Label>
-          <SelectorFechaHora
+          <SelectorHora
             id="fin"
-            value={fin}
-            onChange={setFin}
-            diaSugerido={inicio.slice(0, 10) || fechaDelEvento}
-            diaMinimo={inicio.slice(0, 10) || undefined}
+            value={horaFin}
+            onChange={setHoraFin}
+            horaSugerida={horaInicio ? sumarHoras(horaInicio, horasJornada) : undefined}
           />
         </div>
       </div>
       <p className="text-xs text-muted-foreground">
         {jornada === 'media' ? 'Media jornada' : 'Jornada completa'}: el fin se calcula{' '}
         {horasJornada} h después del inicio. Podés cambiarlo.
+        {terminaAlDiaSiguiente && ' Termina al día siguiente.'}
       </p>
       {enConsulta && !horarioCompleto && faltaParaLaSena > 0 && (
         <p className="text-xs text-muted-foreground">
@@ -416,16 +468,18 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
               <span className="text-muted-foreground">
                 {porcentajeAbonado}% abonado · {formateadorMoneda.format(Number(saldo.pagado))}
               </span>
-              {/* HU-21: la seña se ve en cualquier estado, con su importe y si ya se alcanzó. */}
+              {/* HU-21: la seña se ve en cualquier estado, con su importe y si ya se alcanzó. Si una
+                  anulación la dejó sin cubrir (HU-35), no se la muestra como cubierta: el aviso de
+                  abajo lo explica. */}
               <span
                 className={
-                  saldo.senaAlcanzada
+                  saldo.senaAlcanzada && !senaDescubierta
                     ? 'text-estado-confirmado-texto'
                     : 'text-estado-consulta-texto'
                 }
               >
                 Seña {PORCENTAJE_SENA}%: {formateadorMoneda.format(montoSena)}
-                {saldo.senaAlcanzada && ' · cubierta'}
+                {saldo.senaAlcanzada && !senaDescubierta && ' · cubierta'}
               </span>
             </div>
           </div>
@@ -433,8 +487,14 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
           {/* RN-01: la base incluye el IVA solo si el presupuesto se factura, así que la seña del
               20% cambia de monto según eso. Por eso se aclara sobre qué se calculó. */}
           {/* Una vez reservado, la seña ya se cobró aunque después suba el total (RN-09): no se
-              vuelve a pedir el 20%, se cobra el saldo. */}
-          <p className={cn('text-xs text-muted-foreground', (cobrado || cancelado) && 'hidden')}>
+              vuelve a pedir el 20%, se cobra el saldo. Con la seña descubierta por una anulación
+              (HU-35) el texto lo reemplaza el aviso de abajo. */}
+          <p
+            className={cn(
+              'text-xs text-muted-foreground',
+              (cobrado || cancelado || senaDescubierta) && 'hidden',
+            )}
+          >
             {enConsulta
               ? faltaParaLaSena > 0
                 ? `Faltan ${formateadorMoneda.format(faltaParaLaSena)} para la seña y reservar el salón.`
@@ -479,6 +539,28 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
             <p className="text-sm text-emerald-800">Pago registrado.</p>
           )}
 
+          {/* HU-35: sin transición a consulta, el evento sigue confirmado aunque lo pagado ya no
+              cubra la seña (reunión 05/11/2026). */}
+          {senaDescubierta && (
+            <p className="rounded-lg border border-estado-consulta-borde bg-estado-consulta-fondo p-3 text-sm text-estado-consulta-texto">
+              Lo pagado no cubre la seña ({formateadorMoneda.format(montoSena)}) por un pago
+              anulado. El evento sigue confirmado.
+            </p>
+          )}
+          {anularPago.isSuccess && (
+            <p className="text-sm text-emerald-800">
+              Pago anulado.
+              {volvioAConfirmado && ' El evento volvió a confirmado hasta cobrar la diferencia.'}
+            </p>
+          )}
+          {anularPago.isError && (
+            <p className="text-sm text-destructive">
+              {anularPago.error instanceof ErrorApiCliente
+                ? anularPago.error.message
+                : 'No se pudo anular el pago.'}
+            </p>
+          )}
+
           {admitePagos && (
             <Button className="w-full" size="lg" onClick={() => abrirDialogo(true)}>
               <Plus /> {enConsulta ? 'Agendar y registrar pago' : 'Registrar pago'}
@@ -507,11 +589,16 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                     },
                   ].filter((hito): hito is { texto: string; clase: string } => Boolean(hito));
                   const destacado = hitos.length > 0;
+                  // HU-35: el pago anulado sigue en la lista, apagado y tachado, con quién lo anuló
+                  // y cuándo. No suma a lo pagado. Los de un evento cancelado no se anulan.
+                  const anulado = pago.anuladoEn !== null;
+                  const confirmando = pagoAAnular === pago.id;
                   return (
                     <li
                       key={pago.id}
                       className={cn(
                         'py-2',
+                        anulado && 'text-muted-foreground',
                         destacado && 'my-1 rounded-lg border px-2.5',
                         pago.completaPago
                           ? 'border-estado-cobrado-borde bg-estado-cobrado-fondo text-estado-cobrado-texto'
@@ -519,15 +606,68 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                               'border-estado-confirmado-borde bg-estado-confirmado-fondo text-estado-confirmado-texto',
                       )}
                     >
-                      <div className="flex justify-between gap-3">
+                      <div className="flex items-center justify-between gap-3">
                         <span>
                           {fechaLocal(pago.fecha).toLocaleDateString('es-AR')} ·{' '}
                           {pago.medioPago.nombre}
                         </span>
-                        <span className="font-medium tabular-nums">
-                          {formateadorMoneda.format(Number(pago.monto))}
+                        <span className="flex items-center gap-1">
+                          <span
+                            className={cn('font-medium tabular-nums', anulado && 'line-through')}
+                          >
+                            {formateadorMoneda.format(Number(pago.monto))}
+                          </span>
+                          {!anulado && !cancelado && !confirmando && (
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label="Anular pago"
+                              title="Anular pago"
+                              onClick={() => {
+                                anularPago.reset();
+                                setPagoAAnular(pago.id);
+                              }}
+                            >
+                              <Ban />
+                            </Button>
+                          )}
                         </span>
                       </div>
+                      {anulado && (
+                        <p className="mt-0.5 text-xs">
+                          <span className="font-medium">Anulado</span>
+                          {pago.anuladoEn &&
+                            ` el ${new Date(pago.anuladoEn).toLocaleDateString('es-AR')}`}
+                          {pago.anuladoPor && ` por ${pago.anuladoPor.email}`}. No suma a lo pagado.
+                        </p>
+                      )}
+                      {confirmando && (
+                        <div className="mt-2 space-y-2 rounded-lg border border-destructive/40 p-2.5 text-xs">
+                          <p>
+                            ¿Anular este pago? Queda en la cuenta como anulado y deja de sumar a lo
+                            pagado. Para corregirlo o pasarlo a otro evento, después se registra de
+                            nuevo.
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              disabled={anularPago.isPending}
+                              onClick={() => confirmarAnulacion(pago.id)}
+                            >
+                              {anularPago.isPending ? 'Anulando…' : 'Sí, anular'}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={anularPago.isPending}
+                              onClick={() => setPagoAAnular(null)}
+                            >
+                              No
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                       {destacado && (
                         <div className="mt-1 flex flex-wrap gap-1.5">
                           {hitos.map((hito) => (
@@ -663,15 +803,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="space-y-1.5">
                       <Label htmlFor="monto">Monto</Label>
-                      <Input
-                        id="monto"
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        {...register('monto')}
-                      />
+                      <InputImporte id="monto" placeholder="0.00" {...register('monto')} />
                       {errors.monto && (
                         <p className="text-xs text-destructive">{errors.monto.message}</p>
                       )}
@@ -704,7 +836,11 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                     </div>
                     <div className="space-y-1.5">
                       <Label htmlFor="fecha">Fecha</Label>
-                      <Input id="fecha" type="date" {...register('fecha')} />
+                      <SelectorFecha
+                        id="fecha"
+                        value={fechaPago ?? ''}
+                        onChange={(dia) => setValue('fecha', dia, { shouldValidate: true })}
+                      />
                       {errors.fecha && (
                         <p className="text-xs text-destructive">{errors.fecha.message}</p>
                       )}
@@ -730,14 +866,6 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                     </select>
                     {errors.medioPagoId && (
                       <p className="text-xs text-destructive">Elegí un medio de pago.</p>
-                    )}
-                    {/* RN-14: por qué faltan opciones. Sin la aclaración, el que cobra no sabe que
-                        la lista corta la define la casilla de factura del presupuesto. */}
-                    {!saldo.incluyeIva && (
-                      <p className="text-xs text-muted-foreground">
-                        Sin factura solo se puede cobrar en efectivo, por transferencia o a la
-                        habitación.
-                      </p>
                     )}
                   </div>
                   <div className="space-y-1.5">

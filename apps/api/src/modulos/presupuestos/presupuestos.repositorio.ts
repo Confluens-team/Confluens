@@ -153,6 +153,10 @@ export async function crearPresupuestoConLineas(
       fechaEmision: datos.fechaEmision,
       venceEn: datos.venceEn,
       total: datos.total,
+      // HU-53 (reunión con el cliente del 05/11/2026): todo presupuesto nuevo requiere factura y su
+      // base de cobro es el total con IVA (RN-01). El default de la columna sigue en false para no
+      // cambiar el modelo; los presupuestos anteriores conservan su marca.
+      requiereFactura: true,
       lineas: { create: datos.lineas },
     },
     include: { lineas: true, evento: true },
@@ -301,7 +305,11 @@ export async function reemplazarLineas(
 // HU-12 sobre un evento confirmado: con el total nuevo, lo pagado decide si el evento queda
 // Reservado o Cobrado.
 export async function sumarPagos(eventoId: number, tx: Prisma.TransactionClient = prisma) {
-  const resultado = await tx.pago.aggregate({ where: { eventoId }, _sum: { monto: true } });
+  // Sin los pagos anulados (HU-35 del Sprint 4): no suman a lo pagado.
+  const resultado = await tx.pago.aggregate({
+    where: { eventoId, anuladoEn: null },
+    _sum: { monto: true },
+  });
   return resultado._sum.monto;
 }
 
@@ -312,7 +320,8 @@ export async function buscarDistribucionPorNombre(
   nombre: string,
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.distribucion.findFirst({ where: { salonId, nombre } });
+  // Solo las activas: heredar una dada de baja (HU-25 del Sprint 4) sería elegirla de nuevo.
+  return tx.distribucion.findFirst({ where: { salonId, nombre, activo: true } });
 }
 
 // RN-13: el porcentaje de incremento mensual. La fila la crea la migración; si faltara (una base
@@ -332,7 +341,11 @@ export async function buscarEventoParaReutilizar(
   return tx.evento.findUnique({
     where: { id },
     include: {
-      salones: { include: { salon: true }, orderBy: { salonId: 'asc' } },
+      // activo de la distribución: una dada de baja (HU-25 del Sprint 4) no se copia al evento nuevo.
+      salones: {
+        include: { salon: true, distribucion: { select: { activo: true } } },
+        orderBy: { salonId: 'asc' },
+      },
       presupuestos: {
         include: { lineas: { include: { servicio: true }, orderBy: { id: 'asc' } } },
         orderBy: { id: 'asc' },

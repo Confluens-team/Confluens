@@ -1,12 +1,19 @@
-import type { ActualizarLandingSalon } from '@confluens/shared';
+import type {
+  ActualizarLandingSalon,
+  CrearDistribucion,
+  ModificarDistribucion,
+  ModificarSalon,
+} from '@confluens/shared';
 
 import { prisma } from '../../lib/prisma.js';
 
 // Orden por capacidad descendente: así el primer elemento de la lista es siempre "la mayor
 // disponible" (criterio 4 de HU-01), sin tener que recalcular un máximo aparte en el servicio.
+// Las distribuciones van por id: sin un orden explícito, Postgres devuelve al final la última
+// editada (HU-26) y la lista cambiaba de orden en cada guardado.
 export async function obtenerSalonesConDistribuciones() {
   return prisma.salon.findMany({
-    include: { distribuciones: true },
+    include: { distribuciones: { orderBy: { id: 'asc' } } },
     orderBy: { capacidadMaxima: 'desc' },
   });
 }
@@ -27,7 +34,8 @@ export async function obtenerSalonesPublicos() {
       capacidadMaxima: true,
       superficie: true,
       fotoUrl: true,
-      distribuciones: true,
+      // Las dadas de baja (HU-25 del Sprint 4) no se publican: el cliente no las puede pedir.
+      distribuciones: { where: { activo: true }, orderBy: { id: 'asc' } },
     },
     orderBy: { capacidadMaxima: 'desc' },
   });
@@ -69,4 +77,45 @@ export async function actualizarLanding(
     });
     return salon;
   });
+}
+
+// HU-25: el nombre es único dentro del salón sin distinguir mayúsculas. El índice de la base
+// (@@unique([salonId, nombre])) es exacto, así que antes de crear se busca así, como en los medios
+// de pago (HU-19).
+export async function buscarDistribucionPorNombre(salonId: number, nombre: string) {
+  return prisma.distribucion.findFirst({
+    where: { salonId, nombre: { equals: nombre, mode: 'insensitive' } },
+  });
+}
+
+export async function crearDistribucion(salonId: number, datos: CrearDistribucion) {
+  return prisma.distribucion.create({ data: { ...datos, salonId } });
+}
+
+// HU-26 (Sprint 4): modifica los precios. Los presupuestos ya emitidos no cambian: sus líneas
+// guardan el precio congelado (RN-03, RN-10). Devuelve el salón con sus distribuciones, igual que el
+// listado, para que la web no tenga que pedirlo de nuevo.
+export async function modificarSalon(id: number, datos: ModificarSalon) {
+  return prisma.salon.update({
+    where: { id },
+    data: datos,
+    include: { distribuciones: { orderBy: { id: 'asc' } } },
+  });
+}
+
+export async function buscarDistribucionPorId(id: number) {
+  return prisma.distribucion.findUnique({ where: { id } });
+}
+
+// HU-26 (Sprint 4): edición de una distribución. Los eventos la referencian por id, así que el
+// cambio de nombre o de capacidad se ve en los que ya la usan; la capacidad es informativa y no
+// pone tope a la cantidad de personas (dominio.md).
+export async function modificarDistribucion(id: number, datos: ModificarDistribucion) {
+  return prisma.distribucion.update({ where: { id }, data: datos });
+}
+
+// HU-25 (Sprint 4): baja lógica o reactivación. Los eventos que ya la tienen la siguen referenciando
+// por id y no cambian; lo que cambia es que no se ofrece en presupuestos ni agendas nuevas.
+export async function cambiarEstadoDistribucion(id: number, activo: boolean) {
+  return prisma.distribucion.update({ where: { id }, data: { activo } });
 }

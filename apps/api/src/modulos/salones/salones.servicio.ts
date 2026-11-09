@@ -1,9 +1,21 @@
-import type { ActualizarLandingSalon } from '@confluens/shared';
+import type {
+  ActualizarLandingSalon,
+  CrearDistribucion,
+  ModificarDistribucion,
+  ModificarSalon,
+} from '@confluens/shared';
 
 import { borrarFotoReemplazada } from '../../lib/cloudinary.js';
 import { ErrorApi } from '../../lib/errores.js';
+import { comoConflictoSiYaExiste } from '../../lib/prisma-errores.js';
 import {
   actualizarLanding,
+  buscarDistribucionPorId,
+  buscarDistribucionPorNombre,
+  cambiarEstadoDistribucion as cambiarEstadoDistribucionEnBase,
+  crearDistribucion,
+  modificarDistribucion as modificarDistribucionEnBase,
+  modificarSalon,
   obtenerSalonesConDistribuciones,
   obtenerSalonesPublicos,
   obtenerSalonPorId,
@@ -45,4 +57,115 @@ export async function actualizarLandingSalon(
   const actualizado = await repo.actualizarLanding(id, cambios, anterior, usuarioId);
   await fotos.borrarFotoReemplazada(anterior.fotoUrl, cambios.fotoUrl);
   return actualizado;
+}
+
+// HU-25: alta de una distribución en un salón. Las tres reglas dependen de lo que ya está en la
+// base, por eso viven acá y no en el schema: el salón tiene que existir (404), el nombre no puede
+// repetirse en el salón sin distinguir mayúsculas (409) y la capacidad no puede superar la del
+// salón (422, dominio.md). Se corta antes de escribir para que ninguna deje una fila a medias.
+export async function registrarDistribucion(
+  salonId: number,
+  datos: CrearDistribucion,
+  repo = { obtenerSalonPorId, buscarDistribucionPorNombre, crearDistribucion },
+) {
+  const salon = await repo.obtenerSalonPorId(salonId);
+  if (!salon) throw ErrorApi.noEncontrado('No existe el salón indicado');
+
+  const existente = await repo.buscarDistribucionPorNombre(salonId, datos.nombre);
+  if (existente) {
+    throw ErrorApi.conflicto(
+      `${salon.nombre} ya tiene una distribución llamada «${existente.nombre}»`,
+    );
+  }
+
+  if (datos.capacidad > salon.capacidadMaxima) {
+    throw ErrorApi.reglaNegocio(
+      `La capacidad no puede superar la del salón (${salon.capacidadMaxima} personas)`,
+      [{ campo: 'capacidad', mensaje: `Máximo ${salon.capacidadMaxima} personas` }],
+    );
+  }
+
+  return comoConflictoSiYaExiste(
+    () => repo.crearDistribucion(salonId, datos),
+    `${salon.nombre} ya tiene una distribución llamada «${datos.nombre}»`,
+  );
+}
+
+// HU-26 (Sprint 4): solo los precios; las reglas de los datos están en el schema. 404 si el salón
+// no existe, antes de escribir.
+export async function modificarDatosSalon(
+  id: number,
+  datos: ModificarSalon,
+  repo = { obtenerSalonPorId, modificarSalon },
+) {
+  const salon = await repo.obtenerSalonPorId(id);
+  if (!salon) throw ErrorApi.noEncontrado('No existe el salón indicado');
+  return repo.modificarSalon(id, datos);
+}
+
+// HU-26 (Sprint 4): edición de una distribución, con las mismas reglas que el alta (HU-25). La
+// distribución tiene que ser del salón de la URL (404 si no), el nombre no puede ser el de otra
+// distribución del salón (409; el suyo propio sí, para poder cambiar solo la capacidad o las
+// mayúsculas) y la capacidad no puede superar la del salón (422).
+export async function modificarDistribucion(
+  salonId: number,
+  distribucionId: number,
+  datos: ModificarDistribucion,
+  repo = {
+    obtenerSalonPorId,
+    buscarDistribucionPorId,
+    buscarDistribucionPorNombre,
+    modificarDistribucion: modificarDistribucionEnBase,
+  },
+) {
+  const salon = await repo.obtenerSalonPorId(salonId);
+  if (!salon) throw ErrorApi.noEncontrado('No existe el salón indicado');
+
+  const distribucion = await repo.buscarDistribucionPorId(distribucionId);
+  if (!distribucion || distribucion.salonId !== salonId) {
+    throw ErrorApi.noEncontrado(`${salon.nombre} no tiene la distribución indicada`);
+  }
+
+  const existente = await repo.buscarDistribucionPorNombre(salonId, datos.nombre);
+  if (existente && existente.id !== distribucionId) {
+    throw ErrorApi.conflicto(
+      `${salon.nombre} ya tiene una distribución llamada «${existente.nombre}»`,
+    );
+  }
+
+  if (datos.capacidad > salon.capacidadMaxima) {
+    throw ErrorApi.reglaNegocio(
+      `La capacidad no puede superar la del salón (${salon.capacidadMaxima} personas)`,
+      [{ campo: 'capacidad', mensaje: `Máximo ${salon.capacidadMaxima} personas` }],
+    );
+  }
+
+  return comoConflictoSiYaExiste(
+    () => repo.modificarDistribucion(distribucionId, datos),
+    `${salon.nombre} ya tiene una distribución llamada «${datos.nombre}»`,
+  );
+}
+
+// HU-25 (Sprint 4): baja lógica de una distribución, o su reactivación. Se da de baja aunque la use
+// un evento, y ese evento no cambia (PO, 06/11/2026). Una dada de baja sigue ocupando su nombre en el
+// salón, como un medio de pago dado de baja. 404 si la distribución no es del salón de la URL.
+export async function cambiarEstadoDistribucion(
+  salonId: number,
+  distribucionId: number,
+  activo: boolean,
+  repo = {
+    obtenerSalonPorId,
+    buscarDistribucionPorId,
+    cambiarEstadoDistribucion: cambiarEstadoDistribucionEnBase,
+  },
+) {
+  const salon = await repo.obtenerSalonPorId(salonId);
+  if (!salon) throw ErrorApi.noEncontrado('No existe el salón indicado');
+
+  const distribucion = await repo.buscarDistribucionPorId(distribucionId);
+  if (!distribucion || distribucion.salonId !== salonId) {
+    throw ErrorApi.noEncontrado(`${salon.nombre} no tiene la distribución indicada`);
+  }
+
+  return repo.cambiarEstadoDistribucion(distribucionId, activo);
 }
