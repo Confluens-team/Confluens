@@ -85,6 +85,31 @@ interface SalonEditable {
   precio: string;
 }
 
+// Los salones de un presupuesto, cada uno con su precio editable (RN-03), en el orden de las líneas.
+function salonesEditables(consulta: ConsultaDetallada): SalonEditable[] {
+  return consulta.lineas
+    .filter((linea) => linea.tipo === 'salon' && linea.salonId !== null)
+    .map((linea) => ({ salonId: linea.salonId!, precio: linea.precioUnitario }));
+}
+
+// Las líneas de servicios y adicionales de un presupuesto, listas para editar. La clave sale del id
+// de la línea guardada.
+function lineasEditables(consulta: ConsultaDetallada): LineaEditable[] {
+  return consulta.lineas
+    .filter((linea) => linea.tipo !== 'salon')
+    .map((linea) => ({
+      clave: `linea-${linea.id}`,
+      servicioId: linea.servicioId,
+      descripcion: linea.descripcion,
+      cantidad: String(linea.cantidad),
+      hora: linea.horaEstimada ?? '',
+      precio: linea.aCotizar ? '' : (linea.precioBase ?? linea.precioUnitario),
+      tercerizado: linea.tercerizado,
+      modalidad: linea.modalidad,
+      admiteModalidad: linea.admiteModalidad,
+    }));
+}
+
 const OTRO = 'otro';
 
 const fechaCorta = (fecha: Date) =>
@@ -243,10 +268,14 @@ function Formulario({
     if (guardada) refAviso.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   }, [guardada]);
 
+  // El presupuesto tal como está guardado: contra él se comparan la fecha y los precios (HU-54 del
+  // backlog). Se actualiza al guardar, porque la API recrea las líneas con ids nuevos y las claves
+  // del formulario tienen que seguir apuntando a ellas.
+  const [guardado, setGuardado] = useState(consulta);
   // Precio congelado de cada salón que ya estaba en el presupuesto: vuelve a usarse si se lo
   // destilda y se lo vuelve a tildar sin cambiar la jornada.
   const preciosOriginales = new Map(
-    consulta.lineas
+    guardado.lineas
       .filter((linea) => linea.tipo === 'salon' && linea.salonId !== null)
       .map((linea) => [linea.salonId!, linea.precioUnitario]),
   );
@@ -254,11 +283,7 @@ function Formulario({
   // Los salones del evento, cada uno con su precio editable (RN-03), en el orden de las líneas.
   // Vacío: consulta social todavía sin salón (ADR 0008). Un evento puede usar varios a la vez,
   // incluso los cinco (ADR 0011).
-  const [salonesSel, setSalonesSel] = useState<SalonEditable[]>(
-    consulta.lineas
-      .filter((linea) => linea.tipo === 'salon' && linea.salonId !== null)
-      .map((linea) => ({ salonId: linea.salonId!, precio: linea.precioUnitario })),
-  );
+  const [salonesSel, setSalonesSel] = useState<SalonEditable[]>(() => salonesEditables(consulta));
   const [tipo, setTipo] = useState<TipoEvento>(consulta.evento.tipo);
   const [tipoSocial, setTipoSocial] = useState<TipoEventoSocial | ''>(
     consulta.evento.tipoSocial ?? '',
@@ -267,25 +292,11 @@ function Formulario({
   const [horaEstimada, setHoraEstimada] = useState(consulta.evento.horaInicioEstimada ?? '');
   const [jornada, setJornada] = useState<TipoJornada>(consulta.tipoJornada);
   const [personas, setPersonas] = useState(String(consulta.evento.cantidadPersonas));
-  const [lineas, setLineas] = useState<LineaEditable[]>(
-    consulta.lineas
-      .filter((linea) => linea.tipo !== 'salon')
-      .map((linea) => ({
-        clave: `linea-${linea.id}`,
-        servicioId: linea.servicioId,
-        descripcion: linea.descripcion,
-        cantidad: String(linea.cantidad),
-        hora: linea.horaEstimada ?? '',
-        precio: linea.aCotizar ? '' : (linea.precioBase ?? linea.precioUnitario),
-        tercerizado: linea.tercerizado,
-        modalidad: linea.modalidad,
-        admiteModalidad: linea.admiteModalidad,
-      })),
-  );
+  const [lineas, setLineas] = useState<LineaEditable[]>(() => lineasEditables(consulta));
   // El precio guardado de cada línea que ya estaba, para volver a él si se vuelve a la fecha
   // original y para mostrar qué cambió (HU-54 del backlog). Las que estaban a cotizar no cuentan.
   const preciosOriginalesLinea = new Map(
-    consulta.lineas
+    guardado.lineas
       .filter((linea) => linea.tipo !== 'salon' && !linea.aCotizar)
       .map((linea) => [`linea-${linea.id}`, linea.precioBase ?? linea.precioUnitario]),
   );
@@ -331,7 +342,7 @@ function Formulario({
   // original; si no, toma el vigente. Después se puede ajustar a mano (RN-03).
   function precioInicial(salonId: number, conJornada: TipoJornada): string {
     const congelado = preciosOriginales.get(salonId);
-    if (congelado && conJornada === consulta.tipoJornada && !recalculado) return congelado;
+    if (congelado && conJornada === guardado.tipoJornada && !recalculado) return congelado;
     const salon = salonDe(salonId);
     return salon ? proyectar(precioDeSalon(salon, conJornada)) : '0.00';
   }
@@ -388,8 +399,8 @@ function Formulario({
       // Un Expirado que ya se recalculó con los vigentes no vuelve a los precios vencidos.
       originalesSalon: recalculado ? new Map() : preciosOriginales,
       originalesLinea: recalculado ? new Map() : preciosOriginalesLinea,
-      fechaOriginal: consulta.evento.fecha,
-      jornadaOriginalCoincide: jornada === consulta.tipoJornada,
+      fechaOriginal: guardado.evento.fecha,
+      jornadaOriginalCoincide: jornada === guardado.tipoJornada,
       precioSalonCatalogo: (salonId) => {
         const salon = salonDe(salonId);
         return salon ? precioDeSalon(salon, jornada) : null;
@@ -531,7 +542,7 @@ function Formulario({
   );
   // Lo que cambió de precio con la fecha nueva, contra lo guardado. Se avisa en la pantalla, se
   // marca en cada línea y se pide confirmar al guardar.
-  const fechaCambiada = !!fecha && fecha !== consulta.evento.fecha;
+  const fechaCambiada = !!fecha && fecha !== guardado.evento.fecha;
   const cambiosPorFecha = fechaCambiada
     ? cambiosDePrecio(
         salonesSel,
@@ -542,7 +553,7 @@ function Formulario({
       )
     : [];
   const precioAnterior = new Map(cambiosPorFecha.map((c) => [c.clave, c.antes]));
-  const totalGuardado = desglosarIva(consulta.total).total;
+  const totalGuardado = desglosarIva(guardado.total).total;
   const mesesHastaFechaNueva = fecha ? mesesHastaEvento(hoyEnZonaEventos(), fecha) : 0;
   const claseCambiado = 'bg-amber-50 ring-2 ring-amber-400';
 
@@ -602,6 +613,15 @@ function Formulario({
       },
       {
         onSuccess: (resultado) => {
+          // El formulario sigue abierto: pasa a comparar contra lo recién guardado, con las claves
+          // de las líneas nuevas. Si no, un segundo cambio de fecha no encontraba los precios
+          // guardados de los servicios.
+          setGuardado(resultado);
+          setFecha(resultado.evento.fecha);
+          setJornada(resultado.tipoJornada);
+          setSalonesSel(salonesEditables(resultado));
+          setLineas(lineasEditables(resultado));
+          setRecalculado(false);
           setGuardadaConPreciosNuevos(conPreciosNuevos);
           setGuardada(resultado);
         },
@@ -917,7 +937,7 @@ function Formulario({
                     Precios recalculados por el cambio de fecha
                   </p>
                   <p className="mt-1">
-                    El evento pasa del {formatearFechaNumerica(consulta.evento.fecha)} al{' '}
+                    El evento pasa del {formatearFechaNumerica(guardado.evento.fecha)} al{' '}
                     {formatearFechaNumerica(fecha)}. El salón y los servicios propios se proyectaron
                     con el incremento del {Number(porcentajeMensual)}% mensual
                     {mesesHastaFechaNueva > 0 &&
@@ -931,9 +951,9 @@ function Formulario({
                   size="sm"
                   variant="outline"
                   className="bg-card"
-                  onClick={() => cambiarFecha(consulta.evento.fecha)}
+                  onClick={() => cambiarFecha(guardado.evento.fecha)}
                 >
-                  Volver al {formatearFechaNumerica(consulta.evento.fecha)}
+                  Volver al {formatearFechaNumerica(guardado.evento.fecha)}
                 </Button>
               </div>
               <ResumenCambios cambios={cambiosPorFecha} />
@@ -1345,7 +1365,7 @@ function Formulario({
               <RefreshCw className="size-5 text-amber-700" /> Cambiaron los precios
             </Dialog.Title>
             <Dialog.Description className="mt-2 text-sm text-muted-foreground">
-              Al pasar el evento del {formatearFechaNumerica(consulta.evento.fecha)} al{' '}
+              Al pasar el evento del {formatearFechaNumerica(guardado.evento.fecha)} al{' '}
               {formatearFechaNumerica(fecha)} se recalcularon {cambiosPorFecha.length}{' '}
               {cambiosPorFecha.length === 1 ? 'precio' : 'precios'} con el incremento mensual. El
               presupuesto se va a guardar con estos precios
