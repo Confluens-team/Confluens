@@ -83,9 +83,17 @@ Si el recálculo cambia el total de un evento con pagos, valen las reglas de sie
 no cubre el total nuevo, un `Cobrado` vuelve a `Reservado` (como al modificar, HU-12 del Sprint 2);
 si lo deja por debajo de lo pagado, vale «Saldo».
 
-**Reunión 05/11/2026 → HU-54.** Hasta entonces, el detalle tiene el botón Recalcular: actualiza el
-presupuesto con los precios vigentes y reinicia la vigencia, también en uno `Confirmado` (HU-27 del
-Sprint 4).
+**El cambio de fecha ya está construido** (HU-54 del backlog, primera parte; 09/11/2026). En el
+detalle de la consulta, al elegir otra fecha, el salón y los servicios propios del catálogo toman
+en el momento el precio vigente proyectado a la fecha nueva; los tercerizados y los adicionales
+escritos a mano no cambian, y un ajuste a mano de una línea recalculada se reemplaza. Volver a la
+fecha original recupera los precios guardados. La pantalla marca cada precio que cambió con el
+anterior, muestra el total antes y después, y al guardar pide confirmar los precios nuevos. Lo
+calcula la pantalla y la API guarda los precios que recibe, igual que con el botón Recalcular.
+
+**Reunión 05/11/2026 → HU-54.** Falta el recálculo por cambio de porcentaje. Hasta entonces sigue
+el botón Recalcular de un `Expirado`: actualiza el presupuesto con los precios vigentes y reinicia
+la vigencia.
 
 Modificar un presupuesto `Expirado` también edita el mismo presupuesto, pero las líneas que no se
 tocan conservan su precio; el evento sigue `EnConsulta` (decisiones del PO, 05/10/2026). **Cada
