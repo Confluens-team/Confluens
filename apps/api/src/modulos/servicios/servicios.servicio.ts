@@ -2,6 +2,7 @@ import type { CrearServicio, ModificarServicio } from '@confluens/shared';
 
 import { borrarFotoReemplazada } from '../../lib/cloudinary.js';
 import { ErrorApi } from '../../lib/errores.js';
+import { comoConflictoSiYaExiste } from '../../lib/prisma-errores.js';
 import * as serviciosRepositorioReal from './servicios.repositorio.js';
 import type { ServiciosRepositorio } from './servicios.repositorio.js';
 
@@ -38,7 +39,10 @@ export async function crearServicio(
     throw ErrorApi.conflicto(`Ya existe un servicio con el nombre "${existente.nombre}"`);
   }
 
-  return repo.crear(datos);
+  return comoConflictoSiYaExiste(
+    () => repo.crear(datos),
+    `Ya existe un servicio con el nombre "${datos.nombre}"`,
+  );
 }
 
 // HU-08: asigna (o quita, con null) la foto del servicio en la landing. Igual que en salones, se
@@ -76,5 +80,8 @@ export async function modificarServicio(
     throw ErrorApi.conflicto(`Ya existe un servicio con el nombre "${conEseNombre.nombre}"`);
   }
 
-  return repo.modificar(id, datos);
+  return comoConflictoSiYaExiste(
+    () => repo.modificar(id, datos),
+    `Ya existe un servicio con el nombre "${datos.nombre}"`,
+  );
 }

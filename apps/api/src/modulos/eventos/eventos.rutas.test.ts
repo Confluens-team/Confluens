@@ -420,6 +420,109 @@ describe('POST /api/eventos/:id/agendar', () => {
     expect(crearEnTransaccionMock).not.toHaveBeenCalled();
   });
 
+  it('responde 422 si fin es exactamente igual a inicio: un evento de cero minutos no existe', async () => {
+    const respuesta = await agendar(cuerpo({ inicio: inicioValido, fin: inicioValido }));
+
+    expect(respuesta.status).toBe(422);
+    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+
+  it('acepta un evento de un minuto: es el mínimo que cumple fin > inicio', async () => {
+    const respuesta = await agendar(
+      cuerpo({ inicio: '2026-11-15T20:00:00.000Z', fin: '2026-11-15T20:01:00.000Z' }),
+    );
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  // El borde exacto de la capacidad: la gente que entra justo no pide confirmación, una más sí.
+  it('con tantas personas como la capacidad de la distribución agenda sin pedir confirmar', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ cantidadPersonas: distribucionFixture.capacidad }),
+    );
+
+    const respuesta = await agendar(cuerpo());
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('con una persona más que la capacidad pide confirmar el exceso', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ cantidadPersonas: distribucionFixture.capacidad + 1 }),
+    );
+
+    const respuesta = await agendar(cuerpo());
+
+    expect(respuesta.status).toBe(422);
+    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+
+  it('un salón repetido en distribuciones responde 400: no puede tener dos', async () => {
+    const respuesta = await agendar(
+      cuerpo({
+        distribuciones: [
+          { salonId: salonFixture.id, distribucionId: distribucionFixture.id },
+          { salonId: salonFixture.id, distribucionId: banquetePucara.id },
+        ],
+      }),
+    );
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['sin distribuciones', { distribuciones: [] }],
+    ['con distribuciones nulas', { distribuciones: null }],
+    [
+      'con el id de la distribución en cero',
+      { distribuciones: [{ salonId: 5, distribucionId: 0 }] },
+    ],
+    [
+      'con el id de la distribución decimal',
+      { distribuciones: [{ salonId: 5, distribucionId: 1.5 }] },
+    ],
+    [
+      'con el id de la distribución como texto',
+      { distribuciones: [{ salonId: 5, distribucionId: '3' }] },
+    ],
+    ['con un inicio sin zona horaria', { inicio: '2026-11-15T20:00:00' }],
+    ['con un inicio que es solo fecha', { inicio: '2026-11-15' }],
+    ['con un inicio numérico', { inicio: 1_700_000_000_000 }],
+    ['con un fin nulo', { fin: null }],
+    ['con un fin que no es fecha', { fin: 'mañana' }],
+    ['con una hora imposible', { inicio: '2026-11-15T25:00:00.000Z' }],
+    ['con confirmarCapacidadExcedida como texto', { confirmarCapacidadExcedida: 'si' }],
+    ['con modalidadSalonRestaurante numérica', { modalidadSalonRestaurante: 1 }],
+  ])('%s responde 400 VALIDATION_ERROR y no escribe', async (_caso, extra) => {
+    const respuesta = await agendar(cuerpo(extra));
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(crearEnTransaccionMock).not.toHaveBeenCalled();
+    expect(agendarConDistribucionesMock).not.toHaveBeenCalled();
+  });
+
+  it('un body vacío responde 400 con el detalle de distribuciones, inicio y fin', async () => {
+    const respuesta = await agendar({});
+
+    expect(respuesta.status).toBe(400);
+    const campos = respuesta.body.error.details.map((detalle: { campo: string }) => detalle.campo);
+    expect(campos).toEqual(expect.arrayContaining(['distribuciones', 'inicio', 'fin']));
+  });
+
+  it('con un id de evento que no es entero positivo responde 400 sin consultar', async () => {
+    for (const id of ['abc', '0', '-1', '1.5']) {
+      const respuesta = await request(app)
+        .post(`/api/eventos/${id}/agendar`)
+        .set('Cookie', [cookiePersonal])
+        .send(cuerpo());
+      expect(respuesta.status, id).toBe(400);
+    }
+    expect(buscarDetalladoMock).not.toHaveBeenCalled();
+  });
+
   // Agendar no cambia el día del evento: un horario en otro día dejaba `fecha` y la reserva del
   // salón apuntando a días distintos.
   it('responde 422 si el horario empieza otro día que el del evento, sin escribir nada', async () => {
@@ -931,6 +1034,89 @@ describe('PATCH /api/eventos/:id/observaciones-comanda', () => {
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(guardarObservacionesComandaMock).not.toHaveBeenCalled();
+  });
+
+  const guardarNotas = (cuerpo: object, cookie = cookiePersonal) =>
+    request(app)
+      .patch('/api/eventos/20/observaciones-comanda')
+      .set('Cookie', [cookie])
+      .send(cuerpo);
+
+  it('acepta exactamente 2000 caracteres', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture());
+
+    const respuesta = await guardarNotas({ observacionesComanda: 'x'.repeat(2000) });
+
+    expect(respuesta.status).toBe(200);
+    expect(guardarObservacionesComandaMock).toHaveBeenCalledWith(20, 'x'.repeat(2000));
+  });
+
+  it('guarda saltos de línea, tildes, ñ y emojis: son menús especiales y alergias reales', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture());
+    const texto = 'Mesa 3: sin gluten (celíaca)\nMesa 5: menú vegano ñoquis 🌱\nAlergia a maníes';
+
+    const respuesta = await guardarNotas({ observacionesComanda: texto });
+
+    expect(respuesta.status).toBe(200);
+    expect(guardarObservacionesComandaMock).toHaveBeenCalledWith(20, texto);
+  });
+
+  // La comanda se imprime y el texto lo escribe el personal: el marcado se corta en la entrada.
+  it.each(['<script>alert(1)</script>', '2 menús <b>veganos</b>', 'sin sal &amp; sin azúcar'])(
+    'rechaza una nota con HTML (%s) y dice qué campo corregir',
+    async (observacionesComanda) => {
+      buscarDetalladoMock.mockResolvedValue(eventoFixture());
+
+      const respuesta = await guardarNotas({ observacionesComanda });
+
+      expect(respuesta.status).toBe(400);
+      expect(respuesta.body.error.details).toEqual([
+        { campo: 'observacionesComanda', mensaje: 'No se admite HTML en este campo' },
+      ]);
+      expect(guardarObservacionesComandaMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['sin el campo', {}],
+    ['nula', { observacionesComanda: null }],
+    ['numérica', { observacionesComanda: 123 }],
+    ['una lista', { observacionesComanda: ['sin sal'] }],
+  ])('una nota %s responde 400 y no escribe', async (_caso, cuerpo) => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture());
+
+    const respuesta = await guardarNotas(cuerpo);
+
+    expect(respuesta.status).toBe(400);
+    expect(guardarObservacionesComandaMock).not.toHaveBeenCalled();
+  });
+
+  it.each(['EnConsulta', 'Reservado', 'Cobrado'] as const)(
+    'se puede anotar en un evento %s',
+    async (estado) => {
+      buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado }));
+
+      const respuesta = await guardarNotas({ observacionesComanda: notas });
+
+      expect(respuesta.status).toBe(200);
+    },
+  );
+
+  it('sin sesión responde 401 y con sesión de Cliente 403, sin escribir', async () => {
+    const cookieCliente = `${NOMBRE_COOKIE_SESION}=${firmarToken({
+      id: 7,
+      email: 'ana@empresa.com',
+      rol: 'CLIENTE',
+    })}`;
+
+    const sinSesion = await request(app)
+      .patch('/api/eventos/20/observaciones-comanda')
+      .send({ observacionesComanda: notas });
+    const comoCliente = await guardarNotas({ observacionesComanda: notas }, cookieCliente);
+
+    expect(sinSesion.status).toBe(401);
+    expect(comoCliente.status).toBe(403);
     expect(guardarObservacionesComandaMock).not.toHaveBeenCalled();
   });
 });

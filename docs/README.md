@@ -5,8 +5,10 @@ Se deriva de la documentación aprobada por la cátedra (carpeta de Drive "Docum
 y de la máquina de estados corregida.
 Última actualización de reglas: reunión con el cliente del **05/11/2026**, validada por el PO el
 06/11/2026 (roles y Personal, factura, saldo, recálculo automático, vigencia, tramos del
-incremento, eventos de varios días, servicios propios). Antes, la entrevista con el Responsable de
-Eventos del 24/09/2026. Si otro documento contradice a `producto/dominio.md`, vale `dominio.md`.
+incremento, eventos de varios días, servicios propios). Después, las decisiones del PO sobre los
+casos límite del Sprint 4 (07 y 08/11/2026: largo de la contraseña, tope y fecha del pago, eventos
+que cruzan la medianoche). Antes, la entrevista con el Responsable de Eventos del 24/09/2026. Si
+otro documento contradice a `producto/dominio.md`, vale `dominio.md`.
 Las reglas decididas que el código todavía no cumple llevan la marca «Reunión 05/11/2026 → HU-xx».
 
 ## Protocolo de carga

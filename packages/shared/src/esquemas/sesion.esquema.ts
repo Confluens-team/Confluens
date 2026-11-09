@@ -7,10 +7,12 @@ import { esquemaRol, esquemaRolPersonal } from './usuario.esquema.js';
 // Email de una cuenta: sin espacios y en minúsculas antes de validar el formato, en el registro y
 // en el login por igual. Así Juan@Mail.com y juan@mail.com son la misma cuenta (C3 de HU-48) y el
 // registro encuentra la ficha de Cliente que el personal cargó con ese correo (C7).
+// El tope de 254 es el del estándar de correo; es el mismo que ya usa el cotizador (PO, 08/11/2026).
 const esquemaEmailDeCuenta = z
   .string()
   .trim()
   .toLowerCase()
+  .max(254, { error: 'El email admite hasta 254 caracteres' })
   .pipe(z.email({ error: 'Ingresá un email válido (por ejemplo: nombre@empresa.com)' }));
 
 // Nombre o apellido de la persona que se registra. Letras (con tildes y ñ), el espacio de los
@@ -35,12 +37,75 @@ const esquemaNombreDePersona = (faltante: string) =>
       error: 'Usá solo letras, sin números ni símbolos',
     });
 
-// Contraseña nueva: en el registro, al restablecerla y la inicial que el GG o el ADM le cargan a un
-// usuario del personal (HU-30 del Sprint 4). La política es solo este mínimo de 6 caracteres, sin
-// otros requisitos (PO, 06/11/2026).
+// Contraseña nueva: en el registro, al restablecerla, al cambiarla y la inicial que el GG o el ADM le
+// cargan a un usuario del personal (HU-30 del Sprint 4). La política (PO, 08/11/2026) prioriza el
+// largo y frena lo obvio, sin exigir mayúsculas ni símbolos, que empujan a `Contraseña1!`:
+//   - al menos 8 caracteres (antes eran 6, PO 06/11/2026);
+//   - no puede ser solo espacios ni un único carácter repetido (`aaaaaaaa`);
+//   - no puede estar en la lista de las más comunes de abajo;
+//   - hasta 72 bytes: bcrypt lee solo los primeros 72, y sin el tope dos contraseñas largas iguales
+//     hasta ahí quedarían con el mismo hash (PO, 07/11/2026). Se mide en bytes y no en caracteres
+//     porque una tilde o un emoji ocupan más de uno.
+// Rige solo al crear o cambiar una contraseña; el login no la revisa, para que entren las cuentas
+// que ya tienen una más corta.
+const MINIMO_CONTRASENA = 8;
+const MAXIMO_BYTES_CONTRASENA = 72;
+
+// Se compara sin tildes ni mayúsculas, así `Contraseña` y `CONTRASENA` caen en la misma entrada.
+const CONTRASENAS_COMUNES = new Set([
+  '12345678',
+  '123456789',
+  '1234567890',
+  '12345678910',
+  '87654321',
+  '11111111',
+  '00000000',
+  '12341234',
+  '123123123',
+  '1q2w3e4r',
+  'qwertyui',
+  'qwertyuiop',
+  'qwerty123',
+  'abcd1234',
+  'abc12345',
+  'password',
+  'password1',
+  'password123',
+  'contrasena',
+  'contrasena1',
+  'contrasena123',
+  'contrasenia',
+  'admin123',
+  'administrador',
+  'bienvenido',
+  'bienvenida',
+  'argentina',
+  'confluens',
+  'confluens1',
+  'confluens123',
+  'losabuelos',
+]);
+
+const comoSeCompara = (contrasena: string) =>
+  contrasena.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+
 const esquemaContrasenaNueva = z
   .string()
-  .min(6, { error: 'La contraseña debe tener al menos 6 caracteres' });
+  .min(MINIMO_CONTRASENA, {
+    error: `La contraseña debe tener al menos ${MINIMO_CONTRASENA} caracteres`,
+  })
+  .refine((valor) => valor.trim().length > 0, {
+    error: 'La contraseña no puede ser solo espacios',
+  })
+  .refine((valor) => new Set(valor).size > 1, {
+    error: 'La contraseña no puede ser un único carácter repetido',
+  })
+  .refine((valor) => !CONTRASENAS_COMUNES.has(comoSeCompara(valor)), {
+    error: 'Esa contraseña es demasiado común. Elegí otra',
+  })
+  .refine((valor) => new TextEncoder().encode(valor).length <= MAXIMO_BYTES_CONTRASENA, {
+    error: `La contraseña es demasiado larga: usá hasta ${MAXIMO_BYTES_CONTRASENA} caracteres (las tildes y los símbolos cuentan doble)`,
+  });
 
 // Credenciales que viajan en el body de POST /auth/login (HU-27).
 // Sin política de longitud/complejidad de contraseña acá: esa regla es de alta de

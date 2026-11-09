@@ -59,9 +59,19 @@ export type Pago = z.infer<typeof esquemaPago>;
 
 // Contrato de POST /eventos/:id/pagos (HU-14). El monto viaja como string para no perder precisión
 // (Decimal(12,2) de Prisma); esquemaImporte ya acepta "0", así que hace falta exigir que sea > 0.
+export const MONTO_MAXIMO_PAGO = 500_000_000;
+
 export const esquemaCrearPago = z.object({
+  // Sin tope de fecha: se puede cargar un pago de cualquier día (PO, 07/11/2026).
   fecha: esquemaFecha,
-  monto: esquemaImporte.refine((valor) => Number(valor) > 0, 'El monto debe ser mayor a cero'),
+  // Tope de 500 millones por pago, para atajar un cero de más al tipear. Era de 100 millones; el PO
+  // lo subió a 500 «por las dudas» (08/11/2026).
+  monto: esquemaImporte
+    .refine((valor) => Number(valor) > 0, 'El monto debe ser mayor a cero')
+    .refine(
+      (valor) => Number(valor) <= MONTO_MAXIMO_PAGO,
+      'El monto no puede superar $500.000.000',
+    ),
   medioPagoId: esquemaId,
   observacion: z.string().trim().min(1).max(500).optional(),
 });

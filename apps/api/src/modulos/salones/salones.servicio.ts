@@ -7,6 +7,7 @@ import type {
 
 import { borrarFotoReemplazada } from '../../lib/cloudinary.js';
 import { ErrorApi } from '../../lib/errores.js';
+import { comoConflictoSiYaExiste } from '../../lib/prisma-errores.js';
 import {
   actualizarLanding,
   buscarDistribucionPorId,
@@ -84,7 +85,10 @@ export async function registrarDistribucion(
     );
   }
 
-  return repo.crearDistribucion(salonId, datos);
+  return comoConflictoSiYaExiste(
+    () => repo.crearDistribucion(salonId, datos),
+    `${salon.nombre} ya tiene una distribución llamada «${datos.nombre}»`,
+  );
 }
 
 // HU-26 (Sprint 4): solo los precios; las reglas de los datos están en el schema. 404 si el salón
@@ -136,7 +140,10 @@ export async function modificarDistribucion(
     );
   }
 
-  return repo.modificarDistribucion(distribucionId, datos);
+  return comoConflictoSiYaExiste(
+    () => repo.modificarDistribucion(distribucionId, datos),
+    `${salon.nombre} ya tiene una distribución llamada «${datos.nombre}»`,
+  );
 }
 
 // HU-25 (Sprint 4): baja lógica de una distribución, o su reactivación. Se da de baja aunque la use
