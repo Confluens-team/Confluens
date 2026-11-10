@@ -75,9 +75,14 @@ export async function actualizarContrasena(id: number, hashContrasena: string): 
 }
 
 // Cierre de sesión (M2): subir la versión invalida todos los tokens emitidos hasta ahora para ese
-// usuario, en todos sus dispositivos. updateMany para no fallar si el usuario ya no existe.
-export async function invalidarSesiones(id: number): Promise<void> {
-  await prisma.usuario.updateMany({ where: { id }, data: { versionSesion: { increment: 1 } } });
+// usuario, en todos sus dispositivos. Solo si `version` es la vigente: un token que ya se invalidó
+// (otro logout, contraseña restablecida) no le puede cerrar la sesión a quien la abrió después.
+// updateMany para no fallar si el usuario ya no existe o su versión ya cambió.
+export async function invalidarSesiones(id: number, version: number): Promise<void> {
+  await prisma.usuario.updateMany({
+    where: { id, versionSesion: version },
+    data: { versionSesion: { increment: 1 } },
+  });
 }
 
 export async function buscarClientePorUsuarioId(usuarioId: number) {
