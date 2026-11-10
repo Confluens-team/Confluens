@@ -2,8 +2,10 @@
 // Fuente única: docs/negocio/tarifario-2026.md. Todos los precios en pesos, sin IVA (RN-05).
 // Es idempotente: se puede correr varias veces (upsert por nombre/email).
 // Uso: npm run prisma:seed -w @confluens/api
+// Los usuarios de prueba solo se cargan en una base local (ver cargaUsuariosDePrueba más abajo).
 import { MEDIOS_PAGO_INICIALES } from '@confluens/shared';
 
+import { esBaseLocal } from '../src/lib/base-local.js';
 import { hashearContrasena } from '../src/lib/contrasena.js';
 import { prisma } from '../src/lib/prisma.js';
 
@@ -252,9 +254,17 @@ interface SeedUsuario {
 
 // Un usuario de prueba por cada rol activo en Sprint 1 (CLIENTE se activa recién
 // en Sprint 2, ver modelo-datos.md). Contraseña única y a propósito débil: es SOLO
-// para desarrollo/QA local, nunca se usa en producción — no hay ningún flujo que
-// corra este seed contra la base de Render/Neon de producción.
+// para desarrollo/QA local, nunca se usa en producción.
 const CONTRASENA_DESARROLLO = 'confluens2026';
+
+// Esa contraseña está escrita acá, en el repo: cuatro cuentas del personal con ella —una de
+// Administrador del Sistema— en una base alcanzable desde internet son una puerta abierta. Antes lo
+// único que lo evitaba era no correr el seed contra Neon, y el catálogo de Neon se carga con este
+// mismo seed. Ahora los usuarios se cargan solo si la base es local (la de Docker). Contra cualquier
+// otra, el seed carga el catálogo y nada más, y al personal lo da de alta `npm run usuario:crear`.
+// SEED_USUARIOS_DE_PRUEBA=1 los fuerza a propósito, para una base de QA que no sea la de producción.
+const cargaUsuariosDePrueba =
+  esBaseLocal(process.env['DATABASE_URL']) || process.env['SEED_USUARIOS_DE_PRUEBA'] === '1';
 
 const USUARIOS: SeedUsuario[] = [
   { email: 're@confluens.test', rol: 'RESPONSABLE_EVENTOS' },
@@ -347,11 +357,15 @@ async function cargarConfiguracionPrecios(): Promise<void> {
 try {
   await cargarSalones();
   await cargarServicios();
-  await cargarUsuarios();
+  if (cargaUsuariosDePrueba) await cargarUsuarios();
   await cargarMediosPago();
   await cargarConfiguracionPrecios();
+  const catalogo = `${SALONES.length} salones, ${SERVICIOS.length} servicios y ${MEDIOS_PAGO_INICIALES.length} medios de pago`;
   console.log(
-    `Seed completo: ${SALONES.length} salones, ${SERVICIOS.length} servicios, ${MEDIOS_PAGO_INICIALES.length} medios de pago y ${USUARIOS.length} usuarios de prueba (contraseña: "${CONTRASENA_DESARROLLO}").`,
+    cargaUsuariosDePrueba
+      ? `Seed completo: ${catalogo}, más ${USUARIOS.length} usuarios de prueba (contraseña: "${CONTRASENA_DESARROLLO}").`
+      : `Seed completo: ${catalogo}. La base no es local: no se cargaron los usuarios de prueba. ` +
+          'Para dar de alta al personal: npm run usuario:crear -w @confluens/api',
   );
 } finally {
   await prisma.$disconnect();
