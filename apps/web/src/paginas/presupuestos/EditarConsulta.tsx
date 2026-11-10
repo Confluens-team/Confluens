@@ -34,7 +34,7 @@ import {
 import { Dialog } from 'radix-ui';
 import { useEffect, useRef, useState } from 'react';
 
-import { SelectorFecha } from '@/components/SelectorFechaHora';
+import { SelectorFecha, SelectorHora } from '@/components/SelectorFechaHora';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { IconoEstado } from '@/components/IconoEstado';
@@ -875,11 +875,11 @@ function Formulario({
             )}
             <div className="space-y-1.5">
               <Label htmlFor="consulta-hora">Hora de inicio estimada</Label>
-              <Input
+              <SelectorHora
                 id="consulta-hora"
-                type="time"
                 value={horaEstimada}
-                onChange={(e) => setHoraEstimada(e.target.value)}
+                onChange={setHoraEstimada}
+                opcional
               />
             </div>
           </div>
@@ -1067,16 +1067,20 @@ function Formulario({
                       />
                     </td>
                     <td className="py-2 pr-3">
-                      <Input
+                      <SelectorHora
                         aria-label={`Hora de ${linea.descripcion} (opcional)`}
-                        type="time"
                         value={linea.hora}
-                        // min y max no impiden tipear una hora de más: marcan el campo y lo
-                        // bloquea horaValida, que es lo que deshabilita «Guardar».
-                        min={franja?.desde}
-                        max={franja?.hasta}
+                        onChange={(hora) => actualizarLinea(linea.clave, { hora })}
+                        opcional
+                        placeholder="--:--"
+                        // Abre en la hora del evento, como el cotizador.
+                        horaSugerida={franja?.desde ?? (horaEstimada || undefined)}
+                        // El rango no deja elegir una hora afuera, pero una que ya estaba (el
+                        // evento se reprogramó) queda marcada por horaValida, que es lo que
+                        // deshabilita «Guardar».
+                        horaMinima={franja?.desde}
+                        horaMaxima={franja?.hasta}
                         aria-invalid={!horaValida(linea)}
-                        onChange={(e) => actualizarLinea(linea.clave, { hora: e.target.value })}
                       />
                     </td>
                     <td className="py-2 pr-3">
