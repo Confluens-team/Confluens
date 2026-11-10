@@ -10,6 +10,7 @@ import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 vi.mock('./presupuestos.repositorio.js', () => ({
   buscarSalon: vi.fn(),
   buscarSalonesPorIds: vi.fn(),
+  quitarSalonesDelEvento: vi.fn(),
   reemplazarSalonesDelEvento: vi.fn(),
   buscarServiciosPorIds: vi.fn(),
   crearEnTransaccion: vi.fn((ejecutar: (tx: undefined) => unknown) => ejecutar(undefined)),
@@ -864,6 +865,28 @@ describe('PATCH /api/presupuestos/:id sobre un evento confirmado (RN-09)', () =>
 
     expect(respuesta.status).toBe(422);
     expect(reemplazarLineasMock).not.toHaveBeenCalled();
+  });
+
+  // El salón que se deja no tiene que viajar a la fecha nueva: el trigger copia el horario del
+  // evento a todos sus salones, y si todavía está, choca con quien lo tenga reservado ese día.
+  it('al cambiar de salón y de fecha, saca el salón que se deja antes de mover el evento', async () => {
+    const quitarMock = vi.mocked(repo.quitarSalonesDelEvento);
+    buscarSalonesPorIdsMock.mockResolvedValue([{ ...salonParana, id: 2, nombre: 'Pucará' }]);
+    buscarDistribucionPorNombreMock.mockResolvedValue(null);
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, fecha: '2026-11-20', salones: [{ salonId: 2 }] });
+
+    expect(respuesta.status).toBe(200);
+    expect(quitarMock).toHaveBeenCalledWith(20, [2], undefined);
+    expect(quitarMock.mock.invocationCallOrder[0]!).toBeLessThan(
+      actualizarEventoMock.mock.invocationCallOrder[0]!,
+    );
+    expect(actualizarEventoMock.mock.invocationCallOrder[0]!).toBeLessThan(
+      reemplazarSalonesDelEventoMock.mock.invocationCallOrder[0]!,
+    );
   });
 
   it('responde 409 si la fecha o el salón nuevos pisan a otro evento reservado (RN-12)', async () => {

@@ -817,6 +817,9 @@ export async function modificarPresupuesto(
           : 'Reservado';
       }
 
+      // Los salones que se dejan salen antes de mover el evento: si no, el trigger los lleva a la
+      // fecha nueva y chocan con quien los tenga reservados ahí, aunque ya no se usen (RN-12).
+      await repo.quitarSalonesDelEvento(presupuesto.eventoId, salonIds, tx);
       await repo.actualizarEvento(
         presupuesto.eventoId,
         {
