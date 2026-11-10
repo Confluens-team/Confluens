@@ -893,12 +893,13 @@ function Formulario({
             {tipo === 'Social' && (
               <div className="space-y-1.5">
                 <Label htmlFor="consulta-hora-fin">Hora de fin estimada</Label>
-                <Input
+                <SelectorHora
                   id="consulta-hora-fin"
-                  type="time"
                   value={horaFinEstimada}
+                  onChange={setHoraFinEstimada}
+                  horaSugerida={horaEstimada || undefined}
+                  opcional
                   aria-invalid={!horarioEstimadoValido}
-                  onChange={(e) => setHoraFinEstimada(e.target.value)}
                 />
                 {!horarioEstimadoValido && (
                   <p className="text-xs text-destructive">
