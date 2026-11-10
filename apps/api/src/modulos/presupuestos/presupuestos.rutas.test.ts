@@ -124,6 +124,7 @@ const eventoFixture = {
   tipoSocialDetalle: null as string | null,
   tipoJornada: null,
   horaInicioEstimada: null as string | null,
+  horaFinEstimada: null as string | null,
   modalidadSalonRestaurante: false,
   observacionesComanda: null as string | null,
   creadoEn: new Date(),
@@ -959,6 +960,7 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
         tipoSocialDetalle: null,
         tipoJornada: 'completa',
         horaInicioEstimada: '21:00',
+        horaFinEstimada: null,
       },
       undefined,
     );
@@ -967,6 +969,43 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
       undefined,
     );
     expect(respuesta.body.data).toMatchObject({ venceEn: null, total: '0', lineas: [] });
+  });
+
+  it('guarda la hora de fin estimada, también si cruza la medianoche', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodySocial, horaFinEstimada: '03:00' });
+
+    expect(respuesta.status).toBe(201);
+    expect(crearEventoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ horaInicioEstimada: '21:00', horaFinEstimada: '03:00' }),
+      undefined,
+    );
+  });
+
+  it('responde 400 si la hora de fin llega sin la de inicio o es igual a ella', async () => {
+    const sinInicio = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodySocial, horaInicioEstimada: undefined, horaFinEstimada: '23:00' });
+    const igual = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodySocial, horaFinEstimada: '21:00' });
+
+    expect(sinInicio.status).toBe(400);
+    expect(sinInicio.body.error.details).toEqual([
+      { campo: 'horaInicioEstimada', mensaje: 'Indicá también la hora de inicio' },
+    ]);
+    expect(igual.status).toBe(400);
+    expect(igual.body.error.details).toEqual([
+      {
+        campo: 'horaFinEstimada',
+        mensaje: 'La hora de fin tiene que ser distinta de la de inicio',
+      },
+    ]);
+    expect(crearEventoMock).not.toHaveBeenCalled();
   });
 
   it('guarda el detalle cuando el tipo es Otro', async () => {

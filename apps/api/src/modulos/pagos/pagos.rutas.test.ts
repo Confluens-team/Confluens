@@ -190,6 +190,7 @@ function eventoFixtureBase() {
     tipoSocialDetalle: null as string | null,
     tipoJornada: null,
     horaInicioEstimada: null as string | null,
+    horaFinEstimada: null as string | null,
     modalidadSalonRestaurante: false,
     observacionesComanda: null,
     creadoEn: new Date(),
