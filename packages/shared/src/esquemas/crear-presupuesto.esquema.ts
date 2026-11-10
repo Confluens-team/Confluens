@@ -64,11 +64,29 @@ export const esquemaCrearConsultaSocial = z
     cantidadPersonas: esquemaCantidadPersonas,
     tipoJornada: esquemaTipoJornada,
     horaInicioEstimada: esquemaHoraEstimada.optional(),
+    // Hasta cuándo se espera que dure. Si termina antes de la hora de inicio, es el día siguiente.
+    horaFinEstimada: esquemaHoraEstimada.optional(),
     tipoSocial: esquemaTipoEventoSocial,
     tipoSocialDetalle: esquemaTipoSocialDetalle.optional(),
     solicitudId: esquemaId.optional(),
   })
-  .superRefine(exigirDetalleDeOtro);
+  .superRefine(exigirDetalleDeOtro)
+  .superRefine((datos, ctx) => {
+    if (!datos.horaFinEstimada) return;
+    if (!datos.horaInicioEstimada) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['horaInicioEstimada'],
+        message: 'Indicá también la hora de inicio',
+      });
+    } else if (datos.horaFinEstimada === datos.horaInicioEstimada) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['horaFinEstimada'],
+        message: 'La hora de fin tiene que ser distinta de la de inicio',
+      });
+    }
+  });
 export type CrearConsultaSocial = z.infer<typeof esquemaCrearConsultaSocial>;
 
 // Respuesta de POST /presupuestos: el presupuesto recién creado con su evento y el detalle de

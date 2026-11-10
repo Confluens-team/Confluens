@@ -12,6 +12,9 @@ export function horarioSalon(evento: ConsultaDetallada['evento']): string {
   if (evento.inicio && evento.fin) {
     return `${conPunto(horaDelEvento(evento.inicio))} a ${conPunto(horaDelEvento(evento.fin))} hs`;
   }
+  if (evento.horaInicioEstimada && evento.horaFinEstimada) {
+    return `Desde ${conPunto(evento.horaInicioEstimada)} hasta ${conPunto(evento.horaFinEstimada)} hs`;
+  }
   if (evento.horaInicioEstimada) return `Desde ${conPunto(evento.horaInicioEstimada)} hs`;
   return 'A confirmar horario';
 }
