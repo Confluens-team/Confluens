@@ -47,6 +47,20 @@ export async function buscarSalonesPorIds(ids: number[], tx: Prisma.TransactionC
 }
 
 /**
+ * Saca del evento los salones que no están en `salonIds`. Al modificar un evento confirmado va antes
+ * de cambiarle el horario: el trigger lleva el horario nuevo a todos sus renglones, y si el salón
+ * que se deja sigue ahí, choca con lo que lo tenga reservado en la fecha nueva (RN-12) aunque ya no
+ * se vaya a usar. Que el evento quede un instante sin salones no importa: ese control es diferido.
+ */
+export async function quitarSalonesDelEvento(
+  eventoId: number,
+  salonIds: number[],
+  tx: Prisma.TransactionClient = prisma,
+) {
+  await tx.eventoSalon.deleteMany({ where: { eventoId, salonId: { notIn: salonIds } } });
+}
+
+/**
  * Deja al evento con exactamente estos salones. Los renglones que ya estaban y siguen se
  * conservan, para no perder la distribución que tengan cargada; los nuevos entran con la que diga
  * `distribuciones` (el armado que heredan, ver modificarPresupuesto) o sin ninguna.
@@ -60,7 +74,7 @@ export async function reemplazarSalonesDelEvento(
   tx: Prisma.TransactionClient = prisma,
   distribuciones: Map<number, number> = new Map(),
 ) {
-  await tx.eventoSalon.deleteMany({ where: { eventoId, salonId: { notIn: salonIds } } });
+  await quitarSalonesDelEvento(eventoId, salonIds, tx);
   const actuales = await tx.eventoSalon.findMany({
     where: { eventoId },
     select: { salonId: true },
@@ -379,6 +393,7 @@ export type PresupuestosRepositorio = {
   crearCliente: typeof crearCliente;
   buscarSalon: typeof buscarSalon;
   buscarSalonesPorIds: typeof buscarSalonesPorIds;
+  quitarSalonesDelEvento: typeof quitarSalonesDelEvento;
   reemplazarSalonesDelEvento: typeof reemplazarSalonesDelEvento;
   buscarServiciosPorIds: typeof buscarServiciosPorIds;
   buscarSolicitud: typeof buscarSolicitud;
