@@ -115,7 +115,7 @@ export function RegistrarMedioPago() {
         <h1 className="text-2xl font-semibold">Medios de pago</h1>
         <p className="text-sm text-muted-foreground">
           Registrá los medios con los que se puede cobrar un evento. Todos se pueden usar en
-          cualquier cobro (HU-19 y HU-20).
+          cualquier cobro.
         </p>
         <Button
           className="mt-4"
