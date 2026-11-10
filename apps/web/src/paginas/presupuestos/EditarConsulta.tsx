@@ -290,6 +290,8 @@ function Formulario({
   );
   const [detalleOtro, setDetalleOtro] = useState(consulta.evento.tipoSocialDetalle ?? '');
   const [horaEstimada, setHoraEstimada] = useState(consulta.evento.horaInicioEstimada ?? '');
+  // Solo la dejan los eventos sociales; un corporativo agenda su horario real después.
+  const [horaFinEstimada, setHoraFinEstimada] = useState(consulta.evento.horaFinEstimada ?? '');
   const [jornada, setJornada] = useState<TipoJornada>(consulta.tipoJornada);
   const [personas, setPersonas] = useState(String(consulta.evento.cantidadPersonas));
   const [lineas, setLineas] = useState<LineaEditable[]>(() => lineasEditables(consulta));
@@ -515,10 +517,15 @@ function Formulario({
     const tope = topeDeLinea(linea.servicioId);
     return tope === undefined || Number(linea.cantidad) <= tope;
   };
+  // La de fin necesita la de inicio y no puede ser la misma (menor que la de inicio es del día
+  // siguiente, como en el cotizador).
+  const horarioEstimadoValido =
+    tipo !== 'Social' || !horaFinEstimada || (!!horaEstimada && horaFinEstimada !== horaEstimada);
   const valido =
     !!fecha &&
     esEntero(personas) &&
     tipoValido &&
+    horarioEstimadoValido &&
     salonesSel.every((s) => esImporte(s.precio)) &&
     // Un evento confirmado ocupa un salón: no puede quedar «a definir».
     (!confirmado || salonesSel.length > 0) &&
@@ -591,6 +598,7 @@ function Formulario({
         tipoSocial: tipo === 'Social' && tipoSocial ? tipoSocial : null,
         tipoSocialDetalle: tipo === 'Social' && tipoSocial === 'Otro' ? detalleOtro.trim() : null,
         horaInicioEstimada: horaEstimada || null,
+        horaFinEstimada: tipo === 'Social' ? horaFinEstimada || null : null,
         servicios: lineas
           .filter((l) => l.servicioId !== null)
           .map((l) => ({
@@ -882,6 +890,25 @@ function Formulario({
                 opcional
               />
             </div>
+            {tipo === 'Social' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="consulta-hora-fin">Hora de fin estimada</Label>
+                <Input
+                  id="consulta-hora-fin"
+                  type="time"
+                  value={horaFinEstimada}
+                  aria-invalid={!horarioEstimadoValido}
+                  onChange={(e) => setHoraFinEstimada(e.target.value)}
+                />
+                {!horarioEstimadoValido && (
+                  <p className="text-xs text-destructive">
+                    {horaEstimada
+                      ? 'La hora de fin tiene que ser distinta de la de inicio.'
+                      : 'Cargá también la hora de inicio.'}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           {tipo === 'Corporativo' && salonesSel.length === 0 && (
             <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-destructive">

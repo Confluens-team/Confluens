@@ -9,7 +9,7 @@ import { TAMANO_MAXIMO_FOTO, useSubirFoto } from '@/hooks/use-fotos';
 import { useActualizarLandingSalon, useSalones } from '@/hooks/use-salones';
 import { useActualizarLandingServicio, useServicios } from '@/hooks/use-servicios';
 import { ErrorApiCliente } from '@/lib/api';
-import { fotoOptimizada } from '@/lib/fotos';
+import { fotoDeSalon, fotoOptimizada } from '@/lib/fotos';
 
 function mensajeDeError(error: unknown, alternativa: string): string {
   return error instanceof ErrorApiCliente || error instanceof Error ? error.message : alternativa;
@@ -23,12 +23,15 @@ function EditorDeFoto({
   idCampo,
   destino,
   fotoUrl,
+  fotoDeRespaldo,
   guardando,
   onGuardar,
 }: {
   idCampo: string;
   destino: DestinoFoto;
   fotoUrl: string | null;
+  // Lo que la landing muestra mientras no haya foto propia (los salones tienen una de ambiente).
+  fotoDeRespaldo?: string;
   guardando: boolean;
   onGuardar: (fotoUrl: string | null) => void;
 }) {
@@ -66,9 +69,9 @@ function EditorDeFoto({
 
   return (
     <div className="flex items-center gap-3">
-      {fotoUrl && !imagenRota ? (
+      {(fotoUrl || fotoDeRespaldo) && !imagenRota ? (
         <img
-          src={fotoOptimizada(fotoUrl, 200)}
+          src={fotoUrl ? fotoOptimizada(fotoUrl, 200) : fotoDeRespaldo}
           alt=""
           className="size-20 shrink-0 rounded-md object-cover"
           onError={() => setImagenRota(true)}
@@ -125,7 +128,11 @@ function EditorDeFoto({
           <p className="text-sm text-muted-foreground">La foto guardada no se pudo cargar.</p>
         )}
         {!error && !imagenRota && (
-          <p className="text-xs text-muted-foreground">JPG, PNG o WebP de hasta 10 MB.</p>
+          <p className="text-xs text-muted-foreground">
+            {fotoUrl || !fotoDeRespaldo
+              ? 'JPG, PNG o WebP de hasta 10 MB.'
+              : 'Foto de ejemplo: es la que se ve en la landing hasta que subas una propia. JPG, PNG o WebP de hasta 10 MB.'}
+          </p>
         )}
       </div>
     </div>
@@ -205,6 +212,7 @@ export function AdministrarLanding() {
                   idCampo={`foto-salon-${salon.id}`}
                   destino="salones"
                   fotoUrl={salon.fotoUrl}
+                  fotoDeRespaldo={fotoDeSalon(salon, 200)}
                   guardando={guardando}
                   onGuardar={(fotoUrl) =>
                     actualizarSalon.mutate({ id: salon.id, cambios: { fotoUrl } })

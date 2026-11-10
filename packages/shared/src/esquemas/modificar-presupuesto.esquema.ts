@@ -49,6 +49,7 @@ export const esquemaConsultaDetallada = z.object({
     tipoSocial: esquemaTipoEventoSocial.nullable(),
     tipoSocialDetalle: z.string().nullable(),
     horaInicioEstimada: esquemaHoraEstimada.nullable(),
+    horaFinEstimada: esquemaHoraEstimada.nullable(),
     // Notas de la comanda de cocina: la pantalla de la comanda las muestra y las edita.
     observacionesComanda: z.string().nullable(),
     // HU-11: se completan al agendar el evento; hasta entonces son null. La distribución va en
@@ -140,6 +141,8 @@ export const esquemaModificarPresupuesto = z
     tipoSocial: esquemaTipoEventoSocial.nullable().optional(),
     tipoSocialDetalle: esquemaTipoSocialDetalle.nullable().optional(),
     horaInicioEstimada: esquemaHoraEstimada.nullable().optional(),
+    // Igual que la de inicio: sin el campo se mantiene, null la borra.
+    horaFinEstimada: esquemaHoraEstimada.nullable().optional(),
     // HU-53: la marca de factura ya no se elige. Un presupuesto nuevo nace con factura y uno anterior
     // conserva la suya (RN-01), así que no viaja en la modificación.
     // Un mismo servicio puede ir más de una vez, con una modalidad distinta en cada línea (un coffee

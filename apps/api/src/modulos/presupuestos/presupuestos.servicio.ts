@@ -377,6 +377,7 @@ export async function registrarConsultaSocial(
         tipoSocialDetalle: datos.tipoSocial === 'Otro' ? datos.tipoSocialDetalle : null,
         tipoJornada: datos.tipoJornada,
         horaInicioEstimada: datos.horaInicioEstimada ?? null,
+        horaFinEstimada: datos.horaFinEstimada ?? null,
       },
       tx,
     );
@@ -521,6 +522,7 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       tipoSocial: evento.tipoSocial,
       tipoSocialDetalle: evento.tipoSocialDetalle,
       horaInicioEstimada: evento.horaInicioEstimada,
+      horaFinEstimada: evento.horaFinEstimada,
       observacionesComanda: evento.observacionesComanda,
       inicio: evento.inicio?.toISOString() ?? null,
       fin: evento.fin?.toISOString() ?? null,
@@ -817,6 +819,9 @@ export async function modificarPresupuesto(
           : 'Reservado';
       }
 
+      // Los salones que se dejan salen antes de mover el evento: si no, el trigger los lleva a la
+      // fecha nueva y chocan con quien los tenga reservados ahí, aunque ya no se usen (RN-12).
+      await repo.quitarSalonesDelEvento(presupuesto.eventoId, salonIds, tx);
       await repo.actualizarEvento(
         presupuesto.eventoId,
         {
@@ -826,6 +831,7 @@ export async function modificarPresupuesto(
           tipoJornada: datos.tipoJornada,
           // Sin el campo se mantiene; null la borra.
           horaInicioEstimada: datos.horaInicioEstimada,
+          horaFinEstimada: datos.horaFinEstimada,
           ...horario,
           ...(estadoEvento && { estado: estadoEvento }),
         },

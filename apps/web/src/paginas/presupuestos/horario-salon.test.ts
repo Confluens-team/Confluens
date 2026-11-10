@@ -12,6 +12,7 @@ const evento = (cambios: Partial<ConsultaDetallada['evento']>): ConsultaDetallad
   tipoSocial: null,
   tipoSocialDetalle: null,
   horaInicioEstimada: null,
+  horaFinEstimada: null,
   observacionesComanda: null,
   inicio: null,
   fin: null,
@@ -28,6 +29,12 @@ describe('horarioSalon', () => {
 
   it('sin agendar usa la hora estimada que eligió el cliente', () => {
     expect(horarioSalon(evento({ horaInicioEstimada: '09:30' }))).toBe('Desde 09.30 hs');
+  });
+
+  it('con la hora de fin estimada da el rango que dejó el cliente', () => {
+    expect(horarioSalon(evento({ horaInicioEstimada: '21:00', horaFinEstimada: '01:00' }))).toBe(
+      'Desde 21.00 hasta 01.00 hs',
+    );
   });
 
   it('el horario agendado manda sobre la hora estimada', () => {
