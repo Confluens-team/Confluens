@@ -47,6 +47,7 @@ import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
 import { formatearPesos, hoyISO, nombreCompleto, textoModalidad } from '@/lib/formato';
 import { FOTOS, fotoDeSalon } from '@/lib/fotos';
+import { jornadaDeHoras, textoHorarioEstimado } from '@/lib/jornada';
 import { cn } from '@/lib/utils';
 
 interface ContactoCliente {
@@ -70,6 +71,7 @@ export interface ConsultaSocialEnviada {
     cantidadPersonas: number;
     tipoJornada: TipoJornada;
     horaInicioEstimada?: string;
+    horaFinEstimada?: string;
     tipoSocial: TipoEventoSocial;
     tipoSocialDetalle?: string;
   };
@@ -132,6 +134,119 @@ function Paso({
   );
 }
 
+// Las dos duraciones que el cliente puede elegir en un evento corporativo. No llevan precio propio:
+// el que cambia es el de cada salón y el del presupuesto, y mostrarlo también acá parecía un
+// importe más para sumar.
+const OPCIONES_JORNADA = [
+  { valor: 'media', titulo: 'Media jornada', detalle: 'Hasta 4 horas inclusive' },
+  { valor: 'completa', titulo: 'Jornada completa', detalle: 'Más de 4 horas' },
+] as const;
+
+function OpcionesJornada({
+  jornada,
+  onChange,
+}: {
+  jornada: TipoJornada;
+  onChange: (jornada: TipoJornada) => void;
+}) {
+  return (
+    <div className="grid gap-3 sm:grid-cols-2">
+      {OPCIONES_JORNADA.map((opcion) => (
+        <button
+          key={opcion.valor}
+          type="button"
+          aria-pressed={jornada === opcion.valor}
+          onClick={() => onChange(opcion.valor)}
+          className={cn(
+            'flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-colors',
+            jornada === opcion.valor
+              ? 'border-bordo bg-bordo/5'
+              : 'border-border hover:border-dorado',
+          )}
+        >
+          <Clock
+            className={cn(
+              'size-5 shrink-0',
+              jornada === opcion.valor ? 'text-bordo' : 'text-muted-foreground',
+            )}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium">{opcion.titulo}</span>
+            <span className="block text-xs text-muted-foreground">{opcion.detalle}</span>
+          </span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function CampoHora({
+  id,
+  etiqueta,
+  value,
+  onChange,
+  horaSugerida,
+  error,
+  className,
+}: {
+  id: string;
+  etiqueta: string;
+  value: string;
+  onChange: (hora: string) => void;
+  horaSugerida?: string;
+  error?: string;
+  className?: string;
+}) {
+  return (
+    <div className={cn('flex flex-col gap-1.5', className)}>
+      <Label htmlFor={id} className="inline-flex items-center gap-1.5">
+        <Clock className="size-4 text-dorado" /> {etiqueta}
+        <span className="font-normal text-muted-foreground">(opcional)</span>
+      </Label>
+      <SelectorHora
+        id={id}
+        value={value}
+        onChange={onChange}
+        horaSugerida={horaSugerida}
+        opcional
+        placeholder="Elegí la hora"
+        className="h-11"
+      />
+      {error && <p className="text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+// Cantidad de personas de un servicio. Mientras se edita el campo guarda su propio texto, así se
+// puede borrar todo y tipear otro número; el valor que cuenta no cambia hasta que hay un número. Al
+// salir del campo, si quedó vacío, vuelve a mostrar el valor que estaba.
+function CantidadDeServicio({
+  valor,
+  max,
+  onCambio,
+  ...props
+}: {
+  valor: number;
+  max?: number;
+  onCambio: (valor: string) => void;
+  'aria-label': string;
+  className?: string;
+}) {
+  const [borrador, setBorrador] = useState<string | null>(null);
+  return (
+    <InputEntero
+      {...props}
+      max={max}
+      value={borrador ?? (valor || '')}
+      onChangeValor={(texto) => {
+        setBorrador(texto);
+        if (texto !== '') onCambio(texto);
+      }}
+      onBlur={() => setBorrador(null)}
+    />
+  );
+}
+
 function precioSalon(salon: SalonConDistribuciones, jornada: TipoJornada) {
   return jornada === 'completa' ? salon.precioJornadaCompleta : salon.precioMediaJornada;
 }
@@ -160,6 +275,8 @@ export function CotizarEvento({
   const [personas, setPersonas] = useState('');
   const [jornada, setJornada] = useState<TipoJornada>('completa');
   const [hora, setHora] = useState('');
+  // Solo en un evento social, que no elige salón ni duración: cuenta cuándo empieza y termina.
+  const [horaFin, setHoraFin] = useState('');
   // Si llega desde un salón de la landing (?salon=), es un evento corporativo.
   const [tipo, setTipo] = useState<TipoEvento | undefined>(
     salonInicialId ? 'Corporativo' : undefined,
@@ -343,14 +460,19 @@ export function CotizarEvento({
     if (!tipoSocial) nuevosErrores['tipoSocial'] = 'Elegí qué tipo de evento es';
     else if (tipoSocial === 'Otro' && !detalleOtro.trim())
       nuevosErrores['detalleOtro'] = 'Contanos qué evento es';
+    if (horaFin && !hora) nuevosErrores['hora'] = 'Indicá también la hora de inicio';
+    else if (horaFin && horaFin === hora)
+      nuevosErrores['horaFin'] = 'La hora de fin tiene que ser distinta de la de inicio';
     if (mostrarErrores(nuevosErrores) || !tipoSocial || !perfil.data) return;
 
     const cliente = { ...perfil.data, nombre: nombreCompleto(perfil.data) };
     const consulta = {
       fecha,
       cantidadPersonas,
-      tipoJornada: jornada,
+      // La API la sigue pidiendo: sale del horario. Sin precio de por medio no cambia nada más.
+      tipoJornada: jornadaDeHoras(hora, horaFin),
       horaInicioEstimada: hora || undefined,
+      horaFinEstimada: horaFin || undefined,
       tipoSocial,
       tipoSocialDetalle: tipoSocial === 'Otro' ? detalleOtro.trim() : undefined,
     };
@@ -443,7 +565,7 @@ export function CotizarEvento({
 
       <div className="mx-auto mt-10 grid max-w-6xl gap-8 px-4 sm:px-6 lg:grid-cols-[1fr_380px]">
         <div className="flex flex-col gap-6">
-          <Paso numero={1} titulo="Tu evento" bajada="Fecha, invitados y duración.">
+          <Paso numero={1} titulo="Tu evento" bajada="Fecha e invitados.">
             <div className="grid gap-5 sm:grid-cols-2">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="fecha" className="inline-flex items-center gap-1.5">
@@ -479,53 +601,6 @@ export function CotizarEvento({
                   </p>
                 )}
               </div>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {(
-                [
-                  { valor: 'media', titulo: 'Media jornada', detalle: 'Hasta 4 horas inclusive' },
-                  { valor: 'completa', titulo: 'Jornada completa', detalle: 'Más de 4 horas' },
-                ] as const
-              ).map((opcion) => (
-                <button
-                  key={opcion.valor}
-                  type="button"
-                  onClick={() => setJornada(opcion.valor)}
-                  className={cn(
-                    'flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-colors',
-                    jornada === opcion.valor
-                      ? 'border-bordo bg-bordo/5'
-                      : 'border-border hover:border-dorado',
-                  )}
-                >
-                  <Clock
-                    className={cn(
-                      'size-5',
-                      jornada === opcion.valor ? 'text-bordo' : 'text-muted-foreground',
-                    )}
-                  />
-                  <span>
-                    <span className="block font-medium">{opcion.titulo}</span>
-                    <span className="block text-xs text-muted-foreground">{opcion.detalle}</span>
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-5 flex flex-col gap-1.5 sm:max-w-[calc(50%-0.625rem)]">
-              <Label htmlFor="hora" className="inline-flex items-center gap-1.5">
-                <Clock className="size-4 text-dorado" /> Hora de inicio estimada
-                <span className="font-normal text-muted-foreground">(opcional)</span>
-              </Label>
-              <SelectorHora
-                id="hora"
-                value={hora}
-                onChange={setHora}
-                opcional
-                placeholder="Elegí la hora"
-                className="h-11"
-              />
             </div>
           </Paso>
 
@@ -615,6 +690,29 @@ export function CotizarEvento({
                     )}
                   </div>
                 )}
+
+                {/* Sin salón no hay precio que dependa de la duración: alcanza con el horario. */}
+                <div className="mt-6 grid gap-5 border-t border-dashed border-border pt-5 sm:grid-cols-2">
+                  <CampoHora
+                    id="hora"
+                    etiqueta="Hora de inicio estimada"
+                    value={hora}
+                    onChange={setHora}
+                    error={errores['hora']}
+                  />
+                  <CampoHora
+                    id="hora-fin"
+                    etiqueta="Hora de fin estimada"
+                    value={horaFin}
+                    onChange={setHoraFin}
+                    horaSugerida={hora || undefined}
+                    error={errores['horaFin']}
+                  />
+                  <p className="text-xs text-muted-foreground sm:col-span-2">
+                    Si termina después de la medianoche, elegí la hora de la madrugada: se toma como
+                    del día siguiente.
+                  </p>
+                </div>
               </div>
             )}
           </Paso>
@@ -623,7 +721,7 @@ export function CotizarEvento({
             <Paso
               numero={3}
               titulo="Elegí los salones"
-              bajada="Uno o varios, hasta los cinco: la gente se puede repartir entre salones. Precios por evento, sin IVA, según la jornada elegida."
+              bajada="Uno o varios, hasta los cinco: la gente se puede repartir entre salones. Precios por evento, sin IVA. Abajo elegís la duración y ves cómo cambia el total."
             >
               {salones.isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
               {cantidadPersonas > 0 && entran.length === 0 && masGrande && (
@@ -718,6 +816,25 @@ export function CotizarEvento({
                   )}
                 </p>
               )}
+
+              {/* La duración va después de los salones: al cambiarla se actualizan el precio de cada
+                  salón y el presupuesto. */}
+              <div className="mt-6 space-y-5 border-t border-dashed border-border pt-5">
+                <div>
+                  <p className="text-sm font-medium">¿Cuánto dura tu evento?</p>
+                  <p className="mb-3 text-xs text-muted-foreground">
+                    El precio de cada salón y tu presupuesto se ajustan a la duración que elijas.
+                  </p>
+                  <OpcionesJornada jornada={jornada} onChange={setJornada} />
+                </div>
+                <CampoHora
+                  id="hora"
+                  etiqueta="Hora de inicio estimada"
+                  value={hora}
+                  onChange={setHora}
+                  className="sm:max-w-[calc(50%-0.625rem)]"
+                />
+              </div>
             </Paso>
           )}
 
@@ -799,11 +916,11 @@ export function CotizarEvento({
                             {servicio.porPersona && (
                               <>
                                 Para
-                                <InputEntero
+                                <CantidadDeServicio
                                   aria-label={`Para cuántas personas es ${servicio.nombre}`}
                                   max={cantidadPersonas || undefined}
-                                  value={cantidadDe(servicio.id, true) || ''}
-                                  onChangeValor={(valor) => cambiarCantidad(servicio.id, valor)}
+                                  valor={cantidadDe(servicio.id, true)}
+                                  onCambio={(valor) => cambiarCantidad(servicio.id, valor)}
                                   className={cn(
                                     'h-8 w-20',
                                     errores[`servicio-${servicio.id}`] && 'border-destructive',
@@ -868,8 +985,8 @@ export function CotizarEvento({
             <ResumenConsultaSocial
               fecha={fecha}
               cantidadPersonas={cantidadPersonas}
-              jornada={jornada}
               hora={hora}
+              horaFin={horaFin}
               tipoSocial={tipoSocial}
               detalleOtro={detalleOtro}
               error={
@@ -977,8 +1094,8 @@ export function CotizarEvento({
 function ResumenConsultaSocial({
   fecha,
   cantidadPersonas,
-  jornada,
   hora,
+  horaFin,
   tipoSocial,
   detalleOtro,
   error,
@@ -988,8 +1105,8 @@ function ResumenConsultaSocial({
 }: {
   fecha: string;
   cantidadPersonas: number;
-  jornada: TipoJornada;
   hora: string;
+  horaFin: string;
   tipoSocial: TipoEventoSocial | undefined;
   detalleOtro: string;
   error: string | undefined;
@@ -1006,8 +1123,7 @@ function ResumenConsultaSocial({
     ],
     ['Fecha', fecha ? fecha.split('-').reverse().join('/') : 'Sin fecha'],
     ['Invitados', cantidadPersonas > 0 ? `${cantidadPersonas} personas` : 'Sin definir'],
-    ['Duración', jornada === 'completa' ? 'Jornada completa' : 'Media jornada'],
-    ['Inicio estimado', hora ? `${hora} h` : 'A definir'],
+    ['Horario estimado', textoHorarioEstimado(hora, horaFin)],
   ];
   return (
     <div className="overflow-hidden rounded-2xl bg-card shadow-lg ring-1 ring-border">

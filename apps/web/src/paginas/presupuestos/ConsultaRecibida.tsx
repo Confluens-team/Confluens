@@ -4,6 +4,7 @@ import { CheckCircle2, Home, RotateCcw } from 'lucide-react';
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
 import { fechaLocal, formatearFecha } from '@/lib/formato';
+import { textoHorarioEstimado } from '@/lib/jornada';
 import type { ConsultaSocialEnviada } from './CotizarEvento';
 
 // Confirmación de la consulta de un evento social (ADR 0008). No hay presupuesto que mostrar: lo
@@ -22,10 +23,9 @@ export function ConsultaRecibida({
     ['Evento', etiquetaTipoEvento({ tipo: 'Social', ...consulta })],
     ['Fecha', formatearFecha(fechaLocal(consulta.fecha), true)],
     ['Invitados', `${consulta.cantidadPersonas} personas`],
-    ['Duración', consulta.tipoJornada === 'completa' ? 'Jornada completa' : 'Media jornada'],
     [
-      'Inicio estimado',
-      consulta.horaInicioEstimada ? `${consulta.horaInicioEstimada} h` : 'A definir',
+      'Horario estimado',
+      textoHorarioEstimado(consulta.horaInicioEstimada, consulta.horaFinEstimada),
     ],
   ];
 
