@@ -31,12 +31,22 @@ export const manejadorErrores: ErrorRequestHandler = (error: unknown, req, res, 
         })),
       },
     };
-  } else if (esJsonInvalido(error)) {
+  } else if (esErrorDeBody(error, 'entity.parse.failed')) {
     status = 400;
     cuerpo = {
       error: {
         code: CODIGOS_ERROR.VALIDACION,
         message: 'El cuerpo de la solicitud no es JSON válido',
+      },
+    };
+  } else if (esErrorDeBody(error, 'encoding.unsupported')) {
+    // express.json({ inflate: false }) en app.ts: un body comprimido no se lee. Es un pedido mal
+    // armado, no una falla del servidor: sin esta rama salía como 500 y ensuciaba el log.
+    status = 400;
+    cuerpo = {
+      error: {
+        code: CODIGOS_ERROR.VALIDACION,
+        message: 'El cuerpo de la solicitud no puede venir comprimido',
       },
     };
   } else {
@@ -68,11 +78,7 @@ export const manejadorErrores: ErrorRequestHandler = (error: unknown, req, res, 
   res.status(status).json(cuerpo);
 };
 
-function esJsonInvalido(error: unknown): boolean {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'type' in error &&
-    error.type === 'entity.parse.failed'
-  );
+// Los errores de express.json() (body-parser) traen un `type` que dice qué falló al leer el body.
+function esErrorDeBody(error: unknown, tipo: string): boolean {
+  return typeof error === 'object' && error !== null && 'type' in error && error.type === tipo;
 }
