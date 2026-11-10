@@ -11,6 +11,7 @@ vi.mock('./presupuestos.repositorio.js', () => ({
   crearCliente: vi.fn(),
   buscarSalon: vi.fn(),
   buscarSalonesPorIds: vi.fn(),
+  quitarSalonesDelEvento: vi.fn(),
   reemplazarSalonesDelEvento: vi.fn(),
   buscarServiciosPorIds: vi.fn(),
   buscarSolicitud: vi.fn(),
