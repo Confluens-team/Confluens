@@ -16,6 +16,7 @@ import {
   usuarioDelTokenRestablecimiento,
   verificarToken,
   verificarTokenRestablecimiento,
+  versionDelToken,
 } from '../../lib/jwt.js';
 import * as authRepositorioReal from './auth.repositorio.js';
 import type {
@@ -192,11 +193,16 @@ export async function restablecerContrasena(
  * alcanza: un token copiado seguiría sirviendo hasta vencer. Subir la versión de sesión del usuario
  * invalida todos sus tokens emitidos, en todos sus dispositivos. Sin token válido no hay a quién
  * cerrarle la sesión y no hace nada: el logout responde igual (204) en los dos casos.
+ *
+ * La versión del token viaja al repositorio, que solo invalida si sigue siendo la vigente. La firma
+ * y el vencimiento no alcanzan: un token robado que el usuario ya dejó sin efecto (cerró sesión o
+ * restableció la contraseña) seguía pudiendo cerrarle las sesiones nuevas hasta vencer.
  */
 export async function cerrarSesion(
   token: string | undefined,
   repositorio: CierreSesionRepositorio = authRepositorioReal,
 ): Promise<void> {
   const sesion = token ? verificarToken(token) : null;
-  if (sesion) await repositorio.invalidarSesiones(sesion.id);
+  const version = token ? versionDelToken(token) : null;
+  if (sesion && version !== null) await repositorio.invalidarSesiones(sesion.id, version);
 }

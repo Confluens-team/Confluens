@@ -1,3 +1,5 @@
+import { gzipSync } from 'node:zlib';
+
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
 
@@ -30,5 +32,20 @@ describe('crearApp', () => {
 
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  // GHSA-27r3-jxmh-p828: un body comprimido no se descomprime (express.json con inflate: false).
+  // Se rechaza antes de leerlo, con el formato de error de siempre y no como un 500.
+  it('un body comprimido responde 400 VALIDATION_ERROR sin descomprimirlo', async () => {
+    const respuesta = await request(app)
+      .post('/api/salud')
+      .set('Content-Type', 'application/json')
+      .set('Content-Encoding', 'gzip')
+      .send(gzipSync(JSON.stringify({ a: 1 })));
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body).toEqual({
+      error: { code: 'VALIDATION_ERROR', message: expect.any(String) },
+    });
   });
 });
