@@ -1336,7 +1336,7 @@ function Formulario({
                 ? 'La consulta está vencida: recalculala y guardá los cambios antes de cobrar la seña.'
                 : consulta.salones.length === 0
                   ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
-                  : 'Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda (HU-13). Guardá antes los cambios de la consulta.'}
+                  : 'Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda. Guardá antes los cambios de la consulta.'}
             </p>
           </div>
           <Button

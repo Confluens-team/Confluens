@@ -152,7 +152,7 @@ export function AdministrarLanding() {
         <h1 className="text-2xl font-semibold">Landing page</h1>
         <p className="text-sm text-muted-foreground">
           Elegí qué salones se publican y subí desde tu galería las fotos que se muestran en el
-          sitio público (HU-08). Los cambios se ven en la landing al instante, sin ningún paso de
+          sitio público. Los cambios se ven en la landing al instante, sin ningún paso de
           publicación adicional.
         </p>
       </div>
