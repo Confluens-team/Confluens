@@ -116,6 +116,7 @@ export async function crearEvento(
     tipoSocialDetalle?: string | null;
     tipoJornada: TipoJornada;
     horaInicioEstimada?: string | null;
+    horaFinEstimada?: string | null;
   },
   tx: Prisma.TransactionClient = prisma,
 ) {
