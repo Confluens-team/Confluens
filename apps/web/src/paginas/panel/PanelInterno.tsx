@@ -17,7 +17,7 @@ import {
   UtensilsCrossed,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Navigate, useNavigate, useParams } from 'react-router';
+import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,7 @@ import { NOMBRES_DE_ROL } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 import { ListadoClientes } from '@/paginas/clientes/ListadoClientes';
 import { Agenda } from '@/paginas/eventos/Agenda';
+import { leerDiaEnLaAgenda } from '@/paginas/eventos/dia-en-la-agenda';
 import { RegistrarMedioPago } from '@/paginas/medios-pago/RegistrarMedioPago';
 import { Personal } from '@/paginas/personal/Personal';
 import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
@@ -232,6 +233,9 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
   const navigate = useNavigate();
   const cerrarSesion = useCerrarSesion();
   const pestania = useParams()['pestania'] as Pestania | undefined;
+  const { key: navegacion } = useLocation();
+  const [parametros] = useSearchParams();
+  const diaEnLaAgenda = leerDiaEnLaAgenda(parametros);
   const activa = PESTANIAS.find((p) => p.valor === pestania);
   const [oscuro, alternarModoOscuro] = useModoOscuro();
 
@@ -315,7 +319,16 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
         </div>
         {/* La key separa el estado de las dos pestañas: cada una conserva sus propios filtros y el
             evento abierto en una no aparece en la otra. */}
-        {pestania === 'agenda' && <Agenda key="agenda" vista="calendario" />}
+        {/* Con un día pedido («Ver en la agenda» desde la cuenta del evento) la key cambia en cada
+            navegación: si el botón se tocó desde un evento abierto dentro de la misma agenda, la
+            agenda se vuelve a montar, cierra el detalle y abre ese día. */}
+        {pestania === 'agenda' && (
+          <Agenda
+            key={diaEnLaAgenda ? `agenda-${navegacion}` : 'agenda'}
+            vista="calendario"
+            diaInicial={diaEnLaAgenda}
+          />
+        )}
         {pestania === 'eventos' && <Agenda key="eventos" vista="lista" />}
         {pestania === 'consultas' && <ListadoConsultas />}
         {pestania === 'clientes' && <ListadoClientes />}

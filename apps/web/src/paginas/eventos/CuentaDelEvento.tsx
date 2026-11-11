@@ -8,7 +8,7 @@ import {
   type TipoJornada,
 } from '@confluens/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Ban, Plus, X } from 'lucide-react';
+import { Ban, CalendarDays, Plus, X } from 'lucide-react';
 import { Dialog } from 'radix-ui';
 import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
@@ -17,7 +17,7 @@ import { Link } from 'react-router';
 import { InputImporte } from '@/components/InputImporte';
 import { SelectorFecha, SelectorHora } from '@/components/SelectorFechaHora';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useAgendarEvento } from '@/hooks/use-eventos';
@@ -32,6 +32,7 @@ import { ErrorApiCliente } from '@/lib/api';
 import { fechaLocal, formatearFechaNumerica, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { CLASES_SELECT } from './clases-select';
+import { rutaDelDiaEnLaAgenda } from './dia-en-la-agenda';
 
 // Los pagos sí llevan centavos: a diferencia de formatearPesos (que redondea a pesos enteros para
 // la landing), acá el importe es plata que entró y tiene que cuadrar hasta el último centavo.
@@ -390,8 +391,17 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   return (
     <>
       <Card>
+        {/* «Ver en la agenda» está siempre, en cualquier estado del evento: abre el calendario en
+            el día del evento. Antes aparecía solo después del pago que reservaba el salón. */}
         <CardHeader>
           <CardTitle>Cuenta del evento</CardTitle>
+          <CardAction>
+            <Button variant="outline" size="sm" asChild>
+              <Link to={rutaDelDiaEnLaAgenda(evento)}>
+                <CalendarDays /> Ver en la agenda
+              </Link>
+            </Button>
+          </CardAction>
         </CardHeader>
         <CardContent className="space-y-4 text-sm">
           {/* Un evento cobrado no tiene saldo que mirar: lo que importa es cuánto entró y que
@@ -509,7 +519,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
               <p className="font-medium">
                 Con este pago se alcanzó la seña: el presupuesto quedó confirmado y el salón
                 reservado.{' '}
-                <Link to="/admin/agenda" className="underline underline-offset-2">
+                <Link to={rutaDelDiaEnLaAgenda(evento)} className="underline underline-offset-2">
                   Ver en la agenda
                 </Link>
               </p>

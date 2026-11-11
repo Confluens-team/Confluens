@@ -35,7 +35,6 @@ import { InputEntero } from '@/components/InputEntero';
 import { SelectorFecha, SelectorHora } from '@/components/SelectorFechaHora';
 import { SelectorModalidad } from '@/components/SelectorModalidad';
 import { Button } from '@/components/ui/button';
-import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useConfiguracionPrecios } from '@/hooks/use-configuracion-precios';
@@ -46,7 +45,7 @@ import { usePerfilCliente } from '@/hooks/use-sesion';
 import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
 import { formatearPesos, hoyISO, nombreCompleto, textoModalidad } from '@/lib/formato';
-import { FOTOS, fotoDeSalon } from '@/lib/fotos';
+import { FOTOS, fotoDeSalon, fotoOptimizada } from '@/lib/fotos';
 import { jornadaDeHoras, textoHorarioEstimado } from '@/lib/jornada';
 import { cn } from '@/lib/utils';
 
@@ -874,45 +873,85 @@ export function CotizarEvento({
                 })}
               </div>
 
-              <ul className="mt-5 divide-y divide-border">
+              {/* Cada servicio es una tarjeta con el mismo formato que los salones: foto, nombre y
+                  descripción, precio y la marca de elegido. Sin foto propia no se deja el hueco:
+                  el texto ocupa todo el ancho, como en la carta de la landing. Las opciones del
+                  servicio elegido van debajo, dentro de la tarjeta pero fuera del botón, porque un
+                  botón no puede tener campos adentro. */}
+              <ul className="mt-5 grid gap-3">
                 {(grupos.find(([nombre]) => nombre === categoriaActiva)?.[1] ?? []).map(
                   (servicio) => {
                     const marcado = elegidos.has(servicio.id);
+                    const precio =
+                      servicio.precio === null
+                        ? 'A cotizar'
+                        : formatearPesos(
+                            servicio.tercerizado ? servicio.precio : proyectar(servicio.precio),
+                          );
+                    const unidad = servicio.porPersona ? 'por persona' : 'precio fijo';
                     return (
-                      <li key={servicio.id} className="py-4">
-                        <div className="flex items-start gap-3">
-                          <Checkbox
-                            id={`servicio-${servicio.id}`}
-                            checked={marcado}
-                            onCheckedChange={() => alternarServicio(servicio.id)}
-                            className="mt-1"
-                          />
-                          <label
-                            htmlFor={`servicio-${servicio.id}`}
-                            className="min-w-0 flex-1 cursor-pointer"
-                          >
-                            <span className="block font-medium">{servicio.nombre}</span>
-                            <span className="line-clamp-2 block text-xs text-muted-foreground">
+                      <li
+                        key={servicio.id}
+                        className={cn(
+                          'overflow-hidden rounded-xl border-2 transition-all',
+                          marcado
+                            ? 'border-bordo bg-bordo/5 shadow-md'
+                            : 'border-border hover:border-dorado',
+                        )}
+                      >
+                        <button
+                          type="button"
+                          aria-pressed={marcado}
+                          onClick={() => alternarServicio(servicio.id)}
+                          className={cn(
+                            'flex w-full items-center gap-3 p-2 pr-4 text-left sm:gap-4',
+                            !servicio.fotoUrl && 'py-3 pl-4',
+                          )}
+                        >
+                          {servicio.fotoUrl && (
+                            <img
+                              src={fotoOptimizada(servicio.fotoUrl, 200)}
+                              alt=""
+                              loading="lazy"
+                              decoding="async"
+                              className="size-16 shrink-0 rounded-lg object-cover sm:size-20"
+                            />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <span className="block font-serif text-lg leading-snug font-semibold text-bordo">
+                              {servicio.nombre}
+                            </span>
+                            {/* Sin `block`: le ganaba al display de line-clamp y la descripción
+                                salía entera. */}
+                            <span className="line-clamp-2 text-xs text-muted-foreground">
                               {servicio.descripcion}
                             </span>
-                          </label>
-                          <div className="shrink-0 text-right">
-                            <p className="font-semibold">
-                              {servicio.precio === null
-                                ? 'A cotizar'
-                                : formatearPesos(
-                                    servicio.tercerizado
-                                      ? servicio.precio
-                                      : proyectar(servicio.precio),
-                                  )}
-                            </p>
-                            <p className="text-[0.65rem] text-muted-foreground">
-                              {servicio.porPersona ? 'por persona' : 'precio fijo'}
+                            {/* En pantallas angostas el precio va debajo del texto: al costado le
+                                dejaba al nombre una palabra por renglón. */}
+                            <span className="mt-1 block font-serif font-semibold sm:hidden">
+                              {precio}{' '}
+                              <span className="font-sans text-[0.65rem] font-normal text-muted-foreground uppercase">
+                                {unidad}
+                              </span>
+                            </span>
+                          </div>
+                          <div className="hidden shrink-0 text-right sm:block">
+                            <p className="font-serif text-lg font-semibold">{precio}</p>
+                            <p className="text-[0.65rem] text-muted-foreground uppercase">
+                              {unidad}
                             </p>
                           </div>
-                        </div>
+                          <span
+                            className={cn(
+                              'flex size-5 shrink-0 items-center justify-center rounded-md border-2',
+                              marcado ? 'border-bordo bg-bordo text-crema' : 'border-input',
+                            )}
+                          >
+                            {marcado && <Check className="size-3" />}
+                          </span>
+                        </button>
                         {marcado && (
-                          <div className="mt-3 ml-7 flex flex-wrap items-center gap-x-2 gap-y-3 text-xs text-muted-foreground">
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-3 border-t border-dashed border-bordo/20 px-4 py-3 text-xs text-muted-foreground">
                             {servicio.porPersona && (
                               <>
                                 Para
