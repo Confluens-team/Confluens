@@ -44,7 +44,11 @@ export function crearApp(): Express {
       crossOriginResourcePolicy: { policy: 'cross-origin' },
     }),
   );
-  app.use(express.json());
+  // inflate: false rechaza los bodies comprimidos (Content-Encoding: gzip o deflate) antes de abrir
+  // un descompresor. La web nunca comprime lo que manda, y body-parser hasta 1.20.8 se podía caer
+  // con un body comprimido seguido de bytes de más, sin sesión y en cualquier ruta
+  // (GHSA-27r3-jxmh-p828). El rechazo sale como 400 por manejadorErrores.
+  app.use(express.json({ inflate: false }));
   // cookie-parser: la sesión (HU-27) viaja en una cookie httpOnly, y los
   // middlewares de auth la leen desde req.cookies.
   app.use(cookieParser());

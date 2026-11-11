@@ -54,6 +54,7 @@ export const esquemaEvento = z.object({
   tipoSocialDetalle: z.string().nullable(),
   tipoJornada: esquemaTipoJornada.nullable(),
   horaInicioEstimada: esquemaHoraEstimada.nullable(),
+  horaFinEstimada: esquemaHoraEstimada.nullable(),
   // Columna del Sprint 1 que quedó sin escribirse: la vigencia de los 10 días es del presupuesto,
   // no del evento (RN-06, RN-08).
   senaVenceEn: esquemaFechaHora.nullable(),

@@ -43,7 +43,19 @@ Para aplicar el esquema y los datos iniciales contra Neon desde la máquina loca
 
 ```bash
 DIRECT_URL="<la-directa-de-neon>" npm run prisma:deploy -w @confluens/api
-DIRECT_URL="<la-directa-de-neon>" npm run prisma:seed -w @confluens/api
+DATABASE_URL="<la-pooled-de-neon>" npm run prisma:seed -w @confluens/api
+```
+
+Las migraciones usan `DIRECT_URL` y el seed `DATABASE_URL`: es la que lee la API, y el seed escribe
+con el mismo cliente.
+
+Contra una base que no es local, el seed carga solo el catálogo (salones, servicios, medios de pago
+y la configuración de precios). **No** carga los usuarios de prueba, que tienen la contraseña
+escrita en el repo. Al personal se lo da de alta con el script interactivo, que pide la contraseña
+por la terminal y guarda solo el hash:
+
+```bash
+DATABASE_URL="<la-pooled-de-neon>" npm run usuario:crear -w @confluens/api
 ```
 
 ### 2. Render (API)

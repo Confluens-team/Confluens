@@ -34,7 +34,7 @@ import {
 import { Dialog } from 'radix-ui';
 import { useEffect, useRef, useState } from 'react';
 
-import { SelectorFecha } from '@/components/SelectorFechaHora';
+import { SelectorFecha, SelectorHora } from '@/components/SelectorFechaHora';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { IconoEstado } from '@/components/IconoEstado';
@@ -290,6 +290,8 @@ function Formulario({
   );
   const [detalleOtro, setDetalleOtro] = useState(consulta.evento.tipoSocialDetalle ?? '');
   const [horaEstimada, setHoraEstimada] = useState(consulta.evento.horaInicioEstimada ?? '');
+  // Solo la dejan los eventos sociales; un corporativo agenda su horario real después.
+  const [horaFinEstimada, setHoraFinEstimada] = useState(consulta.evento.horaFinEstimada ?? '');
   const [jornada, setJornada] = useState<TipoJornada>(consulta.tipoJornada);
   const [personas, setPersonas] = useState(String(consulta.evento.cantidadPersonas));
   const [lineas, setLineas] = useState<LineaEditable[]>(() => lineasEditables(consulta));
@@ -515,10 +517,15 @@ function Formulario({
     const tope = topeDeLinea(linea.servicioId);
     return tope === undefined || Number(linea.cantidad) <= tope;
   };
+  // La de fin necesita la de inicio y no puede ser la misma (menor que la de inicio es del día
+  // siguiente, como en el cotizador).
+  const horarioEstimadoValido =
+    tipo !== 'Social' || !horaFinEstimada || (!!horaEstimada && horaFinEstimada !== horaEstimada);
   const valido =
     !!fecha &&
     esEntero(personas) &&
     tipoValido &&
+    horarioEstimadoValido &&
     salonesSel.every((s) => esImporte(s.precio)) &&
     // Un evento confirmado ocupa un salón: no puede quedar «a definir».
     (!confirmado || salonesSel.length > 0) &&
@@ -591,6 +598,7 @@ function Formulario({
         tipoSocial: tipo === 'Social' && tipoSocial ? tipoSocial : null,
         tipoSocialDetalle: tipo === 'Social' && tipoSocial === 'Otro' ? detalleOtro.trim() : null,
         horaInicioEstimada: horaEstimada || null,
+        horaFinEstimada: tipo === 'Social' ? horaFinEstimada || null : null,
         servicios: lineas
           .filter((l) => l.servicioId !== null)
           .map((l) => ({
@@ -875,13 +883,33 @@ function Formulario({
             )}
             <div className="space-y-1.5">
               <Label htmlFor="consulta-hora">Hora de inicio estimada</Label>
-              <Input
+              <SelectorHora
                 id="consulta-hora"
-                type="time"
                 value={horaEstimada}
-                onChange={(e) => setHoraEstimada(e.target.value)}
+                onChange={setHoraEstimada}
+                opcional
               />
             </div>
+            {tipo === 'Social' && (
+              <div className="space-y-1.5">
+                <Label htmlFor="consulta-hora-fin">Hora de fin estimada</Label>
+                <SelectorHora
+                  id="consulta-hora-fin"
+                  value={horaFinEstimada}
+                  onChange={setHoraFinEstimada}
+                  horaSugerida={horaEstimada || undefined}
+                  opcional
+                  aria-invalid={!horarioEstimadoValido}
+                />
+                {!horarioEstimadoValido && (
+                  <p className="text-xs text-destructive">
+                    {horaEstimada
+                      ? 'La hora de fin tiene que ser distinta de la de inicio.'
+                      : 'Cargá también la hora de inicio.'}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           {tipo === 'Corporativo' && salonesSel.length === 0 && (
             <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-destructive">
@@ -1067,16 +1095,20 @@ function Formulario({
                       />
                     </td>
                     <td className="py-2 pr-3">
-                      <Input
+                      <SelectorHora
                         aria-label={`Hora de ${linea.descripcion} (opcional)`}
-                        type="time"
                         value={linea.hora}
-                        // min y max no impiden tipear una hora de más: marcan el campo y lo
-                        // bloquea horaValida, que es lo que deshabilita «Guardar».
-                        min={franja?.desde}
-                        max={franja?.hasta}
+                        onChange={(hora) => actualizarLinea(linea.clave, { hora })}
+                        opcional
+                        placeholder="--:--"
+                        // Abre en la hora del evento, como el cotizador.
+                        horaSugerida={franja?.desde ?? (horaEstimada || undefined)}
+                        // El rango no deja elegir una hora afuera, pero una que ya estaba (el
+                        // evento se reprogramó) queda marcada por horaValida, que es lo que
+                        // deshabilita «Guardar».
+                        horaMinima={franja?.desde}
+                        horaMaxima={franja?.hasta}
                         aria-invalid={!horaValida(linea)}
-                        onChange={(e) => actualizarLinea(linea.clave, { hora: e.target.value })}
                       />
                     </td>
                     <td className="py-2 pr-3">
@@ -1332,7 +1364,7 @@ function Formulario({
                 ? 'La consulta está vencida: recalculala y guardá los cambios antes de cobrar la seña.'
                 : consulta.salones.length === 0
                   ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
-                  : 'Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda (HU-13). Guardá antes los cambios de la consulta.'}
+                  : 'Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda. Guardá antes los cambios de la consulta.'}
             </p>
           </div>
           <Button

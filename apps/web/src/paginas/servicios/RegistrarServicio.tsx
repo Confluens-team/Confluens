@@ -273,7 +273,7 @@ export function RegistrarServicio() {
       <div>
         <h1 className="text-2xl font-semibold">Servicios</h1>
         <p className="text-sm text-muted-foreground">
-          Registrá los servicios del catálogo para poder incorporarlos a los presupuestos (HU-32).
+          Registrá los servicios del catálogo para poder incorporarlos a los presupuestos.
         </p>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button onClick={() => setAbierto(true)}>

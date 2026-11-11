@@ -78,7 +78,7 @@ export function FormularioSalon({
 
       <p className="text-xs text-muted-foreground">
         Un cambio de precio no afecta los presupuestos ya emitidos: conservan el precio con que se
-        armaron. Los nuevos lo toman proyectado a la fecha del evento (RN-13).
+        armaron. Los nuevos lo toman proyectado a la fecha del evento.
       </p>
 
       {modificarSalon.isError && (
