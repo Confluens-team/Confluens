@@ -5,7 +5,8 @@
 //
 // Diciembre está cargado para la presentación: corporativos y sociales en todos los estados, para
 // que los filtros de la agenda se noten. Ningún evento de demo empieza el sábado 12 de diciembre,
-// para mostrar un día disponible.
+// para mostrar un día disponible, y la fiesta de 15 del viernes 11 termina a las 23:59 para no pasar
+// a ese día.
 //
 // Uso, desde apps/api:  npx tsx --env-file=../../.env prisma/datos-demo.ts
 //
@@ -479,7 +480,7 @@ const CASOS: Caso[] = [
     pagos: [{ dia: '2026-11-08', saldo: true, medio: 'Efectivo', observacion: 'Pago total' }],
   },
   {
-    titulo: 'Reservado · fiesta de 15 en 2 salones que termina pasada la medianoche',
+    titulo: 'Reservado · fiesta de 15 en 2 salones',
     cliente: { nombre: 'Florencia', apellido: 'Sosa' },
     estado: 'Reservado',
     tipo: 'Social',
@@ -490,7 +491,7 @@ const CASOS: Caso[] = [
       { nombre: 'Paraná', distribucion: 'Banquete' },
     ],
     jornada: 'completa',
-    horario: { inicio: '21:00', fin: '02:00' },
+    horario: { inicio: '21:00', fin: '23:59' },
     personas: 70,
     servicios: [
       { servicio: 'Lunch / Cocktail — Opción 4', cantidad: 70, hora: '21:15' },
