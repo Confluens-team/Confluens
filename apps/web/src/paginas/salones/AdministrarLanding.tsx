@@ -1,5 +1,6 @@
 import type { DestinoFoto } from '@confluens/shared';
-import { ImageOff, ImagePlus, Trash2 } from 'lucide-react';
+import { ImageOff, ImagePlus, Maximize2, Trash2, X } from 'lucide-react';
+import { Dialog } from 'radix-ui';
 import { useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -21,6 +22,7 @@ function mensajeDeError(error: unknown, alternativa: string): string {
 // (ADR 0009). La foto anterior la borra la API al guardar la nueva o al quitarla.
 function EditorDeFoto({
   idCampo,
+  nombre,
   destino,
   fotoUrl,
   fotoDeRespaldo,
@@ -28,6 +30,8 @@ function EditorDeFoto({
   onGuardar,
 }: {
   idCampo: string;
+  // Del salón o del servicio: titula la vista previa.
+  nombre: string;
   destino: DestinoFoto;
   fotoUrl: string | null;
   // Lo que la landing muestra mientras no haya foto propia (los salones tienen una de ambiente).
@@ -70,12 +74,54 @@ function EditorDeFoto({
   return (
     <div className="flex items-center gap-3">
       {(fotoUrl || fotoDeRespaldo) && !imagenRota ? (
-        <img
-          src={fotoUrl ? fotoOptimizada(fotoUrl, 200) : fotoDeRespaldo}
-          alt=""
-          className="size-20 shrink-0 rounded-md object-cover"
-          onError={() => setImagenRota(true)}
-        />
+        // La miniatura abre la foto en grande: a 80 px no se llega a ver cómo quedó.
+        <Dialog.Root>
+          <Dialog.Trigger asChild>
+            <button
+              type="button"
+              aria-label={`Ver la foto de ${nombre} en grande`}
+              title="Ver en grande"
+              className="group relative size-20 shrink-0 overflow-hidden rounded-md focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+            >
+              <img
+                src={fotoUrl ? fotoOptimizada(fotoUrl, 200) : fotoDeRespaldo}
+                alt=""
+                className="size-full object-cover transition-transform group-hover:scale-105"
+                onError={() => setImagenRota(true)}
+              />
+              <span className="absolute inset-0 flex items-center justify-center bg-bordo-oscuro/40 text-crema opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                <Maximize2 className="size-5" />
+              </span>
+            </button>
+          </Dialog.Trigger>
+          <Dialog.Portal>
+            <Dialog.Overlay className="fixed inset-0 z-50 bg-bordo-oscuro/70 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+            <Dialog.Content className="fixed top-1/2 left-1/2 z-50 w-[calc(100%-2rem)] max-w-4xl -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-papel p-4 shadow-2xl data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 sm:p-5">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <Dialog.Title className="font-heading text-lg font-medium">{nombre}</Dialog.Title>
+                  <Dialog.Description className="text-sm text-muted-foreground">
+                    {fotoUrl
+                      ? 'La foto que se muestra en la landing.'
+                      : 'Foto de ejemplo: es la que se ve en la landing hasta que subas una propia.'}
+                  </Dialog.Description>
+                </div>
+                <Dialog.Close asChild>
+                  <Button variant="ghost" size="icon-sm" aria-label="Cerrar">
+                    <X />
+                  </Button>
+                </Dialog.Close>
+              </div>
+              {/* 1600 px reales: el diálogo llega a 56rem de ancho y en pantallas de alta
+                  densidad se ve nítida. La foto entera, sin recortar. */}
+              <img
+                src={fotoUrl ? fotoOptimizada(fotoUrl, 1600) : fotoDeRespaldo}
+                alt={`Foto de ${nombre}`}
+                className="max-h-[75vh] w-full rounded-lg bg-muted object-contain"
+              />
+            </Dialog.Content>
+          </Dialog.Portal>
+        </Dialog.Root>
       ) : (
         <div className="flex size-20 shrink-0 items-center justify-center rounded-md bg-muted">
           <ImageOff className="size-5 text-muted-foreground" />
@@ -210,6 +256,7 @@ export function AdministrarLanding() {
 
                 <EditorDeFoto
                   idCampo={`foto-salon-${salon.id}`}
+                  nombre={salon.nombre}
                   destino="salones"
                   fotoUrl={salon.fotoUrl}
                   fotoDeRespaldo={fotoDeSalon(salon, 200)}
@@ -253,6 +300,7 @@ export function AdministrarLanding() {
 
               <EditorDeFoto
                 idCampo={`foto-servicio-${servicio.id}`}
+                nombre={servicio.nombre}
                 destino="servicios"
                 fotoUrl={servicio.fotoUrl}
                 guardando={
