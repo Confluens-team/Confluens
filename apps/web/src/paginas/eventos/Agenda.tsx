@@ -22,6 +22,7 @@ import { EditarConsulta } from '@/paginas/presupuestos/EditarConsulta';
 
 import { ComandaEvento } from './ComandaEvento';
 import { DetalleEvento } from './DetalleEvento';
+import type { DiaEnLaAgenda } from './dia-en-la-agenda';
 import { ESTADOS, ESTADOS_DEL_FILTRO } from './estado-evento';
 import { TarjetaResumenEvento } from './TarjetaResumenEvento';
 
@@ -183,9 +184,21 @@ function ListaDeEventos({
  * es el calendario y «Eventos» la lista agrupada por mes (decisión de Franco, 16/10/2026). Antes
  * convivían en la misma pestaña con un conmutador.
  */
-export function Agenda({ vista }: { vista: VistaAgenda }) {
+export function Agenda({
+  vista,
+  diaInicial = null,
+}: {
+  vista: VistaAgenda;
+  // «Ver en la agenda» desde la cuenta del evento: abre el calendario en ese día, con el estado del
+  // evento sumado al filtro para que se vea aunque no ocupe el salón.
+  diaInicial?: DiaEnLaAgenda | null;
+}) {
   const [salonId, setSalonId] = useState<number[]>([]);
-  const [estado, setEstado] = useState<EstadoEvento[]>([...ESTADOS_QUE_OCUPAN_SALON]);
+  const [estado, setEstado] = useState<EstadoEvento[]>(() =>
+    diaInicial?.estado && !ESTADOS_QUE_OCUPAN_SALON.includes(diaInicial.estado)
+      ? [...ESTADOS_QUE_OCUPAN_SALON, diaInicial.estado]
+      : [...ESTADOS_QUE_OCUPAN_SALON],
+  );
   // Ventana visible del calendario; la manda él mismo al cambiar de mes o de vista.
   const [rango, setRango] = useState<{ desde: string; hasta: string } | null>(null);
   const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
@@ -199,7 +212,11 @@ export function Agenda({ vista }: { vista: VistaAgenda }) {
   } | null>(null);
   // Dónde quedó parado el calendario. FullCalendar se desmonta al abrir el detalle, así que sin
   // esto volvería siempre al mes de hoy en la vista mensual.
-  const [posicion, setPosicion] = useState({ fecha: hoyISO(), vista: 'dayGridMonth' });
+  const [posicion, setPosicion] = useState(() =>
+    diaInicial
+      ? { fecha: diaInicial.fecha, vista: 'timeGridDay' }
+      : { fecha: hoyISO(), vista: 'dayGridMonth' },
+  );
   // HU-15 → HU-11: desde el evento se abre el detalle de su presupuesto.
   const [presupuestoAbierto, setPresupuestoAbierto] = useState<number | null>(null);
   // Comanda de cocina del evento confirmado, para imprimir. Tiene prioridad sobre las otras dos
