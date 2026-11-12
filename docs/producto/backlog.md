@@ -160,9 +160,11 @@ consecutivos, para cotizarlo, señarlo y organizarlo como un solo evento.
 
 Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
 
-- **Días consecutivos, hasta un mes.** El evento tiene de 1 a 31 días corridos seguidos, sin días
-  libres en el medio. El PO estima que lo habitual son una o dos semanas y pone el tope en un mes:
-  «mejor que sobre y no que falte».
+- **Días consecutivos, hasta 31.** El evento tiene de 1 a 31 días corridos seguidos, **contando el
+  de inicio y el de fin**, sin días libres en el medio. El tope se mide **en cantidad de días, no
+  en meses del calendario**: una franja puede empezar a fin de un mes y terminar a fin del
+  siguiente. El PO estima que lo habitual son una o dos semanas y pone el tope en un mes: «mejor que
+  sobre y no que falte».
 - **Cada día se configura por separado.** Cada día tiene su fecha, su horario de inicio y fin, su
   jornada (media o completa), sus salones con su distribución, su cantidad de personas y sus
   servicios, y los de un día pueden ser distintos de los de otro. **Los servicios y los adicionales
@@ -183,11 +185,25 @@ Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
   gastronomía de ese día.
 - **Cancelación (RN-07).** Se cancela **el evento entero**, no un día suelto. Propuesto: las 48
   horas se cuentan desde el inicio del **primer** día.
-- **Cambiar la franja.** No se suma ni se corta un día suelto: se **cambia la fecha** y la franja se
-  extiende o se achica. Cada día se identifica por su fecha: mover la franja entera los corre a
-  todos; cambiar solo la fecha de inicio o la de fin suma o saca días en ese extremo. No se puede
-  sacar un día del medio, porque la franja tiene que seguir siendo consecutiva. Un día nuevo entra
-  sin salones ni servicios hasta que se lo configura (propuesto).
+- **Selección de la franja: día de inicio y día de fin** (PO, 12/11/2026). Es la misma pantalla
+  para el cotizador, la consulta social y el panel:
+  - **Un clic** elige el día de inicio. Si no hay un segundo clic, el evento dura **un solo día**.
+  - **Un segundo clic** elige el día de fin: el calendario **conecta** los dos días y resalta la
+    franja entera. El segundo clic en el mismo día también deja un solo día.
+  - Mientras se elige, el calendario permite **cambiar de mes** entre los dos clics sin perder el
+    día de inicio, porque la franja puede cruzar el fin de un mes.
+  - Con el día de inicio elegido, los días que harían pasar el evento de los 31 días **quedan
+    deshabilitados** y se avisa por qué («El evento puede durar hasta 31 días»). No hace falta
+    llegar a equivocarse para enterarse del tope.
+  - Propuesto: un segundo clic en un día **anterior** al de inicio lo toma como nuevo inicio, y un
+    tercer clic empieza una elección nueva.
+  - La API vuelve a validar el tope y rechaza una franja de más de 31 días, sin depender de la
+    pantalla.
+- **Cambiar la franja.** No se suma ni se corta un día suelto: se **cambia la fecha** con el mismo
+  selector y la franja se extiende o se achica. Cada día se identifica por su fecha: mover la
+  franja entera los corre a todos; cambiar solo el día de inicio o el de fin suma o saca días en
+  ese extremo. No se puede sacar un día del medio, porque la franja tiene que seguir siendo
+  consecutiva. Un día nuevo entra sin salones ni servicios hasta que se lo configura (propuesto).
 - **Cuándo se puede cambiar la franja.** Con las mismas políticas de estado que hoy rigen el cambio
   de fecha de un evento (RN-09 y `modificarPresupuesto`); ver la tabla de abajo.
 - **Repetir evento.** Repetir un evento de varios días copia la misma franja: la misma cantidad de
@@ -202,6 +218,26 @@ Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
 - **Consulta social.** También se define con una franja de fechas (inicio y fin), porque el cliente
   elige las fechas. Sigue sin salón ni servicios (ADR 0008): el Responsable de Eventos arma el
   detalle de cada día al armar el presupuesto.
+
+**Casos de prueba de la validación del tope.** Los días se cuentan como fechas del calendario
+(`AAAA-MM-DD`, sin horas ni zona), contando el de inicio y el de fin, así que el cambio de mes, el
+año bisiesto y el cambio de año no pueden correr la cuenta:
+
+| Inicio | Fin | Días | Resultado |
+|---|---|---|---|
+| 15/05 | 15/05 | 1 | Permitido: un solo día (sin segundo clic o con el mismo día). |
+| 28/04 | 28/05 | 31 | **Permitido**: cruza de abril a mayo, justo en el tope. |
+| 30/04 | 30/05 | 31 | **Permitido**: empieza a fin de abril y termina a fin de mayo. |
+| 30/04 | 31/05 | 32 | Rechazado: un día más que el tope. |
+| 01/05 | 31/05 | 31 | Permitido: un mes completo. |
+| 01/03 | 31/03 | 31 | Permitido. |
+| 01/02 | 29/02 (año bisiesto) | 29 | Permitido: no se corta en el fin de febrero. |
+| 20/12 | 19/01 (año siguiente) | 31 | Permitido: cruza el año. |
+| 20/12 | 20/01 (año siguiente) | 32 | Rechazado. |
+| 10/05 | 09/05 | — | Un día de fin anterior al de inicio no es una franja: se toma como nuevo inicio (propuesto). |
+
+El caso que el PO pidió cuidar es el de las filas 2 y 3: **el tope no puede bloquear una franja que
+empieza a fin de mes y termina a fin del mes siguiente**, mientras no pase de 31 días.
 
 **Cambio de fecha o de franja según el estado, contrastado con las políticas de hoy.** Hoy se puede
 modificar una consulta (también la fecha) con el presupuesto `Estimado` o `Expirado` y el evento
@@ -239,6 +275,11 @@ rango de la agenda del evento se deriven de sus días. Toca:
   eventos existentes, que pasan a tener un único día);
 - el cotizador, el presupuesto (cada línea pertenece a un día), el cálculo de la seña y los recargos;
 - la agenda y el detalle del evento, la comanda y el PDF del presupuesto;
+- un **selector de rango de fechas** (clic de inicio y clic de fin) sobre el calendario propio de
+  `SelectorFechaHora.tsx`, sin dependencia nueva, para reemplazar el selector de un solo día en el
+  cotizador, la consulta social y el panel;
+- la validación del tope de 31 días como regla compartida en `packages/shared` (la usan la pantalla
+  y la API), con los casos de la tabla de arriba como tests;
 - Repetir evento y el recálculo por cambio de fecha (HU-54);
 - los esquemas de `packages/shared`, la auditoría y los tests.
 
