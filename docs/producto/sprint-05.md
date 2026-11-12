@@ -2,12 +2,14 @@
 
 Del 06/11/2026 al 20/11/2026 · Scrum Master: Facundo Andrés Pfening · Release 3 «Gestión y control»
 
-> **Estado: propuesta para la Sprint Planning, sin validar.** Armada el 06/11/2026 a pedido del PO
-> a partir de la tabla de distribución por sprint del `Seguimiento del Proyecto` (sección 2.8), de
-> `backlog.md` y de lo que ya existe en el código. El Seguimiento todavía no tiene la sección del
-> Sprint 5: alcance, puntos y numeración se fijan en la Planning, con Planning Poker, y se pasan a
-> los dos documentos de Drive. Hasta entonces este archivo usa los **códigos de `backlog.md`**
-> («HU-25 del backlog» es la auditoría, no la HU-25 del Sprint 4).
+> **Estado al 12/11/2026: todo el alcance propuesto está construido en `sprint-05`.** La propuesta
+> se armó el 06/11/2026 a pedido del PO a partir de la tabla de distribución por sprint del
+> `Seguimiento del Proyecto` (sección 2.8), de `backlog.md` y de lo que ya existe en el código. El
+> 12/11/2026 se revisó cada historia contra el código de la rama y se actualizó la columna
+> «Situación hoy». Lo que sigue pendiente no es código: estimar las historias «a estimar» y pasar
+> alcance, puntos y numeración al Seguimiento y a los documentos de Drive. Hasta entonces este
+> archivo usa los **códigos de `backlog.md`** («HU-25 del backlog» es la auditoría, no la HU-25 del
+> Sprint 4).
 >
 > **Diferencias con la tabla del Seguimiento:**
 > - **Entran** HU-54 y HU-55 (reunión con el cliente del 05/11/2026). Cambian reglas que el código
@@ -16,8 +18,10 @@ Del 06/11/2026 al 20/11/2026 · Scrum Master: Facundo Andrés Pfening · Release
 >   para la exposición todo tiene que estar calculado con IVA y sin la casilla de factura.
 > - **Sale** HU-34 (incremento por tramos, 13 SP) al Sprint 6: no entra junto con la auditoría y no
 >   bloquea nada de este sprint, porque HU-54 funciona con el porcentaje único de hoy.
-> - Las HU-50, HU-51, HU-52 y HU-56 y dos historias que salieron del Sprint 4 (HU-18 y HU-22) no
->   tienen lugar en ningún sprint. Ver «Lo que no entra».
+> - **Entró** HU-56 (permisos por rol), que se proponía como candidata si sobraba lugar: ya está
+>   construida (PR #122).
+> - Las HU-50, HU-51 y HU-52 y dos historias que salieron del Sprint 4 (HU-18 y HU-22) no tienen
+>   lugar en ningún sprint. Ver «Lo que no entra».
 
 Objetivo: que el sistema aplique las reglas acordadas con el cliente el 05/11/2026 que siguen
 pendientes (recálculo automático y seña de un presupuesto vencido), que deje rastro de quién cambió qué
@@ -37,37 +41,36 @@ administrar al personal.
   siempre).
 - Si a `develop` le llega un arreglo urgente antes de eso, se mergea `develop` en `sprint-05` para
   no divergir.
-- **Protección:** desde el 07/11/2026 la rama tiene su propio ruleset de GitHub, «Flujo equipos:
-  proteger sprint-05», con las mismas reglas que el de `develop` y `main` (pull request con 1
-  aprobación, solo merge commit, los cinco checks del CI con la rama al día, sin borrado ni push
-  forzado). No hay push directo, ni siquiera de quien administra el repositorio.
-- **Al mergear `sprint-05` a `develop`, hay que borrar el ruleset y después la rama.** Los dos pasos
-  son manuales y van en este orden:
-  1. Borrar el ruleset «Flujo equipos: proteger sprint-05» (GitHub → Settings → Rules → Rulesets).
-     Tiene la regla de no-borrado, así que mientras exista GitHub no deja borrar la rama, tampoco
-     el borrado automático que hace al mergear el pull request.
-  2. Borrar la rama `sprint-05`, en GitHub o con `git push origin --delete sprint-05`.
-
-  El ruleset de `develop` y `main` no se toca.
+- **Protección:** del 07/11/2026 al 12/11/2026 la rama tuvo su propio ruleset de GitHub, «Flujo
+  equipos: proteger sprint-05» (pull request con 1 aprobación, solo merge commit, los cinco checks
+  del CI y sin borrado ni push forzado). **El PO lo eliminó el 12/11/2026**, por considerarlo muy
+  tosco. Desde entonces `sprint-05` no tiene protección en GitHub: se puede pushear
+  directo y no hay checks obligatorios. El ruleset de `develop` y `main` no se tocó.
+- **Al mergear `sprint-05` a `develop`, queda borrar la rama**, en GitHub o con
+  `git push origin --delete sprint-05`. Ya no hay ruleset que borrar antes.
+- `develop` se mergeó en `sprint-05` el 12/11/2026 para no divergir. Al integrar las dos
+  implementaciones de HU-54 (la de `sprint-05` del 06/11 y la de `develop` del 09/11) el PO
+  decidió **conservar la de `sprint-05` y sumarle lo de `develop`**; ver HU-54 y HU-55 más abajo.
 
 ## Alcance propuesto
 
 | Backlog | Título | Actor | SP | Situación hoy |
 |---|---|---|---|---|
 | HU-25 | Registrar el usuario y la fecha de cada modificación (auditoría) | SYS | 8 | Construida (PR #118): mecanismo común, consulta para el GG y el ADM y pestaña Auditoría (ADR 0013) |
-| HU-54 | Recalcular el presupuesto automáticamente | SYS | a estimar | Construida (PR #113) |
-| HU-55 | Cobrar la seña de un presupuesto vencido | RF | a estimar | Construida (PR #112) |
+| HU-54 | Recalcular el presupuesto automáticamente | SYS | a estimar | Construida (PR #113). El cambio de fecha también marca en pantalla los precios que cambiaron y pide confirmarlos al guardar (de `develop`, 09/11/2026) |
+| HU-55 | Cobrar la seña de un presupuesto vencido | RF | a estimar | Construida (PR #112). El panel también deja registrar pagos con la consulta vencida |
 | HU-30 | Modificar un usuario | GG / ADM | 3 | Construida (PR #114): modificar el rol y cambiar la contraseña, también desde Mi cuenta |
 | HU-31 | Dar de baja un usuario | GG / ADM | 2 | Construida (PR #114), con `Usuario.activo` |
 | HU-24 | Avisar por WhatsApp la recepción de la consulta y descargar su resumen en PDF | RE | 5 | Revisada contra los criterios en el PR #116, sin cambios. Falta re-estimarla en la Planning |
 | — | Enviar correo de confirmación de consulta | SYS | a estimar | Construido (PR #121 y siguientes): confirmación breve, sin resumen ni PDF adjunto (PO, 07/11/2026); no necesitó dependencia nueva. Sin dominio (S-11) solo llega al dueño de la cuenta de Resend |
+| HU-56 | Restringir el panel interno según el rol | todos | a estimar | Construida (PR #122): matriz de permisos por rol, restricciones en la API y secciones de Configuración según el rol |
 | — | Cerrar sesión | todos | — | Cubierta con tests (PR #116) |
 | — | Cambiar contraseña | todos | — | Restablecimiento por correo cubierto con tests (PR #116). Desde Mi cuenta, con HU-30 (PR #114) |
 | | **Total estimado** | | **18 + a estimar** | |
 
 Velocidad de los sprints anteriores: 31, 32, 36 y 34. Con 18 SP estimados quedan unos 15 para
-HU-54, HU-55 y el correo. **Si en la Planning sobra lugar**, la siguiente candidata es HU-56
-(permisos por rol): sus reglas ya están en `dominio.md`.
+HU-54, HU-55 y el correo. HU-56 (permisos por rol), que se proponía como candidata si sobraba
+lugar, entró y está construida: sus reglas están en `dominio.md`.
 
 Correcciones sin historia (`backlog.md`, reunión 05/11/2026), que se arreglan en este sprint y ya están hechas (PR #115):
 
@@ -77,6 +80,19 @@ Correcciones sin historia (`backlog.md`, reunión 05/11/2026), que se arreglan e
   salir? Tu consulta todavía no se completó»).
 
 Los campos de importe ya los cubría `InputImporte`. **Pendiente: cargar estas tres tareas en Jira** (no tienen historia propia; PO, 06/11/2026).
+
+Entró a la rama después de la propuesta (sin historia propia en este documento):
+
+- La confirmación por correo también para la consulta social (PR #124).
+- Desde `develop` (mergeado en `sprint-05` el 12/11/2026): hora de fin estimada de la consulta de un
+  evento social, selectores de hora en la landing y el cotizador, la duración del cotizador que pasa
+  a los salones, vista previa de las fotos de la landing, correcciones de seguridad (PR #135), el
+  segundo cambio de fecha (HU-54, PR #130), el cambio de salón y de fecha de un evento confirmado
+  (HU-12, PR #132) y ajustes para la exposición (PR #138).
+- Desde la rama `chore/marca-confluens-en-el-panel` (PR #140, **abierto**, todavía sin mergear en
+  `develop`): la marca de Confluens en el encabezado del panel, las **observaciones generales del
+  evento** (`Evento.observaciones`, internas del personal; migración y endpoint
+  `PATCH /eventos/:id/observaciones`) y «Fiesta empresarial» en lugar de «Fiesta corporativa».
 
 Orden sugerido: HU-55 → HU-54 (las dos tocan el presupuesto y conviene no pisarse) en
 paralelo con HU-25; después HU-30 y HU-31 juntas; HU-24 y el correo al final.
@@ -93,8 +109,9 @@ paralelo con HU-25; después HU-30 y HU-31 juntas; HU-24 y el correo al final.
 | Correo | Se manda **solo cuando el cliente confirma la consulta en el cotizador**, no cuando la carga el personal. Es una **confirmación breve, sin resumen del evento ni PDF adjunto** (PO, 07/11/2026): el cliente ya descarga su presupuesto estimado desde el cotizador y el definitivo se lo envía el Responsable de Eventos. **No hay dominio propio todavía** (S-11): hasta conseguirlo, solo llega al correo del dueño de la cuenta de Resend. |
 
 **Cambios de modelo** (cada uno se confirma antes de tocar `schema.prisma`, `AGENTS.md` §6):
-`Usuario.activo` (HU-31, confirmado) y, según cómo se guarde el campo auditado para filtrarlo, poco
-o nada en `AuditLog`, que ya tiene usuario, fecha, entidad, valor anterior y valor nuevo.
+`Usuario.activo` (HU-31, confirmado) y `AuditLog.campos` (HU-25, con el trigger que hace inmutable
+el registro). Fuera del alcance original: `Evento.horaFinEstimada` y `Evento.observaciones` (esta
+última confirmada por el PO el 12/11/2026).
 
 **Sin dependencias nuevas.** El correo no lleva el PDF adjunto ni un resumen (PO, 07/11/2026): el PDF
 se sigue descargando desde el cotizador con la impresión del navegador. Así no hace falta una
@@ -222,10 +239,9 @@ Sprint 6 en lugar de otras y cuáles quedan fuera del alcance de la tesis.
 
 | Backlog | Título | SP | Nota |
 |---|---|---|---|
-| HU-56 | Restringir el panel interno según el rol | a estimar | Candidata si sobra lugar en el Sprint 5 |
 | HU-51 | Agregar servicios propios a un evento | a estimar | Reemplaza la caja de texto del evento social (S-14) |
 | HU-52 | Registrar lo pagado de más como no reintegrable | a estimar | Cambio de modelo |
-| HU-50 | Reservar un evento de varios días | a estimar | Cambia el modelo del evento: hay que pulirla antes de estimarla |
+| HU-50 | Reservar un evento de varios días | a estimar | Cambia el modelo del evento (hoy un evento ocupa un solo día): hay que pulirla antes de estimarla |
 | HU-18 | Reasignar un evento a otro salón | 8 | Salió del Sprint 4 |
 | HU-22 | Generar el reporte de servicios contratados | 5 | Salió del Sprint 4 |
 
@@ -234,4 +250,6 @@ Sprint 6 en lugar de otras y cuáles quedan fuera del alcance de la tesis.
 La misma del Sprint 4: los criterios pasan como tests automatizados, el código fue revisado por
 otro integrante vía pull request, el CI corre sin errores, la funcionalidad está desplegada y
 accesible, y la Definición del Producto tiene sus criterios, prototipo, casos de prueba y
-resultados. La auditoría deja de quedar afuera: entra con HU-25 del backlog.
+resultados. La auditoría deja de quedar afuera: entra con HU-25 del backlog. Al 12/11/2026
+«desplegada y accesible» no se cumple todavía, por diseño: `sprint-05` entra a `develop` recién
+después de la exposición.
