@@ -311,9 +311,9 @@ puede reservar por varios **días consecutivos**, sin días libres en el medio:
   último, como hoy se muestra un evento cuyo horario de fin pasa la medianoche.
 - Los **servicios y los adicionales a mano pertenecen a un día**: no se cargan una vez para toda la
   franja, porque cada día puede tener otros salones, otra cantidad de personas y otros servicios.
-- **Tope: 31 días corridos**, contando el de inicio y el de fin. Se mide en cantidad de días y no
+- **Tope: 32 días corridos**, contando el de inicio y el de fin. Se mide en cantidad de días y no
   en meses del calendario: una franja puede empezar a fin de un mes y terminar a fin del siguiente
-  (del 30/04 al 30/05 son 31 días y se puede; al 31/05 son 32 y no). El PO estima que lo habitual
+  (del 30/04 al 31/05 son 32 días y se puede; al 01/06 son 33 y no). El PO estima que lo habitual
   son una o dos semanas.
 - Las fechas se eligen con **un clic en el día de inicio y otro en el día de fin**: sin el segundo
   clic el evento dura un solo día, y con los dos se conecta la franja.
