@@ -130,7 +130,7 @@ Definido en la entrevista del 24/09/2026. Es el recorrido completo que hace el c
    - **Corporativo**: sigue el recorrido de arriba (salón según la cantidad de invitados,
      servicios y presupuesto estimado en vivo).
    - **Social**: el cliente elige qué celebra (cumpleaños, casamiento, fiesta de 15, bautismo,
-     fiesta corporativa u otro, contando cuál) y manda la consulta. **No ve salones, servicios ni
+     fiesta empresarial u otro, contando cuál) y manda la consulta. **No ve salones, servicios ni
      precios y no se genera presupuesto**: los eventos sociales son muy variables y el Responsable
      de Eventos lo arma con el cliente.
 5. **Confirmación del cliente.** El cliente confirma el formulario: se crea la **Solicitud** con
@@ -364,7 +364,7 @@ evento reservado (ver RN-12).
 
 **Tipo de evento.** Social o corporativo (decisión del PO, 07/10/2026; antes se llamaba
 "empresarial"). El social se clasifica en cumpleaños, casamiento, fiesta de 15, bautismo, fiesta
-corporativa u otro (con una descripción de cuál). Las consultas corporativas pasan por el cotizador;
+empresarial u otro (con una descripción de cuál). Las consultas corporativas pasan por el cotizador;
 las sociales llegan **sin salón y con el presupuesto sin armar**: el Responsable de Eventos carga
 salón, servicios y precios desde la consulta. Las dos se distinguen por color en el panel, se
 modifican igual y se confirman igual, con la seña del 20% (ADR 0008). Los datos propios de un evento

@@ -12,7 +12,7 @@ export const ETIQUETAS_TIPO_EVENTO_SOCIAL: Record<TipoEventoSocial, string> = {
   Casamiento: 'Casamiento',
   FiestaDeQuince: 'Fiesta de 15',
   Bautismo: 'Bautismo',
-  FiestaCorporativa: 'Fiesta corporativa',
+  FiestaCorporativa: 'Fiesta empresarial',
   Otro: 'Otro',
 };
 
