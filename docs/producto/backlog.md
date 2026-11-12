@@ -151,7 +151,71 @@ RG-04. Gestionar eventos.  ·  9 historias  ·  62 pts + HU-50 sin estimar  ·  
 **HU-50.** Un evento abarca varios días consecutivos, cada uno con su horario, jornada, salones,
 servicios y cantidad de personas; el salón se cobra según la jornada de cada día. El solapamiento
 (RN-12) se controla por día y por salón, sale una comanda por día, y todo va en un solo presupuesto
-con una sola seña. Cambia el modelo del evento. Es grande: hay que pulirla antes de estimarla.
+con una sola seña. Cambia el modelo del evento. Es grande: hay que estimarla en la Planning.
+
+**Definición del PO (12/11/2026).** Reglas en `dominio.md`, «Evento de varios días».
+
+Como Responsable de Eventos y como Cliente, quiero reservar un evento que dure varios días
+consecutivos, para cotizarlo, señarlo y organizarlo como un solo evento.
+
+Criterios propuestos:
+
+- **Días consecutivos.** El evento tiene de uno a N días seguidos, sin días libres en el medio.
+  Cada día tiene su fecha, su horario de inicio y fin, su jornada (media o completa), sus salones
+  con su distribución, sus servicios y su cantidad de personas.
+- **Precio por día.** El salón de cada día se cobra con el precio de media jornada o de jornada
+  completa según la jornada de ese día. Los servicios de un día se cotizan con la cantidad
+  de personas de ese día.
+- **Un solo presupuesto, un solo total, una sola seña.** El total suma todos los días. La seña es el
+  20% de la base de cobro de ese total (RN-01), no de cada día; el evento pasa a `Reservado` al
+  llegar a ese 20% y a `Cobrado` al llegar al 100%, como hoy.
+- **Solapamiento por día y por salón (RN-12).** Un salón puede estar reservado un día por un evento
+  y el día siguiente por otro. Cada día se controla por separado, con el mismo borde de siempre: un
+  evento que termina a las 18:00 y otro que empieza a las 18:00 no chocan.
+- **Agenda.** El evento se muestra como **una sola barra larga**, del inicio del primer día al fin
+  del último, igual que hoy un evento que termina después de la medianoche.
+- **Comanda.** Sale **una por día**, con los salones, el horario, las personas y los servicios de
+  gastronomía de ese día.
+- **Repetir evento.** Repetir un evento de varios días copia la misma franja: la misma cantidad de
+  días consecutivos y la configuración de cada día. El cliente elige la fecha de inicio.
+- **Recálculo por cambio de fecha (HU-54).** Al mover la fecha del evento se mueve toda la franja
+  (los mismos días consecutivos desde la fecha nueva) y el incremento de RN-13 es el que
+  corresponde al **último día**; ese incremento se aplica a todo el presupuesto.
+- **Eventos existentes.** Los que ya están cargados son de un solo día y siguen igual. Solo los
+  eventos nuevos pueden durar varios días.
+- **Canal público.** El cliente elige en el cotizador cuántos días dura el evento y configura cada
+  día. El presupuesto estimado y el PDF muestran el detalle por día y un único total.
+
+**Preguntas abiertas** (supuestos propuestos, a confirmar con el PO antes de estimar):
+
+1. **Cancelación (RN-07).** Propuesto: se cancela el evento entero, no un día suelto, y las 48 horas
+   se cuentan desde el inicio del **primer** día.
+2. **Cantidad máxima de días.** ¿Hay un tope (por ejemplo, 7 días)? Hace falta para validar el
+   cotizador y el formulario del personal.
+3. **Eventos sociales.** ¿La reserva por varios días aplica también a la consulta social (que no pasa
+   por el cotizador, ADR 0008), o solo al evento corporativo?
+4. **Servicios y adicionales a mano.** Propuesto: cada ítem pertenece a un día; un servicio que se
+   repite todos los días se carga una vez por día.
+5. **Cambiar la duración de un evento ya cargado.** ¿Se pueden agregar o sacar días de un evento
+   existente, o se hace repitiéndolo? Propuesto: se pueden sacar o agregar días al final mientras el
+   presupuesto no esté `Confirmado`.
+
+**Impacto técnico (para estimar).** Hoy `Evento` tiene una sola fecha, un horario y una jornada, y
+sus salones comparten ese horario (ADR 0011); el no solapamiento lo garantiza una restricción de la
+base sobre un rango horario por salón, mantenida por triggers. HU-50 pide una entidad nueva, por
+ejemplo un «día del evento», que lleve horario, jornada, salones y personas, y que el horario y el
+rango de la agenda del evento se deriven de sus días. Toca:
+
+- el modelo y la restricción de no solapamiento (cambio de `schema.prisma` y migración de los
+  eventos existentes, que pasan a tener un único día);
+- el cotizador, el presupuesto (cada línea pertenece a un día), el cálculo de la seña y los recargos;
+- la agenda y el detalle del evento, la comanda y el PDF del presupuesto;
+- Repetir evento y el recálculo por cambio de fecha (HU-54);
+- los esquemas de `packages/shared`, la auditoría y los tests.
+
+Para la Planning se propone **partirla en historias** que se puedan entregar por separado: (a) modelo
+y solapamiento por día, (b) cotizador y presupuesto por día, (c) agenda y comanda por día, (d)
+Repetir evento y recálculo. Sin puntos hasta la Planning Poker.
 
 ## EPIC-06 — Gestión de Pagos de Clientes de los Eventos
 

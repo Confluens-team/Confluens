@@ -297,17 +297,28 @@ consulta social puede estar `EnConsulta` sin salón hasta que el Responsable de 
 servicio de último momento): ningún control bloquea un evento por su fecha, y el evento se cierra
 por pago (`Cobrado`), nunca por fecha (reunión 05/11/2026).
 
-**Evento de varios días** (reunión 05/11/2026). Un evento se puede reservar por varios **días
-consecutivos**:
+**Evento de varios días** (reunión 05/11/2026; definido por el PO el 12/11/2026). Un evento se
+puede reservar por varios **días consecutivos**, sin días libres en el medio:
 - Cada día tiene **su propio horario, su jornada, sus salones, sus servicios y su cantidad de
   personas**. La jornada sale de cada día, así que el salón se cobra con el precio de media o de
   jornada completa según el día.
 - El no solapamiento (RN-12) se controla **por día y por salón**.
 - La comanda sale **una por día**.
-- Todo va en **un solo presupuesto y una sola seña**.
+- Todo va en **un solo presupuesto, un solo total y una sola seña**: el evento es uno solo, y la
+  seña es el 20% de la base de cobro de ese total (RN-01), no de cada día. El estado del evento
+  (`Reservado`, `Cobrado`) sigue siendo uno.
+- En la **agenda** se muestra como **una sola barra larga**, del inicio del primer día al fin del
+  último, como hoy se muestra un evento cuyo horario de fin pasa la medianoche.
+- **Repetir un evento** de varios días cubre **la misma franja**: la misma cantidad de días
+  consecutivos, con la configuración de cada día. La fecha de inicio la elige el cliente.
+- El **recálculo por cambio de fecha** toma el incremento (RN-13) que corresponde al **último día**
+  de la franja, y lo aplica a todo el presupuesto.
+- Los eventos que ya existen son de un solo día y no cambian. Los **eventos nuevos** pueden durar
+  varios días.
 
-Cambia el modelo del evento. **Reunión 05/11/2026 → HU-50**, que hay que pulir antes de estimar.
-Hasta entonces un evento ocupa un solo día.
+Cambia el modelo del evento. **Reunión 05/11/2026 → HU-50**: definida por el PO el 12/11/2026,
+falta estimarla y resolver las preguntas abiertas de `backlog.md`. Hasta que se construya, un evento
+ocupa un solo día.
 
 **Pago.** Importe recibido con fecha y medio de pago. Monto libre, sin mínimo. Un pago que excede
 el saldo se rechaza: un pago nunca genera saldo a favor.
