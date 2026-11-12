@@ -24,6 +24,32 @@ export type Servicio = z.infer<typeof esquemaServicio>;
 // sprint, así que tampoco es parte del contrato de creación. "categoria" y "fotoUrl" son contenido
 // de la landing: los administra el Administrador del Sistema (HU-08), no el alta del catálogo, y
 // nacen en null.
+// Textos del catálogo con tope de largo (PO, 08/11/2026): sin él, un nombre de miles de caracteres
+// entraba y rompía el listado. Los topes dejan mucha holgura sobre lo cargado (el nombre más largo del
+// tarifario tiene 35 caracteres y la descripción más larga, 205).
+const MAXIMO_NOMBRE_SERVICIO = 100;
+const MAXIMO_DESCRIPCION_SERVICIO = 500;
+const MAXIMO_UNIDAD_MEDIDA = 30;
+
+const textoDeServicio = (faltante: string, maximo: number, nombreDelCampo: string) =>
+  z
+    .string(faltante)
+    .trim()
+    .min(1, faltante)
+    .max(maximo, `${nombreDelCampo} admite hasta ${maximo} caracteres`);
+
+const nombreDeServicio = textoDeServicio('Escribí el nombre', MAXIMO_NOMBRE_SERVICIO, 'El nombre');
+const descripcionDeServicio = textoDeServicio(
+  'Escribí la descripción',
+  MAXIMO_DESCRIPCION_SERVICIO,
+  'La descripción',
+);
+const unidadDeMedida = textoDeServicio(
+  'Escribí la unidad de medida',
+  MAXIMO_UNIDAD_MEDIDA,
+  'La unidad de medida',
+);
+
 export const esquemaCrearServicio = esquemaServicio
   .omit({
     id: true,
@@ -34,7 +60,12 @@ export const esquemaCrearServicio = esquemaServicio
     actualizadoEn: true,
   })
   // Sin el campo, el servicio no admite modalidad (RN-11).
-  .extend({ admiteModalidad: z.boolean().default(false) })
+  .extend({
+    nombre: nombreDeServicio,
+    descripcion: descripcionDeServicio,
+    unidadMedida: unidadDeMedida,
+    admiteModalidad: z.boolean().default(false),
+  })
   // HU-11: "a cotizar" (precio null) es solo para tercerizados (dominio.md).
   .refine((servicio) => servicio.precio !== null || servicio.tercerizado, {
     path: ['precio'],
@@ -51,12 +82,9 @@ export type CrearServicio = z.infer<typeof esquemaCrearServicio>;
 // Que el nombre no sea de otro servicio lo controla la API (409): depende de lo que hay en la base.
 export const esquemaModificarServicio = z
   .object({
-    nombre: z.string('Escribí el nombre').trim().min(1, 'Escribí el nombre'),
-    descripcion: z.string('Escribí la descripción').trim().min(1, 'Escribí la descripción'),
-    unidadMedida: z
-      .string('Escribí la unidad de medida')
-      .trim()
-      .min(1, 'Escribí la unidad de medida'),
+    nombre: nombreDeServicio,
+    descripcion: descripcionDeServicio,
+    unidadMedida: unidadDeMedida,
     // RN-05: sin IVA. null = «a cotizar», solo para tercerizados (HU-11).
     precio: esquemaImporte.nullable(),
     porPersona: z.boolean(),

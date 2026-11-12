@@ -222,9 +222,7 @@ export async function cancelarEvento(
   if (evento.estado === 'Reservado' && evento.inicio) {
     const limite = new Date(evento.inicio.getTime() - CUARENTA_Y_OCHO_HORAS_EN_MS);
     if (new Date() > limite) {
-      throw ErrorApi.reglaNegocio(
-        'La cancelación requiere un mínimo de 48 horas de anticipación (RN-07)',
-      );
+      throw ErrorApi.reglaNegocio('La cancelación requiere un mínimo de 48 horas de anticipación');
     }
   }
   await repo.cancelar(id);

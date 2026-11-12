@@ -8,11 +8,17 @@ const tx = {
   cliente: { findFirst: vi.fn(), update: vi.fn(), create: vi.fn() },
 };
 
+// vi.hoisted: la fábrica de vi.mock se ejecuta antes que las constantes del módulo.
+const usuarioUpdateMany = vi.hoisted(() => vi.fn());
+
 vi.mock('../../lib/prisma.js', () => ({
-  prisma: { $transaction: (ejecutar: (cliente: typeof tx) => unknown) => ejecutar(tx) },
+  prisma: {
+    $transaction: (ejecutar: (cliente: typeof tx) => unknown) => ejecutar(tx),
+    usuario: { updateMany: usuarioUpdateMany },
+  },
 }));
 
-const { crearUsuarioCliente } = await import('./auth.repositorio.js');
+const { crearUsuarioCliente, invalidarSesiones } = await import('./auth.repositorio.js');
 
 const datos = {
   email: 'ana@empresa.com',
@@ -67,5 +73,22 @@ describe('auth.repositorio: crearUsuarioCliente', () => {
       },
     });
     expect(tx.cliente.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('auth.repositorio: invalidarSesiones', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  // La condición por versión es la que deja sin efecto un token ya invalidado: con la versión
+  // vieja el update no encuentra la fila y la sesión que el usuario abrió después sigue viva.
+  it('sube la versión solo si la del token sigue siendo la vigente', async () => {
+    await invalidarSesiones(9, 2);
+
+    expect(usuarioUpdateMany).toHaveBeenCalledWith({
+      where: { id: 9, versionSesion: 2 },
+      data: { versionSesion: { increment: 1 } },
+    });
   });
 });

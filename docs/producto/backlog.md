@@ -103,7 +103,9 @@ crean con `true`.
 de la fecha nueva, en cualquier estado, y se reinicia la vigencia; al cambiar el porcentaje (o un
 tramo, HU-34) se recalculan solo los presupuestos `Estimado` de eventos `EnConsulta`, sin
 reiniciar la vigencia. Un `Expirado` se recalcula solo si cambia su fecha. Corrige HU-27 del
-Sprint 4, que deja recalcular un presupuesto confirmado.
+Sprint 4, que deja recalcular un presupuesto confirmado. **El recálculo por cambio de fecha ya está
+construido** (09/11/2026, ver «Recálculo automático» en `dominio.md`); faltan el del porcentaje y
+sacar el botón Recalcular.
 
 **HU-55.** La seña se registra aunque el presupuesto esté `Expirado`, sin recalcular: la vigencia
 de 10 días es una leyenda para el cliente (RN-06, RN-08). Agrega `Expirado → Confirmado` a la

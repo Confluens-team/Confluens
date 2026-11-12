@@ -224,6 +224,9 @@ model Evento {
   tipoJornada               TipoJornada?
   // "HH:mm", solo de referencia. El horario real (inicio/fin) se carga al agendar (ADR 0007).
   horaInicioEstimada        String?
+  // "HH:mm", solo de referencia, igual que horaInicioEstimada. La carga el cliente en la consulta de
+  // un evento social, que no tiene salón ni precio; menor que la de inicio es el día siguiente.
+  horaFinEstimada           String?
   // Columna del Sprint 1 que quedó sin escribirse: la vigencia de los 10 días es del presupuesto y
   // no del evento (RN-06, RN-08).
   senaVenceEn               DateTime?

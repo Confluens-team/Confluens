@@ -14,7 +14,11 @@ import {
   type PresupuestoDeBase,
 } from '../../lib/base-de-cobro.js';
 import { ErrorApi } from '../../lib/errores.js';
-import { esViolacionDeSolapamiento, mensajeDeSolapamiento } from '../../lib/prisma-errores.js';
+import {
+  comoConflictoSiYaExiste,
+  esViolacionDeSolapamiento,
+  mensajeDeSolapamiento,
+} from '../../lib/prisma-errores.js';
 import * as pagosRepositorioReal from './pagos.repositorio.js';
 import type { PagosRepositorio } from './pagos.repositorio.js';
 
@@ -380,7 +384,10 @@ export async function crearMedioPago(
   if (existente) {
     throw ErrorApi.conflicto(`Ya existe un medio de pago llamado «${existente.nombre}»`);
   }
-  return repo.crearMedioPago(datos);
+  return comoConflictoSiYaExiste(
+    () => repo.crearMedioPago(datos),
+    `Ya existe un medio de pago llamado «${datos.nombre}»`,
+  );
 }
 
 // HU-33 del Sprint 4: modificar el nombre de un medio (desde HU-53, solo el nombre). 404 si no existe y
@@ -399,5 +406,8 @@ export async function modificarMedioPago(
     throw ErrorApi.conflicto(`Ya existe un medio de pago llamado «${conEseNombre.nombre}»`);
   }
 
-  return repo.modificarMedioPago(id, datos);
+  return comoConflictoSiYaExiste(
+    () => repo.modificarMedioPago(id, datos),
+    `Ya existe un medio de pago llamado «${datos.nombre}»`,
+  );
 }

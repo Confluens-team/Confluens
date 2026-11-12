@@ -190,6 +190,7 @@ function eventoFixtureBase() {
     tipoSocialDetalle: null as string | null,
     tipoJornada: null,
     horaInicioEstimada: null as string | null,
+    horaFinEstimada: null as string | null,
     modalidadSalonRestaurante: false,
     observacionesComanda: null,
     creadoEn: new Date(),
@@ -317,6 +318,24 @@ describe('POST /api/eventos/:id/pagos — base de cobro (RN-01)', () => {
     expect(respuesta.body.data.reservoElSalon).toBe(false);
     expect(respuesta.body.data.estadoEvento).toBe('EnConsulta');
     expect(confirmarPresupuestoYReservarMock).not.toHaveBeenCalled();
+  });
+
+  // Borde de la seña: un centavo menos no reserva y un centavo más sí (el 20% exacto ya está arriba).
+  it.each([
+    ['sin factura, un centavo menos que la seña', false, '28439.99', false],
+    ['sin factura, un centavo más que la seña', false, '28440.01', true],
+    ['con factura, un centavo menos que la seña', true, '34412.39', false],
+    ['con factura, un centavo más que la seña', true, '34412.41', true],
+  ])('%s', async (_caso, requiereFactura, monto, reserva) => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ presupuestos: [presupuestoFixture({ requiereFactura })] }),
+    );
+
+    const respuesta = await registrarPago(monto);
+
+    expect(respuesta.status).toBe(201);
+    expect(respuesta.body.data.reservoElSalon).toBe(reserva);
+    expect(respuesta.body.data.estadoEvento).toBe(reserva ? 'Reservado' : 'EnConsulta');
   });
 });
 
@@ -603,6 +622,30 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
     ['monto negativo', { fecha: '2026-10-06', monto: '-100', medioPagoId: 1 }],
     ['fecha inválida', { fecha: '06/10/2026', monto: '1000', medioPagoId: 1 }],
     ['sin medio de pago', { fecha: '2026-10-06', monto: '1000' }],
+    // Tope de 500 millones por pago (PO, 08/11/2026): un centavo más se rechaza.
+    [
+      'monto sobre el tope de 500 millones',
+      { fecha: '2026-10-06', monto: '500000000.01', medioPagoId: 1 },
+    ],
+    ['monto enorme', { fecha: '2026-10-06', monto: '9999999999.99', medioPagoId: 1 }],
+    ['monto con tres decimales', { fecha: '2026-10-06', monto: '1000.123', medioPagoId: 1 }],
+    ['monto con coma decimal', { fecha: '2026-10-06', monto: '1000,50', medioPagoId: 1 }],
+    ['monto en notación científica', { fecha: '2026-10-06', monto: '1e5', medioPagoId: 1 }],
+    ['monto vacío', { fecha: '2026-10-06', monto: '', medioPagoId: 1 }],
+    ['monto numérico en lugar de texto', { fecha: '2026-10-06', monto: 1000, medioPagoId: 1 }],
+    ['monto nulo', { fecha: '2026-10-06', monto: null, medioPagoId: 1 }],
+    ['fecha imposible', { fecha: '2026-02-30', monto: '1000', medioPagoId: 1 }],
+    ['medio de pago decimal', { fecha: '2026-10-06', monto: '1000', medioPagoId: 1.5 }],
+    ['medio de pago en cero', { fecha: '2026-10-06', monto: '1000', medioPagoId: 0 }],
+    ['observación vacía', { fecha: '2026-10-06', monto: '1000', medioPagoId: 1, observacion: '' }],
+    [
+      'observación de solo espacios',
+      { fecha: '2026-10-06', monto: '1000', medioPagoId: 1, observacion: '    ' },
+    ],
+    [
+      'observación de más de 500 caracteres',
+      { fecha: '2026-10-06', monto: '1000', medioPagoId: 1, observacion: 'a'.repeat(501) },
+    ],
   ])('responde 400 con %s', async (_caso, cuerpo) => {
     const respuesta = await request(app)
       .post('/api/eventos/20/pagos')
@@ -612,6 +655,62 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
     expect(crearMock).not.toHaveBeenCalled();
+  });
+
+  // El PO decidió que la fecha del pago no tiene límite (07/11/2026): se puede cargar uno de
+  // cualquier día, anterior o posterior a hoy.
+  it.each(['1990-01-01', '2030-01-01'])(
+    'acepta un pago con fecha %s: no hay tope',
+    async (fecha) => {
+      const respuesta = await request(app)
+        .post('/api/eventos/20/pagos')
+        .set('Cookie', [cookieResponsableEventos])
+        .send({ fecha, monto: '1000', medioPagoId: 1 });
+
+      expect(respuesta.status).toBe(201);
+      expect(crearMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  // El middleware rechazar-html corta el marcado en la entrada (auditoría de seguridad, H3).
+  it.each([
+    '<script>alert("x")</script>',
+    '<b>seña</b>',
+    'pagó &amp; firmó',
+    '<img src=x onerror=1>',
+  ])('rechaza una observación con HTML (%s) y dice qué campo corregir', async (observacion) => {
+    const respuesta = await request(app)
+      .post('/api/eventos/20/pagos')
+      .set('Cookie', [cookieResponsableEventos])
+      .send({ fecha: '2026-10-06', monto: '1000', medioPagoId: 1, observacion });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(respuesta.body.error.details).toEqual([
+      { campo: 'observacion', mensaje: 'No se admite HTML en este campo' },
+    ]);
+    expect(crearMock).not.toHaveBeenCalled();
+  });
+
+  it('guarda una observación con tildes, emojis y símbolos que no son marcado', async () => {
+    const observacion = 'Seña 20% — pagó "en mano" 💰 (saldo < 50%)';
+
+    const respuesta = await request(app)
+      .post('/api/eventos/20/pagos')
+      .set('Cookie', [cookieResponsableEventos])
+      .send({ fecha: '2026-10-06', monto: '1000', medioPagoId: 1, observacion });
+
+    expect(respuesta.status).toBe(201);
+    expect(crearMock.mock.calls[0]?.[0]).toMatchObject({ observacion });
+  });
+
+  it('acepta una observación de exactamente 500 caracteres', async () => {
+    const respuesta = await request(app)
+      .post('/api/eventos/20/pagos')
+      .set('Cookie', [cookieResponsableEventos])
+      .send({ fecha: '2026-10-06', monto: '1000', medioPagoId: 1, observacion: 'a'.repeat(500) });
+
+    expect(respuesta.status).toBe(201);
   });
 });
 
@@ -1089,6 +1188,22 @@ describe('POST /api/medios-pago (HU-19)', () => {
     expect(crearMedioPagoMock).not.toHaveBeenCalled();
   });
 
+  it('dos altas simultáneas con el mismo nombre: el índice único responde 409, no 500', async () => {
+    buscarMedioPagoPorNombreMock.mockResolvedValue(null);
+    crearMedioPagoMock.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    const respuesta = await alta({ nombre: 'Vale' });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(respuesta.body.error.message).toContain('Vale');
+  });
+
   // CP-19-07
   it('sin sesión responde 401 y con sesión de Cliente 403', async () => {
     const sinSesion = await request(app)
@@ -1179,6 +1294,79 @@ describe('PATCH /api/medios-pago/:id (HU-33)', () => {
       expect(respuesta.status).toBe(400);
     }
     expect(modificarMedioPagoMock).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['nulo', { nombre: null }],
+    ['numérico', { nombre: 123 }],
+    ['una lista', { nombre: ['Efectivo'] }],
+    ['con HTML', { nombre: '<b>Efectivo</b>' }],
+    ['con una entidad HTML', { nombre: 'Cheque &amp; vale' }],
+  ])('un nombre %s responde 400 y no escribe', async (_caso, cuerpo) => {
+    const respuesta = await modificar(cuerpo);
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(modificarMedioPagoMock).not.toHaveBeenCalled();
+  });
+
+  it('acepta nombres con tildes, ñ, números y símbolos que no son marcado', async () => {
+    const nombre = 'Cheque a 30 días (Ñandú) — 3% rec.';
+
+    const respuesta = await modificar({ nombre });
+
+    expect(respuesta.status).toBe(200);
+    expect(modificarMedioPagoMock).toHaveBeenCalledWith(1, { nombre });
+  });
+
+  it('busca el nombre ya recortado, para que los espacios no esquiven el 409', async () => {
+    buscarMedioPagoPorNombreMock.mockResolvedValue({
+      ...medioPagoFixture,
+      id: 2,
+      nombre: 'Transferencia',
+    });
+
+    const respuesta = await modificar({ nombre: '  transferencia  ' });
+
+    expect(respuesta.status).toBe(409);
+    expect(buscarMedioPagoPorNombreMock).toHaveBeenCalledWith('transferencia');
+  });
+
+  it('desde HU-53 el PATCH solo guarda el nombre: ignora la habilitación y el estado del body', async () => {
+    await modificar({
+      nombre: 'Contado',
+      conFactura: false,
+      sinFactura: false,
+      activo: false,
+      id: 99,
+    });
+
+    expect(modificarMedioPagoMock).toHaveBeenCalledWith(1, { nombre: 'Contado' });
+  });
+
+  it('con un id que no es entero positivo responde 400 sin consultar', async () => {
+    for (const id of ['abc', '0', '-1', '1.5']) {
+      const respuesta = await modificar({ nombre: 'Contado' }, cookieAdministraMedios, id as never);
+      expect(respuesta.status, id).toBe(400);
+    }
+    expect(buscarMedioPagoPorIdMock).not.toHaveBeenCalled();
+  });
+
+  // Igual que en servicios: dos renombres simultáneos al mismo nombre pasan el chequeo previo y el
+  // segundo choca con el índice único de la base. Tiene que ser un 409, no un 500.
+  it('dos renombres simultáneos al mismo nombre: el índice único responde 409, no 500', async () => {
+    modificarMedioPagoMock.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    const respuesta = await modificar({ nombre: 'Contado' });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(respuesta.body.error.message).toContain('Contado');
   });
 
   it('con un medio inexistente responde 404 NOT_FOUND', async () => {
@@ -1284,6 +1472,48 @@ describe('POST /api/eventos/:id/pagos/:pagoId/anular (HU-35)', () => {
     expect(respuesta.body.data.saldo.pagado).toBe('30000.00');
     expect(respuesta.body.data.saldo.cubreSena).toBe(true);
     expect(respuesta.body.data.estadoEvento).toBe('Reservado');
+  });
+
+  // Borde de la seña sin factura (28440): el 20% exacto la cubre y un centavo menos no.
+  it.each([
+    ['28440', true],
+    ['28439.99', false],
+  ])('si lo pagado queda en %s, cubreSena es %s', async (pagado, cubreSena) => {
+    sumarPagosMock.mockResolvedValue(new Prisma.Decimal(pagado));
+
+    const respuesta = await anularPago();
+
+    expect(respuesta.status).toBe(200);
+    expect(respuesta.body.data.saldo.cubreSena).toBe(cubreSena);
+    expect(respuesta.body.data.estadoEvento).toBe('Reservado');
+  });
+
+  // Borde del total: un Cobrado al que le falta un centavo vuelve a Reservado.
+  it('un Cobrado que queda un centavo por debajo del total vuelve a Reservado', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoReservado('Cobrado'));
+    sumarPagosMock.mockResolvedValue(new Prisma.Decimal('142199.99'));
+
+    const respuesta = await anularPago();
+
+    expect(respuesta.status).toBe(200);
+    expect(volverAReservadoMock).toHaveBeenCalledWith(20, undefined);
+    expect(respuesta.body.data.saldo.saldo).toBe('0.01');
+  });
+
+  it('el usuario que anula sale de la sesión, aunque el body mande otro', async () => {
+    sumarPagosMock.mockResolvedValue(new Prisma.Decimal('30000'));
+
+    const respuesta = await anularPago().send({ usuarioId: 99, anuladoPorId: 99 });
+
+    expect(respuesta.status).toBe(200);
+    expect(anularMock).toHaveBeenCalledWith({ pagoId: 100, usuarioId: 1 }, undefined);
+  });
+
+  it.each(['0', '-1', '1.5'])('un id de pago %s responde 400', async (id) => {
+    const respuesta = await anularPago(cookieFinanzas, `/api/eventos/20/pagos/${id}/anular`);
+
+    expect(respuesta.status).toBe(400);
+    expect(anularMock).not.toHaveBeenCalled();
   });
 
   it('un Reservado que queda por debajo de la seña sigue Reservado y la cuenta lo avisa', async () => {

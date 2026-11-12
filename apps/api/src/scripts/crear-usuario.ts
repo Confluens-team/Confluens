@@ -10,7 +10,7 @@ import { resolve } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { fileURLToPath } from 'node:url';
 
-import type { Rol } from '@confluens/shared';
+import { esquemaRegistrarUsuario, type Rol } from '@confluens/shared';
 import { z } from 'zod';
 
 // CLIENTE queda afuera: los clientes se registran desde el canal público y necesitan su Cliente.
@@ -21,8 +21,10 @@ const ROLES_PERSONAL: Exclude<Rol, 'CLIENTE'>[] = [
   'ADMINISTRADOR_SISTEMA',
 ];
 
-// Mismo mínimo que el registro del canal público (esquemaRegistroCliente en packages/shared).
-const LARGO_MINIMO_CONTRASENA = 6;
+// La política de contraseñas rige para toda contraseña que se crea o se cambia (dominio.md,
+// «Política de contraseñas»), también por acá: es la misma regla que aplica POST /usuarios cuando el
+// GG o el ADM dan de alta a alguien del personal. Antes este script pedía solo 6 caracteres.
+const esquemaContrasena = esquemaRegistrarUsuario.shape.contrasena;
 
 const raizMonorepo = fileURLToPath(new URL('../../../../', import.meta.url));
 const archivoEntorno = resolve(raizMonorepo, process.argv[2] ?? '.env');
@@ -127,8 +129,9 @@ async function main(): Promise<void> {
     // se escribe y mostraría la contraseña.
     cerrarConsola();
     const contrasena = await leerOculto('Contraseña: ');
-    if (contrasena.length < LARGO_MINIMO_CONTRASENA) {
-      throw new Error(`La contraseña debe tener al menos ${LARGO_MINIMO_CONTRASENA} caracteres.`);
+    const validacion = esquemaContrasena.safeParse(contrasena);
+    if (!validacion.success) {
+      throw new Error(validacion.error.issues[0]?.message ?? 'La contraseña no es válida.');
     }
     if ((await leerOculto('Repetir contraseña: ')) !== contrasena) {
       throw new Error('Las contraseñas no coinciden.');
@@ -138,7 +141,9 @@ async function main(): Promise<void> {
     await prisma.usuario.upsert({
       where: { email },
       create: { email, rol, hashContrasena },
-      update: { rol, hashContrasena },
+      // Reemplazar la contraseña sube la versión de sesión, igual que restablecerla (M2): si se la
+      // cambia porque la cuenta quedó comprometida, las sesiones abiertas con la anterior caen.
+      update: { rol, hashContrasena, versionSesion: { increment: 1 } },
     });
     console.log(`${existente ? 'Actualizado' : 'Creado'}: ${email} (${rol}).`);
   } finally {

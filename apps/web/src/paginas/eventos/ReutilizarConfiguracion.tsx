@@ -8,10 +8,9 @@ import { AlertTriangle, CheckCircle2, Repeat2, X } from 'lucide-react';
 import { Dialog } from 'radix-ui';
 import { useState } from 'react';
 
-import { SelectorFecha } from '@/components/SelectorFechaHora';
+import { SelectorFecha, SelectorHora } from '@/components/SelectorFechaHora';
 import { InputEntero } from '@/components/InputEntero';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useReutilizarEvento } from '@/hooks/use-eventos';
 import { ErrorApiCliente } from '@/lib/api';
@@ -126,12 +125,7 @@ export function ReutilizarConfiguracion({
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="reutilizar-hora">Hora aproximada (opcional)</Label>
-                  <Input
-                    id="reutilizar-hora"
-                    type="time"
-                    value={hora}
-                    onChange={(e) => setHora(e.target.value)}
-                  />
+                  <SelectorHora id="reutilizar-hora" value={hora} onChange={setHora} opcional />
                 </div>
                 <div className="space-y-1.5">
                   <Label htmlFor="reutilizar-personas">Personas</Label>

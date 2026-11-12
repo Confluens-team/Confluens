@@ -110,7 +110,8 @@ function FormularioUsuario({
           <p className="text-sm text-destructive">{erroresCampos['contrasena']}</p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Al menos 6 caracteres. Pasásela al usuario: entra con su correo y esta contraseña.
+            Al menos 8 caracteres, y no una contraseña común como 12345678. Pasásela al usuario:
+            entra con su correo y esta contraseña.
           </p>
         )}
       </div>

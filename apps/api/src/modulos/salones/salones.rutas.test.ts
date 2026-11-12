@@ -2,6 +2,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { crearApp } from '../../app.js';
+import { Prisma } from '../../generated/prisma/client.js';
 import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 
 // Se mockea el repositorio (no la DB real): mismo criterio que auth.rutas.test.ts (HU-27), ver
@@ -394,6 +395,91 @@ describe('POST /api/salones/:id/distribuciones (HU-25)', () => {
     expect(respuesta.status).toBe(201);
   });
 
+  it('acepta el borde de abajo (capacidad 1) y un nombre de exactamente 40 caracteres', async () => {
+    const respuesta = await alta({ nombre: 'a'.repeat(40), capacidad: 1 });
+
+    expect(respuesta.status).toBe(201);
+    expect(crearDistribucionMock).toHaveBeenCalledWith(1, { nombre: 'a'.repeat(40), capacidad: 1 });
+  });
+
+  it('un nombre de 41 caracteres responde 400 con el campo nombre', async () => {
+    const respuesta = await alta({ nombre: 'a'.repeat(41), capacidad: 50 });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details[0].campo).toBe('nombre');
+    expect(crearDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('el nombre con HTML responde 400: el middleware rechazar-html corta en la entrada', async () => {
+    const respuesta = await alta({ nombre: '<b>Banquete</b>', capacidad: 50 });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.details[0].campo).toBe('nombre');
+    expect(crearDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('acepta un nombre con tildes, ñ y números, y lo guarda tal cual', async () => {
+    const respuesta = await alta({ nombre: 'Peña 2º piso', capacidad: 50 });
+
+    expect(respuesta.status).toBe(201);
+    expect(crearDistribucionMock).toHaveBeenCalledWith(1, {
+      nombre: 'Peña 2º piso',
+      capacidad: 50,
+    });
+  });
+
+  it('la capacidad que no es un número finito o es nula responde 400', async () => {
+    // Infinity viaja como null en el JSON.
+    for (const capacidad of [null, 'abc', [], {}, true, Number.POSITIVE_INFINITY]) {
+      const respuesta = await alta({ nombre: 'Banquete', capacidad });
+      expect(respuesta.status, JSON.stringify(capacidad)).toBe(400);
+    }
+    expect(crearDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('una capacidad enorme se rechaza con 422, no se guarda', async () => {
+    const respuesta = await alta({ nombre: 'Banquete', capacidad: 2_000_000_000 });
+
+    expect(respuesta.status).toBe(422);
+    expect(crearDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('un nombre que ya ocupa una distribución dada de baja también responde 409', async () => {
+    // La dada de baja sigue ocupando su nombre en el salón: la búsqueda no filtra por activo.
+    buscarDistribucionPorNombreMock.mockResolvedValue({
+      ...distribucionAuditorio,
+      activo: false,
+    } as never);
+
+    const respuesta = await alta({ nombre: 'Conferencia', capacidad: 100 });
+
+    expect(respuesta.status).toBe(409);
+    expect(crearDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  // Dos altas simultáneas con el mismo nombre pasan la búsqueda previa y la segunda choca con el
+  // índice único (salonId, nombre) de la base. Tiene que ser un 409, no un 500.
+  it('dos altas simultáneas con el mismo nombre: el índice único responde 409, no 500', async () => {
+    crearDistribucionMock.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    const respuesta = await alta({ nombre: 'Banquete', capacidad: 50 });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(respuesta.body.error.message).toContain('Banquete');
+  });
+
+  it('el body no puede fijar el salón ni el estado de la distribución', async () => {
+    await alta({ nombre: 'Banquete', capacidad: 50, salonId: 2, activo: false, id: 99 });
+
+    expect(crearDistribucionMock).toHaveBeenCalledWith(1, { nombre: 'Banquete', capacidad: 50 });
+  });
+
   it('sin nombre o con el nombre solo con espacios responde 400 VALIDATION_ERROR', async () => {
     for (const cuerpo of [{ capacidad: 50 }, { nombre: '   ', capacidad: 50 }]) {
       const respuesta = await alta(cuerpo);
@@ -532,6 +618,66 @@ describe('PATCH /api/salones/:id (HU-26)', () => {
     expect(modificarSalonMock).not.toHaveBeenCalled();
   });
 
+  // Los precios viajan como texto de importe: hasta 10 dígitos y 2 decimales, mayores que cero.
+  it.each([
+    ['negativo', '-950000.00'],
+    ['con tres decimales', '950000.123'],
+    ['de más de 10 dígitos', '12345678901'],
+    ['en notación científica', '1e6'],
+    ['"Infinity"', 'Infinity'],
+    ['vacío', ''],
+    ['nulo', null],
+    ['numérico en lugar de texto', 950000],
+  ])('un precio %s responde 400 y no escribe', async (_caso, valor) => {
+    const jornada = await modificar({ ...cuerpoValido, precioJornadaCompleta: valor });
+    const media = await modificar({ ...cuerpoValido, precioMediaJornada: valor });
+
+    expect(jornada.status).toBe(400);
+    expect(jornada.body.error.details[0].campo).toBe('precioJornadaCompleta');
+    expect(media.status).toBe(400);
+    expect(media.body.error.details[0].campo).toBe('precioMediaJornada');
+    expect(modificarSalonMock).not.toHaveBeenCalled();
+  });
+
+  it('un body vacío o sin uno de los dos precios responde 400: viajan los dos', async () => {
+    for (const cuerpo of [{}, { precioJornadaCompleta: '950000' }, { precioMediaJornada: '1' }]) {
+      const respuesta = await modificar(cuerpo);
+      expect(respuesta.status).toBe(400);
+    }
+    expect(modificarSalonMock).not.toHaveBeenCalled();
+  });
+
+  it('acepta el precio mínimo (un centavo) y el máximo que entra en el formato', async () => {
+    const minimo = await modificar({ precioJornadaCompleta: '0.01', precioMediaJornada: '0.01' });
+    const maximo = await modificar({
+      precioJornadaCompleta: '9999999999.99',
+      precioMediaJornada: '9999999999.99',
+    });
+
+    expect(minimo.status).toBe(200);
+    expect(maximo.status).toBe(200);
+  });
+
+  it('un precio de media jornada mayor que el de jornada completa se acepta: no hay regla que lo ligue', async () => {
+    const respuesta = await modificar({
+      precioJornadaCompleta: '100.00',
+      precioMediaJornada: '200.00',
+    });
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('con un id de salón que no es número positivo responde 400', async () => {
+    for (const id of ['abc', '0', '-1', '1.5']) {
+      const respuesta = await request(app)
+        .patch(`/api/salones/${id}`)
+        .set('Cookie', [cookiePersonal])
+        .send(cuerpoValido);
+      expect(respuesta.status, id).toBe(400);
+    }
+    expect(modificarSalonMock).not.toHaveBeenCalled();
+  });
+
   it('con un salón inexistente responde 404 sin escribir', async () => {
     obtenerSalonPorIdMock.mockResolvedValue(null);
 
@@ -592,6 +738,21 @@ describe('PATCH /api/salones/:id/distribuciones/:distribucionId (HU-26)', () => 
     expect(respuesta.body.data).toMatchObject({ id: 1, salonId: 1, capacidad: 250 });
   });
 
+  it('dos renombres simultáneos al mismo nombre: el índice único responde 409, no 500', async () => {
+    modificarDistribucionMock.mockRejectedValue(
+      new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: 'test',
+      }),
+    );
+
+    const respuesta = await editar({ nombre: 'Banquete', capacidad: 200 });
+
+    expect(respuesta.status).toBe(409);
+    expect(respuesta.body.error.code).toBe('CONFLICT');
+    expect(respuesta.body.error.message).toContain('Banquete');
+  });
+
   it('acepta su propio nombre, también con otras mayúsculas', async () => {
     buscarDistribucionPorNombreMock.mockResolvedValue(distribucionAuditorio as never);
 
@@ -633,6 +794,70 @@ describe('PATCH /api/salones/:id/distribuciones/:distribucionId (HU-26)', () => 
       const respuesta = await editar(cuerpo);
       expect(respuesta.status).toBe(400);
       expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    }
+    expect(modificarDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('acepta el borde de abajo y el de arriba: capacidad 1 y la capacidad exacta del salón', async () => {
+    const minima = await editar({ nombre: 'Conferencia', capacidad: 1 });
+    const maxima = await editar({ nombre: 'Conferencia', capacidad: 280 });
+
+    expect(minima.status).toBe(200);
+    expect(maxima.status).toBe(200);
+  });
+
+  it('un nombre de 40 caracteres entra y uno de 41 responde 400', async () => {
+    const justo = await editar({ nombre: 'a'.repeat(40), capacidad: 50 });
+    const largo = await editar({ nombre: 'a'.repeat(41), capacidad: 50 });
+
+    expect(justo.status).toBe(200);
+    expect(largo.status).toBe(400);
+    expect(largo.body.error.details[0].campo).toBe('nombre');
+  });
+
+  it('el nombre con HTML responde 400 y no escribe', async () => {
+    const respuesta = await editar({ nombre: '<img src=x>', capacidad: 50 });
+
+    expect(respuesta.status).toBe(400);
+    expect(modificarDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('un body sin nombre, sin capacidad o vacío responde 400: viaja el estado completo', async () => {
+    for (const cuerpo of [{}, { nombre: 'Conferencia' }, { capacidad: 50 }]) {
+      const respuesta = await editar(cuerpo);
+      expect(respuesta.status).toBe(400);
+    }
+    expect(modificarDistribucionMock).not.toHaveBeenCalled();
+  });
+
+  it('no cambia el salón ni el estado de la distribución, aunque el body los mande', async () => {
+    await editar({ nombre: 'Conferencia', capacidad: 50, salonId: 2, activo: false });
+
+    expect(modificarDistribucionMock).toHaveBeenCalledWith(1, {
+      nombre: 'Conferencia',
+      capacidad: 50,
+    });
+  });
+
+  it('se puede modificar una distribución dada de baja: el nombre propio no choca', async () => {
+    const dadaDeBaja = { ...distribucionAuditorio, activo: false };
+    buscarDistribucionPorIdMock.mockResolvedValue(dadaDeBaja as never);
+    buscarDistribucionPorNombreMock.mockResolvedValue(dadaDeBaja as never);
+
+    const respuesta = await editar({ nombre: 'Conferencia', capacidad: 100 });
+
+    expect(respuesta.status).toBe(200);
+  });
+
+  it('con ids que no son enteros positivos responde 400', async () => {
+    for (const ruta of [
+      '/api/salones/1/distribuciones/0',
+      '/api/salones/1/distribuciones/-1',
+      '/api/salones/1/distribuciones/1.5',
+      '/api/salones/0/distribuciones/1',
+    ]) {
+      const respuesta = await editar({ nombre: 'Conferencia', capacidad: 50 }, ruta);
+      expect(respuesta.status, ruta).toBe(400);
     }
     expect(modificarDistribucionMock).not.toHaveBeenCalled();
   });
@@ -733,6 +958,35 @@ describe('PATCH /api/salones/:id/distribuciones/:distribucionId/estado (HU-25)',
 
     expect(respuesta.status).toBe(200);
     expect(cambiarEstadoDistribucionMock).toHaveBeenCalledWith(1, true);
+  });
+
+  it('reactivar no revisa el nombre: una dada de baja nunca convive con otra del mismo nombre', async () => {
+    // El alta y la edición buscan el nombre sin mirar el estado, así que dos distribuciones con
+    // el mismo nombre (sin distinguir mayúsculas) no pueden existir, ni una activa ni una de baja.
+    buscarDistribucionPorIdMock.mockResolvedValue({
+      ...distribucionAuditorio,
+      activo: false,
+    } as never);
+    buscarDistribucionPorNombreMock.mockReset();
+
+    const respuesta = await cambiar({ activo: true });
+
+    expect(respuesta.status).toBe(200);
+    expect(buscarDistribucionPorNombreMock).not.toHaveBeenCalled();
+  });
+
+  it('darla de baja dos veces o reactivar una activa es idempotente: responde 200', async () => {
+    const baja = await cambiar({ activo: false });
+    const alta = await cambiar({ activo: true });
+
+    expect(baja.status).toBe(200);
+    expect(alta.status).toBe(200);
+  });
+
+  it('el body no puede cambiar otro campo de la distribución', async () => {
+    await cambiar({ activo: false, nombre: 'Otro', capacidad: 5, salonId: 2 });
+
+    expect(cambiarEstadoDistribucionMock).toHaveBeenCalledWith(1, false);
   });
 
   it('una distribución de otro salón o inexistente responde 404', async () => {

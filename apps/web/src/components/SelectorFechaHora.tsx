@@ -13,7 +13,8 @@ import { cn } from '@/lib/utils';
 //   la hora local), para que quien lo usa lo convierta a ISO igual que antes. Lo usa el horario
 //   del evento en el panel.
 // - SelectorFecha ("YYYY-MM-DD") y SelectorHora ("HH:mm"): cada uno por separado, con los mismos
-//   valores que el input nativo que reemplazan. Los usa el cotizador del cliente.
+//   valores que el input nativo que reemplazan. Los usa el cotizador del cliente, y SelectorHora
+//   es el único selector de hora del sistema: no queda ningún <input type="time">.
 //
 // Sin dependencias nuevas: Popover de radix-ui (ya instalado) y la grilla del mes armada a mano.
 
@@ -56,7 +57,22 @@ const diaISO = (fecha: Date) =>
 function aBorrador(valor: string, diaSugerido: string, horaSugerida: string): Borrador {
   const [dia = diaSugerido, hora = horaSugerida] = valor ? valor.split('T') : [];
   const [h = 12, m = 0] = (hora || '12:00').split(':').map(Number);
-  return { dia, hora12: h % 12 === 0 ? 12 : h % 12, minuto: m - (m % 5), pm: h >= 12 };
+  // Los minutos quedan como vienen aunque no sean de a 5 (una hora cargada antes con el input
+  // nativo): así se muestran tal cual y abrir y aceptar no la cambia.
+  return { dia, hora12: h % 12 === 0 ? 12 : h % 12, minuto: m, pm: h >= 12 };
+}
+
+// "HH:mm" → "9:30 PM", como lo muestran los selectores.
+function texto12(hora: string): string {
+  const { hora12, minuto, pm } = aBorrador('', '', hora);
+  return `${hora12}:${dosDigitos(minuto)} ${pm ? 'PM' : 'AM'}`;
+}
+
+// Si la hora cae en el rango, extremos incluidos. Un rango que da vuelta (desde > hasta) cruza la
+// medianoche: "20:00" a "02:00" acepta "23:00" y "01:00". Las horas "HH:mm" se comparan como texto.
+function horaEnRango(hora: string, desde?: string, hasta?: string): boolean {
+  if (desde && hasta && desde > hasta) return hora >= desde || hora <= hasta;
+  return (!desde || hora >= desde) && (!hasta || hora <= hasta);
 }
 
 // "HH:mm" en 24 horas, como el valor de un <input type="time">.
@@ -69,8 +85,8 @@ function aValor(borrador: Borrador): string {
 }
 
 function textoDelValor(valor: string): string {
-  const { dia, hora12, minuto, pm } = aBorrador(valor, '', '');
-  return `${formateadorFecha.format(deDiaISO(dia))} · ${hora12}:${dosDigitos(minuto)} ${pm ? 'PM' : 'AM'}`;
+  const [dia = '', hora = ''] = valor.split('T');
+  return `${formateadorFecha.format(deDiaISO(dia))} · ${texto12(hora)}`;
 }
 
 // Las celdas del mes, de lunes a domingo; null en los huecos antes del día 1.
@@ -137,27 +153,34 @@ function ColumnaRueda({
   );
 }
 
-// El botón que abre el popover: se ve como un Input. `className` ajusta el alto o el ancho.
+// El botón que abre el popover: se ve como un Input, también deshabilitado (dentro de un
+// <fieldset disabled>) o marcado inválido. `className` ajusta el alto o el ancho.
 function Disparador({
   id,
   texto,
   vacio,
   className,
   icono: Icono = CalendarDays,
+  ariaLabel,
+  ariaInvalid,
 }: {
   id?: string;
   texto: string;
   vacio: boolean;
   className?: string;
   icono?: typeof CalendarDays;
+  ariaLabel?: string;
+  ariaInvalid?: boolean;
 }) {
   return (
     <Popover.Trigger asChild>
       <button
         id={id}
         type="button"
+        aria-label={ariaLabel}
+        aria-invalid={ariaInvalid || undefined}
         className={cn(
-          'flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-input bg-transparent px-2.5 py-1 text-left text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 md:text-sm dark:bg-input/30',
+          'flex h-8 w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-input bg-transparent px-2.5 py-1 text-left text-base outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:cursor-not-allowed disabled:bg-input/50 disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:disabled:bg-input/80 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40',
           className,
         )}
       >
@@ -309,7 +332,12 @@ function Reloj({
         />
         <ColumnaRueda
           etiqueta="Minutos"
-          opciones={MINUTOS}
+          // Una hora cargada con minutos sueltos (21:07) suma su minuto a la columna.
+          opciones={
+            MINUTOS.includes(hora.minuto)
+              ? MINUTOS
+              : [...MINUTOS, hora.minuto].sort((a, b) => a - b)
+          }
           elegida={hora.minuto}
           onElegir={(minuto) => onCambiar({ minuto })}
           formato={dosDigitos}
@@ -481,8 +509,16 @@ interface SelectorHoraProps {
   horaSugerida?: string;
   // Muestra «Quitar» para dejarla vacía otra vez (una hora opcional).
   opcional?: boolean;
+  // Rango permitido, "HH:mm" con los extremos incluidos (como min y max del input nativo). Con
+  // uno de los dos, el popover lo muestra y «Aceptar» no deja elegir una hora afuera. No valida
+  // el valor que ya trae: para eso está `aria-invalid`.
+  horaMinima?: string;
+  horaMaxima?: string;
   placeholder?: string;
   className?: string;
+  // Para cuando no hay un <Label htmlFor> (por ejemplo, una celda de tabla).
+  'aria-label'?: string;
+  'aria-invalid'?: boolean;
 }
 
 export function SelectorHora({
@@ -491,8 +527,12 @@ export function SelectorHora({
   onChange,
   horaSugerida = '12:00',
   opcional = false,
+  horaMinima,
+  horaMaxima,
   placeholder = 'Elegir hora',
   className,
+  'aria-label': ariaLabel,
+  'aria-invalid': ariaInvalid,
 }: SelectorHoraProps) {
   const [abierto, setAbierto] = useState(false);
   const [borrador, setBorrador] = useState(() => aBorrador('', '', value || horaSugerida));
@@ -507,21 +547,39 @@ export function SelectorHora({
     setAbierto(false);
   }
 
-  const { hora12, minuto, pm } = aBorrador('', '', value || '00:00');
+  const conRango = !!(horaMinima || horaMaxima);
+  const dentroDelRango = horaEnRango(aHora(borrador), horaMinima, horaMaxima);
   return (
     <Popover.Root open={abierto} onOpenChange={abrir}>
       <Disparador
         id={id}
-        texto={value ? `${hora12}:${dosDigitos(minuto)} ${pm ? 'PM' : 'AM'}` : placeholder}
+        texto={value ? texto12(value) : placeholder}
         vacio={!value}
         className={className}
         icono={Clock}
+        ariaLabel={ariaLabel}
+        ariaInvalid={ariaInvalid}
       />
       <Contenido>
         <Reloj hora={borrador} onCambiar={(cambio) => setBorrador((b) => ({ ...b, ...cambio }))} />
+        {conRango && (
+          <p
+            className={cn(
+              'mt-2 text-xs',
+              dentroDelRango ? 'text-muted-foreground' : 'font-medium text-destructive',
+            )}
+          >
+            {horaMinima && horaMaxima
+              ? `Entre las ${texto12(horaMinima)} y las ${texto12(horaMaxima)}`
+              : horaMinima
+                ? `Desde las ${texto12(horaMinima)}`
+                : `Hasta las ${texto12(horaMaxima!)}`}
+          </p>
+        )}
         <Botones
           onCancelar={() => setAbierto(false)}
           onAceptar={aceptar}
+          aceptarDeshabilitado={!dentroDelRango}
           onQuitar={
             opcional && value
               ? () => {

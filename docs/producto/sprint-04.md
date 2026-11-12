@@ -270,7 +270,9 @@ Criterios propuestos:
   (reunión 05/11/2026).** Las demás reglas de Personal (al menos un GG y un ADM, el GG no toca a un
   ADM, un rol por usuario) están en `dominio.md`.
 - El GG o el ADM le cargan la contraseña inicial al registrarlo (reunión 05/11/2026). Alcanza con
-  que tenga al menos 6 caracteres, la misma regla del registro del cliente (PO, 06/11/2026).
+  que cumpla la política de contraseñas (`dominio.md`, «Personal»), la misma del registro del
+  cliente: al menos 8 caracteres, sin ser trivial ni una de las más comunes, y como máximo 72 bytes.
+  Antes alcanzaba con 6 caracteres (PO, 06/11/2026); la política actual es del PO, 08/11/2026.
 - El correo es obligatorio, se guarda en minúsculas y sin espacios, y es único: uno que ya es de
   otro usuario se rechaza.
 - El usuario nuevo inicia sesión con su correo y su contraseña, y entra al panel interno según su
@@ -278,7 +280,8 @@ Criterios propuestos:
 - El RE, el RF y el rol Cliente no registran usuarios.
 
 **Definido (reunión 05/11/2026; PO, 06/11/2026).** La contraseña inicial la carga el GG o el ADM,
-con un mínimo de 6 caracteres y sin otros requisitos, y la división por rol arranca acá para
+con un mínimo de 6 caracteres y sin otros requisitos (desde el 08/11/2026 rige la política de
+`dominio.md`: 8 caracteres, sin ser trivial), y la división por rol arranca acá para
 `/usuarios` (ver «Puntos a definir»).
 
 **Implementación.** Módulo `usuarios` con `POST /api/usuarios`, solo para el GG y el ADM: `400` si el
@@ -446,6 +449,39 @@ Criterios (`backlog.md` y RN-01, RN-14 de `dominio.md`):
 recibe la marca, y las columnas `conFactura` y `sinFactura` de `MedioPago` quedan sin uso. Tests en
 `presupuestos.repositorio.test.ts`, `presupuestos.consultas.test.ts`, `pagos.rutas.test.ts` y
 `medios-pago.test.ts`.
+
+## Casos límite del sprint (07 y 08/11/2026)
+
+Se revisó la funcionalidad del sprint buscando casos límite y se agregaron tests para cubrirlos
+(salones, pagos, usuarios, servicios, medios de pago, eventos, comanda y modificación de
+presupuestos, más los schemas compartidos y el token de sesión). Salieron estas decisiones del PO
+y un arreglo, todo registrado también en `dominio.md`.
+
+**Decisiones del PO**
+
+| Tema | Decisión | Fecha |
+|---|---|---|
+| Contraseña (HU-30) | Máximo de **72 bytes**. Se mide en bytes, no en caracteres, porque bcrypt lee solo los primeros 72. Rige al crearla o cambiarla, no al iniciar sesión | 07/11/2026 |
+| Política de contraseñas | Mínimo **8 caracteres** (era 6); no puede ser solo espacios, un único carácter repetido ni una de las contraseñas más comunes. **Sin** exigir mayúsculas, minúsculas ni símbolos. Reemplaza el «mínimo 6, sin otros requisitos» del 06/11. Detalle en `dominio.md` | 08/11/2026 |
+| HTML en los campos de texto | Solo se rechaza lo que un navegador leería como etiqueta; un `<` suelto («a < b», «Juan <juan@x.com>») es texto y pasa. Se cierra un hueco: `<!--` y `<?` pasaban y ahora se rechazan | 08/11/2026 |
+| Monto de un pago | Tope de **$500.000.000** por pago. Primero se fijó en 100 millones y el PO lo subió «por las dudas». Aplica solo a registrar un pago, no a precios ni totales | 08/11/2026 |
+| Fecha de un pago | **Sin límite**: se acepta cualquier fecha real, pasada o futura | 07/11/2026 |
+| Eventos que cruzan la medianoche | Lo que cae después de las 00:00 es del **día siguiente**. En esos eventos la hora esperada de un servicio no se controla contra la franja. Queda como estaba | 07/11/2026 |
+| Largo de textos | Correo de una cuenta o de un cliente: máximo **254** caracteres. Servicio: nombre **100**, descripción **500**, unidad de medida **30**. Sirve para que nadie rompa el sistema con un texto enorme. El nombre del servicio ahora también se recorta en el alta, como ya pasaba al modificarlo | 08/11/2026 |
+| Adicional de $0 | Se acepta como **cortesía**: es una línea con precio, no suma al total | 08/11/2026 |
+
+**Arreglo técnico.** Dos pedidos simultáneos con el mismo nombre (al crear o renombrar un servicio,
+un medio de pago o una distribución) pasaban los dos el chequeo previo y el segundo chocaba con el
+índice único de la base: respondía `500` en lugar de `409 CONFLICT`. Ahora se traduce igual que en
+`usuarios` (`comoConflictoSiYaExiste`, en `lib/prisma-errores.ts`). Queda un caso sin cubrir: el
+índice de `Distribucion` distingue mayúsculas, así que dos altas simultáneas que difieran solo en
+ellas no se frenan. Cerrarlo pide un índice sobre `lower(nombre)`, que es un cambio de modelo y se
+confirma antes (`AGENTS.md` §6).
+
+**Dos arreglos más de la misma ronda** (08/11/2026). La respuesta de `/usuarios` devuelve solo los
+campos públicos (id, correo, rol y fechas), aunque el repositorio trajera de más. Y los errores
+por HTML en un campo nombran la posición de las listas con puntos (`adicionales.0.descripcion`), igual
+que los de Zod; la web no lee ese nombre, así que no cambia nada visible.
 
 ## Casos de prueba
 

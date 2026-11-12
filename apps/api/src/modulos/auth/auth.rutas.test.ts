@@ -173,7 +173,19 @@ describe('POST /api/auth/logout', () => {
       .set('Cookie', [`${NOMBRE_COOKIE_SESION}=${token}`]);
 
     expect(respuesta.status).toBe(204);
-    expect(invalidarSesionesMock).toHaveBeenCalledWith(9);
+    // Con la versión del token: el repositorio solo invalida si sigue siendo la vigente.
+    expect(invalidarSesionesMock).toHaveBeenCalledWith(9, 2);
+  });
+
+  it('con un token sin versión responde 204 sin tocar la base', async () => {
+    const token = firmarToken({ id: 9, email: 'ge@confluens.test', rol: 'GERENTE_GENERAL' });
+
+    const respuesta = await request(app)
+      .post('/api/auth/logout')
+      .set('Cookie', [`${NOMBRE_COOKIE_SESION}=${token}`]);
+
+    expect(respuesta.status).toBe(204);
+    expect(invalidarSesionesMock).not.toHaveBeenCalled();
   });
 
   it('con una cookie adulterada responde 204 sin tocar la base', async () => {

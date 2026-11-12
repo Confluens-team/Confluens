@@ -40,7 +40,10 @@ function horario(evento: EventoAgenda): string {
   if (evento.inicio && evento.fin) {
     return `${formateadorHora.format(new Date(evento.inicio))} a ${formateadorHora.format(new Date(evento.fin))}`;
   }
-  return evento.horaInicioEstimada ? `estimado ${evento.horaInicioEstimada}` : 'Sin agendar';
+  if (!evento.horaInicioEstimada) return 'Sin agendar';
+  return evento.horaFinEstimada
+    ? `estimado ${evento.horaInicioEstimada} a ${evento.horaFinEstimada}`
+    : `estimado ${evento.horaInicioEstimada}`;
 }
 
 // tipoJornada no se puede derivar de inicio/fin (tipo-evento.esquema.ts): la elige el cliente. Los
