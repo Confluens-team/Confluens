@@ -211,7 +211,11 @@ model Evento {
   id                        Int               @id @default(autoincrement())
   clienteId                 Int
   cliente                   Cliente           @relation(fields: [clienteId], references: [id])
+  // fecha, fechaFin, inicio, fin, cantidadPersonas y tipoJornada son el RESUMEN de los días (HU-50,
+  // ADR 0014): primer día, último día, inicio del primero, fin del último, máximo de personas y
+  // jornada del primero. Los escribe un trigger a partir de EventoDia; la aplicación escribe los días.
   fecha                     DateTime          @db.Date
+  fechaFin                  DateTime          @default(dbgenerated("CURRENT_DATE")) @db.Date // el trigger la iguala a fecha al crear
   inicio                    DateTime? // horario desde
   fin                       DateTime? // horario hasta
   cantidadPersonas          Int
@@ -237,6 +241,7 @@ model Evento {
   // Los salones que ocupa el evento, cada uno con su distribución: varios a la vez, en el mismo
   // horario (ADR 0011). Un evento Reservado o Cobrado tiene al menos uno (constraint trigger
   // evento_reservado_con_salon). Una consulta social puede no tener ninguno todavía (ADR 0008).
+  dias                      EventoDia[]
   salones                   EventoSalon[]
   // Notas al pie de la comanda de cocina: menús especiales, alergias, a quién buscar en el salón.
   // Las escribe el personal y solo salen en esa hoja; el cliente nunca las ve.
@@ -244,11 +249,33 @@ model Evento {
   // Observaciones generales del evento. Las escribe el personal; no salen en el presupuesto ni en
   // la comanda, y el cliente nunca las ve.
   observaciones             String?
-  solicitud                Solicitud?
+  solicitud                 Solicitud?
   presupuestos              Presupuesto[]
   pagos                     Pago[]
   creadoEn                  DateTime          @default(now())
   actualizadoEn             DateTime          @updatedAt
+}
+
+// Un día de un evento (HU-50, ADR 0014). Un evento tiene de 1 a 32 días consecutivos y cada día su
+// propio horario, jornada, personas, salones y servicios. Todos los eventos de hoy tienen un solo día.
+// Que los días sean consecutivos y no pasen de 32, y que un evento Reservado o Cobrado tenga horario y
+// salón en cada día, lo garantizan constraint triggers de la base (SQL crudo en la migración).
+model EventoDia {
+  id               Int                @id @default(autoincrement())
+  eventoId         Int
+  evento           Evento             @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  fecha            DateTime           @db.Date
+  inicio           DateTime? // horario desde; obligatorio fuera de EnConsulta y Cancelado
+  fin              DateTime? // horario hasta
+  tipoJornada      TipoJornada?
+  cantidadPersonas Int
+  salones          EventoSalon[]
+  lineas           LineaPresupuesto[]
+  creadoEn         DateTime           @default(now())
+  actualizadoEn    DateTime           @updatedAt
+
+  @@unique([eventoId, fecha])
+  @@index([eventoId])
 }
 
 // Un evento puede ocupar varios salones a la vez, todos en el mismo horario: la cantidad de
@@ -262,8 +289,11 @@ model Evento {
 // uno de esos caminos tuviera que acordarse de sincronizar sería romper la garantía en silencio el
 // día que se agregue uno nuevo. **No escribir estas tres columnas a mano.**
 model EventoSalon {
+  // Lo deriva el trigger del día (diaId): nunca puede discrepar con él.
   eventoId       Int
   evento         Evento        @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  diaId          Int
+  dia            EventoDia     @relation(fields: [diaId], references: [id], onDelete: Cascade)
   salonId        Int
   salon          Salon         @relation(fields: [salonId], references: [id], onDelete: Restrict)
   distribucionId Int?
@@ -273,8 +303,9 @@ model EventoSalon {
   estado         EstadoEvento  @default(EnConsulta) // copia de Evento, la escribe el trigger
   creadoEn       DateTime      @default(now())
 
-  @@id([eventoId, salonId])
+  @@id([diaId, salonId])
   @@index([salonId])
+  @@index([eventoId])
 }
 
 // Cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026): lo garantiza la aplicación,
@@ -338,6 +369,10 @@ model LineaPresupuesto {
   // formato que Evento.horaInicioEstimada. Si el evento ya está agendado, el servicio valida que
   // caiga entre inicio y fin; mientras está EnConsulta sin horario no hay contra qué validar.
   horaEstimada   String?
+  // El día del evento al que pertenece la línea (HU-50): el salón de ese día, o un servicio o
+  // adicional de ese día. En un evento de un solo día es siempre el mismo.
+  diaId          Int
+  dia            EventoDia         @relation(fields: [diaId], references: [id], onDelete: Restrict)
 }
 
 // RN-10 / RN-13: fila única (id 1, CHECK en la migración) con el porcentaje de incremento mensual

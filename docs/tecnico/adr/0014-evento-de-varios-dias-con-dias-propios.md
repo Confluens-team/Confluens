@@ -141,11 +141,56 @@ antes, y la base queda como respaldo:
    base local (`apps/api/prisma/pruebas/evento-varios-dias.sql`), con los casos de la tabla de
    `backlog.md`. No se agrega una base real al CI por ahora: eso tocaría `.github/`.
 
+## Lo que se construyó en la parte 1
+
+Migración `20261113120000_evento_varios_dias`, `EventoDia`, `EventoSalon` por día y `diaId` en las
+líneas, con los eventos de hoy convertidos a un día cada uno. Dos ajustes al diseño original que
+salieron de probarlo contra una base real:
+
+- **La restricción de exclusión lleva `"eventoId" WITH <>`.** Así las filas de un mismo evento nunca
+  chocan entre sí (un día que pasa la medianoche, o correr una franja reservada menos días de los que
+  dura). El solapamiento es siempre contra OTRO evento.
+- **Un renglón `Reservado` o `Cobrado` tiene horario (`evento_salon_horario_obligatorio`).** Con límites
+  `NULL` el rango es infinito y bloquea el salón para siempre. El script de pruebas lo encontró: un día
+  sin horario de un evento reservado chocaba con eventos de otras fechas. Antes lo cubría el CHECK de
+  `Evento`, que ahora solo mira el primer y el último día.
+
+La guarda del resumen usa una variable de transacción (`confluens.resumen_de_dias`) que enciende
+solamente el trigger que recalcula el resumen, no `pg_trigger_depth()`: es explícita y no depende de
+cómo se encadenen otros triggers.
+
+**La aplicación.** Se mantienen las firmas de los repositorios: `crearEvento`, `actualizarEvento`,
+`agendarConDistribuciones`, `reemplazarSalonesDelEvento` y las escrituras de líneas reciben lo mismo de
+siempre y por dentro escriben el día (hoy, el único del evento) y completan `diaId`. Por eso casi todos
+los tests de los servicios, que mockean los repositorios, no cambiaron.
+
+**Cómo se probó.** (1) `apps/api/prisma/pruebas/evento-varios-dias.sql`: 31 casos contra una base real,
+cada uno en una subtransacción que se revierte, y con una prueba inversa (se quita la restricción o la
+guarda y el script lo detecta). (2) La migración sobre una copia de la base de demo: los eventos son
+idénticos antes y después, cada uno tiene su único día y ningún salón ni línea quedó sin día.
+(3) Un recorrido de la API real contra esa copia: modificar una consulta, agendar, cobrar la seña,
+rechazo por solapamiento, mover la fecha de un evento reservado, reutilizar, recálculo masivo y
+cancelar.
+
+### Lo que NO se puede habilitar hasta la parte 2
+
+La parte 1 solo es correcta mientras **todos los eventos tienen un único día**. Antes de permitir crear
+uno de varios días hay que cambiar todo esto, que hoy busca «el» día del evento o mira el resumen:
+
+| Dónde | Hoy | Hay que |
+|---|---|---|
+| `buscarSolapamiento` (eventos y pagos) | Consulta el resumen del evento (`inicio`, `fin`) y devuelve un solo choque | Consultar `EventoSalon` por día y devolver **todos** los choques, con fecha, salón, evento y horario (aviso de solapamientos de `backlog.md`) |
+| `primerDiaDelEvento` en `actualizarEvento`, `reemplazarSalonesDelEvento`, `crearPresupuesto` y `reemplazarLineas` | Toma el primer día | Recibir el día al que se refiere cada cambio |
+| `agendarConDistribuciones` y `quitarSalonesDelEvento` | Escriben por `eventoId` | Escribir por día |
+| La agenda y los filtros por fecha | Filtran por `Evento.fecha` | Filtrar por el rango `fecha` a `fechaFin` |
+| El recálculo (HU-54) y `reubicarHorario` | Mueven un día | Mover toda la franja, con el último día como referencia del incremento |
+| La restricción de exclusión | No es `DEFERRABLE` | Revisar: correr una franja reservada de varios días puede pisar un día con otro mientras se actualizan de a uno |
+
 ## Cómo se entrega (propuesta)
 
 HU-50 se parte en cuatro partes que se entregan por separado. **Esta ADR cubre la primera**:
 
-1. **Modelo y solapamiento por día** (esta ADR): `EventoDia`, `EventoSalon` por día, `diaId` en las
+1. **Modelo y solapamiento por día** (esta ADR, **construida**): `EventoDia`, `EventoSalon` por día, `diaId` en las
    líneas, las restricciones, los triggers y la migración, con los flujos de hoy adaptados para que
    todo siga funcionando con eventos de un día. **No cambia ninguna pantalla.**
 2. Cotizador y presupuesto por día.

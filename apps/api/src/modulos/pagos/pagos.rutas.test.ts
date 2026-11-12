@@ -139,6 +139,7 @@ const lineaFixture = {
   modalidad: 'Normal' as const,
   precioBase: null,
   horaEstimada: null,
+  diaId: 1,
 };
 
 // El salón del evento sin distribución, como queda antes de agendar.
@@ -179,6 +180,7 @@ function eventoFixtureBase() {
     id: 20,
     clienteId: clienteFixture.id,
     fecha: new Date('2026-11-15'),
+    fechaFin: new Date('2026-11-15'),
     inicio: inicioFixture as Date | null,
     fin: finFixture as Date | null,
     cantidadPersonas: 10,
@@ -200,6 +202,7 @@ function eventoFixtureBase() {
     salones: [
       {
         eventoId: 20,
+        diaId: 1,
         salonId: salonFixture.id,
         distribucionId: distribucionFixture.id as number | null,
         inicio: null as Date | null,

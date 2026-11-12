@@ -633,7 +633,7 @@ function esConfirmadoVigente(presupuesto: PresupuestoDetalladoRepo): boolean {
 function reubicarHorario(
   evento: PresupuestoDetalladoRepo['evento'],
   datos: ModificarPresupuesto,
-): Prisma.EventoUpdateInput {
+): { inicio?: Date; fin?: Date } {
   const corrimiento = new Date(datos.fecha).getTime() - evento.fecha.getTime();
   return corrimiento !== 0 && evento.inicio && evento.fin
     ? {
@@ -1130,6 +1130,8 @@ type LineaParaRecalcular = {
   subtotal: Prisma.Decimal;
   aCotizar: boolean;
   horaEstimada: string | null;
+  // HU-50: el día al que pertenece la línea; el recálculo no la cambia de día.
+  diaId?: number;
   servicio: {
     id: number;
     nombre: string;
@@ -1161,7 +1163,7 @@ export function recalcularLineas(
   lineas: LineaParaRecalcular[],
   proyeccion: Proyeccion,
 ): { lineas: LineaCalculada[]; total: Prisma.Decimal } {
-  const nuevas = lineas.map((linea): LineaCalculada => {
+  const calculadas = lineas.map((linea): LineaCalculada => {
     if (linea.salon) {
       const jornada = jornadaDeLineaSalon(linea.descripcion);
       return lineaDeSalon(
@@ -1193,6 +1195,11 @@ export function recalcularLineas(
       aCotizar: linea.aCotizar,
       horaEstimada: linea.horaEstimada,
     };
+  });
+  // Cada línea sigue en su día.
+  const nuevas = calculadas.map((nueva, i) => {
+    const diaId = lineas[i]!.diaId;
+    return diaId === undefined ? nueva : { ...nueva, diaId };
   });
   return { lineas: nuevas, total: sumarLineas(nuevas) };
 }

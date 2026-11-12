@@ -95,6 +95,7 @@ const lineaFixture = {
   modalidad: 'Normal' as const,
   precioBase: null,
   horaEstimada: null,
+  diaId: 1,
 };
 
 const presupuestoEstimadoFixture = {
@@ -123,6 +124,7 @@ function eventoFixtureBase() {
     id: 20,
     clienteId: clienteFixture.id,
     fecha: new Date('2026-11-15'),
+    fechaFin: new Date('2026-11-15'),
     inicio: null as Date | null,
     fin: null as Date | null,
     cantidadPersonas: 10,
@@ -144,6 +146,7 @@ function eventoFixtureBase() {
     salones: [
       {
         eventoId: 20,
+        diaId: 1,
         salonId: salonFixture.id,
         distribucionId: null as number | null,
         inicio: null as Date | null,
@@ -236,6 +239,7 @@ describe('POST /api/eventos/:id/agendar', () => {
   };
   const vinculo = (salon: typeof salonFixture) => ({
     eventoId: 20,
+    diaId: 1,
     salonId: salon.id,
     distribucionId: null as number | null,
     inicio: null as Date | null,
