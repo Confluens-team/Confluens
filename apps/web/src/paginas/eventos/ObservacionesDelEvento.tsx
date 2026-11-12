@@ -63,9 +63,7 @@ export function ObservacionesDelEvento({ evento }: { evento: EventoDetallado }) 
           placeholder="Pedidos del cliente, acuerdos, avisos para el equipo…"
           className="min-h-24 border-dashed"
         />
-        <p className="text-xs text-muted-foreground">
-          Solo las ve el personal: no salen en el presupuesto ni en la comanda.
-        </p>
+        <p className="text-xs text-muted-foreground">Solo lo ve el personal.</p>
       </CardContent>
     </Card>
   );
