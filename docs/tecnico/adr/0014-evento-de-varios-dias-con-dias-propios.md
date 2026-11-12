@@ -109,18 +109,43 @@ migraciones aplicadas no se tocan.
   alcanza: los días pueden tener horarios y salones distintos, y la exclusión necesita el horario de
   cada día junto al salón.
 
+## Aviso de solapamientos
+
+La restricción de exclusión es la red de seguridad, pero **no sirve para avisar**: Postgres corta en
+el **primer** choque y no dice con qué evento choca. HU-50 pide listar **todos** los choques de la
+franja, por día y por salón (`backlog.md`, «Aviso de solapamientos»). Por eso la aplicación mira
+antes, y la base queda como respaldo:
+
+- `buscarSolapamiento` (hoy devuelve un único evento) pasa a devolver **la lista de choques**: por
+  cada día del evento y cada uno de sus salones, el evento que ya ocupa ese salón en ese horario
+  (número, cliente, estado, salón, fecha y horario). Se consulta con todos los días a la vez.
+- El rechazo es un 409 `CONFLICT` con un mensaje claro y **un detalle por choque** en `details`, que
+  es la forma estándar de error de `AGENTS.md` §4 (`campo` es la fecha y el salón; `mensaje`, el
+  texto). `ErrorApi.conflicto` hoy no acepta detalles y hay que extenderlo; `DetalleError` de
+  `packages/shared` ya alcanza, no se toca.
+- El aviso **preventivo** de la consulta usa la misma consulta, solo lectura, y la pantalla lo
+  muestra día por día. Una consulta `EnConsulta` marcada «en conflicto» no bloquea nada (RN-12).
+- Si dos reservas compiten a la vez y gana la otra, la restricción de la base responde y la
+  aplicación devuelve un 409 que pide volver a intentar: ahí el detalle ya no se puede dar.
+
 ## Detalles de diseño para revisar
 
-Tres puntos donde la propuesta elige algo que el PO puede querer distinto:
+Tres puntos donde la propuesta elige algo, y el PO puede querer otra cosa:
 
-1. **Personas en el resumen del evento.** `Evento.cantidadPersonas` pasa a ser el **máximo** de los
-   días, porque la agenda y la tarjeta muestran un solo número. El detalle por día vive en
-   `EventoDia`.
-2. **Jornada en el resumen del evento.** `Evento.tipoJornada` toma la del **primer** día. Sirve a los
-   eventos de un día y a lo que hoy lo lee; el cobro de cada día usa la jornada de ese día.
-3. **Cómo se prueba la base.** Un script SQL con los casos de `backlog.md` (la tabla del tope y el
-   solapamiento por día) contra la base local, a mano, o una base real en el CI. Lo segundo es una
-   decisión del equipo y toca `.github/`.
+1. **Qué número de personas muestra el evento.** Cada día puede tener su cantidad (50 el primer día,
+   120 el segundo). Pero la agenda y las tarjetas muestran **un** número por evento. Propuesta: el
+   **máximo** (120). El detalle por día siempre está disponible. Alternativas: la del primer día, o
+   un rango («50 a 120»).
+2. **Qué jornada muestra el evento.** Cada día tiene su jornada (media o completa) y el cobro de cada
+   día usa la suya. Donde hoy se muestra **una** jornada para todo el evento, propuesta: la del
+   **primer** día. Es solo lo que se ve; no cambia ningún precio. Alternativa: mostrar «varias
+   jornadas» cuando los días difieren.
+3. **Cómo se prueban las reglas de la base.** No hay tests automáticos que puedan comprobar que la
+   base rechaza dos reservas del mismo salón y día, o una franja con un día en el medio sin
+   cargar, porque los tests de hoy usan una base de mentira. Propuesta: un script SQL con los
+   casos de la tabla de `backlog.md`, que se corre a mano contra la base local. Alternativa: una
+   base real en el CI, que prueba todo solo en cada PR pero toca `.github/` (necesita OK) y
+   hace más lento el CI.
 
 ## Cómo se entrega (propuesta)
 

@@ -186,6 +186,35 @@ Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
 - **Solapamiento por día y por salón (RN-12).** Un salón puede estar reservado un día por un evento
   y el día siguiente por otro. Cada día se controla por separado, con el mismo borde de siempre: un
   evento que termina a las 18:00 y otro que empieza a las 18:00 no chocan.
+- **Aviso de solapamientos: todos, por día y por salón** (PO, 12/11/2026). Una franja puede tener
+  días con choque y días libres. El sistema **no avisa solo del primer choque: lista cada uno**,
+  diciendo **qué día, qué salón y con qué evento choca**, para que el Responsable de Eventos pueda
+  hablar con el cliente y cambiar el día, el horario o el salón hasta que no haya ninguno. Tiene que
+  avisarse «muy bien y muy claro»:
+  - Cada choque dice la **fecha**, el **salón**, el **evento** con el que choca (número, cliente y
+    estado) y **su horario**. Los días sin choque se indican como libres.
+  - Hoy el aviso nombra un solo salón y el número del evento, sin día ni horario, y se detiene en
+    el primer choque. Con varios días eso no alcanza.
+  - **Dónde aparece:** (1) como **rechazo**, con la lista completa, al agendar, al cobrar la seña
+    que reserva el evento y al modificar, mover o extender la franja de un evento confirmado;
+    (2) como **aviso preventivo** al armar o revisar la consulta en el panel, día por día, antes
+    de intentar reservar. La consulta en estado `EnConsulta` nunca bloquea el salón (RN-12): el
+    aviso la marca como «en conflicto».
+  - **Un choque en cualquier día impide reservar el evento entero**, aunque los demás días estén
+    libres, porque el evento es uno y la seña es una. El evento no queda reservado «a medias».
+  - Propuesto: el cliente en el canal público **no ve** estos avisos (serían datos de otros
+    clientes); lo ve solo el personal.
+
+  Ejemplo del rechazo al intentar reservar una franja de cinco días:
+
+  > No se puede reservar el evento: 2 de sus 5 días tienen un salón ocupado.
+  > - jueves 14/05/2027 · Salón Pucará: reservado por el evento #52 (Constructora Medina SRL),
+  >   de 09:00 a 18:00.
+  > - viernes 15/05/2027 · Salón Iguazú: reservado por el evento #61 (Agustina Herrera),
+  >   de 08:00 a 12:00.
+  >
+  > Los otros 3 días están libres. Hablá con el cliente para mover el día, el horario o el salón.
+
 - **Agenda.** El evento se muestra como **una sola barra larga**, del inicio del primer día al fin
   del último, igual que hoy un evento que termina después de la medianoche.
 - **Comanda.** Sale **una por día**, con los salones, el horario, las personas y los servicios de
