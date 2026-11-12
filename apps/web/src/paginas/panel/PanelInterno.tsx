@@ -19,7 +19,7 @@ import {
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 
-import { Logo } from '@/components/Logo';
+import { LogoConfluens } from '@/components/LogoConfluens';
 import { Button } from '@/components/ui/button';
 import { useCerrarSesion } from '@/hooks/use-sesion';
 import { NOMBRES_DE_ROL } from '@/lib/roles';
@@ -260,7 +260,7 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
             aria-label="Ir a la agenda"
             className="rounded-full focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
           >
-            <Logo compacto />
+            <LogoConfluens compacto />
           </button>
           <div className="flex items-center gap-2 text-sm">
             <span className="hidden text-muted-foreground sm:inline">{sesion.email}</span>
