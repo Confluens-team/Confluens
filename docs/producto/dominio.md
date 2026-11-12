@@ -309,6 +309,15 @@ puede reservar por varios **días consecutivos**, sin días libres en el medio:
   (`Reservado`, `Cobrado`) sigue siendo uno.
 - En la **agenda** se muestra como **una sola barra larga**, del inicio del primer día al fin del
   último, como hoy se muestra un evento cuyo horario de fin pasa la medianoche.
+- Los **servicios y los adicionales a mano pertenecen a un día**: no se cargan una vez para toda la
+  franja, porque cada día puede tener otros salones, otra cantidad de personas y otros servicios.
+- **Tope: un mes** (31 días corridos). El PO estima que lo habitual son una o dos semanas.
+- **Cancelar** cancela **el evento entero**, no un día suelto.
+- **Cambiar un día** no existe como acción: se **cambia la fecha** y la franja se extiende o se
+  achica. Se puede mientras el estado lo permita, con las mismas políticas que hoy rigen el cambio
+  de fecha (RN-09): también con el evento `Reservado` o `Cobrado`, nunca `Cancelado`. No se puede
+  sacar un día del medio.
+- Aplica también a la **consulta social**, al definir las fechas.
 - **Repetir un evento** de varios días cubre **la misma franja**: la misma cantidad de días
   consecutivos, con la configuración de cada día. La fecha de inicio la elige el cliente.
 - El **recálculo por cambio de fecha** toma el incremento (RN-13) que corresponde al **último día**

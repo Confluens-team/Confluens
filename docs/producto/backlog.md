@@ -158,14 +158,19 @@ con una sola seña. Cambia el modelo del evento. Es grande: hay que estimarla en
 Como Responsable de Eventos y como Cliente, quiero reservar un evento que dure varios días
 consecutivos, para cotizarlo, señarlo y organizarlo como un solo evento.
 
-Criterios propuestos:
+Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
 
-- **Días consecutivos.** El evento tiene de uno a N días seguidos, sin días libres en el medio.
-  Cada día tiene su fecha, su horario de inicio y fin, su jornada (media o completa), sus salones
-  con su distribución, sus servicios y su cantidad de personas.
+- **Días consecutivos, hasta un mes.** El evento tiene de 1 a 31 días corridos seguidos, sin días
+  libres en el medio. El PO estima que lo habitual son una o dos semanas y pone el tope en un mes:
+  «mejor que sobre y no que falte».
+- **Cada día se configura por separado.** Cada día tiene su fecha, su horario de inicio y fin, su
+  jornada (media o completa), sus salones con su distribución, su cantidad de personas y sus
+  servicios, y los de un día pueden ser distintos de los de otro. **Los servicios y los adicionales
+  escritos a mano pertenecen a un día**: no se cargan una vez para toda la franja. Uno que se repite
+  todos los días se carga en cada día.
 - **Precio por día.** El salón de cada día se cobra con el precio de media jornada o de jornada
-  completa según la jornada de ese día. Los servicios de un día se cotizan con la cantidad
-  de personas de ese día.
+  completa según la jornada de ese día. Los servicios de un día se cotizan con la cantidad de
+  personas de ese día.
 - **Un solo presupuesto, un solo total, una sola seña.** El total suma todos los días. La seña es el
   20% de la base de cobro de ese total (RN-01), no de cada día; el evento pasa a `Reservado` al
   llegar a ese 20% y a `Cobrado` al llegar al 100%, como hoy.
@@ -176,29 +181,53 @@ Criterios propuestos:
   del último, igual que hoy un evento que termina después de la medianoche.
 - **Comanda.** Sale **una por día**, con los salones, el horario, las personas y los servicios de
   gastronomía de ese día.
+- **Cancelación (RN-07).** Se cancela **el evento entero**, no un día suelto. Propuesto: las 48
+  horas se cuentan desde el inicio del **primer** día.
+- **Cambiar la franja.** No se suma ni se corta un día suelto: se **cambia la fecha** y la franja se
+  extiende o se achica. Cada día se identifica por su fecha: mover la franja entera los corre a
+  todos; cambiar solo la fecha de inicio o la de fin suma o saca días en ese extremo. No se puede
+  sacar un día del medio, porque la franja tiene que seguir siendo consecutiva. Un día nuevo entra
+  sin salones ni servicios hasta que se lo configura (propuesto).
+- **Cuándo se puede cambiar la franja.** Con las mismas políticas de estado que hoy rigen el cambio
+  de fecha de un evento (RN-09 y `modificarPresupuesto`); ver la tabla de abajo.
 - **Repetir evento.** Repetir un evento de varios días copia la misma franja: la misma cantidad de
   días consecutivos y la configuración de cada día. El cliente elige la fecha de inicio.
-- **Recálculo por cambio de fecha (HU-54).** Al mover la fecha del evento se mueve toda la franja
-  (los mismos días consecutivos desde la fecha nueva) y el incremento de RN-13 es el que
-  corresponde al **último día**; ese incremento se aplica a todo el presupuesto.
+- **Recálculo por cambio de fecha (HU-54).** Al cambiar la fecha o la franja, el incremento de
+  RN-13 es el que corresponde al **último día** de la franja, y se aplica a todo el presupuesto.
 - **Eventos existentes.** Los que ya están cargados son de un solo día y siguen igual. Solo los
   eventos nuevos pueden durar varios días.
-- **Canal público.** El cliente elige en el cotizador cuántos días dura el evento y configura cada
-  día. El presupuesto estimado y el PDF muestran el detalle por día y un único total.
+- **Cotizador (evento corporativo).** El cliente elige la fecha de inicio y cuántos días dura el
+  evento, y configura cada día. El presupuesto estimado y el PDF muestran el detalle por día y un
+  único total.
+- **Consulta social.** También se define con una franja de fechas (inicio y fin), porque el cliente
+  elige las fechas. Sigue sin salón ni servicios (ADR 0008): el Responsable de Eventos arma el
+  detalle de cada día al armar el presupuesto.
+
+**Cambio de fecha o de franja según el estado, contrastado con las políticas de hoy.** Hoy se puede
+modificar una consulta (también la fecha) con el presupuesto `Estimado` o `Expirado` y el evento
+`EnConsulta`, o con el presupuesto `Confirmado` y el evento `Reservado` o `Cobrado`; cualquier otro
+caso es un 409 (RN-09, `modificarPresupuesto`). Con varios días rige lo mismo:
+
+| Evento / presupuesto | Hoy, cambio de fecha | Con varios días, cambio de franja |
+|---|---|---|
+| `EnConsulta`, presupuesto `Estimado` o `Expirado` | Permitido. Recalcula, reinicia la vigencia y un `Expirado` vuelve a `Estimado`. | Igual: se puede mover, extender o achicar la franja. |
+| `Reservado`, presupuesto `Confirmado` | Permitido, con el salón libre en la fecha nueva (RN-12). Recalcula, reinicia la vigencia y corre el horario. | Igual, y cada día que se suma necesita su salón libre. Todo día de un evento `Reservado` necesita al menos un salón (propuesto, como hoy el evento). |
+| `Cobrado` | Permitido. El evento vuelve a `Reservado` si lo pagado ya no cubre el total nuevo. | Igual: extender la franja sube el total y puede devolverlo a `Reservado`. Achicarla lo baja y, si lo pagado supera el total, queda saldo negativo (decisión de Franco, 08/10/2026). |
+| `Cancelado` | Bloqueado (409): liberó el salón y no vuelve atrás. | Igual. |
+| El cliente, en el canal público | Hasta 7 días antes de la fecha del evento (RN-09); el personal, sin límite. | Hasta 7 días antes del **primer** día (propuesto). El personal, sin límite. |
 
 **Preguntas abiertas** (supuestos propuestos, a confirmar con el PO antes de estimar):
 
-1. **Cancelación (RN-07).** Propuesto: se cancela el evento entero, no un día suelto, y las 48 horas
-   se cuentan desde el inicio del **primer** día.
-2. **Cantidad máxima de días.** ¿Hay un tope (por ejemplo, 7 días)? Hace falta para validar el
-   cotizador y el formulario del personal.
-3. **Eventos sociales.** ¿La reserva por varios días aplica también a la consulta social (que no pasa
-   por el cotizador, ADR 0008), o solo al evento corporativo?
-4. **Servicios y adicionales a mano.** Propuesto: cada ítem pertenece a un día; un servicio que se
-   repite todos los días se carga una vez por día.
-5. **Cambiar la duración de un evento ya cargado.** ¿Se pueden agregar o sacar días de un evento
-   existente, o se hace repitiéndolo? Propuesto: se pueden sacar o agregar días al final mientras el
-   presupuesto no esté `Confirmado`.
+1. **Extender un evento confirmado.** Si se suma un día al final, el último día cambia y, con la
+   regla de «incremento del último día», **cambian los precios de todo el presupuesto**, también los
+   de los días que ya estaban señados. Es coherente con HU-54 (un cambio de fecha recalcula aun un
+   `Confirmado`), pero conviene que el PO lo confirme explícitamente.
+2. **Horario en la consulta social.** El cliente carga hoy una hora estimada de inicio y de fin.
+   Con varios días, propuesto: se piden una sola vez y valen para cada día; el Responsable de
+   Eventos las ajusta por día al armar el presupuesto.
+3. **Plazo del cliente (RN-09).** Propuesto: los 7 días se cuentan desde el primer día del evento.
+4. **Día nuevo.** Propuesto: entra vacío, con un atajo opcional «copiar el día anterior» para no
+   cargar a mano los salones y servicios de una semana entera.
 
 **Impacto técnico (para estimar).** Hoy `Evento` tiene una sola fecha, un horario y una jornada, y
 sus salones comparten ese horario (ADR 0011); el no solapamiento lo garantiza una restricción de la

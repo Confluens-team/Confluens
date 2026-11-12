@@ -241,7 +241,7 @@ Sprint 6 en lugar de otras y cuáles quedan fuera del alcance de la tesis.
 |---|---|---|---|
 | HU-51 | Agregar servicios propios a un evento | a estimar | Reemplaza la caja de texto del evento social (S-14) |
 | HU-52 | Registrar lo pagado de más como no reintegrable | a estimar | Cambio de modelo |
-| HU-50 | Reservar un evento de varios días | a estimar | Definida por el PO el 12/11/2026 (`backlog.md`, `dominio.md`); quedan 5 preguntas abiertas y falta estimarla. Cambia el modelo del evento (hoy un evento ocupa un solo día) |
+| HU-50 | Reservar un evento de varios días | a estimar | Definida por el PO el 12/11/2026 (`backlog.md`, `dominio.md`); quedan 4 preguntas abiertas y falta estimarla. Cambia el modelo del evento (hoy un evento ocupa un solo día) |
 | HU-18 | Reasignar un evento a otro salón | 8 | Salió del Sprint 4 |
 | HU-22 | Generar el reporte de servicios contratados | 5 | Salió del Sprint 4 |
 
