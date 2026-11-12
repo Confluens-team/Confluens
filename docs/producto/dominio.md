@@ -322,6 +322,9 @@ puede reservar por varios **días consecutivos**, sin días libres en el medio:
   achica. Se puede mientras el estado lo permita, con las mismas políticas que hoy rigen el cambio
   de fecha (RN-09): también con el evento `Reservado` o `Cobrado`, nunca `Cancelado`. No se puede
   sacar un día del medio.
+- El **plazo de 7 días** del cliente para modificar (RN-09) se cuenta desde el **primer** día.
+- Un **día nuevo** (al extender la franja) entra **vacío**: se puede copiar el día anterior o cargarlo
+  de forma personalizada, y se puede explorar entre los días sin que la carga sea tosca.
 - Aplica también a la **consulta social**, al definir las fechas: la hora estimada de inicio y de
   fin que carga el cliente vale para todos los días, y el Responsable de Eventos detalla después
   cada uno.

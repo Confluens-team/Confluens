@@ -171,6 +171,12 @@ Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
   servicios, y los de un día pueden ser distintos de los de otro. **Los servicios y los adicionales
   escritos a mano pertenecen a un día**: no se cargan una vez para toda la franja. Uno que se repite
   todos los días se carga en cada día.
+- **Explorar entre los días.** Al cargar una franja de varios días, el cliente y el personal pueden
+  **moverse entre los días** (una pestaña o un paso por día, con un resumen de lo cargado en cada
+  uno) sin salir de la pantalla y sin perder lo ya cargado, para que cargar varios días no sea
+  tosco (PO, 12/11/2026). Un botón **«copiar el día anterior»** le pasa al día que se está
+  mirando los salones, el horario, la jornada, las personas y los servicios del día anterior, y
+  después se puede cambiar lo que haga falta.
 - **Precio por día.** El salón de cada día se cobra con el precio de media jornada o de jornada
   completa según la jornada de ese día. Los servicios de un día se cotizan con la cantidad de
   personas de ese día.
@@ -204,7 +210,9 @@ Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
   selector y la franja se extiende o se achica. Cada día se identifica por su fecha: mover la
   franja entera los corre a todos; cambiar solo el día de inicio o el de fin suma o saca días en
   ese extremo. No se puede sacar un día del medio, porque la franja tiene que seguir siendo
-  consecutiva. Un día nuevo entra sin salones ni servicios hasta que se lo configura (propuesto).
+  consecutiva. Un día nuevo entra **vacío** y se llena de dos maneras: copiando el día anterior, o cargando
+  salones, horario, jornada, personas y servicios de forma personalizada (confirmado por el PO,
+  12/11/2026).
 - **Cuándo se puede cambiar la franja.** Con las mismas políticas de estado que hoy rigen el cambio
   de fecha de un evento (RN-09 y `modificarPresupuesto`); ver la tabla de abajo.
 - **Repetir evento.** Repetir un evento de varios días copia la misma franja: la misma cantidad de
@@ -261,19 +269,21 @@ caso es un 409 (RN-09, `modificarPresupuesto`). Con varios días rige lo mismo:
 | `Reservado`, presupuesto `Confirmado` | Permitido, con el salón libre en la fecha nueva (RN-12). Recalcula, reinicia la vigencia y corre el horario. | Igual, y cada día que se suma necesita su salón libre. Todo día de un evento `Reservado` necesita al menos un salón (propuesto, como hoy el evento). |
 | `Cobrado` | Permitido. El evento vuelve a `Reservado` si lo pagado ya no cubre el total nuevo. | Igual: extender la franja sube el total y puede devolverlo a `Reservado`. Achicarla lo baja y, si lo pagado supera el total, queda saldo negativo (decisión de Franco, 08/10/2026). |
 | `Cancelado` | Bloqueado (409): liberó el salón y no vuelve atrás. | Igual. |
-| El cliente, en el canal público | Hasta 7 días antes de la fecha del evento (RN-09); el personal, sin límite. | Hasta 7 días antes del **primer** día (propuesto). El personal, sin límite. |
+| El cliente, en el canal público | Hasta 7 días antes de la fecha del evento (RN-09); el personal, sin límite. | Hasta 7 días antes del **primer** día (confirmado por el PO, 12/11/2026). El personal, sin límite. |
 
-**Preguntas abiertas** (supuestos propuestos, a confirmar con el PO antes de estimar):
+**Decisiones confirmadas por el PO el 12/11/2026**, que cierran las preguntas de fondo de la
+historia:
 
-1. **Plazo del cliente (RN-09).** Hoy el cliente puede modificar su consulta o evento hasta 7 días
-   antes de la fecha del evento; después, la modificación se bloquea y solo el personal puede
-   hacerla. Con varios días hay que decir **7 días antes de cuál**. Propuesto: del **primer** día.
-2. **Día nuevo.** Al extender la franja entra un día sin configurar. Propuesto: entra **vacío**,
-   con un botón opcional «copiar el día anterior» que le copia salones, horario, jornada,
-   personas y servicios, para no cargar a mano una semana entera.
+1. El **último día** manda el incremento de precios al extender (también con el presupuesto
+   `Confirmado`).
+2. En la consulta social, la **hora estimada** de inicio y de fin vale para todos los días.
+3. El **plazo de 7 días del cliente** (RN-09) se cuenta desde el **primer** día.
+4. Un **día nuevo entra vacío**; se puede copiar el día anterior o cargarlo de forma
+   personalizada, y se puede explorar entre los días sin que la carga sea tosca.
 
-Confirmadas el 12/11/2026: el último día manda el incremento al extender (también con el
-presupuesto `Confirmado`) y el horario estimado de la consulta social vale para todos los días.
+**Supuestos menores todavía sin confirmar:** las 48 horas de la cancelación (RN-07) se cuentan desde
+el inicio del primer día, igual que los 7 días del cliente, y todo día de un evento `Reservado`
+necesita al menos un salón, como hoy lo necesita el evento.
 
 **Impacto técnico (para estimar).** Hoy `Evento` tiene una sola fecha, un horario y una jornada, y
 sus salones comparten ese horario (ADR 0011); el no solapamiento lo garantiza una restricción de la
