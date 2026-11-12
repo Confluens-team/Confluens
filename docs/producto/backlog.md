@@ -201,9 +201,11 @@ Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
     de intentar reservar. La consulta en estado `EnConsulta` nunca bloquea el salón (RN-12): el
     aviso la marca como «en conflicto».
   - **Un choque en cualquier día impide reservar el evento entero**, aunque los demás días estén
-    libres, porque el evento es uno y la seña es una. El evento no queda reservado «a medias».
-  - Propuesto: el cliente en el canal público **no ve** estos avisos (serían datos de otros
-    clientes); lo ve solo el personal.
+    libres, porque el evento es uno y la seña es una. El evento no queda reservado «a medias»
+    (confirmado por el PO, 12/11/2026).
+  - El cliente en el canal público **no ve** estos avisos: siempre puede pedir su consulta y no se
+    entera de los solapamientos con otros eventos. Los ve solo el personal, en el panel, para que el
+    Responsable de Eventos tome medidas (confirmado por el PO, 12/11/2026).
 
   Ejemplo del rechazo al intentar reservar una franja de cinco días:
 
@@ -215,6 +217,14 @@ Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
   >
   > Los otros 3 días están libres. Hablá con el cliente para mover el día, el horario o el salón.
 
+- **Resumen del evento en pantalla** (PO, 12/11/2026). Donde hoy se muestra una sola cantidad de
+  personas y una sola jornada para todo el evento (agenda, tarjetas, listados):
+  - **Personas:** el **rango** de la franja, de la cantidad mínima a la máxima («50 a 120 personas»);
+    si todos los días tienen la misma, un solo número.
+  - **Jornada:** si todos los días tienen la misma, se muestra cuál es (media jornada o jornada
+    completa); si varían entre un día y otro, se muestra **«Varía»** y se aclara cuáles («media y
+    completa»).
+  - El detalle día por día se ve al entrar al evento.
 - **Agenda.** El evento se muestra como **una sola barra larga**, del inicio del primer día al fin
   del último, igual que hoy un evento que termina después de la medianoche.
 - **Comanda.** Sale **una por día**, con los salones, el horario, las personas y los servicios de

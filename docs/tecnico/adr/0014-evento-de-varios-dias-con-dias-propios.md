@@ -1,6 +1,6 @@
 # ADR 0014 — Evento de varios días: una tabla de días y el solapamiento por día en la base
 
-**Fecha:** 2026-11 · **Estado:** propuesta (pendiente de la revisión del PO; no se escribió código ni `schema.prisma`)
+**Fecha:** 2026-11 · **Estado:** aceptada por el PO el 12/11/2026 (diseño y decisiones de detalle); se construye en partes
 
 ## Contexto
 
@@ -128,24 +128,18 @@ antes, y la base queda como respaldo:
 - Si dos reservas compiten a la vez y gana la otra, la restricción de la base responde y la
   aplicación devuelve un 409 que pide volver a intentar: ahí el detalle ya no se puede dar.
 
-## Detalles de diseño para revisar
+## Decisiones de detalle (PO, 12/11/2026)
 
-Tres puntos donde la propuesta elige algo, y el PO puede querer otra cosa:
-
-1. **Qué número de personas muestra el evento.** Cada día puede tener su cantidad (50 el primer día,
-   120 el segundo). Pero la agenda y las tarjetas muestran **un** número por evento. Propuesta: el
-   **máximo** (120). El detalle por día siempre está disponible. Alternativas: la del primer día, o
-   un rango («50 a 120»).
-2. **Qué jornada muestra el evento.** Cada día tiene su jornada (media o completa) y el cobro de cada
-   día usa la suya. Donde hoy se muestra **una** jornada para todo el evento, propuesta: la del
-   **primer** día. Es solo lo que se ve; no cambia ningún precio. Alternativa: mostrar «varias
-   jornadas» cuando los días difieren.
-3. **Cómo se prueban las reglas de la base.** No hay tests automáticos que puedan comprobar que la
-   base rechaza dos reservas del mismo salón y día, o una franja con un día en el medio sin
-   cargar, porque los tests de hoy usan una base de mentira. Propuesta: un script SQL con los
-   casos de la tabla de `backlog.md`, que se corre a mano contra la base local. Alternativa: una
-   base real en el CI, que prueba todo solo en cada PR pero toca `.github/` (necesita OK) y
-   hace más lento el CI.
+1. **Personas del evento.** Las pantallas muestran el **rango** de la franja (mínimo a máximo); un
+   solo número si todos los días coinciden. Se calcula de los días al leer el evento.
+   `Evento.cantidadPersonas` queda como el **máximo** de los días, porque es una columna obligatoria y
+   conviene que ordene y filtre bien.
+2. **Jornada del evento.** Si todos los días tienen la misma, se muestra cuál; si varían, **«Varía»**
+   con las dos. Tampoco se guarda: se calcula de los días. `Evento.tipoJornada` toma la del primer
+   día solo como valor de compatibilidad. El cobro de cada día usa la suya y no cambia ningún precio.
+3. **Cómo se prueban las reglas de la base.** Con un **script SQL** que se corre a mano contra una
+   base local (`apps/api/prisma/pruebas/evento-varios-dias.sql`), con los casos de la tabla de
+   `backlog.md`. No se agrega una base real al CI por ahora: eso tocaría `.github/`.
 
 ## Cómo se entrega (propuesta)
 
