@@ -190,8 +190,9 @@ Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
   del último, igual que hoy un evento que termina después de la medianoche.
 - **Comanda.** Sale **una por día**, con los salones, el horario, las personas y los servicios de
   gastronomía de ese día.
-- **Cancelación (RN-07).** Se cancela **el evento entero**, no un día suelto. Propuesto: las 48
-  horas se cuentan desde el inicio del **primer** día.
+- **Cancelación (RN-07).** Se cancela **el evento entero**, no un día suelto. Las 48
+  horas se cuentan desde el inicio del **primer** día, igual que los 7 días del cliente
+  (confirmado por el PO, 12/11/2026).
 - **Selección de la franja: día de inicio y día de fin** (PO, 12/11/2026). Es la misma pantalla
   para el cotizador, la consulta social y el panel:
   - **Un clic** elige el día de inicio. Si no hay un segundo clic, el evento dura **un solo día**.
@@ -266,7 +267,7 @@ caso es un 409 (RN-09, `modificarPresupuesto`). Con varios días rige lo mismo:
 | Evento / presupuesto | Hoy, cambio de fecha | Con varios días, cambio de franja |
 |---|---|---|
 | `EnConsulta`, presupuesto `Estimado` o `Expirado` | Permitido. Recalcula, reinicia la vigencia y un `Expirado` vuelve a `Estimado`. | Igual: se puede mover, extender o achicar la franja. |
-| `Reservado`, presupuesto `Confirmado` | Permitido, con el salón libre en la fecha nueva (RN-12). Recalcula, reinicia la vigencia y corre el horario. | Igual, y cada día que se suma necesita su salón libre. Todo día de un evento `Reservado` necesita al menos un salón (propuesto, como hoy el evento). |
+| `Reservado`, presupuesto `Confirmado` | Permitido, con el salón libre en la fecha nueva (RN-12). Recalcula, reinicia la vigencia y corre el horario. | Igual, y cada día que se suma necesita su salón libre. Todo día de un evento `Reservado` necesita al menos un salón, como hoy el evento (confirmado por el PO, 12/11/2026). |
 | `Cobrado` | Permitido. El evento vuelve a `Reservado` si lo pagado ya no cubre el total nuevo. | Igual: extender la franja sube el total y puede devolverlo a `Reservado`. Achicarla lo baja y, si lo pagado supera el total, queda saldo negativo (decisión de Franco, 08/10/2026). |
 | `Cancelado` | Bloqueado (409): liberó el salón y no vuelve atrás. | Igual. |
 | El cliente, en el canal público | Hasta 7 días antes de la fecha del evento (RN-09); el personal, sin límite. | Hasta 7 días antes del **primer** día (confirmado por el PO, 12/11/2026). El personal, sin límite. |
@@ -280,10 +281,10 @@ historia:
 3. El **plazo de 7 días del cliente** (RN-09) se cuenta desde el **primer** día.
 4. Un **día nuevo entra vacío**; se puede copiar el día anterior o cargarlo de forma
    personalizada, y se puede explorar entre los días sin que la carga sea tosca.
-
-**Supuestos menores todavía sin confirmar:** las 48 horas de la cancelación (RN-07) se cuentan desde
-el inicio del primer día, igual que los 7 días del cliente, y todo día de un evento `Reservado`
-necesita al menos un salón, como hoy lo necesita el evento.
+5. Las **48 horas de la cancelación** (RN-07) se cuentan desde el inicio del primer día, igual que
+   los 7 días del cliente.
+6. **Todo día de un evento necesita al menos un salón**, como un evento de un solo día: el sistema
+   pide todos los datos de cada día.
 
 **Impacto técnico (para estimar).** Hoy `Evento` tiene una sola fecha, un horario y una jornada, y
 sus salones comparten ese horario (ADR 0011); el no solapamiento lo garantiza una restricción de la
