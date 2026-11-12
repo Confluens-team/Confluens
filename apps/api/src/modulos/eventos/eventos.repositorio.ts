@@ -179,6 +179,18 @@ export async function guardarObservacionesComanda(
   });
 }
 
+// Observaciones generales del evento. Igual que las de la comanda: cadena vacía se guarda como null.
+export async function guardarObservaciones(
+  id: number,
+  observaciones: string,
+  tx: Prisma.TransactionClient = prisma,
+) {
+  return tx.evento.update({
+    where: { id },
+    data: { observaciones: observaciones === '' ? null : observaciones },
+  });
+}
+
 // Cancelar el evento también cancela su(s) presupuesto(s) activos: un evento Cancelado no puede
 // dejar un Presupuesto Estimado/Confirmado huérfano.
 export async function cancelar(id: number, tx: Prisma.TransactionClient = prisma) {
@@ -218,6 +230,7 @@ export type EventosRepositorio = {
   agendarConDistribuciones: typeof agendarConDistribuciones;
   buscarDistribuciones: typeof buscarDistribuciones;
   guardarObservacionesComanda: typeof guardarObservacionesComanda;
+  guardarObservaciones: typeof guardarObservaciones;
   cancelar: typeof cancelar;
   crearEnTransaccion: typeof crearEnTransaccion;
 };

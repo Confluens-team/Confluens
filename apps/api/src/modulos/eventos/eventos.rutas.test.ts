@@ -14,6 +14,7 @@ vi.mock('./eventos.repositorio.js', () => ({
   agendarConDistribuciones: vi.fn(),
   buscarDistribuciones: vi.fn(),
   guardarObservacionesComanda: vi.fn(),
+  guardarObservaciones: vi.fn(),
   cancelar: vi.fn(),
   // No hay transacción real en el test: se ejecuta el callback tal cual, `agendar` ya está
   // mockeada arriba y no usa el `tx` que recibiría de una transacción real.
@@ -27,6 +28,7 @@ const {
   agendarConDistribuciones,
   buscarDistribuciones,
   guardarObservacionesComanda,
+  guardarObservaciones,
   cancelar,
   crearEnTransaccion,
 } = await import('./eventos.repositorio.js');
@@ -37,6 +39,7 @@ const buscarSolapamientoMock = vi.mocked(buscarSolapamiento);
 const agendarConDistribucionesMock = vi.mocked(agendarConDistribuciones);
 const buscarDistribucionesMock = vi.mocked(buscarDistribuciones);
 const guardarObservacionesComandaMock = vi.mocked(guardarObservacionesComanda);
+const guardarObservacionesMock = vi.mocked(guardarObservaciones);
 const cancelarMock = vi.mocked(cancelar);
 const crearEnTransaccionMock = vi.mocked(crearEnTransaccion);
 
@@ -134,6 +137,7 @@ function eventoFixtureBase() {
     horaFinEstimada: null as string | null,
     modalidadSalonRestaurante: false,
     observacionesComanda: null,
+    observaciones: null,
     creadoEn: new Date(),
     actualizadoEn: new Date(),
     cliente: clienteFixture,
@@ -832,6 +836,7 @@ describe('GET /api/eventos', () => {
     horaFinEstimada: null as string | null,
     modalidadSalonRestaurante: false,
     observacionesComanda: null,
+    observaciones: null,
     creadoEn: new Date('2026-09-29T00:00:00.000Z'),
     actualizadoEn: new Date('2026-09-29T00:00:00.000Z'),
     cliente: { id: 1, nombre: 'Ana Pérez', telefono: '3515551234', correo: 'ana@empresa.com' },
@@ -948,6 +953,7 @@ describe('eventos: permisos (HU-48)', () => {
     ['post', '/api/eventos/20/agendar'],
     ['post', '/api/eventos/20/cancelar'],
     ['patch', '/api/eventos/20/observaciones-comanda'],
+    ['patch', '/api/eventos/20/observaciones'],
   ] as const)('%s %s sin sesión responde 401', async (metodo, ruta) => {
     const respuesta = await request(app)[metodo](ruta);
 
@@ -960,11 +966,94 @@ describe('eventos: permisos (HU-48)', () => {
     ['post', '/api/eventos/20/agendar'],
     ['post', '/api/eventos/20/cancelar'],
     ['patch', '/api/eventos/20/observaciones-comanda'],
+    ['patch', '/api/eventos/20/observaciones'],
   ] as const)('%s %s con sesión de Cliente responde 403', async (metodo, ruta) => {
     const respuesta = await request(app)[metodo](ruta).set('Cookie', [cookieCliente]);
 
     expect(respuesta.status).toBe(403);
     expect(buscarDetalladoMock).not.toHaveBeenCalled();
+  });
+});
+
+// Observaciones generales del evento. Texto libre del personal: el único control es que el evento
+// exista y no esté cancelado.
+describe('PATCH /api/eventos/:id/observaciones', () => {
+  const nota = 'El cliente pidió el montaje listo a las 8.';
+
+  beforeEach(() => {
+    buscarDetalladoMock.mockReset();
+    guardarObservacionesMock.mockReset();
+  });
+
+  const guardar = (cuerpo: object) =>
+    request(app)
+      .patch('/api/eventos/20/observaciones')
+      .set('Cookie', [cookiePersonal])
+      .send(cuerpo);
+
+  it('guarda las observaciones y devuelve el evento', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture());
+
+    const respuesta = await guardar({ observaciones: nota });
+
+    expect(respuesta.status).toBe(200);
+    expect(guardarObservacionesMock).toHaveBeenCalledWith(20, nota);
+  });
+
+  it('un texto vacío borra las observaciones', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture());
+
+    const respuesta = await guardar({ observaciones: '' });
+
+    expect(respuesta.status).toBe(200);
+    expect(guardarObservacionesMock).toHaveBeenCalledWith(20, '');
+  });
+
+  it.each(['EnConsulta', 'Reservado', 'Cobrado'] as const)(
+    'se pueden guardar con el evento en estado %s',
+    async (estado) => {
+      buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado }));
+
+      const respuesta = await guardar({ observaciones: nota });
+
+      expect(respuesta.status).toBe(200);
+    },
+  );
+
+  it('responde 404 si el evento no existe', async () => {
+    buscarDetalladoMock.mockResolvedValue(null);
+
+    const respuesta = await guardar({ observaciones: nota });
+
+    expect(respuesta.status).toBe(404);
+    expect(guardarObservacionesMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 409 si el evento está cancelado', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture({ estado: 'Cancelado' }));
+
+    const respuesta = await guardar({ observaciones: nota });
+
+    expect(respuesta.status).toBe(409);
+    expect(guardarObservacionesMock).not.toHaveBeenCalled();
+  });
+
+  it('responde 400 si el texto supera los 2000 caracteres', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture());
+
+    const respuesta = await guardar({ observaciones: 'x'.repeat(2001) });
+
+    expect(respuesta.status).toBe(400);
+    expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
+    expect(guardarObservacionesMock).not.toHaveBeenCalled();
+  });
+
+  it('acepta exactamente 2000 caracteres', async () => {
+    buscarDetalladoMock.mockResolvedValue(eventoFixture());
+
+    const respuesta = await guardar({ observaciones: 'x'.repeat(2000) });
+
+    expect(respuesta.status).toBe(200);
   });
 });
 
