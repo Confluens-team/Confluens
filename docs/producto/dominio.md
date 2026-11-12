@@ -383,6 +383,8 @@ proveedores sigue fuera de alcance (S-07). Decisión del equipo, 09/10/2026. Lle
 servicios propios del evento con su observación (HU-51), y un evento de varios días tiene **una
 comanda por día** (HU-50).
 
+**Observaciones del evento.** Texto libre (`Evento.observaciones`, hasta 2000 caracteres) para dejar anotado lo que el personal quiere tener presente de un evento: pedidos del cliente, acuerdos, avisos al equipo. Son **internas**: no salen en el presupuesto ni en la comanda y el cliente nunca las ve. No son las observaciones de la comanda (`observacionesComanda`), que son las notas operativas de cocina y salen solo en esa hoja. Las edita cualquier rol del personal, en cualquier estado salvo `Cancelado`, donde quedan de solo lectura. Decisión del PO, 12/11/2026.
+
 **Comedor.** Servicio gastronómico del hotel, con sistema propio. Fuera de alcance (EXC-04).
 
 ---

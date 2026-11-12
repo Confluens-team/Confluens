@@ -5,6 +5,7 @@ import {
   esquemaEventoReutilizado,
   esquemaFiltrosAgenda,
   esquemaGuardarObservacionesComanda,
+  esquemaGuardarObservacionesEvento,
   esquemaReutilizarEvento,
 } from '@confluens/shared';
 import { Router } from 'express';
@@ -19,6 +20,7 @@ import { validar } from '../../middlewares/validar.js';
 import {
   agendar,
   cancelar,
+  guardarObservaciones,
   guardarObservacionesComanda,
   listar,
   obtener,
@@ -115,6 +117,27 @@ registroOpenApi.registerPath({
 });
 
 registroOpenApi.registerPath({
+  method: 'patch',
+  path: '/eventos/{id}/observaciones',
+  tags: ['Eventos'],
+  summary: 'Guarda las observaciones generales del evento. Texto libre, interno del personal',
+  request: {
+    params: esquemaIdParam,
+    body: {
+      content: { 'application/json': { schema: esquemaGuardarObservacionesEvento } },
+    },
+  },
+  responses: {
+    200: { description: 'Observaciones guardadas', content: respuestaEvento },
+    400: { description: 'El texto supera los 2000 caracteres' },
+    404: { description: 'No existe el evento' },
+    409: { description: 'El evento está cancelado' },
+    401: { description: 'Sin sesión activa' },
+    403: { description: 'La sesión no es del personal' },
+  },
+});
+
+registroOpenApi.registerPath({
   method: 'post',
   path: '/eventos/{id}/cancelar',
   tags: ['Eventos'],
@@ -191,6 +214,14 @@ rutasEventos.patch(
   autorizar(...ROLES_PERSONAL),
   validar({ params: esquemaIdParam, body: esquemaGuardarObservacionesComanda }),
   asincrono(guardarObservacionesComanda),
+);
+// Las observaciones del evento, igual que las de la comanda, las escribe cualquiera del personal.
+rutasEventos.patch(
+  '/:id/observaciones',
+  autenticar,
+  autorizar(...ROLES_PERSONAL),
+  validar({ params: esquemaIdParam, body: esquemaGuardarObservacionesEvento }),
+  asincrono(guardarObservaciones),
 );
 rutasEventos.post(
   '/:id/cancelar',

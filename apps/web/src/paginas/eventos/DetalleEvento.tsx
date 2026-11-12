@@ -16,6 +16,7 @@ import { cn } from '@/lib/utils';
 import { mensajeWhatsApp } from '@/lib/whatsapp';
 import { CuentaDelEvento } from './CuentaDelEvento';
 import { ESTADOS } from './estado-evento';
+import { ObservacionesDelEvento } from './ObservacionesDelEvento';
 import { ReutilizarConfiguracion } from './ReutilizarConfiguracion';
 
 // En 24 horas, como la agenda de la que se viene y como la tarjeta de resumen: "6:00 a. m." al
@@ -326,6 +327,8 @@ export function DetalleEvento({
               </dl>
             </CardContent>
           </Card>
+
+          <ObservacionesDelEvento key={evento.id} evento={evento} />
 
           {presupuestoVigente && (
             <Card>

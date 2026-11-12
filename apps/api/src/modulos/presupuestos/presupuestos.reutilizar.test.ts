@@ -109,6 +109,7 @@ function eventoOriginal(datos: Record<string, unknown> = {}) {
     horaInicioEstimada: '09:00',
     modalidadSalonRestaurante: true,
     observacionesComanda: 'Sin TACC',
+    observaciones: null,
     salones: [
       {
         eventoId: 20,

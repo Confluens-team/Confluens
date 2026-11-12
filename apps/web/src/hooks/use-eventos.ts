@@ -93,6 +93,28 @@ export function useGuardarObservacionesComanda(eventoId: number) {
   });
 }
 
+// Observaciones generales del evento. Son internas y ninguna otra pantalla las lee, así que alcanza
+// con invalidar los eventos (el detalle y la agenda).
+export function useGuardarObservaciones(eventoId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (observaciones: string) => {
+      const respuesta = await apiFetch<RespuestaExito<EventoDetallado>>(
+        `/eventos/${eventoId}/observaciones`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ observaciones }),
+        },
+      );
+      return respuesta.data;
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
+    },
+  });
+}
+
 export function useCancelarEvento(id: number) {
   const queryClient = useQueryClient();
   return useMutation({

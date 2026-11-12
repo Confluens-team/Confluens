@@ -208,6 +208,24 @@ export async function guardarObservacionesDeComanda(
   return releerDetalle(id, repo);
 }
 
+/**
+ * Guarda las observaciones generales del evento. Texto libre del personal, sin reglas de negocio:
+ * el único control es que el evento exista y no esté cancelado.
+ */
+export async function guardarObservacionesDelEvento(
+  id: number,
+  observaciones: string,
+  repo: EventosRepositorio = eventosRepositorioReal,
+) {
+  const evento = await repo.buscarDetallado(id);
+  if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${id}`);
+  if (evento.estado === 'Cancelado') {
+    throw ErrorApi.conflicto(`El evento ${id} está cancelado: no admite observaciones`);
+  }
+  await repo.guardarObservaciones(id, observaciones);
+  return releerDetalle(id, repo);
+}
+
 export async function cancelarEvento(
   id: number,
   repo: EventosRepositorio = eventosRepositorioReal,

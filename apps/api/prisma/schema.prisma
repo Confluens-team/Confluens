@@ -238,7 +238,10 @@ model Evento {
   // Notas al pie de la comanda de cocina: menús especiales, alergias, a quién buscar en el salón.
   // Las escribe el personal y solo salen en esa hoja; el cliente nunca las ve.
   observacionesComanda      String?
-  solicitud                 Solicitud?
+  // Observaciones generales del evento. Las escribe el personal; no salen en el presupuesto ni en
+  // la comanda, y el cliente nunca las ve.
+  observaciones             String?
+  solicitud                Solicitud?
   presupuestos              Presupuesto[]
   pagos                     Pago[]
   creadoEn                  DateTime          @default(now())

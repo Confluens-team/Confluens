@@ -114,6 +114,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
       horaFinEstimada: null as string | null,
       modalidadSalonRestaurante: false,
       observacionesComanda: null as string | null,
+      observaciones: null as string | null,
       creadoEn: new Date(),
       actualizadoEn: new Date(),
       cliente: {

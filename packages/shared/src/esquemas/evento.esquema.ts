@@ -29,6 +29,20 @@ export const esquemaGuardarObservacionesComanda = z.object({
 });
 export type GuardarObservacionesComanda = z.infer<typeof esquemaGuardarObservacionesComanda>;
 
+// Observaciones generales del evento: lo que el personal quiere dejar anotado (pedidos del cliente,
+// acuerdos, avisos al equipo). Son internas, no salen en el presupuesto ni en la comanda y el
+// cliente nunca las ve. Mismo tope que las de la comanda.
+export const esquemaObservacionesEvento = z
+  .string()
+  .trim()
+  .max(2000, 'Las observaciones pueden tener hasta 2000 caracteres');
+
+// Body de PATCH /eventos/:id/observaciones. Vacío borra lo que hubiera.
+export const esquemaGuardarObservacionesEvento = z.object({
+  observaciones: esquemaObservacionesEvento,
+});
+export type GuardarObservacionesEvento = z.infer<typeof esquemaGuardarObservacionesEvento>;
+
 // Valores literales de la máquina de estados aprobada (docs/producto/dominio.md).
 export const esquemaEstadoEvento = z.enum(['EnConsulta', 'Reservado', 'Cobrado', 'Cancelado']);
 export type EstadoEvento = z.infer<typeof esquemaEstadoEvento>;
@@ -63,6 +77,7 @@ export const esquemaEvento = z.object({
   senaRegistradaEn: esquemaFechaHora.nullable(),
   modalidadSalonRestaurante: z.boolean(), // opción interna, no visible al cliente
   observacionesComanda: esquemaObservacionesComanda.nullable(),
+  observaciones: esquemaObservacionesEvento.nullable(),
   creadoEn: esquemaFechaHora,
   actualizadoEn: esquemaFechaHora,
 });

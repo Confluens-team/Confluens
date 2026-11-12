@@ -127,6 +127,7 @@ const eventoFixture = {
   horaFinEstimada: null as string | null,
   modalidadSalonRestaurante: false,
   observacionesComanda: null as string | null,
+  observaciones: null as string | null,
   creadoEn: new Date(),
   actualizadoEn: new Date(),
 };
