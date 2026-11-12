@@ -211,14 +211,21 @@ Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
   días consecutivos y la configuración de cada día. El cliente elige la fecha de inicio.
 - **Recálculo por cambio de fecha (HU-54).** Al cambiar la fecha o la franja, el incremento de
   RN-13 es el que corresponde al **último día** de la franja, y se aplica a todo el presupuesto.
+  **El último día es siempre la referencia** (PO, 12/11/2026): si al extender la franja el nuevo
+  último día cae en un mes con un incremento de precios, los precios de **todo** el presupuesto se
+  muestran para esa fecha, también los de los días que ya estaban. Vale con el presupuesto
+  `Confirmado`, como hoy un cambio de fecha.
 - **Eventos existentes.** Los que ya están cargados son de un solo día y siguen igual. Solo los
   eventos nuevos pueden durar varios días.
-- **Cotizador (evento corporativo).** El cliente elige la fecha de inicio y cuántos días dura el
-  evento, y configura cada día. El presupuesto estimado y el PDF muestran el detalle por día y un
-  único total.
+- **Cotizador (evento corporativo).** El cliente elige la franja de fechas y después **recorre los
+  días uno por uno** (por ejemplo, los 5 días de un evento de cinco días): para cada uno elige sus
+  salones, su horario, su jornada (media o completa), su cantidad de personas y sus servicios. El
+  presupuesto estimado y el PDF muestran el detalle por día y un único total.
 - **Consulta social.** También se define con una franja de fechas (inicio y fin), porque el cliente
   elige las fechas. Sigue sin salón ni servicios (ADR 0008): el Responsable de Eventos arma el
-  detalle de cada día al armar el presupuesto.
+  detalle de cada día al armar el presupuesto. El cliente carga **una hora estimada de inicio y una
+  de fin, y valen para todos los días** (PO, 12/11/2026): es solo una referencia, porque el
+  Responsable de Eventos define después el horario de cada día.
 
 **Casos de prueba de la validación del tope.** Los días se cuentan como fechas del calendario
 (`AAAA-MM-DD`, sin horas ni zona), contando el de inicio y el de fin, así que el cambio de mes, el
@@ -258,16 +265,15 @@ caso es un 409 (RN-09, `modificarPresupuesto`). Con varios días rige lo mismo:
 
 **Preguntas abiertas** (supuestos propuestos, a confirmar con el PO antes de estimar):
 
-1. **Extender un evento confirmado.** Si se suma un día al final, el último día cambia y, con la
-   regla de «incremento del último día», **cambian los precios de todo el presupuesto**, también los
-   de los días que ya estaban señados. Es coherente con HU-54 (un cambio de fecha recalcula aun un
-   `Confirmado`), pero conviene que el PO lo confirme explícitamente.
-2. **Horario en la consulta social.** El cliente carga hoy una hora estimada de inicio y de fin.
-   Con varios días, propuesto: se piden una sola vez y valen para cada día; el Responsable de
-   Eventos las ajusta por día al armar el presupuesto.
-3. **Plazo del cliente (RN-09).** Propuesto: los 7 días se cuentan desde el primer día del evento.
-4. **Día nuevo.** Propuesto: entra vacío, con un atajo opcional «copiar el día anterior» para no
-   cargar a mano los salones y servicios de una semana entera.
+1. **Plazo del cliente (RN-09).** Hoy el cliente puede modificar su consulta o evento hasta 7 días
+   antes de la fecha del evento; después, la modificación se bloquea y solo el personal puede
+   hacerla. Con varios días hay que decir **7 días antes de cuál**. Propuesto: del **primer** día.
+2. **Día nuevo.** Al extender la franja entra un día sin configurar. Propuesto: entra **vacío**,
+   con un botón opcional «copiar el día anterior» que le copia salones, horario, jornada,
+   personas y servicios, para no cargar a mano una semana entera.
+
+Confirmadas el 12/11/2026: el último día manda el incremento al extender (también con el
+presupuesto `Confirmado`) y el horario estimado de la consulta social vale para todos los días.
 
 **Impacto técnico (para estimar).** Hoy `Evento` tiene una sola fecha, un horario y una jornada, y
 sus salones comparten ese horario (ADR 0011); el no solapamiento lo garantiza una restricción de la

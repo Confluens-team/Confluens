@@ -322,7 +322,11 @@ puede reservar por varios **días consecutivos**, sin días libres en el medio:
   achica. Se puede mientras el estado lo permita, con las mismas políticas que hoy rigen el cambio
   de fecha (RN-09): también con el evento `Reservado` o `Cobrado`, nunca `Cancelado`. No se puede
   sacar un día del medio.
-- Aplica también a la **consulta social**, al definir las fechas.
+- Aplica también a la **consulta social**, al definir las fechas: la hora estimada de inicio y de
+  fin que carga el cliente vale para todos los días, y el Responsable de Eventos detalla después
+  cada uno.
+- El **último día** de la franja es siempre la referencia del incremento de precios, también al
+  extender un evento: los precios de todo el presupuesto se muestran para esa fecha.
 - **Repetir un evento** de varios días cubre **la misma franja**: la misma cantidad de días
   consecutivos, con la configuración de cada día. La fecha de inicio la elige el cliente.
 - El **recálculo por cambio de fecha** toma el incremento (RN-13) que corresponde al **último día**
