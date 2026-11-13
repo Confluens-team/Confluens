@@ -109,9 +109,11 @@ export async function reemplazarSalonesDelEvento(
 ) {
   await enTransaccion(tx, async (t) => {
     const antes = await salonesDelEvento(eventoId, t);
-    await t.eventoSalon.deleteMany({ where: { eventoId, salonId: { notIn: salonIds } } });
+    // HU-50: los salones son de un día. Hoy el evento tiene uno solo.
+    const diaId = await primerDiaDelEvento(t, eventoId);
+    await t.eventoSalon.deleteMany({ where: { diaId, salonId: { notIn: salonIds } } });
     const actuales = await t.eventoSalon.findMany({
-      where: { eventoId },
+      where: { diaId },
       select: { salonId: true },
     });
     const yaEstan = new Set(actuales.map((fila) => fila.salonId));
@@ -120,7 +122,7 @@ export async function reemplazarSalonesDelEvento(
     // y son a lo sumo cinco salones.
     for (const salonId of nuevos) {
       await t.eventoSalon.create({
-        data: { eventoId, salonId, distribucionId: distribuciones.get(salonId) ?? null },
+        data: { eventoId, diaId, salonId, distribucionId: distribuciones.get(salonId) ?? null },
       });
     }
     // Los salones se auditan como un campo del evento: la lista antes y después.
@@ -199,7 +201,20 @@ export async function crearEvento(
 ) {
   // estado: EnConsulta es el default del schema, no hace falta pasarlo.
   return enTransaccion(tx, async (t) => {
-    const evento = await t.evento.create({ data: datos });
+    const evento = await t.evento.create({
+      data: {
+        ...datos,
+        // HU-50: el evento nace con su único día. fecha, cantidadPersonas y tipoJornada de arriba
+        // son el resumen: una vez creado el día, los recalcula la base a partir de él.
+        dias: {
+          create: {
+            fecha: datos.fecha,
+            cantidadPersonas: datos.cantidadPersonas,
+            tipoJornada: datos.tipoJornada,
+          },
+        },
+      },
+    });
     await registrarAuditoria(t, {
       entidad: 'Evento',
       entidadId: evento.id,
@@ -208,6 +223,17 @@ export async function crearEvento(
     });
     return evento;
   });
+}
+
+// HU-50 parte 1: todos los eventos tienen un solo día, así que «su día» es el primero. Las partes
+// siguientes reciben el día que corresponde en lugar de buscarlo acá.
+async function primerDiaDelEvento(tx: Prisma.TransactionClient, eventoId: number): Promise<number> {
+  const dia = await tx.eventoDia.findFirstOrThrow({
+    where: { eventoId },
+    orderBy: { fecha: 'asc' },
+    select: { id: true },
+  });
+  return dia.id;
 }
 
 // Lo que se audita de las líneas de un presupuesto: lo que se lee en el documento.
@@ -243,6 +269,9 @@ export interface LineaNueva {
   subtotal: string;
   aCotizar: boolean;
   horaEstimada: string | null;
+  // HU-50: el día del evento al que pertenece la línea. Si no viene, el repositorio usa el único día
+  // del evento (hoy todos los eventos tienen uno; las partes siguientes lo mandan).
+  diaId?: number;
 }
 
 export async function crearPresupuestoConLineas(
@@ -272,6 +301,7 @@ async function crearPresupuesto(
   datos: Parameters<typeof crearPresupuestoConLineas>[0],
   tx: Prisma.TransactionClient,
 ) {
+  const diaId = await primerDiaDelEvento(tx, datos.eventoId);
   return tx.presupuesto.create({
     data: {
       eventoId: datos.eventoId,
@@ -282,7 +312,7 @@ async function crearPresupuesto(
       // base de cobro es el total con IVA (RN-01). El default de la columna sigue en false para no
       // cambiar el modelo; los presupuestos anteriores conservan su marca.
       requiereFactura: true,
-      lineas: { create: datos.lineas },
+      lineas: { create: datos.lineas.map((linea) => ({ ...linea, diaId: linea.diaId ?? diaId })) },
     },
     include: { lineas: true, evento: true },
   });
@@ -398,14 +428,40 @@ export async function buscarPresupuestoDetallado(
   });
 }
 
+// HU-50 (ADR 0014): fecha, inicio, fin, cantidadPersonas y tipoJornada son del DÍA. El evento solo
+// guarda su resumen, que calcula la base; escribirlo a mano lo rechaza un trigger. Por eso lo que
+// llega de esos cinco campos se escribe en el día, y el resto en el evento.
+export type ActualizacionDeEvento = Omit<
+  Prisma.EventoUpdateInput,
+  'fecha' | 'fechaFin' | 'inicio' | 'fin' | 'cantidadPersonas' | 'tipoJornada'
+> & {
+  fecha?: Date;
+  inicio?: Date | null;
+  fin?: Date | null;
+  cantidadPersonas?: number;
+  tipoJornada?: TipoJornada | null;
+};
+
 export async function actualizarEvento(
   id: number,
-  datos: Prisma.EventoUpdateInput,
+  datos: ActualizacionDeEvento,
   tx: Prisma.TransactionClient = prisma,
 ) {
+  const { fecha, inicio, fin, cantidadPersonas, tipoJornada, ...delEvento } = datos;
+  const delDia = { fecha, inicio, fin, cantidadPersonas, tipoJornada };
+  const cambiaElDia = Object.values(delDia).some((valor) => valor !== undefined);
   return enTransaccion(tx, async (t) => {
     const anterior = await t.evento.findUniqueOrThrow({ where: { id } });
-    const evento = await t.evento.update({ where: { id }, data: datos });
+    // El día va primero: el horario nuevo se propaga a sus salones (RN-12) antes de tocar el estado.
+    if (cambiaElDia) {
+      const diaId = await primerDiaDelEvento(t, id);
+      await t.eventoDia.update({ where: { id: diaId }, data: delDia });
+    }
+    if (Object.keys(delEvento).length > 0) {
+      await t.evento.update({ where: { id }, data: delEvento });
+    }
+    // Se vuelve a leer: el resumen lo escribió la base y es lo que se audita como «nuevo».
+    const evento = await t.evento.findUniqueOrThrow({ where: { id } });
     await registrarAuditoria(t, { entidad: 'Evento', entidadId: id, anterior, nuevo: evento });
     return evento;
   });
@@ -445,9 +501,14 @@ export async function reemplazarLineas(
       where: { presupuestoId },
       orderBy: { id: 'asc' },
     });
+    const { eventoId } = await t.presupuesto.findUniqueOrThrow({
+      where: { id: presupuestoId },
+      select: { eventoId: true },
+    });
+    const diaId = await primerDiaDelEvento(t, eventoId);
     await t.lineaPresupuesto.deleteMany({ where: { presupuestoId } });
     await t.lineaPresupuesto.createMany({
-      data: lineas.map((linea) => ({ ...linea, presupuestoId })),
+      data: lineas.map((linea) => ({ ...linea, presupuestoId, diaId: linea.diaId ?? diaId })),
     });
     // Las líneas se auditan como un campo del presupuesto: la lista antes y después.
     await registrarAuditoria(t, {
@@ -536,7 +597,14 @@ export async function guardarRecalculo(
   for (const { recalculado } of cambios) {
     await tx.lineaPresupuesto.deleteMany({ where: { presupuestoId: recalculado.id } });
     await tx.lineaPresupuesto.createMany({
-      data: recalculado.lineas.map((linea) => ({ ...linea, presupuestoId: recalculado.id })),
+      data: recalculado.lineas.map((linea) => {
+        if (linea.diaId === undefined) {
+          throw new Error(
+            `La línea «${linea.descripcion}» del presupuesto ${recalculado.id} no trae su día`,
+          );
+        }
+        return { ...linea, presupuestoId: recalculado.id, diaId: linea.diaId };
+      }),
     });
     await tx.presupuesto.update({
       where: { id: recalculado.id },

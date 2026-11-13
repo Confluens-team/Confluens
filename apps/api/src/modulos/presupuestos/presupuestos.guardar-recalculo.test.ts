@@ -28,6 +28,8 @@ const lineaAnterior = {
 
 function lineaNueva(subtotal: string): LineaNueva {
   return {
+    // HU-50: la línea llega con su día, que se leyó de la base junto con ella.
+    diaId: 7,
     servicioId: 1,
     salonId: null,
     descripcion: 'Coffee break',

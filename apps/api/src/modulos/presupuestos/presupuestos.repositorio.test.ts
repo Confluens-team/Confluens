@@ -5,10 +5,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const findMany = vi.fn();
 const create = vi.fn();
 const auditLog = { create: vi.fn() };
+// HU-50: las líneas nacen con el único día del evento.
+const findFirstOrThrowDia = vi.fn().mockResolvedValue({ id: 7 });
 
 // $transaction corre el callback con el mismo cliente falso: alcanza para ver qué se escribe.
 vi.mock('../../lib/prisma.js', () => {
-  const prisma: Record<string, unknown> = { presupuesto: { findMany, create }, auditLog };
+  const prisma: Record<string, unknown> = {
+    presupuesto: { findMany, create },
+    eventoDia: { findFirstOrThrow: findFirstOrThrowDia },
+    auditLog,
+  };
   prisma['$transaction'] = (ejecutar: (tx: unknown) => unknown) => ejecutar(prisma);
   return { prisma };
 });
@@ -58,6 +64,41 @@ describe('presupuestos.repositorio: crearPresupuestoConLineas (HU-53)', () => {
       valorAnterior: undefined,
       valorNuevo: { estado: 'Estimado', lineas: [] },
     });
+  });
+
+  // HU-50 parte 1: cada línea es de un día. Todos los eventos tienen uno solo, así que las que no
+  // traen día toman el primero del evento; una que ya trae el suyo lo conserva.
+  it('las líneas nacen con el único día del evento, salvo que traigan el suyo', async () => {
+    create.mockResolvedValue({ id: 5, estado: 'Estimado', lineas: [], evento: {} });
+    const linea = (descripcion: string, diaId?: number) => ({
+      servicioId: null,
+      salonId: null,
+      descripcion,
+      cantidad: 1,
+      modalidad: 'Normal' as const,
+      precioBase: null,
+      precioUnitario: '100.00',
+      subtotal: '100.00',
+      aCotizar: false,
+      horaEstimada: null,
+      ...(diaId !== undefined && { diaId }),
+    });
+
+    await conActor({ usuarioId: 1, rol: 'RESPONSABLE_EVENTOS' }, () =>
+      crearPresupuestoConLineas({
+        eventoId: 20,
+        fechaEmision: new Date(),
+        venceEn: null,
+        total: '200.00',
+        lineas: [linea('sin día'), linea('con su día', 9)],
+      }),
+    );
+
+    expect(findFirstOrThrowDia).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { eventoId: 20 }, orderBy: { fecha: 'asc' } }),
+    );
+    const lineas = create.mock.calls.at(-1)![0].data.lineas.create;
+    expect(lineas.map((l: { diaId: number }) => l.diaId)).toEqual([7, 9]);
   });
 
   it('el alta que hace el cliente desde el cotizador no se audita', async () => {

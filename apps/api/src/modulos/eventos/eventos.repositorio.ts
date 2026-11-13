@@ -132,17 +132,21 @@ export async function agendarConDistribuciones(
   await enTransaccion(tx, async (t) => {
     const anterior = await t.evento.findUniqueOrThrow({ where: { id: datos.eventoId } });
     const salonesAntes = await salonesDelEvento(datos.eventoId, t);
-    const evento = await t.evento.update({
-      where: { id: datos.eventoId },
-      data: {
-        inicio: datos.inicio,
-        fin: datos.fin,
-        modalidadSalonRestaurante: datos.modalidadSalonRestaurante,
-      },
+    // HU-50: el horario es del DÍA (hoy el evento tiene uno solo) y el resumen del evento lo escribe la
+    // base a partir de él; en el evento solo queda la modalidad.
+    await t.eventoDia.updateMany({
+      where: { eventoId: datos.eventoId },
+      data: { inicio: datos.inicio, fin: datos.fin },
     });
+    await t.evento.update({
+      where: { id: datos.eventoId },
+      data: { modalidadSalonRestaurante: datos.modalidadSalonRestaurante },
+    });
+    // Se vuelve a leer: el resumen (inicio y fin) cambió por el trigger y es lo que se audita.
+    const evento = await t.evento.findUniqueOrThrow({ where: { id: datos.eventoId } });
     for (const { salonId, distribucionId } of datos.distribuciones) {
-      await t.eventoSalon.update({
-        where: { eventoId_salonId: { eventoId: datos.eventoId, salonId } },
+      await t.eventoSalon.updateMany({
+        where: { eventoId: datos.eventoId, salonId },
         data: { distribucionId },
       });
     }

@@ -119,6 +119,7 @@ const eventoFixture = {
   id: 20,
   clienteId: clienteFixture.id,
   fecha: new Date('2026-11-15'),
+  fechaFin: new Date('2026-11-15'),
   inicio: null,
   fin: null,
   cantidadPersonas: 10,
@@ -207,6 +208,7 @@ function prepararMocksDeCreacion() {
       lineas: datos.lineas.map((linea, indice) => ({
         id: indice + 1,
         presupuestoId: 30,
+        diaId: 1,
         ...linea,
         precioUnitario: new Prisma.Decimal(linea.precioUnitario),
         subtotal: new Prisma.Decimal(linea.subtotal),
