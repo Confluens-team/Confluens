@@ -566,6 +566,13 @@ export async function crearPresupuestoDeEvento(
   });
 }
 
+// HU-50: los salones de un evento están por día, así que uno que se usa varios días aparece varias
+// veces. Para el resumen del evento cuenta una sola vez, en el orden en que aparece.
+function salonesUnicos<T extends { salon: { id: number } }>(filas: T[]): T[] {
+  const vistos = new Set<number>();
+  return filas.filter(({ salon }) => (vistos.has(salon.id) ? false : !!vistos.add(salon.id)));
+}
+
 // HU-10: listado del personal con sus filtros. Mapea a PresupuestoListado para que los tipos de
 // Prisma no lleguen a la web: importes como string y la fecha del evento como YYYY-MM-DD.
 export async function listarPresupuestos(
@@ -587,7 +594,7 @@ export async function listarPresupuestos(
     tipoSocial: evento.tipoSocial,
     tipoSocialDetalle: evento.tipoSocialDetalle,
     cliente: evento.cliente,
-    salones: evento.salones.map(({ salon }) => salon),
+    salones: salonesUnicos(evento.salones).map(({ salon }) => salon),
     avisoRecepcionEn: presupuesto.avisoRecepcionEn?.toISOString() ?? null,
     envioFormalEn: presupuesto.envioFormalEn?.toISOString() ?? null,
   }));
@@ -650,8 +657,9 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
         distribucion: distribucion ? { id: distribucion.id, nombre: distribucion.nombre } : null,
       })),
     })),
-    // Los de todo el evento, con la distribución que tiene armada cada uno (ADR 0011).
-    salones: evento.salones.map(({ salon, distribucion }) => ({
+    // Los de todo el evento, con la distribución que tiene armada cada uno (ADR 0011). Un salón que
+    // se usa varios días cuenta una sola vez.
+    salones: salonesUnicos(evento.salones).map(({ salon, distribucion }) => ({
       id: salon.id,
       nombre: salon.nombre,
       capacidadMaxima: salon.capacidadMaxima,

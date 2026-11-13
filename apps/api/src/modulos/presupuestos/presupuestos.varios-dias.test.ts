@@ -6,6 +6,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { ErrorApi } from '../../lib/errores.js';
 import {
   generarPresupuesto,
+  listarPresupuestos,
   modificarPresupuesto,
   registrarConsultaSocial,
 } from './presupuestos.servicio.js';
@@ -446,5 +447,42 @@ describe('modificarPresupuesto con varios días (HU-50)', () => {
 
     expect(repo.reemplazarDiasYLineas).not.toHaveBeenCalled();
     expect(repo.reemplazarLineas).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('listarPresupuestos con un salón que se usa varios días (HU-50)', () => {
+  it('cuenta el salón una sola vez y trae hasta cuándo dura el evento', async () => {
+    const fila = (salonId: number, nombre: string) => ({ salon: { id: salonId, nombre } });
+    const repo = {
+      obtenerPresupuestos: vi.fn(() =>
+        Promise.resolve([
+          {
+            id: 83,
+            eventoId: 99,
+            estado: 'Estimado',
+            fechaEmision: new Date('2040-03-01T00:00:00.000Z'),
+            venceEn: new Date('2040-03-11T00:00:00.000Z'),
+            total: D('500'),
+            avisoRecepcionEn: null,
+            envioFormalEn: null,
+            evento: {
+              fecha: new Date('2040-04-30'),
+              fechaFin: new Date('2040-05-02'),
+              tipo: 'Corporativo',
+              tipoSocial: null,
+              tipoSocialDetalle: null,
+              // Un renglón por día: Paraná los tres días y Pucará solo uno.
+              salones: [fila(5, 'Paraná'), fila(5, 'Paraná'), fila(5, 'Paraná'), fila(6, 'Pucará')],
+              cliente: { id: 1, nombre: 'Ana', apellido: null, correo: 'a@a.com', etiqueta: null },
+            },
+          },
+        ]),
+      ),
+    };
+
+    const [consulta] = await listarPresupuestos({} as never, comoRepo(repo));
+
+    expect(consulta!.salones.map((s) => s.nombre)).toEqual(['Paraná', 'Pucará']);
+    expect([consulta!.fechaEvento, consulta!.fechaFinEvento]).toEqual(['2040-04-30', '2040-05-02']);
   });
 });

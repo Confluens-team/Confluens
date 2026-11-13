@@ -1340,6 +1340,7 @@ export function CotizarEvento({
           {tipo === 'Social' ? (
             <ResumenConsultaSocial
               fecha={fecha}
+              fechaFin={fechaFin}
               cantidadPersonas={cantidadPersonas}
               hora={hora}
               horaFin={horaFin}
@@ -1494,6 +1495,7 @@ export function CotizarEvento({
 // Resumen lateral de la consulta social (ADR 0008): lo que el cliente contó, sin precios.
 function ResumenConsultaSocial({
   fecha,
+  fechaFin,
   cantidadPersonas,
   hora,
   horaFin,
@@ -1505,6 +1507,8 @@ function ResumenConsultaSocial({
   onEnviar,
 }: {
   fecha: string;
+  // HU-50: el último día, si la consulta es de varios.
+  fechaFin: string;
   cantidadPersonas: number;
   hora: string;
   horaFin: string;
@@ -1522,7 +1526,12 @@ function ResumenConsultaSocial({
         ? etiquetaTipoEvento({ tipo: 'Social', tipoSocial, tipoSocialDetalle: detalleOtro.trim() })
         : 'Elegí qué celebrás',
     ],
-    ['Fecha', fecha ? fecha.split('-').reverse().join('/') : 'Sin fecha'],
+    fecha && fechaFin && fechaFin !== fecha
+      ? [
+          'Fechas',
+          `${fecha.split('-').reverse().join('/')} al ${fechaFin.split('-').reverse().join('/')} · ${textoDeDias(fecha, fechaFin)}`,
+        ]
+      : ['Fecha', fecha ? fecha.split('-').reverse().join('/') : 'Sin fecha'],
     ['Invitados', cantidadPersonas > 0 ? `${cantidadPersonas} personas` : 'Sin definir'],
     ['Horario estimado', textoHorarioEstimado(hora, horaFin)],
   ];
