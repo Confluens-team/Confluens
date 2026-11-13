@@ -155,6 +155,54 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
     setHoraFin(sumarHoras(valor, horasJornada));
   }
 
+  // HU-50: un evento de varios días tiene el horario de cada día. Se precarga con lo ya agendado o, si
+  // no, con la hora estimada de la consulta y el fin según la jornada de ese día.
+  const variosDias = evento.dias.length > 1;
+  const [horasDelDia, setHorasDelDia] = useState<Record<string, { inicio: string; fin: string }>>(
+    () =>
+      Object.fromEntries(
+        evento.dias.map((dia) => {
+          const inicioDelDia = dia.inicio
+            ? comoFechaHoraLocal(dia.inicio).slice(11, 16)
+            : (evento.horaInicioEstimada ?? '');
+          const finDelDia = dia.fin
+            ? comoFechaHoraLocal(dia.fin).slice(11, 16)
+            : inicioDelDia
+              ? sumarHoras(inicioDelDia, HORAS_POR_JORNADA[dia.tipoJornada ?? 'completa'])
+              : '';
+          return [dia.fecha, { inicio: inicioDelDia, fin: finDelDia }];
+        }),
+      ),
+  );
+  function elegirInicioDelDia(fecha: string, valor: string, jornadaDelDia: TipoJornada | null) {
+    setHorasDelDia((anteriores) => ({
+      ...anteriores,
+      [fecha]: {
+        inicio: valor,
+        fin: sumarHoras(valor, HORAS_POR_JORNADA[jornadaDelDia ?? 'completa']),
+      },
+    }));
+  }
+  function elegirFinDelDia(fecha: string, valor: string) {
+    setHorasDelDia((anteriores) => ({
+      ...anteriores,
+      [fecha]: { inicio: anteriores[fecha]?.inicio ?? '', fin: valor },
+    }));
+  }
+  // «Mismo horario que el día anterior»: copia las horas, no el día.
+  function copiarHorarioDelAnterior(indice: number) {
+    const anterior = evento.dias[indice - 1];
+    const dia = evento.dias[indice];
+    if (!anterior || !dia) return;
+    setHorasDelDia((anteriores) => ({
+      ...anteriores,
+      [dia.fecha]: { ...anteriores[anterior.fecha]! },
+    }));
+  }
+  // El día en que cae un instante: el fin de un día que termina pasada la medianoche es del siguiente.
+  const instanteDelDia = (fecha: string, hora: string, horaDeInicio: string) =>
+    `${hora < horaDeInicio ? diaSiguiente(fecha) : fecha}T${hora}`;
+
   // El inicio cae siempre el día del evento. Un fin más temprano que el inicio es del día
   // siguiente: el evento termina pasada la medianoche.
   const inicio = horaInicio ? `${fechaDelEvento}T${horaInicio}` : '';
@@ -199,21 +247,56 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   // no un tope (ADR 0011).
   const todasElegidas = porSalon.length > 0 && porSalon.every((s) => s.elegida !== undefined);
   const capacidadElegida = porSalon.reduce((suma, s) => suma + (s.elegida?.capacidad ?? 0), 0);
-  const superaCapacidad = todasElegidas && evento.cantidadPersonas > capacidadElegida;
-  const horarioCompleto = todasElegidas && inicio !== '' && fin !== '';
+  // Con varios días la capacidad se mira día por día, con SUS personas y SUS salones (HU-50).
+  const capacidadDelDia = (dia: (typeof evento.dias)[number]) =>
+    dia.salones.reduce(
+      (suma, s) => suma + (porSalon.find((p) => p.salon.id === s.id)?.elegida?.capacidad ?? 0),
+      0,
+    );
+  const superaCapacidad =
+    todasElegidas &&
+    (variosDias
+      ? evento.dias.some((dia) => dia.cantidadPersonas > capacidadDelDia(dia))
+      : evento.cantidadPersonas > capacidadElegida);
+  const horarioCompleto = variosDias
+    ? todasElegidas &&
+      evento.dias.every((dia) => !!horasDelDia[dia.fecha]?.inicio && !!horasDelDia[dia.fecha]?.fin)
+    : todasElegidas && inicio !== '' && fin !== '';
   const horarioCambio =
     porSalon.some((s) => s.elegidaId !== (distribucionesIniciales.get(s.salon.id) ?? '')) ||
-    inicio !== (evento.inicio ? comoFechaHoraLocal(evento.inicio) : '') ||
-    fin !== (evento.fin ? comoFechaHoraLocal(evento.fin) : '');
+    (variosDias
+      ? evento.dias.some((dia) => {
+          const guardadoInicio = dia.inicio ? comoFechaHoraLocal(dia.inicio).slice(11, 16) : '';
+          const guardadoFin = dia.fin ? comoFechaHoraLocal(dia.fin).slice(11, 16) : '';
+          return (
+            horasDelDia[dia.fecha]?.inicio !== guardadoInicio ||
+            horasDelDia[dia.fecha]?.fin !== guardadoFin
+          );
+        })
+      : inicio !== (evento.inicio ? comoFechaHoraLocal(evento.inicio) : '') ||
+        fin !== (evento.fin ? comoFechaHoraLocal(evento.fin) : ''));
 
   function datosDelHorario() {
+    const distribuciones = porSalon.map((s) => ({
+      salonId: s.salon.id,
+      distribucionId: Number(s.elegidaId),
+    }));
+    // HU-50: el horario de cada día va en `dias`; un evento de un solo día manda inicio y fin sueltos.
+    const horario = variosDias
+      ? {
+          dias: evento.dias.map((dia) => {
+            const horas = horasDelDia[dia.fecha]!;
+            return {
+              fecha: dia.fecha,
+              inicio: new Date(instanteDelDia(dia.fecha, horas.inicio, horas.inicio)).toISOString(),
+              fin: new Date(instanteDelDia(dia.fecha, horas.fin, horas.inicio)).toISOString(),
+            };
+          }),
+        }
+      : { inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString() };
     return {
-      distribuciones: porSalon.map((s) => ({
-        salonId: s.salon.id,
-        distribucionId: Number(s.elegidaId),
-      })),
-      inicio: new Date(inicio).toISOString(),
-      fin: new Date(fin).toISOString(),
+      distribuciones,
+      ...horario,
       modalidadSalonRestaurante: evento.modalidadSalonRestaurante,
       // La pantalla ya avisa debajo de las distribuciones que no alcanzan: elegirlas igual es la
       // confirmación que pide la API.
@@ -347,38 +430,116 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
           </p>
         )}
       </div>
-      <p className="text-sm">
-        Día del evento:{' '}
-        <span className="font-medium">{formatearFechaNumerica(fechaDelEvento)}</span>
-        <span className="block text-xs text-muted-foreground">
-          Para cambiar el día, modificá la consulta: así se recalcula el presupuesto.
-        </span>
-      </p>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor="inicio">Hora de inicio</Label>
-          <SelectorHora
-            id="inicio"
-            value={horaInicio}
-            onChange={elegirInicio}
-            horaSugerida={evento.horaInicioEstimada ?? undefined}
-          />
+      {variosDias ? (
+        // HU-50: el horario de cada día. Cada día se controla contra los eventos reservados de ESE día.
+        <div className="space-y-3">
+          <p className="text-sm font-medium">
+            Horario de cada día{' '}
+            <span className="font-normal text-muted-foreground">
+              · {evento.dias.length} días, del {formatearFechaNumerica(evento.dias[0]!.fecha)} al{' '}
+              {formatearFechaNumerica(evento.dias[evento.dias.length - 1]!.fecha)}
+            </span>
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Para cambiar los días, modificá la consulta: así se recalcula el presupuesto.
+          </p>
+          <ul className="space-y-3">
+            {evento.dias.map((dia, indice) => {
+              const horas = horasDelDia[dia.fecha] ?? { inicio: '', fin: '' };
+              const terminaDespues =
+                horas.inicio !== '' && horas.fin !== '' && horas.fin < horas.inicio;
+              return (
+                <li key={dia.fecha} className="rounded-lg border border-border p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium">
+                      Día {indice + 1} · {formatearFechaNumerica(dia.fecha)}
+                      <span className="ml-2 text-xs font-normal text-muted-foreground">
+                        {dia.cantidadPersonas} personas ·{' '}
+                        {dia.salones.map((salonDelDia) => salonDelDia.nombre).join(', ')}
+                      </span>
+                    </p>
+                    {indice > 0 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => copiarHorarioDelAnterior(indice)}
+                      >
+                        Mismo horario que el día {indice}
+                      </Button>
+                    )}
+                  </div>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`inicio-${dia.fecha}`}>Hora de inicio</Label>
+                      <SelectorHora
+                        id={`inicio-${dia.fecha}`}
+                        value={horas.inicio}
+                        onChange={(valor) => elegirInicioDelDia(dia.fecha, valor, dia.tipoJornada)}
+                        horaSugerida={evento.horaInicioEstimada ?? undefined}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor={`fin-${dia.fecha}`}>Hora de fin</Label>
+                      <SelectorHora
+                        id={`fin-${dia.fecha}`}
+                        value={horas.fin}
+                        onChange={(valor) => elegirFinDelDia(dia.fecha, valor)}
+                        horaSugerida={
+                          horas.inicio
+                            ? sumarHoras(
+                                horas.inicio,
+                                HORAS_POR_JORNADA[dia.tipoJornada ?? 'completa'],
+                              )
+                            : undefined
+                        }
+                      />
+                    </div>
+                  </div>
+                  {terminaDespues && (
+                    <p className="mt-1 text-xs text-muted-foreground">Termina al día siguiente.</p>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="fin">Hora de fin</Label>
-          <SelectorHora
-            id="fin"
-            value={horaFin}
-            onChange={setHoraFin}
-            horaSugerida={horaInicio ? sumarHoras(horaInicio, horasJornada) : undefined}
-          />
-        </div>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        {jornada === 'media' ? 'Media jornada' : 'Jornada completa'}: el fin se calcula{' '}
-        {horasJornada} h después del inicio. Podés cambiarlo.
-        {terminaAlDiaSiguiente && ' Termina al día siguiente.'}
-      </p>
+      ) : (
+        <>
+          <p className="text-sm">
+            Día del evento:{' '}
+            <span className="font-medium">{formatearFechaNumerica(fechaDelEvento)}</span>
+            <span className="block text-xs text-muted-foreground">
+              Para cambiar el día, modificá la consulta: así se recalcula el presupuesto.
+            </span>
+          </p>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="inicio">Hora de inicio</Label>
+              <SelectorHora
+                id="inicio"
+                value={horaInicio}
+                onChange={elegirInicio}
+                horaSugerida={evento.horaInicioEstimada ?? undefined}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="fin">Hora de fin</Label>
+              <SelectorHora
+                id="fin"
+                value={horaFin}
+                onChange={setHoraFin}
+                horaSugerida={horaInicio ? sumarHoras(horaInicio, horasJornada) : undefined}
+              />
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {jornada === 'media' ? 'Media jornada' : 'Jornada completa'}: el fin se calcula{' '}
+            {horasJornada} h después del inicio. Podés cambiarlo.
+            {terminaAlDiaSiguiente && ' Termina al día siguiente.'}
+          </p>
+        </>
+      )}
       {enConsulta && !horarioCompleto && faltaParaLaSena > 0 && (
         <p className="text-xs text-muted-foreground">
           Para que el pago que llega al {PORCENTAJE_SENA}% reserve el salón, completá distribución,
@@ -726,7 +887,9 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
             {editandoHorario ? (
               <>
                 {camposHorario}
-                {errorAgendar && <p className="text-sm text-destructive">{errorAgendar}</p>}
+                {errorAgendar && (
+                  <p className="text-sm whitespace-pre-line text-destructive">{errorAgendar}</p>
+                )}
                 <div className="flex gap-2">
                   <Button
                     type="button"
@@ -750,11 +913,26 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
               </>
             ) : (
               <>
-                <p>
-                  {evento.inicio && evento.fin
-                    ? `${formateadorHorario.format(new Date(evento.inicio))} a ${formateadorFin.format(new Date(evento.fin))}`
-                    : 'Sin horario cargado.'}
-                </p>
+                {variosDias ? (
+                  <ul className="space-y-1">
+                    {evento.dias.map((dia, indice) => (
+                      <li key={dia.fecha}>
+                        <span className="text-muted-foreground">
+                          Día {indice + 1} · {formatearFechaNumerica(dia.fecha)}:
+                        </span>{' '}
+                        {dia.inicio && dia.fin
+                          ? `${formateadorHorario.format(new Date(dia.inicio))} a ${formateadorFin.format(new Date(dia.fin))}`
+                          : 'sin horario'}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p>
+                    {evento.inicio && evento.fin
+                      ? `${formateadorHorario.format(new Date(evento.inicio))} a ${formateadorFin.format(new Date(evento.fin))}`
+                      : 'Sin horario cargado.'}
+                  </p>
+                )}
                 {agendarEvento.isSuccess && (
                   <p className="text-sm text-emerald-800">Horario guardado.</p>
                 )}
@@ -895,10 +1073,10 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
                 </fieldset>
 
                 {enConsulta && errorAgendar && (
-                  <p className="text-sm text-destructive">{errorAgendar}</p>
+                  <p className="text-sm whitespace-pre-line text-destructive">{errorAgendar}</p>
                 )}
                 {registrarPago.isError && (
-                  <p className="text-sm text-destructive">
+                  <p className="text-sm whitespace-pre-line text-destructive">
                     {registrarPago.error instanceof ErrorApiCliente
                       ? registrarPago.error.message
                       : 'No se pudo registrar el pago.'}

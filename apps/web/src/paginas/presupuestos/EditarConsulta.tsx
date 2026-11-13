@@ -57,6 +57,7 @@ import {
   nombreCompleto,
 } from '@/lib/formato';
 import { cn } from '@/lib/utils';
+import { AvisoDeChoques } from './AvisoDeChoques';
 import { EditarConsultaPorDias } from './EditarConsultaPorDias';
 import { PresupuestoFormal } from './PresupuestoFormal';
 import { type CambioDePrecio, cambiosDePrecio, preciosParaFecha } from './recalculo-por-fecha';
@@ -211,6 +212,7 @@ export function EditarConsulta({
         franjaNueva={franjaNueva}
         onGuardada={onGuardada}
         onDadaDeBaja={onDadaDeBaja}
+        onAbrirEvento={onAbrirEvento}
         onDescargarPresupuesto={() => alternarDocumento(true)}
         textoVolverAlGuardar={textoVolverAlGuardar}
       />
@@ -948,6 +950,9 @@ function Formulario({
               : 'sin agendar todavía (se cargan al registrar el pago)'}
           </p>
         </section>
+
+        {/* HU-50: aviso preventivo: los salones que otro evento ya ocupa ese día (RN-12). */}
+        {enCurso && <AvisoDeChoques consultaId={consulta.id} />}
 
         {tipo === 'Social' && (
           <section className="rounded-xl bg-card p-5 ring-1 ring-tipo-social-suave">

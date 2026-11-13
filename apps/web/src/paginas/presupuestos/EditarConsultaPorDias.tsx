@@ -7,6 +7,7 @@ import {
   hoyEnZonaEventos,
   MAXIMO_PERSONAS_EVENTO,
   MODALIDADES_SERVICIO,
+  PORCENTAJE_SENA,
   mesesHastaEvento,
   proyectarPrecio,
   sumarDias,
@@ -22,6 +23,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  CalendarCheck,
   CheckCircle2,
   Copy,
   Plus,
@@ -50,6 +52,7 @@ import { resumenDeJornada, textoDePersonas } from '@/lib/dias-del-evento';
 import { formatearFechaNumerica, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { textoDeDias } from '@/lib/rango-de-fechas';
 import { cn } from '@/lib/utils';
+import { AvisoDeChoques } from './AvisoDeChoques';
 import { type CambioDePrecio, cambiosDePrecio, preciosParaFecha } from './recalculo-por-fecha';
 import { SeguimientoConsulta } from './SeguimientoConsulta';
 
@@ -172,6 +175,7 @@ export function EditarConsultaPorDias({
   franjaNueva,
   onGuardada,
   onDadaDeBaja,
+  onAbrirEvento,
   onDescargarPresupuesto,
   textoVolverAlGuardar,
 }: {
@@ -183,6 +187,7 @@ export function EditarConsultaPorDias({
   franjaNueva?: { inicio: string; fin: string };
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
+  onAbrirEvento: (eventoId: number) => void;
   onDescargarPresupuesto: () => void;
   textoVolverAlGuardar: string;
 }) {
@@ -720,6 +725,9 @@ export function EditarConsultaPorDias({
           </p>
         </section>
 
+        {/* HU-50: los salones que otros eventos ya ocupan en estos días (aviso preventivo, RN-12). */}
+        {enCurso && <AvisoDeChoques consultaId={consulta.id} />}
+
         {/* El detalle de cada día: pestañas para pasar de uno a otro sin perder lo cargado. */}
         <section className="rounded-xl bg-card p-5 ring-1 ring-border">
           <h3 className="text-sm font-semibold">Detalle día por día</h3>
@@ -1196,10 +1204,26 @@ export function EditarConsultaPorDias({
         </div>
       )}
       {enCurso && (
-        <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
-          Reservar el evento y cobrar la seña de un evento de varios días todavía no está
-          disponible: llega en la próxima etapa, junto con la agenda por día.
-        </p>
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-card p-5 ring-1 ring-border">
+          <div className="max-w-xl">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <CalendarCheck className="size-4 text-dorado" /> Cobrar la seña
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              {consulta.salones.length === 0
+                ? 'Primero elegí el salón de cada día, armá el presupuesto y guardá los cambios.'
+                : `${expirado ? 'La consulta está vencida, pero la seña se cobra igual, sin recalcular. ' : ''}Registrá el horario de cada día y los pagos. Cuando lo pagado llega al ${PORCENTAJE_SENA}% de la base de cobro, el evento entero queda reservado: un choque en cualquier día lo impide. Guardá antes los cambios de la consulta.`}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={consulta.salones.length === 0}
+            onClick={() => onAbrirEvento(consulta.evento.id)}
+          >
+            <CalendarCheck /> Registrar pagos
+          </Button>
+        </section>
       )}
       {modificar.isError && (
         <p className="text-right text-sm text-destructive">
