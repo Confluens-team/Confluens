@@ -1,4 +1,8 @@
-import { ESTADOS_QUE_OCUPAN_SALON, type FiltrosAgenda } from '@confluens/shared';
+import {
+  type ChoqueDeSalon,
+  ESTADOS_QUE_OCUPAN_SALON,
+  type FiltrosAgenda,
+} from '@confluens/shared';
 
 import { enTransaccion, registrarAuditoria, registrarAuditorias } from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
@@ -17,11 +21,18 @@ export async function buscarDetallado(id: number, tx: Prisma.TransactionClient =
       cliente: { include: { etiqueta: { select: { id: true, nombre: true } } } },
       // Cada salón con la distribución que tiene armada en este evento (ADR 0011).
       salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
+      // HU-50: los días con su horario y sus salones.
+      dias: { include: INCLUIR_SALONES_DEL_DIA, orderBy: { fecha: 'asc' } },
       solicitud: true,
       presupuestos: { include: { lineas: true } },
     },
   });
 }
+
+// Los salones de un día con su distribución (HU-50).
+const INCLUIR_SALONES_DEL_DIA = {
+  salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
+} as const;
 
 // Agenda del personal interno (HU-15). Sin filtros devuelve los eventos que ocupan el salón
 // (ESTADOS_QUE_OCUPAN_SALON): los EnConsulta no bloquean y los Cancelado ya lo liberaron, así que
@@ -39,10 +50,10 @@ export async function listarAgenda(
       estado: { in: estado ?? [...ESTADOS_QUE_OCUPAN_SALON] },
       // El filtro acierta si el evento ocupa alguno de los salones pedidos (ADR 0011).
       salones: salonId ? { some: { salonId: { in: salonId } } } : undefined,
-      fecha: {
-        gte: desde ? new Date(desde) : undefined,
-        lte: hasta ? new Date(hasta) : undefined,
-      },
+      // HU-50: un evento de varios días entra si alguno de sus días cae en el rango, no solo el
+      // primero: empieza antes del final del rango y termina después de su comienzo.
+      fecha: { lte: hasta ? new Date(hasta) : undefined },
+      fechaFin: { gte: desde ? new Date(desde) : undefined },
     },
     orderBy: [{ fecha: 'asc' }, { inicio: 'asc' }],
     include: {
@@ -62,6 +73,24 @@ export async function listarAgenda(
           distribucion: { select: { id: true, nombre: true } },
         },
         orderBy: { salonId: 'asc' },
+      },
+      dias: {
+        select: {
+          id: true,
+          fecha: true,
+          inicio: true,
+          fin: true,
+          cantidadPersonas: true,
+          tipoJornada: true,
+          salones: {
+            select: {
+              salon: { select: { id: true, nombre: true } },
+              distribucion: { select: { id: true, nombre: true } },
+            },
+            orderBy: { salonId: 'asc' },
+          },
+        },
+        orderBy: { fecha: 'asc' },
       },
       presupuestos: {
         where: { estado: 'Confirmado' },
@@ -98,16 +127,83 @@ export async function buscarSolapamiento(
   datos: { salonIds: number[]; inicio: Date; fin: Date; excluirEventoId: number },
   tx: Prisma.TransactionClient = prisma,
 ) {
+  // HU-50: se compara contra el horario de CADA DÍA de los otros eventos (el renglón del salón de ese
+  // día), no contra el resumen del evento: un evento de varios días no ocupa las noches entre un día
+  // y el siguiente. La condición del salón y la del horario van en el mismo renglón.
   return tx.evento.findFirst({
     where: {
-      salones: { some: { salonId: { in: datos.salonIds } } },
       id: { not: datos.excluirEventoId },
       estado: { in: ['Reservado', 'Cobrado'] },
-      inicio: { lt: datos.fin },
-      fin: { gt: datos.inicio },
+      salones: {
+        some: {
+          salonId: { in: datos.salonIds },
+          inicio: { lt: datos.fin },
+          fin: { gt: datos.inicio },
+        },
+      },
     },
     include: { salones: { include: { salon: { select: { id: true, nombre: true } } } } },
   });
+}
+
+/**
+ * RN-12 por día (HU-50): TODOS los choques de las franjas de un evento de varios días. Cada franja es
+ * un día con los salones que usa ese día y su horario. Devuelve un choque por cada día, salón y
+ * evento que se superpone, con su fecha, el cliente y el horario del otro evento ese día, para
+ * avisar de todos y no solo del primero. Compara contra el renglón de cada día de los otros eventos.
+ */
+export async function buscarChoquesPorDia(
+  datos: {
+    franjas: { fecha: string; salonIds: number[]; inicio: Date; fin: Date }[];
+    excluirEventoId: number;
+  },
+  tx: Prisma.TransactionClient = prisma,
+): Promise<ChoqueDeSalon[]> {
+  if (datos.franjas.length === 0) return [];
+  const filas = await tx.eventoSalon.findMany({
+    where: {
+      eventoId: { not: datos.excluirEventoId },
+      estado: { in: ['Reservado', 'Cobrado'] },
+      OR: datos.franjas.map((franja) => ({
+        salonId: { in: franja.salonIds },
+        inicio: { lt: franja.fin },
+        fin: { gt: franja.inicio },
+      })),
+    },
+    include: {
+      salon: { select: { id: true, nombre: true } },
+      evento: {
+        select: { id: true, estado: true, cliente: { select: { nombre: true, apellido: true } } },
+      },
+    },
+    orderBy: [{ inicio: 'asc' }, { salonId: 'asc' }],
+  });
+  // Un renglón puede tocar más de una franja (un evento que pasa la medianoche), así que se asigna a
+  // cada franja con la que se superpone y en su mismo salón.
+  return datos.franjas.flatMap((franja) =>
+    filas
+      .filter(
+        (fila) =>
+          franja.salonIds.includes(fila.salonId) &&
+          fila.inicio !== null &&
+          fila.fin !== null &&
+          fila.inicio < franja.fin &&
+          fila.fin > franja.inicio,
+      )
+      .map((fila) => ({
+        fecha: franja.fecha,
+        salon: fila.salon,
+        evento: {
+          id: fila.evento.id,
+          estado: fila.evento.estado,
+          cliente: [fila.evento.cliente.nombre, fila.evento.cliente.apellido]
+            .filter(Boolean)
+            .join(' '),
+          inicio: fila.inicio!.toISOString(),
+          fin: fila.fin!.toISOString(),
+        },
+      })),
+  );
 }
 
 /**
@@ -123,8 +219,12 @@ export async function agendarConDistribuciones(
   datos: {
     eventoId: number;
     distribuciones: { salonId: number; distribucionId: number }[];
+    // Un evento de un solo día: el horario de su único día.
     inicio: Date;
     fin: Date;
+    // HU-50: el horario de cada día (por su fecha, `AAAA-MM-DD`). Si viene, manda sobre `inicio` y
+    // `fin`, que valen para todos los días.
+    horarios?: { fecha: string; inicio: Date; fin: Date }[];
     modalidadSalonRestaurante: boolean;
   },
   tx: Prisma.TransactionClient = prisma,
@@ -134,10 +234,20 @@ export async function agendarConDistribuciones(
     const salonesAntes = await salonesDelEvento(datos.eventoId, t);
     // HU-50: el horario es del DÍA (hoy el evento tiene uno solo) y el resumen del evento lo escribe la
     // base a partir de él; en el evento solo queda la modalidad.
-    await t.eventoDia.updateMany({
-      where: { eventoId: datos.eventoId },
-      data: { inicio: datos.inicio, fin: datos.fin },
-    });
+    if (datos.horarios) {
+      // Cada día con su horario: el trigger lo lleva a los salones de ese día (RN-12).
+      for (const { fecha, inicio, fin } of datos.horarios) {
+        await t.eventoDia.updateMany({
+          where: { eventoId: datos.eventoId, fecha: new Date(fecha) },
+          data: { inicio, fin },
+        });
+      }
+    } else {
+      await t.eventoDia.updateMany({
+        where: { eventoId: datos.eventoId },
+        data: { inicio: datos.inicio, fin: datos.fin },
+      });
+    }
     await t.evento.update({
       where: { id: datos.eventoId },
       data: { modalidadSalonRestaurante: datos.modalidadSalonRestaurante },
@@ -231,6 +341,7 @@ export type EventosRepositorio = {
   listarAgenda: typeof listarAgenda;
   buscarPresupuestoEstimado: typeof buscarPresupuestoEstimado;
   buscarSolapamiento: typeof buscarSolapamiento;
+  buscarChoquesPorDia: typeof buscarChoquesPorDia;
   agendarConDistribuciones: typeof agendarConDistribuciones;
   buscarDistribuciones: typeof buscarDistribuciones;
   guardarObservacionesComanda: typeof guardarObservacionesComanda;

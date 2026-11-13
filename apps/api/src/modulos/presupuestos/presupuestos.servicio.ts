@@ -11,6 +11,7 @@ import {
   mesesHastaEvento,
   minutosDeHora,
   proyectarPrecio,
+  type ChoquesDeConsulta,
   type ConsultaDetallada,
   type CrearConsultaSocial,
   type CrearPresupuesto,
@@ -755,6 +756,28 @@ async function armadosHeredados(
     if (distribucion) heredados.set(salonId, distribucion.id);
   }
   return heredados;
+}
+
+/**
+ * Aviso preventivo de una consulta (HU-50, RN-12): por cada día y salón de la consulta, los eventos
+ * reservados o cobrados que ya ocupan ese salón ese día, con su horario. La consulta no bloquea el
+ * salón: es para que el Responsable de Eventos lo vea y hable con el cliente antes de reservar. Solo
+ * tiene sentido mientras el evento está en consulta; uno ya reservado ya pasó el control.
+ */
+export async function obtenerChoquesDeConsulta(
+  id: number,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+): Promise<ChoquesDeConsulta> {
+  const presupuesto = await buscarOFallar(id, repo);
+  const dias = presupuesto.evento.dias.map((dia) => ({
+    fecha: dia.fecha.toISOString().slice(0, 10),
+    salonIds: dia.salones.map(({ salon }) => salon.id),
+  }));
+  const choques =
+    presupuesto.evento.estado === 'EnConsulta'
+      ? await repo.buscarSalonesOcupadosPorDia({ eventoId: presupuesto.eventoId, dias })
+      : [];
+  return { dias: dias.length, choques };
 }
 
 export async function obtenerConsulta(

@@ -816,16 +816,61 @@ export async function buscarSalonesReservadosEseDia(
   fecha: Date,
   tx: Prisma.TransactionClient = prisma,
 ) {
+  // HU-50: el día se mira en cada renglón por día, no en la fecha del evento (que es solo la del
+  // primer día): un día del medio de un evento reservado también ocupa el salón.
   const filas = await tx.eventoSalon.findMany({
     where: {
       salonId: { in: salonIds },
-      evento: { fecha, estado: { in: ['Reservado', 'Cobrado'] } },
+      dia: { fecha },
+      estado: { in: ['Reservado', 'Cobrado'] },
     },
     select: { salon: { select: { id: true, nombre: true } } },
     distinct: ['salonId'],
     orderBy: { salonId: 'asc' },
   });
   return filas.map((fila) => fila.salon);
+}
+
+/**
+ * Aviso preventivo de una consulta (HU-50): por cada día y salón de la consulta, los eventos
+ * reservados o cobrados que ya ocupan ese salón ese día, con su horario. La consulta no bloquea el
+ * salón (RN-12): es un aviso para que el Responsable de Eventos lo resuelva antes de reservar.
+ */
+export async function buscarSalonesOcupadosPorDia(
+  datos: { eventoId: number; dias: { fecha: string; salonIds: number[] }[] },
+  tx: Prisma.TransactionClient = prisma,
+) {
+  const conSalones = datos.dias.filter((dia) => dia.salonIds.length > 0);
+  if (conSalones.length === 0) return [];
+  const filas = await tx.eventoSalon.findMany({
+    where: {
+      eventoId: { not: datos.eventoId },
+      estado: { in: ['Reservado', 'Cobrado'] },
+      OR: conSalones.map((dia) => ({
+        salonId: { in: dia.salonIds },
+        dia: { fecha: new Date(dia.fecha) },
+      })),
+    },
+    include: {
+      salon: { select: { id: true, nombre: true } },
+      dia: { select: { fecha: true } },
+      evento: {
+        select: { id: true, estado: true, cliente: { select: { nombre: true, apellido: true } } },
+      },
+    },
+    orderBy: [{ dia: { fecha: 'asc' } }, { salonId: 'asc' }],
+  });
+  return filas.map((fila) => ({
+    fecha: fila.dia.fecha.toISOString().slice(0, 10),
+    salon: fila.salon,
+    evento: {
+      id: fila.evento.id,
+      estado: fila.evento.estado,
+      cliente: [fila.evento.cliente.nombre, fila.evento.cliente.apellido].filter(Boolean).join(' '),
+      inicio: fila.inicio?.toISOString() ?? null,
+      fin: fila.fin?.toISOString() ?? null,
+    },
+  }));
 }
 
 export type PresupuestosRepositorio = {
@@ -857,4 +902,5 @@ export type PresupuestosRepositorio = {
   guardarRecalculo: typeof guardarRecalculo;
   buscarEventoParaReutilizar: typeof buscarEventoParaReutilizar;
   buscarSalonesReservadosEseDia: typeof buscarSalonesReservadosEseDia;
+  buscarSalonesOcupadosPorDia: typeof buscarSalonesOcupadosPorDia;
 };

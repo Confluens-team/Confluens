@@ -213,6 +213,10 @@ function eventoFixtureBase() {
         distribucion: distribucionFixture as typeof distribucionFixture | null,
       },
     ],
+    // HU-50: el único día del evento, con su horario. Un evento de un solo día no lo consulta.
+    dias: [
+      { id: 1, fecha: new Date('2026-11-15'), inicio: inicioFixture, fin: finFixture, salones: [] },
+    ] as never[],
     solicitud: null,
     presupuestos: [presupuestoFixture()],
   };

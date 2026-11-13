@@ -8,10 +8,18 @@ import { prisma } from '../../lib/prisma.js';
 //
 // Lo que ya existía en eventos.repositorio.ts se re-exporta en vez de duplicarse: así el servicio
 // de pagos depende de un solo módulo y los tests mockean uno solo.
-export { buscarDetallado, buscarSolapamiento } from '../eventos/eventos.repositorio.js';
+export {
+  buscarChoquesPorDia,
+  buscarDetallado,
+  buscarSolapamiento,
+} from '../eventos/eventos.repositorio.js';
 
 // Solo para el `typeof` de PagosRepositorio; el re-export de arriba es el que las expone.
-import type { buscarDetallado, buscarSolapamiento } from '../eventos/eventos.repositorio.js';
+import type {
+  buscarChoquesPorDia,
+  buscarDetallado,
+  buscarSolapamiento,
+} from '../eventos/eventos.repositorio.js';
 
 // Lo que acompaña a cada pago en las respuestas: el medio y, si está anulado, quién lo anuló (HU-35).
 const INCLUIR_EN_PAGO = {
@@ -226,13 +234,19 @@ export async function buscarConsultasSuperpuestas(
   datos: { salonIds: number[]; inicio: Date; fin: Date; excluirEventoId: number },
   tx: Prisma.TransactionClient = prisma,
 ) {
+  // HU-50: igual que buscarSolapamiento, contra el horario de cada día (el renglón del salón de ese
+  // día) y no contra el resumen del evento.
   return tx.evento.findMany({
     where: {
-      salones: { some: { salonId: { in: datos.salonIds } } },
       id: { not: datos.excluirEventoId },
       estado: 'EnConsulta',
-      inicio: { lt: datos.fin },
-      fin: { gt: datos.inicio },
+      salones: {
+        some: {
+          salonId: { in: datos.salonIds },
+          inicio: { lt: datos.fin },
+          fin: { gt: datos.inicio },
+        },
+      },
     },
     orderBy: { inicio: 'asc' },
     select: {
@@ -253,6 +267,7 @@ export async function crearEnTransaccion<T>(
 export type PagosRepositorio = {
   buscarDetallado: typeof buscarDetallado;
   buscarSolapamiento: typeof buscarSolapamiento;
+  buscarChoquesPorDia: typeof buscarChoquesPorDia;
   listarDeEvento: typeof listarDeEvento;
   sumarPagos: typeof sumarPagos;
   buscarPago: typeof buscarPago;

@@ -1,9 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { agendarEvento } from '../modulos/eventos/eventos.servicio.js';
-import type { EventosRepositorio } from '../modulos/eventos/eventos.repositorio.js';
-import { registrarPago } from '../modulos/pagos/pagos.servicio.js';
-import type { PagosRepositorio } from '../modulos/pagos/pagos.repositorio.js';
 import { reutilizarConfiguracion } from '../modulos/presupuestos/presupuestos.servicio.js';
 import type { PresupuestosRepositorio } from '../modulos/presupuestos/presupuestos.repositorio.js';
 import { esDeVariosDias } from './evento-de-varios-dias.js';
@@ -26,39 +22,7 @@ describe('esDeVariosDias', () => {
   });
 });
 
-describe('las acciones que todavía no admiten varios días responden 422 y no tocan nada', () => {
-  it('agendar', async () => {
-    const repo = {
-      buscarDetallado: vi.fn(() => Promise.resolve({ id: 1, estado: 'EnConsulta', ...tresDias })),
-      agendarConDistribuciones: vi.fn(),
-    };
-
-    await expect(
-      agendarEvento(
-        1,
-        { inicio: '2040-05-01T12:00:00.000Z', fin: '2040-05-01T20:00:00.000Z' } as never,
-        repo as unknown as EventosRepositorio,
-      ),
-    ).rejects.toMatchObject({ status: 422 });
-    expect(repo.agendarConDistribuciones).not.toHaveBeenCalled();
-  });
-
-  it('cobrar la seña, antes de aceptar plata', async () => {
-    const repo = {
-      buscarDetallado: vi.fn(() => Promise.resolve({ id: 1, estado: 'EnConsulta', ...tresDias })),
-      crearEnTransaccion: vi.fn(),
-    };
-
-    await expect(
-      registrarPago(
-        1,
-        { monto: '1000', medioPagoId: 1 } as never,
-        repo as unknown as PagosRepositorio,
-      ),
-    ).rejects.toMatchObject({ status: 422 });
-    expect(repo.crearEnTransaccion).not.toHaveBeenCalled();
-  });
-
+describe('reutilizar un evento de varios días todavía responde 422 y no toca nada (parte 4)', () => {
   it('reutilizar', async () => {
     const repo = {
       buscarEventoParaReutilizar: vi.fn(() => Promise.resolve({ id: 1, ...tresDias })),
