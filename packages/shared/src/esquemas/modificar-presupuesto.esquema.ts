@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { MAXIMO_DE_DIAS_DE_UN_EVENTO } from '../dominio/franja-de-dias.js';
 import {
   esquemaCantidadPersonas,
   esquemaFecha,
@@ -9,6 +10,7 @@ import {
 } from './comunes.esquema.js';
 import { esquemaEtiqueta } from './etiqueta.esquema.js';
 import { esquemaEstadoEvento } from './evento.esquema.js';
+import { exigirDiasSeguidos } from './crear-presupuesto.esquema.js';
 import { esquemaLineaPresupuesto, esquemaModalidadServicio } from './linea-presupuesto.esquema.js';
 import { esquemaEstadoPresupuesto } from './presupuesto.esquema.js';
 import {
@@ -44,6 +46,9 @@ export const esquemaConsultaDetallada = z.object({
     id: esquemaId,
     estado: esquemaEstadoEvento,
     fecha: esquemaFecha,
+    // HU-50: el último día del evento. Igual a `fecha` en un evento de un solo día.
+    fechaFin: esquemaFecha,
+    // Con varios días es la mayor de las cantidades de cada día (el resumen del evento).
     cantidadPersonas: z.number().int().positive(),
     tipo: esquemaTipoEvento,
     tipoSocial: esquemaTipoEventoSocial.nullable(),
@@ -66,7 +71,31 @@ export const esquemaConsultaDetallada = z.object({
     telefono: z.string(),
     etiqueta: esquemaEtiqueta.nullable(),
   }),
-  // Vacío en una consulta social que todavía no tiene salón (ADR 0008).
+  // HU-50: los días del evento, en orden. Siempre hay al menos uno. Cada uno trae su fecha, sus
+  // personas, su jornada, su horario (null hasta agendar) y sus salones; los servicios y los
+  // adicionales de un día son las líneas con su `diaId`.
+  dias: z
+    .array(
+      z.object({
+        id: esquemaId,
+        fecha: esquemaFecha,
+        cantidadPersonas: z.number().int().positive(),
+        tipoJornada: esquemaTipoJornada.nullable(),
+        inicio: esquemaFechaHora.nullable(),
+        fin: esquemaFechaHora.nullable(),
+        salones: z.array(
+          z.object({
+            id: esquemaId,
+            nombre: z.string(),
+            capacidadMaxima: z.number().int(),
+            distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
+          }),
+        ),
+      }),
+    )
+    .min(1),
+  // Los de todo el evento: la unión de los de cada día. Vacío en una consulta social que todavía no
+  // tiene salón (ADR 0008).
   salones: z.array(
     z.object({
       id: esquemaId,
@@ -78,6 +107,8 @@ export const esquemaConsultaDetallada = z.object({
   ),
   lineas: z.array(
     esquemaLineaPresupuesto.extend({
+      // HU-50: el día del evento al que pertenece la línea.
+      diaId: esquemaId,
       tipo: esquemaTipoLinea,
       tercerizado: z.boolean(),
       // Si el servicio de la línea admite modalidad hoy (RN-11): la pantalla ofrece el selector.
@@ -121,12 +152,49 @@ export const esquemaAdicional = z.object({
 });
 export type Adicional = z.infer<typeof esquemaAdicional>;
 
+// Los servicios de un mismo día no se repiten con la misma modalidad.
+const sinServiciosRepetidos = (servicios: { servicioId: number; modalidad?: string }[]) =>
+  new Set(servicios.map((s) => `${s.servicioId}:${s.modalidad ?? 'Normal'}`)).size ===
+  servicios.length;
+
+const MENSAJE_SERVICIO_REPETIDO = 'Un servicio no puede aparecer dos veces con la misma modalidad';
+
+// Un día del presupuesto modificado (HU-50): el estado completo de ese día, con sus propios salones,
+// servicios y adicionales. Lo que cambia de un día a otro (salones, personas, jornada, servicios) se
+// carga acá; lo que es de todo el evento (tipo, horas estimadas) queda afuera.
+export const esquemaDiaModificado = z.object({
+  fecha: esquemaFecha,
+  cantidadPersonas: esquemaCantidadPersonas,
+  tipoJornada: esquemaTipoJornada,
+  salones: z
+    .array(esquemaSalonModificado)
+    .default([])
+    .refine(
+      (salones) => new Set(salones.map((s) => s.salonId)).size === salones.length,
+      'Un salón no puede aparecer dos veces',
+    ),
+  servicios: z
+    .array(esquemaServicioModificado)
+    .default([])
+    .refine(sinServiciosRepetidos, MENSAJE_SERVICIO_REPETIDO),
+  adicionales: z.array(esquemaAdicional).default([]),
+});
+export type DiaModificado = z.infer<typeof esquemaDiaModificado>;
+
 // Body de PATCH /presupuestos/:id (HU-12): el estado completo de la consulta, no un parche parcial.
 // `precioSalon` ajusta a mano el precio de la línea del salón. `salonId` null solo vale para una
 // consulta social (ADR 0008). Sin `tipo` (ni los demás campos del tipo) se mantiene lo que estaba.
+//
+// HU-50: como al crear, hay dos formas equivalentes para un solo día. `dias` lleva un elemento por
+// día (de 1 a 32, seguidos y en orden) y es la que cambia la franja: cada día se identifica por su
+// fecha, así que sumar o sacar un día en un extremo es mandar una fecha de más o de menos. La de
+// siempre, con `fecha`, `salones`, `cantidadPersonas`, `tipoJornada`, `servicios` y `adicionales`
+// sueltos, es un evento de un solo día. `diasDeModificacion` las lleva a la misma forma.
 export const esquemaModificarPresupuesto = z
   .object({
-    fecha: esquemaFecha,
+    dias: z.array(esquemaDiaModificado).min(1).max(MAXIMO_DE_DIAS_DE_UN_EVENTO).optional(),
+    // Los campos sueltos de un solo día. Excluyen a `dias`.
+    fecha: esquemaFecha.optional(),
     // Vacío solo vale para una consulta social todavía sin salón (ADR 0008).
     salones: z
       .array(esquemaSalonModificado)
@@ -135,8 +203,8 @@ export const esquemaModificarPresupuesto = z
         (salones) => new Set(salones.map((s) => s.salonId)).size === salones.length,
         'Un salón no puede aparecer dos veces',
       ),
-    cantidadPersonas: esquemaCantidadPersonas,
-    tipoJornada: esquemaTipoJornada,
+    cantidadPersonas: esquemaCantidadPersonas.optional(),
+    tipoJornada: esquemaTipoJornada.optional(),
     tipo: esquemaTipoEvento.optional(),
     tipoSocial: esquemaTipoEventoSocial.nullable().optional(),
     tipoSocialDetalle: esquemaTipoSocialDetalle.nullable().optional(),
@@ -148,24 +216,64 @@ export const esquemaModificarPresupuesto = z
     // Un mismo servicio puede ir más de una vez, con una modalidad distinta en cada línea (un coffee
     // normal a la mañana y uno continuo a la tarde; decisión del equipo, 16/10/2026). Lo que sigue
     // abierto (S-09) es si una sola línea puede llevar los dos recargos.
-    servicios: z
-      .array(esquemaServicioModificado)
-      .default([])
-      .refine(
-        (servicios) =>
-          new Set(servicios.map((s) => `${s.servicioId}:${s.modalidad ?? 'Normal'}`)).size ===
-          servicios.length,
-        'Un servicio no puede aparecer dos veces con la misma modalidad',
-      ),
+    servicios: z.array(esquemaServicioModificado).default([]).refine(sinServiciosRepetidos, {
+      message: MENSAJE_SERVICIO_REPETIDO,
+    }),
     adicionales: z.array(esquemaAdicional).default([]),
   })
   .superRefine((datos, ctx) => {
-    if (datos.tipo === 'Corporativo' && datos.salones.length === 0) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['salones'],
-        message: 'Un evento corporativo necesita al menos un salón',
-      });
+    if (datos.dias) {
+      for (const campo of ['fecha', 'cantidadPersonas', 'tipoJornada'] as const) {
+        if (datos[campo] !== undefined) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [campo],
+            message: 'Con `dias` los datos van dentro de cada día',
+          });
+        }
+      }
+      for (const campo of ['salones', 'servicios', 'adicionales'] as const) {
+        if (datos[campo].length > 0) {
+          ctx.addIssue({
+            code: 'custom',
+            path: [campo],
+            message: 'Con `dias` esto va dentro de cada día',
+          });
+        }
+      }
+      exigirDiasSeguidos(datos.dias, ctx);
+      if (datos.tipo === 'Corporativo') {
+        datos.dias.forEach((dia, i) => {
+          if (dia.salones.length === 0) {
+            ctx.addIssue({
+              code: 'custom',
+              path: ['dias', i, 'salones'],
+              message: 'Un evento corporativo necesita al menos un salón por día',
+            });
+          }
+        });
+      }
+    } else {
+      // Un solo día, a la manera de siempre: los campos obligatorios son los de un día.
+      const resultado = esquemaDiaModificado
+        .pick({ fecha: true, cantidadPersonas: true, tipoJornada: true })
+        .safeParse({
+          fecha: datos.fecha,
+          cantidadPersonas: datos.cantidadPersonas,
+          tipoJornada: datos.tipoJornada,
+        });
+      if (!resultado.success) {
+        for (const problema of resultado.error.issues) {
+          ctx.addIssue({ code: 'custom', path: problema.path, message: problema.message });
+        }
+      }
+      if (datos.tipo === 'Corporativo' && datos.salones.length === 0) {
+        ctx.addIssue({
+          code: 'custom',
+          path: ['salones'],
+          message: 'Un evento corporativo necesita al menos un salón',
+        });
+      }
     }
     if (datos.tipo === 'Social' && !datos.tipoSocial) {
       ctx.addIssue({
@@ -177,3 +285,38 @@ export const esquemaModificarPresupuesto = z
     exigirDetalleDeOtro(datos, ctx);
   });
 export type ModificarPresupuesto = z.infer<typeof esquemaModificarPresupuesto>;
+
+/** Lo que dejan los campos sueltos de un solo día: lo mismo que `ModificarPresupuesto` de antes. */
+export type ModificarPresupuestoDeUnDia = Omit<
+  ModificarPresupuesto,
+  'dias' | 'fecha' | 'cantidadPersonas' | 'tipoJornada'
+> &
+  Pick<DiaModificado, 'fecha' | 'cantidadPersonas' | 'tipoJornada'>;
+
+/**
+ * Los días de un pedido de modificación, en una sola forma: `dias` tal cual, o el único día que
+ * describen los campos sueltos. El esquema ya garantiza que una de las dos formas está completa.
+ */
+export function diasDeModificacion(datos: ModificarPresupuesto): DiaModificado[] {
+  if (datos.dias) return datos.dias;
+  return [
+    {
+      fecha: datos.fecha!,
+      cantidadPersonas: datos.cantidadPersonas!,
+      tipoJornada: datos.tipoJornada!,
+      salones: datos.salones,
+      servicios: datos.servicios,
+      adicionales: datos.adicionales,
+    },
+  ];
+}
+
+/**
+ * El pedido de un solo día con los campos sueltos de siempre, para el camino que no cambió. Si el
+ * pedido trae más de un día no se puede reducir a uno: quien lo llama decide antes cuál camino sigue.
+ */
+export function aModificacionDeUnDia(datos: ModificarPresupuesto): ModificarPresupuestoDeUnDia {
+  const [dia] = diasDeModificacion(datos);
+  const { dias: _dias, ...resto } = datos;
+  return { ...resto, ...dia! };
+}
