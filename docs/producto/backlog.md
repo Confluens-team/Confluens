@@ -210,9 +210,9 @@ Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
   Ejemplo del rechazo al intentar reservar una franja de cinco días:
 
   > No se puede reservar el evento: 2 de sus 5 días tienen un salón ocupado.
-  > - jueves 14/05/2027 · Salón Pucará: reservado por el evento #52 (Constructora Medina SRL),
+  > - viernes 14/05/2027 · Salón Pucará: reservado por el evento #52 (Constructora Medina SRL),
   >   de 09:00 a 18:00.
-  > - viernes 15/05/2027 · Salón Iguazú: reservado por el evento #61 (Agustina Herrera),
+  > - sábado 15/05/2027 · Salón Iguazú: reservado por el evento #61 (Agustina Herrera),
   >   de 08:00 a 12:00.
   >
   > Los otros 3 días están libres. Hablá con el cliente para mover el día, el horario o el salón.
