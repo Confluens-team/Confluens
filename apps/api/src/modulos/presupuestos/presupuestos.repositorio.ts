@@ -106,11 +106,13 @@ export async function reemplazarSalonesDelEvento(
   salonIds: number[],
   tx: Prisma.TransactionClient = prisma,
   distribuciones: Map<number, number> = new Map(),
+  // HU-50: los salones son de un día. Sin `diaIdDado` es el primero, que en un evento de un solo
+  // día es el único; un evento de varios días lo manda para cada uno.
+  diaIdDado?: number,
 ) {
   await enTransaccion(tx, async (t) => {
     const antes = await salonesDelEvento(eventoId, t);
-    // HU-50: los salones son de un día. Hoy el evento tiene uno solo.
-    const diaId = await primerDiaDelEvento(t, eventoId);
+    const diaId = diaIdDado ?? (await primerDiaDelEvento(t, eventoId));
     await t.eventoSalon.deleteMany({ where: { diaId, salonId: { notIn: salonIds } } });
     const actuales = await t.eventoSalon.findMany({
       where: { diaId },
@@ -222,6 +224,27 @@ export async function crearEvento(
       nuevo: evento,
     });
     return evento;
+  });
+}
+
+/**
+ * HU-50: suma al evento los días que siguen al primero (`crearEvento` crea el primero). Cada día
+ * entra con su fecha, sus personas y su jornada; los salones y las líneas se cargan después, por
+ * día. Que la franja sea consecutiva lo controla la base al cerrar la transacción. Devuelve cada
+ * día del evento, en orden, para que el servicio le cuelgue lo suyo a cada uno.
+ */
+export async function crearDiasDelEvento(
+  eventoId: number,
+  dias: { fecha: Date; cantidadPersonas: number; tipoJornada: TipoJornada }[],
+  tx: Prisma.TransactionClient = prisma,
+) {
+  for (const dia of dias) {
+    await tx.eventoDia.create({ data: { eventoId, ...dia } });
+  }
+  return tx.eventoDia.findMany({
+    where: { eventoId },
+    orderBy: { fecha: 'asc' },
+    select: { id: true, fecha: true },
   });
 }
 
@@ -418,6 +441,16 @@ export async function buscarPresupuestoDetallado(
           cliente: { include: { etiqueta: { select: { id: true, nombre: true } } } },
           // Cada salón con la distribución que tiene armada en este evento (ADR 0011).
           salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
+          // HU-50: los días con sus salones, en orden.
+          dias: {
+            include: {
+              salones: {
+                include: { salon: true, distribucion: true },
+                orderBy: { salonId: 'asc' },
+              },
+            },
+            orderBy: { fecha: 'asc' },
+          },
         },
       },
       lineas: {
@@ -521,6 +554,133 @@ export async function reemplazarLineas(
   });
 }
 
+// HU-50: una línea con la fecha del día al que pertenece, para guardarla cuando todavía no se sabe
+// el id de ese día (se crea o se mueve en la misma operación).
+export type LineaDeUnDia = LineaNueva & { fechaDia: string };
+
+export interface DiaPorGuardar {
+  fecha: Date;
+  cantidadPersonas: number;
+  tipoJornada: TipoJornada;
+}
+
+/**
+ * HU-50: deja al evento de un presupuesto con exactamente estos días y estas líneas, cada línea en el
+ * día de su `fechaDia`. Devuelve el id de cada día por su fecha (`AAAA-MM-DD`) para cargarle los
+ * salones. Es solo para un evento EnConsulta: los días no tienen horario ni salón reservado.
+ *
+ * Cada día se identifica por su fecha. Si la franja entera se corrió los mismos días (mismo largo,
+ * mismo corrimiento), cada fila se mueve a su fecha nueva y conserva su lugar; si no, se conservan
+ * los días que siguen en la franja, se sacan los que quedaron afuera y los nuevos entran vacíos. Las
+ * líneas se reemplazan todas, así que ninguna impide sacar un día (LineaPresupuesto.diaId es Restrict).
+ */
+export async function reemplazarDiasYLineas(
+  presupuestoId: number,
+  dias: DiaPorGuardar[],
+  lineas: LineaDeUnDia[],
+  tx: Prisma.TransactionClient = prisma,
+  usuarioId?: number | null,
+): Promise<Map<string, number>> {
+  return enTransaccion(tx, async (t) => {
+    const antes = await t.lineaPresupuesto.findMany({
+      where: { presupuestoId },
+      orderBy: { id: 'asc' },
+    });
+    const { eventoId } = await t.presupuesto.findUniqueOrThrow({
+      where: { id: presupuestoId },
+      select: { eventoId: true },
+    });
+    const actuales = await t.eventoDia.findMany({
+      where: { eventoId },
+      orderBy: { fecha: 'asc' },
+    });
+    await t.lineaPresupuesto.deleteMany({ where: { presupuestoId } });
+
+    const iso = (fecha: Date) => fecha.toISOString().slice(0, 10);
+    const corrimiento =
+      actuales.length === dias.length && dias.length > 0
+        ? dias[0]!.fecha.getTime() - actuales[0]!.fecha.getTime()
+        : null;
+    const franjaCorrida =
+      corrimiento !== null &&
+      corrimiento !== 0 &&
+      actuales.every((dia, i) => dias[i]!.fecha.getTime() - dia.fecha.getTime() === corrimiento);
+
+    const diaIds = new Map<string, number>();
+    if (franjaCorrida) {
+      // Hacia adelante se mueve desde el último, y hacia atrás desde el primero: así una fila nunca
+      // cae sobre la fecha de otra que todavía no se movió (la fecha es única por evento).
+      const orden = actuales.map((_, i) => i);
+      if (corrimiento! > 0) orden.reverse();
+      for (const i of orden) {
+        const { fecha, cantidadPersonas, tipoJornada } = dias[i]!;
+        await t.eventoDia.update({
+          where: { id: actuales[i]!.id },
+          data: { fecha, cantidadPersonas, tipoJornada },
+        });
+        diaIds.set(iso(fecha), actuales[i]!.id);
+      }
+    } else {
+      const nuevas = new Set(dias.map((dia) => iso(dia.fecha)));
+      const sobran = actuales.filter((dia) => !nuevas.has(iso(dia.fecha)));
+      if (sobran.length > 0) {
+        await t.eventoDia.deleteMany({ where: { id: { in: sobran.map((dia) => dia.id) } } });
+      }
+      const quedan = new Map(
+        actuales.filter((dia) => nuevas.has(iso(dia.fecha))).map((dia) => [iso(dia.fecha), dia]),
+      );
+      for (const dia of dias) {
+        const existente = quedan.get(iso(dia.fecha));
+        if (existente) {
+          await t.eventoDia.update({
+            where: { id: existente.id },
+            data: { cantidadPersonas: dia.cantidadPersonas, tipoJornada: dia.tipoJornada },
+          });
+          diaIds.set(iso(dia.fecha), existente.id);
+        } else {
+          const creado = await t.eventoDia.create({
+            data: { eventoId, ...dia },
+            select: { id: true },
+          });
+          diaIds.set(iso(dia.fecha), creado.id);
+        }
+      }
+    }
+
+    await t.lineaPresupuesto.createMany({
+      data: lineas.map(({ fechaDia, ...linea }) => {
+        const diaId = diaIds.get(fechaDia);
+        if (diaId === undefined) {
+          throw new Error(`La línea «${linea.descripcion}» es de un día que no está en la franja`);
+        }
+        return { ...linea, presupuestoId, diaId };
+      }),
+    });
+
+    // Los días cambian como un campo del evento (sus fechas, antes y después) y las líneas como un
+    // campo del presupuesto, igual que en reemplazarLineas.
+    const fechasAntes = actuales.map((dia) => iso(dia.fecha));
+    const fechasDespues = dias.map((dia) => iso(dia.fecha));
+    if (fechasAntes.join() !== fechasDespues.join()) {
+      await registrarAuditoria(t, {
+        usuarioId,
+        entidad: 'Evento',
+        entidadId: eventoId,
+        anterior: { dias: fechasAntes },
+        nuevo: { dias: fechasDespues },
+      });
+    }
+    await registrarAuditoria(t, {
+      usuarioId,
+      entidad: 'Presupuesto',
+      entidadId: presupuestoId,
+      anterior: { lineas: resumenDeLineas(antes) },
+      nuevo: { lineas: resumenDeLineas(lineas) },
+    });
+    return diaIds;
+  });
+}
+
 // HU-12 sobre un evento confirmado: con el total nuevo, lo pagado decide si el evento queda
 // Reservado o Cobrado.
 export async function sumarPagos(eventoId: number, tx: Prisma.TransactionClient = prisma) {
@@ -561,7 +721,8 @@ export async function listarEstimadosParaRecalcular(tx: Prisma.TransactionClient
       id: true,
       // El total y las líneas de antes sirven también para auditar sin volver a leerlos.
       total: true,
-      evento: { select: { fecha: true } },
+      // HU-50: el recálculo se proyecta al último día del evento, que es la referencia (RN-13).
+      evento: { select: { fecha: true, fechaFin: true } },
       lineas: { include: { servicio: true, salon: true }, orderBy: { id: 'asc' } },
     },
   });
@@ -674,6 +835,7 @@ export type PresupuestosRepositorio = {
   buscarSalonesPorIds: typeof buscarSalonesPorIds;
   quitarSalonesDelEvento: typeof quitarSalonesDelEvento;
   reemplazarSalonesDelEvento: typeof reemplazarSalonesDelEvento;
+  crearDiasDelEvento: typeof crearDiasDelEvento;
   buscarServiciosPorIds: typeof buscarServiciosPorIds;
   buscarSolicitud: typeof buscarSolicitud;
   vincularSolicitudAEvento: typeof vincularSolicitudAEvento;
@@ -686,6 +848,7 @@ export type PresupuestosRepositorio = {
   actualizarEvento: typeof actualizarEvento;
   actualizarPresupuesto: typeof actualizarPresupuesto;
   reemplazarLineas: typeof reemplazarLineas;
+  reemplazarDiasYLineas: typeof reemplazarDiasYLineas;
   sumarPagos: typeof sumarPagos;
   buscarDistribucionPorNombre: typeof buscarDistribucionPorNombre;
   obtenerPorcentajeMensual: typeof obtenerPorcentajeMensual;

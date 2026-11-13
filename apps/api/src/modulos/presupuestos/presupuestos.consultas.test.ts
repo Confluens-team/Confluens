@@ -100,6 +100,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
       id: 20,
       clienteId: 10,
       fecha: new Date('2026-11-15T00:00:00.000Z'),
+      fechaFin: new Date('2026-11-15T00:00:00.000Z'),
       inicio: null,
       fin: null,
       cantidadPersonas: 10,
@@ -142,11 +143,25 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
           } | null,
         },
       ],
+      // HU-50: el único día del evento, con sus salones.
+      dias: [
+        {
+          id: 1,
+          eventoId: 20,
+          fecha: new Date('2026-11-15T00:00:00.000Z'),
+          inicio: null,
+          fin: null,
+          tipoJornada: null,
+          cantidadPersonas: 10,
+          salones: [{ salon: salonParana, distribucion: null }],
+        },
+      ],
       ...evento,
     },
     lineas: [
       {
         id: 1,
+        diaId: 1,
         presupuestoId: 31,
         servicioId: null,
         salonId: salonParana.id,
@@ -162,6 +177,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
       },
       {
         id: 2,
+        diaId: 1,
         presupuestoId: 31,
         servicioId: 1,
         salonId: null,
@@ -211,12 +227,28 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       estado: 'Estimado',
       total: '222200.00',
       tipoJornada: 'completa',
-      evento: { id: 20, estado: 'EnConsulta', fecha: '2026-11-15', cantidadPersonas: 10 },
+      evento: {
+        id: 20,
+        estado: 'EnConsulta',
+        fecha: '2026-11-15',
+        fechaFin: '2026-11-15',
+        cantidadPersonas: 10,
+      },
       cliente: { nombre: 'Marina', apellido: 'Gómez', telefono: '+5493515551234' },
       salones: [{ id: 5, nombre: 'Paraná', capacidadMaxima: 12 }],
+      // HU-50: un evento de un solo día trae su único día, con el salón adentro.
+      dias: [
+        {
+          id: 1,
+          fecha: '2026-11-15',
+          cantidadPersonas: 10,
+          salones: [{ id: 5, nombre: 'Paraná', capacidadMaxima: 12 }],
+        },
+      ],
     });
     expect(respuesta.body.data.lineas[1]).toEqual({
       id: 2,
+      diaId: 1,
       presupuestoId: 31,
       servicioId: 1,
       descripcion: 'Coffee Refresh',

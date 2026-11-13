@@ -14,6 +14,7 @@ import {
   type PresupuestoDeBase,
 } from '../../lib/base-de-cobro.js';
 import { ErrorApi } from '../../lib/errores.js';
+import { exigirEventoDeUnDia } from '../../lib/evento-de-varios-dias.js';
 import {
   comoConflictoSiYaExiste,
   esViolacionDeSolapamiento,
@@ -88,6 +89,9 @@ export async function registrarPago(
 ) {
   const evento = await repo.buscarDetallado(eventoId);
   if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${eventoId}`);
+  // HU-50: la seña reserva el salón, y reservar un evento de varios días (un horario y un control de
+  // solapamiento por día) todavía no está (parte 3). Se rechaza antes de aceptar plata sin reservar.
+  exigirEventoDeUnDia(evento, 'cobrar');
 
   if (evento.estado === 'Cancelado' || evento.estado === 'Cobrado') {
     throw ErrorApi.conflicto(
