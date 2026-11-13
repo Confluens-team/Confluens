@@ -130,7 +130,7 @@ Definido en la entrevista del 24/09/2026. Es el recorrido completo que hace el c
    - **Corporativo**: sigue el recorrido de arriba (salón según la cantidad de invitados,
      servicios y presupuesto estimado en vivo).
    - **Social**: el cliente elige qué celebra (cumpleaños, casamiento, fiesta de 15, bautismo,
-     fiesta corporativa u otro, contando cuál) y manda la consulta. **No ve salones, servicios ni
+     fiesta empresarial u otro, contando cuál) y manda la consulta. **No ve salones, servicios ni
      precios y no se genera presupuesto**: los eventos sociales son muy variables y el Responsable
      de Eventos lo arma con el cliente.
 5. **Confirmación del cliente.** El cliente confirma el formulario: se crea la **Solicitud** con
@@ -364,7 +364,7 @@ evento reservado (ver RN-12).
 
 **Tipo de evento.** Social o corporativo (decisión del PO, 07/10/2026; antes se llamaba
 "empresarial"). El social se clasifica en cumpleaños, casamiento, fiesta de 15, bautismo, fiesta
-corporativa u otro (con una descripción de cuál). Las consultas corporativas pasan por el cotizador;
+empresarial u otro (con una descripción de cuál). Las consultas corporativas pasan por el cotizador;
 las sociales llegan **sin salón y con el presupuesto sin armar**: el Responsable de Eventos carga
 salón, servicios y precios desde la consulta. Las dos se distinguen por color en el panel, se
 modifican igual y se confirman igual, con la seña del 20% (ADR 0008). Los datos propios de un evento
@@ -382,6 +382,8 @@ audiovisual y pantallas y no pasan por cocina. Integrarse con el sistema de coci
 proveedores sigue fuera de alcance (S-07). Decisión del equipo, 09/10/2026. Lleva también los
 servicios propios del evento con su observación (HU-51), y un evento de varios días tiene **una
 comanda por día** (HU-50).
+
+**Observaciones del evento.** Texto libre (`Evento.observaciones`, hasta 2000 caracteres) para dejar anotado lo que el personal quiere tener presente de un evento: pedidos del cliente, acuerdos, avisos al equipo. Son **internas**: no salen en el presupuesto ni en la comanda y el cliente nunca las ve. No son las observaciones de la comanda (`observacionesComanda`), que son las notas operativas de cocina y salen solo en esa hoja. Las edita cualquier rol del personal, en cualquier estado salvo `Cancelado`, donde quedan de solo lectura. Decisión del PO, 12/11/2026.
 
 **Comedor.** Servicio gastronómico del hotel, con sistema propio. Fuera de alcance (EXC-04).
 

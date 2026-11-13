@@ -9,7 +9,7 @@ El Responsable de Eventos trabaja con dos tipos de evento muy distintos (decisi�
 
 - **Corporativo**: capacitaciones, reuniones, congresos. Salón, jornada y servicios del catálogo
   alcanzan para cotizarlo, y el cotizador del canal público ya lo resuelve solo.
-- **Social**: cumpleaños, casamiento, fiesta de 15, bautismo, fiesta corporativa u otro. Cada uno
+- **Social**: cumpleaños, casamiento, fiesta de 15, bautismo, fiesta empresarial u otro. Cada uno
   es tan personalizable que un presupuesto automático no sirve: lo tiene que armar él con el
   cliente. Todavía no hay una plantilla con los datos propios de un evento social.
 
