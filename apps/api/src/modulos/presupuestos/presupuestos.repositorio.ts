@@ -801,6 +801,16 @@ export async function buscarEventoParaReutilizar(
         include: { salon: true, distribucion: { select: { activo: true } } },
         orderBy: { salonId: 'asc' },
       },
+      // HU-50: cada día con sus salones y su armado; repetir copia la franja día por día.
+      dias: {
+        include: {
+          salones: {
+            include: { salon: true, distribucion: { select: { activo: true } } },
+            orderBy: { salonId: 'asc' },
+          },
+        },
+        orderBy: { fecha: 'asc' },
+      },
       presupuestos: {
         include: { lineas: { include: { servicio: true }, orderBy: { id: 'asc' } } },
         orderBy: { id: 'asc' },

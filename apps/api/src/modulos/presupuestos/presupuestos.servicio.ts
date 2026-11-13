@@ -4,6 +4,7 @@ import {
   CODIGOS_ERROR,
   DIAS_VIGENCIA_PRESUPUESTO,
   fechasDeLaFranja,
+  sumarDias,
   diasDeCotizacion,
   diasDeModificacion,
   horaDelEvento,
@@ -31,7 +32,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { alcanza, calcularBaseDeCobro, PORCENTAJE_TOTAL } from '../../lib/base-de-cobro.js';
 import { type Correo, enviarCorreo } from '../../lib/correo.js';
 import { ErrorApi } from '../../lib/errores.js';
-import { esDeVariosDias, exigirEventoDeUnDia } from '../../lib/evento-de-varios-dias.js';
+import { esDeVariosDias } from '../../lib/evento-de-varios-dias.js';
 import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
 import { avisarConsultaRecibida } from './presupuestos.correo.js';
 import * as presupuestosRepositorioReal from './presupuestos.repositorio.js';
@@ -1296,8 +1297,18 @@ export async function reutilizarConfiguracion(
 ): Promise<EventoReutilizado> {
   const original = await repo.buscarEventoParaReutilizar(eventoId);
   if (!original) throw ErrorApi.noEncontrado(`No existe el evento ${eventoId}`);
-  // HU-50: reutilizar copia la franja entera, y eso llega en la parte 4.
-  exigirEventoDeUnDia(original, 'reutilizar');
+  // HU-50: un evento de varios días se repite con la misma franja y lo de cada día.
+  if (esDeVariosDias(original)) return reutilizarVariosDias(original, datos, repo);
+  if (datos.cantidadPersonas === undefined || datos.tipoJornada === undefined) {
+    throw new ErrorApi(400, CODIGOS_ERROR.VALIDACION, 'Los datos enviados no son válidos', [
+      ...(datos.cantidadPersonas === undefined
+        ? [{ campo: 'cantidadPersonas', mensaje: 'Ingresá la cantidad de personas' }]
+        : []),
+      ...(datos.tipoJornada === undefined
+        ? [{ campo: 'tipoJornada', mensaje: 'Elegí la jornada' }]
+        : []),
+    ]);
+  }
 
   if (datos.fecha <= hoyEnZonaEventos()) {
     throw new ErrorApi(400, CODIGOS_ERROR.VALIDACION, 'Los datos enviados no son válidos', [
@@ -1384,6 +1395,146 @@ export async function reutilizarConfiguracion(
         eventoId: evento.id,
         fechaEmision,
         venceEn: lineas.length > 0 ? calcularVencimiento(fechaEmision) : null,
+        total: total.toFixed(2),
+        lineas,
+      },
+      tx,
+    );
+  });
+
+  return {
+    consulta: await obtenerConsulta(creado.id, repo),
+    serviciosOmitidos,
+    salonesEnConflicto,
+  };
+}
+
+type OriginalParaReutilizar = NonNullable<
+  Awaited<ReturnType<PresupuestosRepositorio['buscarEventoParaReutilizar']>>
+>;
+
+/**
+ * HU-50: repetir un evento de varios días. La consulta nueva dura los mismos días seguidos que el
+ * original y cada uno conserva lo suyo: personas, jornada, salones con su armado, servicios (por persona
+ * para las de SU día) y adicionales. El cliente elige solo el día de inicio; los precios son los
+ * vigentes proyectados al ÚLTIMO día de la franja nueva (RN-13). El aviso de conflicto de salón se
+ * mira día por día: la consulta no bloquea el salón (RN-12).
+ */
+async function reutilizarVariosDias(
+  original: OriginalParaReutilizar,
+  datos: ReutilizarEvento,
+  repo: PresupuestosRepositorio,
+): Promise<EventoReutilizado> {
+  if (datos.fecha <= hoyEnZonaEventos()) {
+    throw new ErrorApi(400, CODIGOS_ERROR.VALIDACION, 'Los datos enviados no son válidos', [
+      { campo: 'fecha', mensaje: 'La fecha del evento nuevo tiene que ser futura' },
+    ]);
+  }
+  const fechas = fechasDeLaFranja(datos.fecha, sumarDias(datos.fecha, original.dias.length - 1)!);
+  const proyeccion = await proyeccionHasta(fechas[fechas.length - 1]!, repo);
+
+  // El presupuesto del evento: el último que no se dio de baja, o el último si todos se cancelaron.
+  const presupuestos = [...original.presupuestos].reverse();
+  const origen = presupuestos.find((p) => p.estado !== 'Cancelado') ?? presupuestos[0];
+  const lineasOriginales = origen?.lineas ?? [];
+
+  const serviciosOmitidos: EventoReutilizado['serviciosOmitidos'] = [];
+  const dias = original.dias.map((dia, i) => {
+    const jornada = dia.tipoJornada ?? 'completa';
+    const personas = dia.cantidadPersonas;
+    const lineas: LineaCalculada[] = dia.salones.map(({ salon }) =>
+      lineaDeSalon(salon, jornada, precioProyectado(precioDeSalon(salon, jornada), proyeccion)),
+    );
+    for (const linea of lineasOriginales.filter((l) => l.diaId === dia.id)) {
+      if (linea.salonId !== null) continue;
+      if (linea.servicio === null) {
+        lineas.push(calcularLinea(null, linea.descripcion, 1, linea.precioUnitario));
+        continue;
+      }
+      const { servicio } = linea;
+      if (!servicio.activo) {
+        if (!serviciosOmitidos.some((omitido) => omitido.id === servicio.id)) {
+          serviciosOmitidos.push({ id: servicio.id, nombre: servicio.nombre });
+        }
+        continue;
+      }
+      lineas.push(
+        lineaDeServicio(
+          servicio,
+          servicio.porPersona ? personas : 1,
+          precioVigenteDeServicio(servicio, proyeccion),
+          // Si el servicio dejó de admitir modalidad, el recargo ya no corresponde.
+          servicio.admiteModalidad ? linea.modalidad : 'Normal',
+          null,
+        ),
+      );
+    }
+    return {
+      fecha: fechas[i]!,
+      personas,
+      jornada,
+      salonIds: dia.salones.map((s) => s.salonId),
+      // Una distribución dada de baja no se copia: el evento nuevo la elegiría de nuevo.
+      distribuciones: new Map(
+        dia.salones.flatMap((s) =>
+          s.distribucionId === null || !s.distribucion?.activo
+            ? []
+            : [[s.salonId, s.distribucionId] as const],
+        ),
+      ),
+      lineas,
+    };
+  });
+
+  const total = sumarLineas(dias.flatMap((dia) => dia.lineas));
+  // El aviso de conflicto: los salones que cada día ya tienen reservados (el evento nuevo todavía no
+  // existe, así que no se excluye ninguno).
+  const ocupados = await repo.buscarSalonesOcupadosPorDia({
+    eventoId: 0,
+    dias: dias.map((dia) => ({ fecha: dia.fecha, salonIds: dia.salonIds })),
+  });
+  const salonesEnConflicto = [...new Map(ocupados.map((o) => [o.salon.id, o.salon])).values()];
+
+  const fechaEmision = new Date();
+  const hayLineas = dias.some((dia) => dia.lineas.length > 0);
+  const creado = await repo.crearEnTransaccion(async (tx) => {
+    const [primero] = dias;
+    const evento = await repo.crearEvento(
+      {
+        clienteId: original.clienteId,
+        fecha: new Date(primero!.fecha),
+        cantidadPersonas: primero!.personas,
+        tipo: original.tipo,
+        tipoSocial: original.tipoSocial,
+        tipoSocialDetalle: original.tipoSocialDetalle,
+        tipoJornada: primero!.jornada,
+        horaInicioEstimada: datos.horaInicioEstimada ?? null,
+      },
+      tx,
+    );
+    const todosLosDias = await repo.crearDiasDelEvento(
+      evento.id,
+      dias.slice(1).map((dia) => ({
+        fecha: new Date(dia.fecha),
+        cantidadPersonas: dia.personas,
+        tipoJornada: dia.jornada,
+      })),
+      tx,
+    );
+    const diaIdPorFecha = new Map(
+      todosLosDias.map((dia) => [dia.fecha.toISOString().slice(0, 10), dia.id]),
+    );
+    const lineas: LineaNueva[] = [];
+    for (const dia of dias) {
+      const diaId = diaIdPorFecha.get(dia.fecha)!;
+      await repo.reemplazarSalonesDelEvento(evento.id, dia.salonIds, tx, dia.distribuciones, diaId);
+      lineas.push(...dia.lineas.map((linea) => ({ ...linea, diaId })));
+    }
+    return repo.crearPresupuestoConLineas(
+      {
+        eventoId: evento.id,
+        fechaEmision,
+        venceEn: hayLineas ? calcularVencimiento(fechaEmision) : null,
         total: total.toFixed(2),
         lineas,
       },

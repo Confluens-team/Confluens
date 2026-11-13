@@ -9,6 +9,7 @@ import {
   listarPresupuestos,
   modificarPresupuesto,
   registrarConsultaSocial,
+  reutilizarConfiguracion,
 } from './presupuestos.servicio.js';
 import type { PresupuestosRepositorio } from './presupuestos.repositorio.js';
 
@@ -484,5 +485,189 @@ describe('listarPresupuestos con un salón que se usa varios días (HU-50)', () 
 
     expect(consulta!.salones.map((s) => s.nombre)).toEqual(['Paraná', 'Pucará']);
     expect([consulta!.fechaEvento, consulta!.fechaFinEvento]).toEqual(['2040-04-30', '2040-05-02']);
+  });
+});
+
+describe('reutilizarConfiguracion de un evento de varios días (HU-50)', () => {
+  // Un evento cobrado de tres días: Paraná el 1.º con 60 personas (completa), Paraná y Pucará el 2.º con
+  // 30 (media) y Pucará el 3.º con 80 (completa). El coffee (por persona) va el 1.º y el 3.º.
+  const salonConArmado = (s: typeof parana, activo = true) => ({
+    salonId: s.id,
+    salon: s,
+    distribucionId: 14,
+    distribucion: { activo },
+  });
+  const diasOriginales = [
+    {
+      id: 100,
+      fecha: new Date('2040-04-30'),
+      cantidadPersonas: 60,
+      tipoJornada: 'completa',
+      salones: [salonConArmado(parana)],
+    },
+    {
+      id: 101,
+      fecha: new Date('2040-05-01'),
+      cantidadPersonas: 30,
+      tipoJornada: 'media',
+      salones: [salonConArmado(parana), salonConArmado(pucara, false)],
+    },
+    {
+      id: 102,
+      fecha: new Date('2040-05-02'),
+      cantidadPersonas: 80,
+      tipoJornada: 'completa',
+      salones: [salonConArmado(pucara)],
+    },
+  ];
+  const lineaCoffee = (id: number, diaId: number) => ({
+    id,
+    diaId,
+    servicioId: 1,
+    salonId: null,
+    descripcion: 'Coffee Refresh',
+    cantidad: 1,
+    modalidad: 'Normal',
+    precioBase: null,
+    precioUnitario: D('1000'),
+    subtotal: D('1000'),
+    aCotizar: false,
+    horaEstimada: null,
+    servicio: coffee,
+  });
+  const original = () => ({
+    id: 20,
+    clienteId: 10,
+    estado: 'Cobrado',
+    tipo: 'Corporativo',
+    tipoSocial: null,
+    tipoSocialDetalle: null,
+    fecha: new Date('2040-04-30'),
+    fechaFin: new Date('2040-05-02'),
+    salones: diasOriginales.flatMap((d) => d.salones),
+    dias: diasOriginales,
+    presupuestos: [
+      {
+        id: 7,
+        estado: 'Confirmado',
+        lineas: [lineaCoffee(1, 100), lineaCoffee(2, 102)],
+      },
+    ],
+  });
+
+  function repo(porcentaje = '0', ocupados: object[] = []) {
+    return {
+      ...repoDeMentira(porcentaje),
+      buscarEventoParaReutilizar: vi.fn(() => Promise.resolve(original())),
+      buscarSalonesOcupadosPorDia: vi.fn(() => Promise.resolve(ocupados)),
+      buscarPresupuestoDetallado: vi.fn(() => Promise.reject(new Error('fin del test'))),
+      crearDiasDelEvento: vi.fn((_id: number, dias: { fecha: Date }[]) =>
+        Promise.resolve(
+          [{ fecha: new Date('2040-09-10') }, ...dias].map((d, i) => ({
+            id: 500 + i,
+            fecha: d.fecha,
+          })),
+        ),
+      ),
+    };
+  }
+  const pedir = (r: ReturnType<typeof repo>, datos: object = { fecha: '2040-09-10' }) =>
+    reutilizarConfiguracion(1, datos as never, comoRepo(r)).catch((e: unknown) => e);
+
+  it('copia la misma franja, desde el día que elige el cliente, con lo de cada día', async () => {
+    const r = repo();
+    await pedir(r);
+
+    const [dias] = r.crearDiasDelEvento.mock.calls[0]!.slice(1) as [
+      { fecha: Date; cantidadPersonas: number; tipoJornada: string }[],
+    ];
+    expect(
+      dias.map((d) => [d.fecha.toISOString().slice(0, 10), d.cantidadPersonas, d.tipoJornada]),
+    ).toEqual([
+      ['2040-09-11', 30, 'media'],
+      ['2040-09-12', 80, 'completa'],
+    ]);
+    expect(r.crearEvento).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fecha: new Date('2040-09-10'),
+        cantidadPersonas: 60,
+        tipoJornada: 'completa',
+      }),
+      undefined,
+    );
+    const salonesPorDia = r.reemplazarSalonesDelEvento.mock.calls.map((c) => [
+      (c as unknown[])[1],
+      (c as unknown[])[4],
+    ]);
+    expect(salonesPorDia).toEqual([
+      [[5], 500],
+      [[5, 6], 501],
+      [[6], 502],
+    ]);
+    // Una distribución dada de baja no se copia: Pucará el día 2 queda sin armado.
+    const distribuciones = r.reemplazarSalonesDelEvento.mock.calls.map((c) => [
+      ...((c as unknown[])[3] as Map<number, number>),
+    ]);
+    expect(distribuciones).toEqual([[[5, 14]], [[5, 14]], [[6, 14]]]);
+  });
+
+  it('los servicios por persona toman las personas de SU día y los precios van por día', async () => {
+    const r = repo();
+    await pedir(r);
+
+    const { lineas } = lineasGuardadas(r as never) as unknown as {
+      lineas: { diaId: number; descripcion: string; cantidad: number; precioUnitario: string }[];
+    };
+    expect(lineas.map((l) => [l.diaId, l.descripcion, l.cantidad])).toEqual([
+      [500, 'Salón Paraná (jornada completa)', 1],
+      [500, 'Coffee Refresh', 60],
+      [501, 'Salón Paraná (media jornada)', 1],
+      [501, 'Salón Pucará (media jornada)', 1],
+      [502, 'Salón Pucará (jornada completa)', 1],
+      [502, 'Coffee Refresh', 80],
+    ]);
+  });
+
+  it('proyecta los precios al último día de la franja nueva', async () => {
+    // Hoy es marzo de 2040: el último día cae en septiembre (6 meses), no el primero.
+    const r = repo('10');
+    await pedir(r);
+
+    const { lineas } = lineasGuardadas(r as never) as unknown as {
+      lineas: { precioUnitario: string }[];
+    };
+    // 100000 * 1,1 ^ 6
+    expect(lineas[0]!.precioUnitario).toBe('177156.10');
+  });
+
+  it('avisa los salones que algún día ya tienen reservados, sin bloquear', async () => {
+    const r = repo('0', [
+      { fecha: '2040-09-11', salon: pucara, evento: { id: 52 } },
+      { fecha: '2040-09-12', salon: pucara, evento: { id: 52 } },
+    ]);
+    const resultado = (await pedir(r)) as unknown;
+
+    // La consulta se crea igual; se corta recién al releerla en este test.
+    expect(r.crearPresupuestoConLineas).toHaveBeenCalledTimes(1);
+    expect(String(resultado)).toContain('fin del test');
+    expect(r.buscarSalonesOcupadosPorDia).toHaveBeenCalledWith({
+      eventoId: 0,
+      dias: [
+        { fecha: '2040-09-10', salonIds: [5] },
+        { fecha: '2040-09-11', salonIds: [5, 6] },
+        { fecha: '2040-09-12', salonIds: [6] },
+      ],
+    });
+  });
+
+  it('la fecha tiene que ser futura y las personas y la jornada sueltas se ignoran', async () => {
+    const r = repo();
+    await expect(pedir(r, { fecha: '2040-03-10' })).resolves.toMatchObject({ status: 400 });
+
+    await pedir(r, { fecha: '2040-09-10', cantidadPersonas: 5, tipoJornada: 'media' });
+    expect(r.crearEvento).toHaveBeenCalledWith(
+      expect.objectContaining({ cantidadPersonas: 60, tipoJornada: 'completa' }),
+      undefined,
+    );
   });
 });

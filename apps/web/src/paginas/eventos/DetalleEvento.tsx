@@ -220,6 +220,7 @@ export function DetalleEvento({
       {onAbrirConsulta && evento.estado === 'Cobrado' && (
         <ReutilizarConfiguracion
           eventoId={evento.id}
+          cantidadDeDias={evento.dias.length}
           abierto={repitiendo}
           onCambiarAbierto={setRepitiendo}
           onAbrirConsulta={({ consulta }) => onAbrirConsulta(consulta.id, consulta.evento.id)}

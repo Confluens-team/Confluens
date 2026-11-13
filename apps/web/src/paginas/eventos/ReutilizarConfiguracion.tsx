@@ -1,5 +1,6 @@
 import {
   hoyEnZonaEventos,
+  sumarDias,
   MAXIMO_PERSONAS_EVENTO,
   type EventoReutilizado,
   type TipoJornada,
@@ -15,6 +16,7 @@ import { Label } from '@/components/ui/label';
 import { useReutilizarEvento } from '@/hooks/use-eventos';
 import { ErrorApiCliente } from '@/lib/api';
 import { fechaLocal, formatearFecha } from '@/lib/formato';
+import { textoDeDias } from '@/lib/rango-de-fechas';
 
 // El día siguiente a hoy en Córdoba (ADR 0010): la fecha del evento nuevo tiene que ser futura.
 function manana(): string {
@@ -33,11 +35,15 @@ function manana(): string {
 // reservados (RN-12), y ofrece abrir la consulta nueva.
 export function ReutilizarConfiguracion({
   eventoId,
+  cantidadDeDias = 1,
   abierto,
   onCambiarAbierto,
   onAbrirConsulta,
 }: {
   eventoId: number;
+  // HU-50: cuántos días dura el evento original. Con varios, la consulta nueva copia la misma franja y lo
+  // de cada día: se elige solo la fecha de inicio.
+  cantidadDeDias?: number;
   abierto: boolean;
   onCambiarAbierto: (abierto: boolean) => void;
   onAbrirConsulta: (resultado: EventoReutilizado) => void;
@@ -49,7 +55,10 @@ export function ReutilizarConfiguracion({
   const [jornada, setJornada] = useState<TipoJornada>('completa');
   const minimo = manana();
   const fechaValida = !!fecha && fecha >= minimo;
-  const personasValidas = Number(personas) > 0;
+  const variosDias = cantidadDeDias > 1;
+  // Con varios días cada uno conserva sus personas y su jornada: no se piden.
+  const personasValidas = variosDias || Number(personas) > 0;
+  const fechaDeFin = fecha && variosDias ? sumarDias(fecha, cantidadDeDias - 1) : null;
 
   // Al abrir se arranca de cero: un resultado anterior ya se usó.
   function cambiarAbierto(abrir: boolean) {
@@ -68,8 +77,7 @@ export function ReutilizarConfiguracion({
     if (!fechaValida || !personasValidas) return;
     reutilizar.mutate({
       fecha,
-      cantidadPersonas: Number(personas),
-      tipoJornada: jornada,
+      ...(variosDias ? {} : { cantidadPersonas: Number(personas), tipoJornada: jornada }),
       horaInicioEstimada: hora || undefined,
     });
   }
@@ -119,6 +127,12 @@ export function ReutilizarConfiguracion({
                     value={fecha}
                     onChange={setFecha}
                   />
+                  {variosDias && fecha && fechaValida && fechaDeFin && (
+                    <p className="text-xs text-muted-foreground">
+                      Hasta el {formatearFecha(fechaLocal(fechaDeFin))} ·{' '}
+                      {textoDeDias(fecha, fechaDeFin)}
+                    </p>
+                  )}
                   {fecha && !fechaValida && (
                     <p className="text-xs text-destructive">La fecha tiene que ser futura.</p>
                   )}
@@ -127,32 +141,37 @@ export function ReutilizarConfiguracion({
                   <Label htmlFor="reutilizar-hora">Hora aproximada (opcional)</Label>
                   <SelectorHora id="reutilizar-hora" value={hora} onChange={setHora} opcional />
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="reutilizar-personas">Personas</Label>
-                  <InputEntero
-                    id="reutilizar-personas"
-                    max={MAXIMO_PERSONAS_EVENTO}
-                    required
-                    value={personas}
-                    onChangeValor={setPersonas}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="reutilizar-jornada">Jornada</Label>
-                  <select
-                    id="reutilizar-jornada"
-                    className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
-                    value={jornada}
-                    onChange={(e) => setJornada(e.target.value as TipoJornada)}
-                  >
-                    <option value="completa">Jornada completa</option>
-                    <option value="media">Media jornada (hasta 4 h)</option>
-                  </select>
-                </div>
+                {!variosDias && (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="reutilizar-personas">Personas</Label>
+                      <InputEntero
+                        id="reutilizar-personas"
+                        max={MAXIMO_PERSONAS_EVENTO}
+                        required
+                        value={personas}
+                        onChangeValor={setPersonas}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="reutilizar-jornada">Jornada</Label>
+                      <select
+                        id="reutilizar-jornada"
+                        className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm"
+                        value={jornada}
+                        onChange={(e) => setJornada(e.target.value as TipoJornada)}
+                      >
+                        <option value="completa">Jornada completa</option>
+                        <option value="media">Media jornada (hasta 4 h)</option>
+                      </select>
+                    </div>
+                  </>
+                )}
               </div>
               <p className="text-xs text-muted-foreground">
-                Los servicios entran para todas las personas (o 1 si no se cobra por persona) y sin
-                hora: después los ajustás en la consulta. El horario exacto se carga al agendar.
+                {variosDias
+                  ? `El evento nuevo dura ${cantidadDeDias} días, como el original, con las personas, la jornada, los salones y los servicios de cada día. Los servicios y los precios se arman otra vez, a precios vigentes; el horario exacto se carga al agendar.`
+                  : 'Los servicios entran para todas las personas (o 1 si no se cobra por persona) y sin hora: después los ajustás en la consulta. El horario exacto se carga al agendar.'}
               </p>
 
               {reutilizar.isError && (
@@ -191,8 +210,10 @@ function Resultado({ resultado, onAbrir }: { resultado: EventoReutilizado; onAbr
       <p className="flex items-start gap-2 rounded-lg bg-emerald-50 p-3 text-emerald-900">
         <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
         <span>
-          Para el {formatearFecha(fechaLocal(consulta.evento.fecha), true)}. Vence en 10 días, como
-          cualquier presupuesto estimado.
+          {consulta.evento.fechaFin !== consulta.evento.fecha
+            ? `Del ${formatearFecha(fechaLocal(consulta.evento.fecha))} al ${formatearFecha(fechaLocal(consulta.evento.fechaFin))}`
+            : `Para el ${formatearFecha(fechaLocal(consulta.evento.fecha), true)}`}
+          . Vence en 10 días, como cualquier presupuesto estimado.
         </span>
       </p>
       {serviciosOmitidos.length > 0 && (
