@@ -175,9 +175,11 @@ export type FiltrosHistorialCliente = z.infer<typeof esquemaFiltrosHistorialClie
 
 // Una fila del historial de un cliente (HU-18 C1). `salones` vacío: consulta social todavía sin
 // salón. `total` es el del presupuesto del evento, sin IVA (RN-05); null si no tiene presupuesto.
+// `fechaFin` es el último día (HU-50): igual a `fecha` en un evento de un solo día.
 export const esquemaEventoHistorial = z.object({
   id: esquemaId,
   fecha: esquemaFecha,
+  fechaFin: esquemaFecha,
   inicio: esquemaFechaHora.nullable(),
   fin: esquemaFechaHora.nullable(),
   estado: esquemaEstadoEvento,

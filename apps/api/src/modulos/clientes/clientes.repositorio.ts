@@ -59,6 +59,7 @@ export async function listarEventosDeCliente(
     select: {
       id: true,
       fecha: true,
+      fechaFin: true,
       inicio: true,
       fin: true,
       estado: true,
@@ -66,8 +67,10 @@ export async function listarEventosDeCliente(
       tipoSocial: true,
       tipoSocialDetalle: true,
       cantidadPersonas: true,
+      // HU-50: el salón se reserva por día, así que uno que se usa varios días tiene varias filas.
       salones: {
         select: { salon: { select: { id: true, nombre: true } } },
+        distinct: ['salonId'],
         orderBy: { salonId: 'asc' },
       },
       presupuestos: { orderBy: { creadoEn: 'desc' }, take: 1, select: { id: true, total: true } },

@@ -144,6 +144,9 @@ export function HistorialCliente({
                       aria-label={`Ver el evento ${evento.id}`}
                     >
                       {formatearFecha(fechaLocal(evento.fecha))}
+                      {/* HU-50: un evento de varios días muestra hasta cuándo dura. */}
+                      {evento.fechaFin !== evento.fecha &&
+                        ` al ${formatearFecha(fechaLocal(evento.fechaFin))}`}
                     </button>
                     <p className="text-xs text-muted-foreground">Evento #{evento.id}</p>
                   </td>
