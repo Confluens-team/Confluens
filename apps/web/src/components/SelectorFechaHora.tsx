@@ -3,6 +3,13 @@ import { Popover } from 'radix-ui';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import {
+  diaMaximoParaElegir,
+  elegirDia,
+  estadoInicialDeRango,
+  textoDeDias,
+  type EstadoDeRango,
+} from '@/lib/rango-de-fechas';
 import { cn } from '@/lib/utils';
 
 // Selectores de día y hora con el mismo diseño en toda la app: un calendario mensual y la hora en
@@ -212,12 +219,19 @@ function Calendario({
   mesVisible,
   onCambiarMes,
   diaMinimo,
+  rango,
+  diaMaximo,
 }: {
   dia: string;
   onElegir: (dia: string) => void;
   mesVisible: Date;
   onCambiarMes: (mes: Date) => void;
   diaMinimo?: string;
+  // HU-50: una franja de días. Se resaltan el inicio, el fin y los días del medio, que quedan
+  // conectados. Sin ella, el calendario es de un solo día.
+  rango?: { inicio: string; fin: string };
+  // No se pueden elegir días posteriores a este (el tope de 32 días de la franja).
+  diaMaximo?: string;
 }) {
   const anio = mesVisible.getFullYear();
   const mes = mesVisible.getMonth();
@@ -255,20 +269,27 @@ function Calendario({
         {celdasDelMes(anio, mes).map((fecha, i) => {
           if (!fecha) return <span key={`hueco-${i}`} />;
           const iso = diaISO(fecha);
-          const elegido = iso === dia;
-          const deshabilitado = diaMinimo !== undefined && iso < diaMinimo;
+          const extremo = rango ? iso === rango.inicio || iso === rango.fin : false;
+          const elegido = rango ? extremo : iso === dia;
+          const enElMedio = !!rango && !extremo && iso > rango.inicio && iso < rango.fin;
+          const deshabilitado =
+            (diaMinimo !== undefined && iso < diaMinimo) ||
+            (diaMaximo !== undefined && iso > diaMaximo);
           return (
             <button
               key={iso}
               type="button"
               disabled={deshabilitado}
-              aria-pressed={elegido}
+              aria-pressed={elegido || enElMedio}
               aria-label={formateadorDia.format(fecha)}
               onClick={() => onElegir(iso)}
               className={cn(
                 'mx-auto flex size-8 items-center justify-center rounded-full text-sm transition-colors disabled:pointer-events-none disabled:opacity-30',
                 elegido ? 'bg-bordo font-semibold text-white' : 'hover:bg-muted',
-                !elegido && iso === hoy && 'ring-1 ring-dorado',
+                // Los días de la franja se leen como una barra: un fondo continuo entre los dos
+                // extremos, sin el redondeo de cada día.
+                enElMedio && 'w-full rounded-none bg-bordo/15 text-bordo',
+                !elegido && !enElMedio && iso === hoy && 'ring-1 ring-dorado',
               )}
             >
               {fecha.getDate()}
@@ -495,6 +516,90 @@ export function SelectorFecha({
           onCambiarMes={setMesVisible}
           diaMinimo={diaMinimo}
         />
+      </Contenido>
+    </Popover.Root>
+  );
+}
+
+interface SelectorRangoFechasProps {
+  id?: string;
+  // "YYYY-MM-DD" o '' sin elegir. Un evento de un solo día tiene `fin` igual a `inicio`.
+  inicio: string;
+  fin: string;
+  onChange: (inicio: string, fin: string) => void;
+  diaMinimo?: string;
+  placeholder?: string;
+  className?: string;
+  'aria-invalid'?: boolean;
+}
+
+/**
+ * La franja de días de un evento (HU-50). Un clic elige el día de inicio: si no hay un segundo, el
+ * evento dura un solo día. Un segundo clic elige el día de fin y el calendario conecta los dos. Se
+ * puede cambiar de mes entre los dos clics. Con el inicio elegido, los días que pasarían los 32 días
+ * quedan deshabilitados y se avisa por qué. La lógica de los clics está en `lib/rango-de-fechas`.
+ */
+export function SelectorRangoFechas({
+  id,
+  inicio,
+  fin,
+  onChange,
+  diaMinimo,
+  placeholder = 'Elegí el día o la franja',
+  className,
+  'aria-invalid': ariaInvalid,
+}: SelectorRangoFechasProps) {
+  const [abierto, setAbierto] = useState(false);
+  const [estado, setEstado] = useState<EstadoDeRango>(() => estadoInicialDeRango(inicio, fin));
+  const [mesVisible, setMesVisible] = useState(() => new Date());
+
+  function abrir(abrir: boolean) {
+    if (abrir) {
+      setEstado(estadoInicialDeRango(inicio, fin));
+      setMesVisible(mesDe(inicio || diaMinimo || diaISO(new Date())));
+    }
+    setAbierto(abrir);
+  }
+
+  function elegir(dia: string) {
+    const siguiente = elegirDia(estado, dia);
+    setEstado(siguiente);
+    // El primer clic ya deja un evento de un día; el segundo completa la franja y cierra.
+    onChange(siguiente.inicio, siguiente.fin);
+    if (!siguiente.esperandoFin) setAbierto(false);
+  }
+
+  const texto = !inicio
+    ? placeholder
+    : fin && fin !== inicio
+      ? `${formateadorFecha.format(deDiaISO(inicio))} al ${formateadorFecha.format(deDiaISO(fin))} · ${textoDeDias(inicio, fin)}`
+      : formateadorFecha.format(deDiaISO(inicio));
+  const diaMaximo = diaMaximoParaElegir(estado);
+
+  return (
+    <Popover.Root open={abierto} onOpenChange={abrir}>
+      <Disparador
+        id={id}
+        texto={texto}
+        vacio={!inicio}
+        className={className}
+        ariaInvalid={ariaInvalid}
+      />
+      <Contenido>
+        <Calendario
+          dia={estado.inicio}
+          rango={estado.inicio ? { inicio: estado.inicio, fin: estado.fin } : undefined}
+          onElegir={elegir}
+          mesVisible={mesVisible}
+          onCambiarMes={setMesVisible}
+          diaMinimo={diaMinimo}
+          diaMaximo={diaMaximo}
+        />
+        <p className="mt-3 max-w-64 text-xs text-muted-foreground" aria-live="polite">
+          {estado.esperandoFin
+            ? 'Elegí el último día del evento, o tocá el mismo día si dura uno solo. El evento puede durar hasta 32 días.'
+            : 'Tocá el primer día. Si tu evento dura varios, después tocá el último.'}
+        </p>
       </Contenido>
     </Popover.Root>
   );

@@ -3,6 +3,7 @@ import { CheckCircle2, Home, RotateCcw } from 'lucide-react';
 
 import { Logo } from '@/components/Logo';
 import { Button } from '@/components/ui/button';
+import { textoDeDias } from '@/lib/rango-de-fechas';
 import { fechaLocal, formatearFecha } from '@/lib/formato';
 import { textoHorarioEstimado } from '@/lib/jornada';
 import type { ConsultaSocialEnviada } from './CotizarEvento';
@@ -21,7 +22,13 @@ export function ConsultaRecibida({
   const { consulta, cliente } = resultado;
   const filas = [
     ['Evento', etiquetaTipoEvento({ tipo: 'Social', ...consulta })],
-    ['Fecha', formatearFecha(fechaLocal(consulta.fecha), true)],
+    // HU-50: con un segundo día, la franja entera.
+    consulta.fechaFin && consulta.fechaFin !== consulta.fecha
+      ? [
+          'Fechas',
+          `del ${formatearFecha(fechaLocal(consulta.fecha))} al ${formatearFecha(fechaLocal(consulta.fechaFin))} (${textoDeDias(consulta.fecha, consulta.fechaFin)})`,
+        ]
+      : ['Fecha', formatearFecha(fechaLocal(consulta.fecha), true)],
     ['Invitados', `${consulta.cantidadPersonas} personas`],
     [
       'Horario estimado',
