@@ -205,12 +205,13 @@ export function ReutilizarConfiguracion({
 
 function Resultado({ resultado, onAbrir }: { resultado: EventoReutilizado; onAbrir: () => void }) {
   const { consulta, serviciosOmitidos, salonesEnConflicto } = resultado;
+  const variosDias = consulta.evento.fechaFin !== consulta.evento.fecha;
   return (
     <div className="mt-5 space-y-3 text-sm">
       <p className="flex items-start gap-2 rounded-lg bg-emerald-50 p-3 text-emerald-900">
         <CheckCircle2 className="mt-0.5 size-4 shrink-0" />
         <span>
-          {consulta.evento.fechaFin !== consulta.evento.fecha
+          {variosDias
             ? `Del ${formatearFecha(fechaLocal(consulta.evento.fecha))} al ${formatearFecha(fechaLocal(consulta.evento.fechaFin))}`
             : `Para el ${formatearFecha(fechaLocal(consulta.evento.fecha), true)}`}
           . Vence en 10 días, como cualquier presupuesto estimado.
@@ -230,7 +231,8 @@ function Resultado({ resultado, onAbrir }: { resultado: EventoReutilizado; onAbr
         <p className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-900">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           <span>
-            En conflicto: ese día{' '}
+            {/* HU-50: en un evento de varios días el aviso junta los salones de todos los días. */}
+            En conflicto: {variosDias ? 'en alguno de los días' : 'ese día'}{' '}
             {salonesEnConflicto.length === 1
               ? `el salón ${salonesEnConflicto[0]!.nombre} ya tiene`
               : `los salones ${salonesEnConflicto.map((s) => s.nombre).join(', ')} ya tienen`}{' '}
