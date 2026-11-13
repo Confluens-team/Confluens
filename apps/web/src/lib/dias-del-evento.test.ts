@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { agruparPorDia, resumenDeJornada, textoDePersonas } from './dias-del-evento';
+import {
+  agruparPorDia,
+  horarioDeLosDias,
+  resumenDeJornada,
+  resumenDelEvento,
+  textoDePersonas,
+} from './dias-del-evento';
 
 // Las reglas de pantalla de HU-50 para un evento de varios días: el PO pidió ver el rango de
 // personas y, si la jornada cambia de un día a otro, «Varía» aclarando cuáles.
@@ -59,5 +65,58 @@ describe('agruparPorDia', () => {
     expect(agruparPorDia<{ id: number; diaId?: number }>([{ id: 1 }, { id: 2 }])).toEqual([
       { diaId: undefined, lineas: [{ id: 1 }, { id: 2 }] },
     ]);
+  });
+});
+
+describe('resumenDelEvento', () => {
+  it('un evento de un solo día se lee como siempre', () => {
+    expect(resumenDelEvento({ cantidadPersonas: 80, tipoJornada: 'media', dias: [] })).toEqual({
+      personas: '80 personas',
+      jornada: 'Media jornada',
+      dias: 1,
+    });
+  });
+
+  it('con varios días muestra el rango de personas y dice si la jornada varía', () => {
+    const resumen = resumenDelEvento({
+      cantidadPersonas: 120,
+      tipoJornada: 'completa',
+      dias: [
+        { cantidadPersonas: 50, tipoJornada: 'completa' },
+        { cantidadPersonas: 120, tipoJornada: 'media' },
+        { cantidadPersonas: 80, tipoJornada: 'completa' },
+      ],
+    });
+
+    expect(resumen).toEqual({
+      personas: '50 a 120 personas',
+      jornada: 'Varía (completa y media)',
+      dias: 3,
+    });
+  });
+});
+
+describe('horarioDeLosDias', () => {
+  // 12:00Z a 21:00Z es de 09:00 a 18:00 en Córdoba.
+  const dia = (fecha: string, desde = '12:00', hasta = '21:00') => ({
+    inicio: `${fecha}T${desde}:00.000Z`,
+    fin: `${fecha}T${hasta}:00.000Z`,
+  });
+
+  it('si todos los días tienen el mismo horario, lo dice una vez', () => {
+    expect(horarioDeLosDias([dia('2042-09-10'), dia('2042-09-11')])).toBe(
+      '09:00 a 18:00, todos los días',
+    );
+  });
+
+  it('si cambia de un día a otro, lo avisa', () => {
+    expect(horarioDeLosDias([dia('2042-09-10'), dia('2042-09-11', '13:00', '15:00')])).toBe(
+      'El horario varía según el día',
+    );
+  });
+
+  it('un día sin agendar deja el evento sin horario', () => {
+    expect(horarioDeLosDias([dia('2042-09-10'), { inicio: null, fin: null }])).toBeNull();
+    expect(horarioDeLosDias([])).toBeNull();
   });
 });
