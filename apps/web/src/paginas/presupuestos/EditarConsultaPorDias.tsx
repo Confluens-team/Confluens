@@ -225,7 +225,12 @@ export function EditarConsultaPorDias({
     (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
     consulta.evento.estado === 'EnConsulta';
   const expirado = consulta.estado === 'Expirado';
-  const editable = enCurso;
+  // RN-09: el Responsable de Eventos modifica en todo momento, también un evento ya reservado. Sigue
+  // Confirmado y sin baja desde acá (se cancela desde el evento, RN-07).
+  const confirmado =
+    consulta.estado === 'Confirmado' &&
+    (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');
+  const editable = enCurso || confirmado;
   const salonDe = (salonId: number) => salones.find((s) => s.id === salonId);
 
   const indice = Math.min(activo, Math.max(dias.length - 1, 0));
@@ -602,6 +607,14 @@ export function EditarConsultaPorDias({
           <AlertTriangle className="size-4 shrink-0" />
           Presupuesto vencido. Si cambiás el último día de la franja, se recalcula con los precios
           de esa fecha.
+        </p>
+      )}
+      {confirmado && (
+        <p className="rounded-xl bg-estado-confirmado-fondo px-4 py-3 text-sm text-estado-confirmado-texto ring-1 ring-estado-confirmado-borde">
+          Evento confirmado: podés modificar todo y sigue confirmado. Si cambiás la franja, el
+          horario de cada día se corre con ella, y un día nuevo entra con el horario del día más
+          cercano (se cambia después al agendar). Si algún día choca con otro evento, se avisan
+          todos los choques y no se guarda nada. Si cambia el total, cambia el saldo a cobrar.
         </p>
       )}
       {!editable && (
@@ -1150,15 +1163,19 @@ export function EditarConsultaPorDias({
 
       {editable && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            className="text-destructive"
-            disabled={darDeBaja.isPending}
-            onClick={confirmarBaja}
-          >
-            <Trash2 /> Dar de baja
-          </Button>
+          {enCurso ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-destructive"
+              disabled={darDeBaja.isPending}
+              onClick={confirmarBaja}
+            >
+              <Trash2 /> Dar de baja
+            </Button>
+          ) : (
+            <span />
+          )}
           <div className="flex flex-wrap items-center justify-end gap-3">
             {!valido && (
               <p className="text-xs text-destructive">
@@ -1226,7 +1243,7 @@ export function EditarConsultaPorDias({
         </section>
       )}
       {modificar.isError && (
-        <p className="text-right text-sm text-destructive">
+        <p className="text-right text-sm whitespace-pre-line text-destructive">
           {mensajeDeError(modificar.error, 'No se pudieron guardar los cambios.')}
         </p>
       )}

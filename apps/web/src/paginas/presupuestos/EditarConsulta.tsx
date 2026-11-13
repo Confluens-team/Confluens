@@ -771,7 +771,7 @@ function Formulario({
               <Label htmlFor="consulta-fecha">Fecha</Label>
               {/* HU-50: mientras es una consulta, un segundo clic en otro día estira el evento a
                   varios días y se pasa al editor por días. Uno ya confirmado sigue de un solo día. */}
-              {enCurso ? (
+              {editable ? (
                 <SelectorRangoFechas
                   id="consulta-fecha"
                   inicio={fecha}

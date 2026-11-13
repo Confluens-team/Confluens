@@ -295,6 +295,45 @@ un evento a la noche entre dos de sus horarios (no choca), uno que pisa el día 
 choque (409 con las dos líneas), un día del medio sin horario (422, no 500), el aviso preventivo y la agenda
 por rango.
 
+## Lo que se construyó en la parte 4 (repetir evento y recálculo con el último día)
+
+Con esta parte HU-50 queda completa salvo `S-16` (la hora estimada por día).
+
+**Repetir un evento de varios días** (`POST /eventos/:id/reutilizar`). La consulta nueva copia la **misma
+franja** (la misma cantidad de días seguidos) y lo de **cada día**: personas, jornada, salones con su
+armado, servicios (por persona para las personas de su día) y adicionales. El cliente elige solo la fecha
+de inicio. Los precios son los vigentes proyectados al **último día** de la franja nueva (RN-13). El aviso
+de salones en conflicto se mira día por día y no bloquea (RN-12). `cantidadPersonas` y `tipoJornada` pasan
+a ser opcionales en el contrato: la API los sigue exigiendo (400) para un evento de un solo día y los
+ignora en uno de varios.
+
+**Modificar un evento ya reservado, día por día** (RN-09). `PATCH /presupuestos/:id` con `dias[]` sobre un
+presupuesto Confirmado extiende, corre o achica la franja, o cambia el detalle de un día, y el evento
+sigue Reservado o Cobrado (según lo pagado contra el total nuevo) y el presupuesto sigue Confirmado, vuelto
+a emitir con la fecha de hoy:
+
+- El horario de cada día se conserva. Si la franja entera se corrió, cada día lleva su horario a la fecha
+  nueva. Un día nuevo entra con el horario del **día más cercano**, movido a su fecha: en un evento
+  reservado un día no puede nacer sin horario (lo exige un CHECK del renglón de salón). Se cambia después
+  al agendar. Es una decisión mía para no dejar el cambio trabado: el PO puede preferir otra.
+- Todos los choques se controlan **antes** de escribir y se avisan juntos (409, el mismo formato que al
+  reservar); un choque en cualquier día impide el cambio entero.
+- Los salones que un día deja salen **antes** de mover el día (RN-12), y un salón nuevo hereda el armado
+  que ya tiene en otro día o el del mismo nombre. Cada día necesita al menos un salón.
+- Los precios se recalculan con el último día como referencia, igual que antes (HU-54, parte 2).
+
+La cuenta de qué día de antes es cada día de ahora (corrimiento de la franja entera o cada día por su
+fecha) vive en un solo lugar, `correspondenciaDeDias`, que usan el repositorio (mueve las filas) y el
+servicio (corre los horarios).
+
+**Pantallas.** El diálogo de «Repetir evento» pide solo la fecha de inicio cuando el original dura varios
+días y muestra hasta cuándo dura; el editor del panel por días también edita un evento reservado.
+
+**Cómo se probó.** Tests de servicio y de la cuenta de correspondencia, y un recorrido contra la base real:
+reservar un evento de tres días, extenderlo (el día nuevo hereda el horario y el armado), correrlo entero
+sin recrear las filas, dejar de usar un salón, intentar extenderlo sobre un día ocupado (409 con el choque y
+sin tocar nada), achicarlo, un día sin salón (422) y repetirlo (con y sin salones en conflicto).
+
 ## Cómo se entrega (propuesta)
 
 HU-50 se parte en cuatro partes que se entregan por separado. **Esta ADR cubre la primera**:
@@ -304,7 +343,7 @@ HU-50 se parte en cuatro partes que se entregan por separado. **Esta ADR cubre l
    todo siga funcionando con eventos de un día. **No cambia ninguna pantalla.**
 2. Cotizador y presupuesto por día (**construida**): contrato `dias[]`, selector de franja, pestañas por día, editor del panel y documento por día.
 3. Agenda y comanda por día (**construida**): horario por día al agendar, solapamiento por día con el aviso de todos los choques, reserva del evento entero con la seña, agenda en barra larga y comanda por día.
-4. Repetir evento y recálculo con el último día como referencia.
+4. Repetir evento y recálculo con el último día como referencia (**construida**): repetir copia la franja y lo de cada día, y un evento reservado se modifica día por día.
 
 Los cambios de `schema.prisma`, la migración y `packages/shared` (el esquema del día y la validación
 de la franja de 32 días) necesitan la confirmación del PO (`AGENTS.md` §6) **sobre este diseño** antes
