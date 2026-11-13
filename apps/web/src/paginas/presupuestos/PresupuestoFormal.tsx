@@ -33,6 +33,17 @@ export function PresupuestoFormal({
   const seguimiento = useSeguimientoConsulta(consulta.id);
   const cliente = nombreCompleto(consulta.cliente);
   const lineaSalon = consulta.lineas.find(({ tipo }) => tipo === 'salon');
+  // HU-50: con varios días, el detalle va día por día y un único total.
+  const variosDias = consulta.dias.length > 1;
+  const diasDelDocumento = variosDias
+    ? consulta.dias.map((dia) => ({
+        fecha: dia.fecha,
+        cantidadPersonas: dia.cantidadPersonas,
+        tipoJornada: dia.tipoJornada ?? consulta.tipoJornada,
+        salones: dia.salones,
+        lineas: consulta.lineas.filter((linea) => linea.diaId === dia.id),
+      }))
+    : undefined;
 
   function guardarPdf() {
     if (!consulta.envioFormalEn) seguimiento.mutate({ envioFormal: true });
@@ -76,8 +87,14 @@ export function PresupuestoFormal({
             salones={consulta.salones}
             tipoJornada={consulta.tipoJornada}
             lineas={consulta.lineas}
+            dias={diasDelDocumento}
             total={consulta.total}
-            salon={lineaSalon && { idLinea: lineaSalon.id, horario: horarioSalon(consulta.evento) }}
+            salon={
+              !variosDias && lineaSalon
+                ? { idLinea: lineaSalon.id, horario: horarioSalon(consulta.evento) }
+                : undefined
+            }
+            horarioDeSalones={variosDias ? horarioSalon(consulta.evento) : undefined}
             sinCondiciones
           />
         </div>

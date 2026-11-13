@@ -74,5 +74,36 @@ export function fechasDeLaFranja(inicio: string, fin: string): string[] {
   return Array.from({ length: resultado.dias }, (_, i) => aFecha(desde + i * MS_POR_DIA));
 }
 
+export type ResultadoDeFechasSeguidas =
+  | { valida: true }
+  | { valida: false; motivo: 'fecha-invalida' | 'no-consecutivas' | 'supera-el-maximo' };
+
+/**
+ * Las fechas de los días de un evento, en el orden en que llegan, tienen que ser una franja: reales,
+ * crecientes de a un día y no más de 32. Es lo que valida la API sobre `dias[]`: la base lo garantiza
+ * aparte, pero acá el error le llega a quien armó el pedido y no como una violación de restricción.
+ */
+export function validarFechasSeguidas(fechas: string[]): ResultadoDeFechasSeguidas {
+  if (fechas.length > MAXIMO_DE_DIAS_DE_UN_EVENTO) {
+    return { valida: false, motivo: 'supera-el-maximo' };
+  }
+  let anterior: number | null = null;
+  for (const fecha of fechas) {
+    const ms = aMilisegundos(fecha);
+    if (ms === null) return { valida: false, motivo: 'fecha-invalida' };
+    if (anterior !== null && ms - anterior !== MS_POR_DIA) {
+      return { valida: false, motivo: 'no-consecutivas' };
+    }
+    anterior = ms;
+  }
+  return { valida: true };
+}
+
+/** La fecha `dias` días después (o antes, con un número negativo) de `fecha`. Null si no es real. */
+export function sumarDias(fecha: string, dias: number): string | null {
+  const ms = aMilisegundos(fecha);
+  return ms === null ? null : aFecha(ms + dias * MS_POR_DIA);
+}
+
 /** El aviso de la pantalla cuando se pide más del máximo. */
 export const MENSAJE_FRANJA_MUY_LARGA = `El evento puede durar hasta ${MAXIMO_DE_DIAS_DE_UN_EVENTO} días`;

@@ -1,6 +1,7 @@
 import { type AgendarEvento, type FiltrosAgenda, hoyEnZonaEventos } from '@confluens/shared';
 
 import { ErrorApi } from '../../lib/errores.js';
+import { exigirEventoDeUnDia } from '../../lib/evento-de-varios-dias.js';
 import { esViolacionDeSolapamiento, mensajeDeSolapamiento } from '../../lib/prisma-errores.js';
 import * as eventosRepositorioReal from './eventos.repositorio.js';
 import type { EventosRepositorio } from './eventos.repositorio.js';
@@ -73,6 +74,8 @@ export async function agendarEvento(
 ) {
   const evento = await repo.buscarDetallado(id);
   if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${id}`);
+  // HU-50: el horario es por día y todavía se agenda uno solo por evento (parte 3).
+  exigirEventoDeUnDia(evento, 'agendar');
   // RN-09: el horario de un evento ya confirmado también se puede cambiar (decisión de Franco,
   // 08/10/2026). Agendar no toca el estado, así que un Reservado sigue Reservado; lo que sí se
   // vuelve a controlar es que la franja nueva no pise a otro evento (RN-12, más abajo).

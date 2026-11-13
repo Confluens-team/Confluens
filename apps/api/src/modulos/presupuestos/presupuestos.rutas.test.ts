@@ -793,6 +793,7 @@ const presupuestoDelListado = {
   envioFormalEn: new Date('2026-09-21T12:00:00.000Z') as Date | null,
   evento: {
     fecha: new Date('2026-11-15T00:00:00.000Z'),
+    fechaFin: new Date('2026-11-15T00:00:00.000Z'),
     tipo: 'Corporativo' as 'Social' | 'Corporativo',
     tipoSocial: null as 'Casamiento' | null,
     tipoSocialDetalle: null,
@@ -831,6 +832,7 @@ describe('GET /api/presupuestos (HU-10)', () => {
           venceEn: '2026-09-30T15:00:00.000Z',
           total: '229500.00',
           fechaEvento: '2026-11-15',
+          fechaFinEvento: '2026-11-15',
           tipo: 'Corporativo',
           tipoSocial: null,
           tipoSocialDetalle: null,

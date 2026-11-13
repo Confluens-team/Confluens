@@ -22,6 +22,7 @@ import { IconoEstado } from '@/components/IconoEstado';
 import { useOcultarConsulta, usePresupuestos } from '@/hooks/use-presupuestos';
 import { ErrorApiCliente } from '@/lib/api';
 import { fechaLocal, formatearPesos, nombreCompleto, nombresDeSalones } from '@/lib/formato';
+import { textoDeDias } from '@/lib/rango-de-fechas';
 import { COLORES_TIPO_EVENTO } from '@/lib/tipo-evento';
 import { cn } from '@/lib/utils';
 import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
@@ -376,6 +377,13 @@ export function ListadoConsultas() {
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         {fechaCorta(fechaLocal(presupuesto.fechaEvento))}
+                        {/* HU-50: un evento de varios días muestra hasta cuándo dura. */}
+                        {presupuesto.fechaFinEvento !== presupuesto.fechaEvento && (
+                          <span className="block text-xs text-muted-foreground">
+                            al {fechaCorta(fechaLocal(presupuesto.fechaFinEvento))} ·{' '}
+                            {textoDeDias(presupuesto.fechaEvento, presupuesto.fechaFinEvento)}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         <p>

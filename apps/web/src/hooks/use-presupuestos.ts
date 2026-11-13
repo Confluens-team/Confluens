@@ -11,6 +11,7 @@ import type {
   SeguimientoConsulta,
   Solicitud,
 } from '@confluens/shared';
+import { diasDeCotizacion } from '@confluens/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api';
@@ -22,13 +23,15 @@ export function useSolicitarPresupuesto() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (datos: Omit<CrearPresupuesto, 'solicitudId'>) => {
+      // HU-50: la solicitud describe el evento por su primer día, con la mayor cantidad de personas.
+      const dias = diasDeCotizacion(datos);
       const solicitud: CrearSolicitud = {
         nombre: datos.nombre,
         telefono: datos.telefono,
         correo: datos.correo,
-        fechaDeseada: datos.fecha,
-        cantidadPersonas: datos.cantidadPersonas,
-        salonId: datos.salonIds[0] ?? null,
+        fechaDeseada: dias[0]!.fecha,
+        cantidadPersonas: Math.max(...dias.map((dia) => dia.cantidadPersonas)),
+        salonId: dias[0]!.salonIds[0] ?? null,
       };
       const creada = await apiFetch<RespuestaExito<Solicitud>>('/solicitudes', {
         method: 'POST',

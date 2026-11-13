@@ -4,7 +4,9 @@ import {
   diasDeLaFranja,
   fechasDeLaFranja,
   MAXIMO_DE_DIAS_DE_UN_EVENTO,
+  sumarDias,
   ultimoDiaPermitido,
+  validarFechasSeguidas,
   validarFranja,
 } from './franja-de-dias.js';
 
@@ -94,5 +96,47 @@ describe('franja de días de un evento (HU-50)', () => {
     expect(fechasDeLaFranja('2040-05-15', '2040-05-15')).toEqual(['2040-05-15']);
     expect(fechasDeLaFranja('2040-04-30', '2040-06-01')).toEqual([]);
     expect(fechasDeLaFranja('2040-04-30', '2040-05-31')).toHaveLength(32);
+  });
+
+  describe('validarFechasSeguidas (los días que manda un pedido)', () => {
+    it('acepta una franja en orden, también cruzando mes y año', () => {
+      expect(validarFechasSeguidas(['2040-05-15'])).toEqual({ valida: true });
+      expect(validarFechasSeguidas(['2040-04-30', '2040-05-01'])).toEqual({ valida: true });
+      expect(validarFechasSeguidas(['2040-12-31', '2041-01-01'])).toEqual({ valida: true });
+      expect(validarFechasSeguidas(fechasDeLaFranja('2040-04-30', '2040-05-31'))).toEqual({
+        valida: true,
+      });
+    });
+
+    it('rechaza un día libre en el medio, fechas repetidas o fuera de orden', () => {
+      const noConsecutivas = { valida: false, motivo: 'no-consecutivas' };
+      expect(validarFechasSeguidas(['2040-05-15', '2040-05-17'])).toEqual(noConsecutivas);
+      expect(validarFechasSeguidas(['2040-05-15', '2040-05-15'])).toEqual(noConsecutivas);
+      expect(validarFechasSeguidas(['2040-05-16', '2040-05-15'])).toEqual(noConsecutivas);
+    });
+
+    it('rechaza una fecha que no existe', () => {
+      expect(validarFechasSeguidas(['2040-02-30'])).toEqual({
+        valida: false,
+        motivo: 'fecha-invalida',
+      });
+    });
+
+    it('rechaza más de 32 días', () => {
+      const treintaYTres = fechasDeLaFranja('2040-04-30', '2040-05-31').concat('2040-06-01');
+      expect(validarFechasSeguidas(treintaYTres)).toEqual({
+        valida: false,
+        motivo: 'supera-el-maximo',
+      });
+    });
+  });
+
+  it('suma días al calendario sin que el cambio de mes o de año corra la cuenta', () => {
+    expect(sumarDias('2040-04-30', 1)).toBe('2040-05-01');
+    expect(sumarDias('2040-12-31', 1)).toBe('2041-01-01');
+    expect(sumarDias('2044-02-28', 1)).toBe('2044-02-29'); // bisiesto
+    expect(sumarDias('2040-05-01', -1)).toBe('2040-04-30');
+    expect(sumarDias('2040-05-15', 0)).toBe('2040-05-15');
+    expect(sumarDias('basura', 1)).toBeNull();
   });
 });

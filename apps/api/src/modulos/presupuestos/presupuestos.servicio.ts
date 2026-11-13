@@ -1,7 +1,11 @@
 import {
+  aModificacionDeUnDia,
   aplicarModalidad,
   CODIGOS_ERROR,
   DIAS_VIGENCIA_PRESUPUESTO,
+  fechasDeLaFranja,
+  diasDeCotizacion,
+  diasDeModificacion,
   horaDelEvento,
   hoyEnZonaEventos,
   mesesHastaEvento,
@@ -10,6 +14,8 @@ import {
   type ConsultaDetallada,
   type CrearConsultaSocial,
   type CrearPresupuesto,
+  type DiaCotizado,
+  type DiaModificado,
   type EventoReutilizado,
   type FiltrosPresupuestos,
   type ModalidadServicio,
@@ -24,6 +30,7 @@ import { Prisma } from '../../generated/prisma/client.js';
 import { alcanza, calcularBaseDeCobro, PORCENTAJE_TOTAL } from '../../lib/base-de-cobro.js';
 import { type Correo, enviarCorreo } from '../../lib/correo.js';
 import { ErrorApi } from '../../lib/errores.js';
+import { esDeVariosDias, exigirEventoDeUnDia } from '../../lib/evento-de-varios-dias.js';
 import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
 import { avisarConsultaRecibida } from './presupuestos.correo.js';
 import * as presupuestosRepositorioReal from './presupuestos.repositorio.js';
@@ -248,62 +255,76 @@ export async function generarPresupuesto(
   const clienteDeSesion =
     usuarioCliente === undefined ? null : await clienteDeLaSesion(usuarioCliente, repo);
 
+  // HU-50: el evento tiene de 1 a 32 días y cada uno lleva sus salones, personas, jornada y
+  // servicios. Un pedido de un solo día (los campos sueltos de siempre) es la franja de un día.
+  const dias = diasDeCotizacion(datos);
+  const ultimoDia = dias[dias.length - 1]!;
+
   // Validaciones de catálogo primero, sin escribir nada: si el pedido es inválido, no se crea un
   // Cliente ni un Evento huérfanos.
   // Un evento puede ocupar varios salones (ADR 0011). Se respeta el orden en que llegaron: la
-  // primera línea del presupuesto es el primer salón elegido.
-  const encontrados = new Map(
-    (await repo.buscarSalonesPorIds(datos.salonIds)).map((s) => [s.id, s]),
-  );
-  const salones = datos.salonIds.map((id) => {
-    const salon = encontrados.get(id);
-    if (!salon) throw ErrorApi.noEncontrado(`No existe el salón ${id}`);
-    return salon;
-  });
+  // primera línea de cada día es el primer salón elegido para ese día.
+  const idsSalones = [...new Set(dias.flatMap((dia) => dia.salonIds))];
+  const encontrados = new Map((await repo.buscarSalonesPorIds(idsSalones)).map((s) => [s.id, s]));
+  const salonesDelDia = (dia: DiaCotizado) =>
+    dia.salonIds.map((id) => {
+      const salon = encontrados.get(id);
+      if (!salon) throw ErrorApi.noEncontrado(`No existe el salón ${id}`);
+      return salon;
+    });
+  // Se resuelven todos acá para que un salón inexistente falle antes de escribir nada.
+  const salonesPorDia = dias.map(salonesDelDia);
 
   if (datos.solicitudId !== undefined) {
     await exigirSolicitudDisponible(datos.solicitudId, clienteDeSesion?.id ?? null, repo);
   }
 
-  const idsServicios = datos.servicios.map((s) => s.servicioId);
+  const idsServicios = [...new Set(dias.flatMap((dia) => dia.servicios.map((s) => s.servicioId)))];
   const servicios = idsServicios.length > 0 ? await repo.buscarServiciosPorIds(idsServicios) : [];
   const serviciosPorId = new Map(servicios.map((s) => [s.id, s]));
 
-  for (const seleccionado of datos.servicios) {
-    const servicio = serviciosPorId.get(seleccionado.servicioId);
-    if (!servicio) {
-      throw ErrorApi.noEncontrado(`No existe el servicio ${seleccionado.servicioId}`);
+  for (const dia of dias) {
+    for (const seleccionado of dia.servicios) {
+      const servicio = serviciosPorId.get(seleccionado.servicioId);
+      if (!servicio) {
+        throw ErrorApi.noEncontrado(`No existe el servicio ${seleccionado.servicioId}`);
+      }
+      if (!servicio.activo) {
+        throw ErrorApi.reglaNegocio(`El servicio "${servicio.nombre}" no está activo`);
+      }
+      // RN-04: contra las personas de ESE día, no las de otro.
+      exigirCantidadPosible(servicio, seleccionado.cantidad, dia.cantidadPersonas);
+      exigirModalidadAdmitida(servicio, seleccionado.modalidad ?? 'Normal');
     }
-    if (!servicio.activo) {
-      throw ErrorApi.reglaNegocio(`El servicio "${servicio.nombre}" no está activo`);
-    }
-    exigirCantidadPosible(servicio, seleccionado.cantidad, datos.cantidadPersonas);
-    exigirModalidadAdmitida(servicio, seleccionado.modalidad ?? 'Normal');
   }
 
-  const proyeccion = await proyeccionHasta(datos.fecha, repo);
-  const lineasSalones = salones.map((salon) =>
-    lineaDeSalon(
-      salon,
-      datos.tipoJornada,
-      precioProyectado(precioDeSalon(salon, datos.tipoJornada), proyeccion),
-    ),
-  );
-
-  const lineasServicios = datos.servicios.map((seleccionado) => {
-    // El bucle de validación de arriba ya garantizó que existe.
-    const servicio = serviciosPorId.get(seleccionado.servicioId)!;
-    return lineaDeServicio(
-      servicio,
-      seleccionado.cantidad,
-      precioVigenteDeServicio(servicio, proyeccion),
-      seleccionado.modalidad ?? 'Normal',
-      seleccionado.horaEstimada ?? null,
+  // RN-13 con varios días: los precios se proyectan a la fecha del ÚLTIMO día, la referencia de
+  // todo el presupuesto (decisión del PO, 12/11/2026).
+  const proyeccion = await proyeccionHasta(ultimoDia.fecha, repo);
+  const lineasPorDia = dias.map((dia, i) => {
+    const lineasSalones = salonesPorDia[i]!.map((salon) =>
+      lineaDeSalon(
+        salon,
+        dia.tipoJornada,
+        precioProyectado(precioDeSalon(salon, dia.tipoJornada), proyeccion),
+      ),
     );
+    const lineasServicios = dia.servicios.map((seleccionado) => {
+      // El bucle de validación de arriba ya garantizó que existe.
+      const servicio = serviciosPorId.get(seleccionado.servicioId)!;
+      return lineaDeServicio(
+        servicio,
+        seleccionado.cantidad,
+        precioVigenteDeServicio(servicio, proyeccion),
+        seleccionado.modalidad ?? 'Normal',
+        seleccionado.horaEstimada ?? null,
+      );
+    });
+    return [...lineasSalones, ...lineasServicios];
   });
 
-  const todasLasLineas = [...lineasSalones, ...lineasServicios];
-  const total = sumarLineas(todasLasLineas);
+  // Un solo total para todo el evento: la suma de todos los días.
+  const total = sumarLineas(lineasPorDia.flat());
 
   const fechaEmision = new Date();
 
@@ -316,19 +337,45 @@ export async function generarPresupuesto(
       );
     }
 
+    const [primerDia] = dias;
     const evento = await repo.crearEvento(
       {
         clienteId: cliente.id,
-        fecha: new Date(datos.fecha),
-        cantidadPersonas: datos.cantidadPersonas,
+        fecha: new Date(primerDia!.fecha),
+        cantidadPersonas: primerDia!.cantidadPersonas,
         tipo: 'Corporativo',
-        tipoJornada: datos.tipoJornada,
+        tipoJornada: primerDia!.tipoJornada,
         horaInicioEstimada: datos.horaInicioEstimada ?? null,
       },
       tx,
     );
 
-    await repo.reemplazarSalonesDelEvento(evento.id, datos.salonIds, tx);
+    let lineas: LineaNueva[];
+    if (dias.length === 1) {
+      await repo.reemplazarSalonesDelEvento(evento.id, primerDia!.salonIds, tx);
+      lineas = lineasPorDia[0]!;
+    } else {
+      // Los días que siguen al primero se crean con el evento, y cada uno recibe sus salones y sus
+      // líneas. El total y la seña son del evento, no de cada día.
+      const creados = await repo.crearDiasDelEvento(
+        evento.id,
+        dias.slice(1).map((dia) => ({
+          fecha: new Date(dia.fecha),
+          cantidadPersonas: dia.cantidadPersonas,
+          tipoJornada: dia.tipoJornada,
+        })),
+        tx,
+      );
+      const diaIdPorFecha = new Map(
+        creados.map((dia) => [dia.fecha.toISOString().slice(0, 10), dia.id]),
+      );
+      lineas = [];
+      for (const [i, dia] of dias.entries()) {
+        const diaId = diaIdPorFecha.get(dia.fecha)!;
+        await repo.reemplazarSalonesDelEvento(evento.id, dia.salonIds, tx, new Map(), diaId);
+        lineas.push(...lineasPorDia[i]!.map((linea) => ({ ...linea, diaId })));
+      }
+    }
 
     if (datos.solicitudId !== undefined) {
       await vincularSolicitud(datos.solicitudId, evento.id, repo, tx);
@@ -340,7 +387,7 @@ export async function generarPresupuesto(
         fechaEmision,
         venceEn: calcularVencimiento(fechaEmision),
         total: total.toFixed(2),
-        lineas: todasLasLineas,
+        lineas,
       },
       tx,
     );
@@ -401,6 +448,22 @@ export async function registrarConsultaSocial(
       },
       tx,
     );
+    // HU-50: con `fechaFin` el evento dura varios días. Cada día que sigue al primero entra vacío,
+    // con las mismas personas y jornada que pidió el cliente; las horas estimadas valen para todos
+    // y el Responsable de Eventos arma el detalle de cada día al armar el presupuesto.
+    if (datos.fechaFin && datos.fechaFin !== datos.fecha) {
+      await repo.crearDiasDelEvento(
+        evento.id,
+        fechasDeLaFranja(datos.fecha, datos.fechaFin)
+          .slice(1)
+          .map((fecha) => ({
+            fecha: new Date(fecha),
+            cantidadPersonas: datos.cantidadPersonas,
+            tipoJornada: datos.tipoJornada,
+          })),
+        tx,
+      );
+    }
 
     if (datos.solicitudId !== undefined) {
       await vincularSolicitud(datos.solicitudId, evento.id, repo, tx);
@@ -503,6 +566,13 @@ export async function crearPresupuestoDeEvento(
   });
 }
 
+// HU-50: los salones de un evento están por día, así que uno que se usa varios días aparece varias
+// veces. Para el resumen del evento cuenta una sola vez, en el orden en que aparece.
+function salonesUnicos<T extends { salon: { id: number } }>(filas: T[]): T[] {
+  const vistos = new Set<number>();
+  return filas.filter(({ salon }) => (vistos.has(salon.id) ? false : !!vistos.add(salon.id)));
+}
+
 // HU-10: listado del personal con sus filtros. Mapea a PresupuestoListado para que los tipos de
 // Prisma no lleguen a la web: importes como string y la fecha del evento como YYYY-MM-DD.
 export async function listarPresupuestos(
@@ -518,11 +588,13 @@ export async function listarPresupuestos(
     venceEn: presupuesto.venceEn?.toISOString() ?? null,
     total: presupuesto.total.toFixed(2),
     fechaEvento: evento.fecha.toISOString().slice(0, 10),
+    // Sin fecha de fin (un evento armado a mano en un test), dura un solo día.
+    fechaFinEvento: (evento.fechaFin ?? evento.fecha).toISOString().slice(0, 10),
     tipo: evento.tipo,
     tipoSocial: evento.tipoSocial,
     tipoSocialDetalle: evento.tipoSocialDetalle,
     cliente: evento.cliente,
-    salones: evento.salones.map(({ salon }) => salon),
+    salones: salonesUnicos(evento.salones).map(({ salon }) => salon),
     avisoRecepcionEn: presupuesto.avisoRecepcionEn?.toISOString() ?? null,
     envioFormalEn: presupuesto.envioFormalEn?.toISOString() ?? null,
   }));
@@ -550,6 +622,7 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       id: evento.id,
       estado: evento.estado,
       fecha: evento.fecha.toISOString().slice(0, 10),
+      fechaFin: evento.fechaFin.toISOString().slice(0, 10),
       cantidadPersonas: evento.cantidadPersonas,
       tipo: evento.tipo,
       tipoSocial: evento.tipoSocial,
@@ -568,8 +641,25 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       telefono: evento.cliente.telefono,
       etiqueta: evento.cliente.etiqueta,
     },
-    // Cada salón con la distribución que tiene armada en este evento (ADR 0011).
-    salones: evento.salones.map(({ salon, distribucion }) => ({
+    // HU-50: los días del evento, cada uno con sus salones. Los de un evento de un solo día son los
+    // de siempre, dentro de su único día.
+    dias: evento.dias.map((dia) => ({
+      id: dia.id,
+      fecha: dia.fecha.toISOString().slice(0, 10),
+      cantidadPersonas: dia.cantidadPersonas,
+      tipoJornada: dia.tipoJornada,
+      inicio: dia.inicio?.toISOString() ?? null,
+      fin: dia.fin?.toISOString() ?? null,
+      salones: dia.salones.map(({ salon, distribucion }) => ({
+        id: salon.id,
+        nombre: salon.nombre,
+        capacidadMaxima: salon.capacidadMaxima,
+        distribucion: distribucion ? { id: distribucion.id, nombre: distribucion.nombre } : null,
+      })),
+    })),
+    // Los de todo el evento, con la distribución que tiene armada cada uno (ADR 0011). Un salón que
+    // se usa varios días cuenta una sola vez.
+    salones: salonesUnicos(evento.salones).map(({ salon, distribucion }) => ({
       id: salon.id,
       nombre: salon.nombre,
       capacidadMaxima: salon.capacidadMaxima,
@@ -578,6 +668,7 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
     lineas: presupuesto.lineas.map(({ servicio, ...linea }) => ({
       id: linea.id,
       presupuestoId: linea.presupuestoId,
+      diaId: linea.diaId,
       servicioId: linea.servicioId,
       descripcion: linea.descripcion,
       cantidad: linea.cantidad,
@@ -632,7 +723,7 @@ function esConfirmadoVigente(presupuesto: PresupuestoDetalladoRepo): boolean {
  */
 function reubicarHorario(
   evento: PresupuestoDetalladoRepo['evento'],
-  datos: ModificarPresupuesto,
+  datos: { fecha: string },
 ): { inicio?: Date; fin?: Date } {
   const corrimiento = new Date(datos.fecha).getTime() - evento.fecha.getTime();
   return corrimiento !== 0 && evento.inicio && evento.fin
@@ -676,10 +767,15 @@ export async function obtenerConsulta(
 // ADR 0008: el tipo que queda después de modificar. Sin `tipo` en el pedido se mantiene el del
 // evento; lo mismo con el tipo social y su detalle. Un corporativo necesita salón y un social, su
 // tipo social ("Otro" con su detalle).
-function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoRepo['evento']) {
+function resolverTipo(
+  datos: Pick<ModificarPresupuesto, 'tipo' | 'tipoSocial' | 'tipoSocialDetalle'>,
+  evento: PresupuestoDetalladoRepo['evento'],
+  // Hay salón en la consulta (con varios días, en cada uno): un corporativo lo necesita.
+  haySalones: boolean,
+) {
   const tipo = datos.tipo ?? evento.tipo;
   if (tipo === 'Corporativo') {
-    if (datos.salones.length === 0) {
+    if (!haySalones) {
       throw ErrorApi.reglaNegocio('Un evento corporativo necesita al menos un salón');
     }
     return { tipo, tipoSocial: null, tipoSocialDetalle: null };
@@ -696,6 +792,109 @@ function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoR
     throw ErrorApi.reglaNegocio('Contanos qué evento es');
   }
   return { tipo, tipoSocial, tipoSocialDetalle };
+}
+
+// HU-50: el contexto con el que se calculan las líneas de un día al modificar una consulta: lo que
+// se leyó del catálogo y la proyección de precios (RN-13) a la fecha de referencia del evento.
+interface ContextoDeLineas {
+  catalogo: Map<number, ServicioDelCatalogo>;
+  salones: Map<number, SalonDelCatalogo>;
+  proyeccion: Proyeccion;
+  // La fecha de referencia cambió: lo que no trae precio explícito toma el de la fecha nueva en vez
+  // del congelado (HU-54).
+  cambioFecha: boolean;
+}
+type ServicioDelCatalogo = Awaited<
+  ReturnType<PresupuestosRepositorio['buscarServiciosPorIds']>
+>[number];
+type SalonDelCatalogo = Awaited<ReturnType<PresupuestosRepositorio['buscarSalonesPorIds']>>[number];
+type LineaGuardada = PresupuestoDetalladoRepo['lineas'][number];
+
+/**
+ * Las líneas de UN día de una consulta que se modifica: sus salones, sus servicios y sus adicionales,
+ * con el precio congelado de lo que ya tenía (`lineasPrevias`, las de ese mismo día) y el vigente de
+ * lo nuevo. Un evento de un solo día la usa con todas las líneas del presupuesto.
+ */
+function lineasDeModificacion(
+  dia: Pick<
+    DiaModificado,
+    'cantidadPersonas' | 'tipoJornada' | 'salones' | 'servicios' | 'adicionales'
+  >,
+  lineasPrevias: LineaGuardada[],
+  { catalogo, salones, proyeccion, cambioFecha }: ContextoDeLineas,
+): LineaCalculada[] {
+  // Un servicio puede estar más de una vez, una por modalidad (RN-11). La línea anterior de un
+  // servicio elegido es la de su misma modalidad; si no la hay pero el servicio tenía una sola
+  // línea, es esa con la modalidad cambiada, y conserva su precio base.
+  const lineasDeServicio = lineasPrevias.filter((linea) => linea.servicioId !== null);
+  const lineaAnterior = (servicioId: number, modalidad: ModalidadServicio) => {
+    const delServicio = lineasDeServicio.filter((linea) => linea.servicioId === servicioId);
+    return (
+      delServicio.find((linea) => linea.modalidad === modalidad) ??
+      (delServicio.length === 1 ? delServicio[0] : undefined)
+    );
+  };
+
+  const lineasServicios = dia.servicios.map((elegido) => {
+    const servicio = catalogo.get(elegido.servicioId);
+    if (!servicio) throw ErrorApi.noEncontrado(`No existe el servicio ${elegido.servicioId}`);
+    const modalidad = elegido.modalidad ?? 'Normal';
+    const anterior = lineaAnterior(elegido.servicioId, modalidad);
+    if (!anterior && !servicio.activo) {
+      throw ErrorApi.reglaNegocio(`El servicio "${servicio.nombre}" no está activo`);
+    }
+    exigirCantidadPosible(servicio, elegido.cantidad, dia.cantidadPersonas);
+    exigirModalidadAdmitida(servicio, modalidad, anterior?.modalidad);
+    // Lo que ya tenía precio conserva su precio base; lo nuevo, y lo que seguía a cotizar, toma el
+    // del catálogo proyectado a la fecha (RN-13), que también puede ser null (sigue a cotizar).
+    // Cambiar la modalidad no cambia el base: el recargo se vuelve a calcular sobre él (RN-11).
+    const congelado =
+      anterior && !anterior.aCotizar && !cambioFecha
+        ? (anterior.precioBase ?? anterior.precioUnitario)
+        : undefined;
+    const precioBase =
+      elegido.precioUnitario ?? congelado ?? precioVigenteDeServicio(servicio, proyeccion);
+    return lineaDeServicio(
+      servicio,
+      elegido.cantidad,
+      precioBase,
+      modalidad,
+      elegido.horaEstimada ?? null,
+      anterior?.descripcion ?? servicio.nombre,
+    );
+  });
+
+  // Cada salón conserva su precio congelado si ya estaba y no cambió la jornada; si es nuevo, o si
+  // la jornada cambió, toma el vigente. Un precioUnitario explícito es un ajuste comercial (RN-03).
+  const salonesAnteriores = new Map(
+    lineasPrevias.filter((linea) => linea.salonId !== null).map((linea) => [linea.salonId!, linea]),
+  );
+  const lineasSalones = dia.salones.map((elegido) => {
+    const salon = salones.get(elegido.salonId)!;
+    const anterior = salonesAnteriores.get(elegido.salonId);
+    const mismaJornada =
+      !!anterior && jornadaDeLineaSalon(anterior.descripcion) === dia.tipoJornada;
+    const congelado = mismaJornada && !cambioFecha ? anterior.precioUnitario : undefined;
+    return lineaDeSalon(
+      salon,
+      dia.tipoJornada,
+      elegido.precioUnitario ??
+        congelado ??
+        precioProyectado(precioDeSalon(salon, dia.tipoJornada), proyeccion),
+    );
+  });
+
+  const adicionales = dia.adicionales.map((adicional) =>
+    calcularLinea(
+      null,
+      adicional.descripcion,
+      adicional.cantidad,
+      adicional.precioUnitario,
+      adicional.horaEstimada ?? null,
+    ),
+  );
+
+  return [...lineasSalones, ...lineasServicios, ...adicionales];
 }
 
 /**
@@ -733,16 +932,30 @@ function resolverTipo(datos: ModificarPresupuesto, evento: PresupuestoDetalladoR
  */
 export async function modificarPresupuesto(
   id: number,
-  datos: ModificarPresupuesto,
+  pedido: ModificarPresupuesto,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
 ): Promise<ConsultaDetallada> {
   const presupuesto = await buscarOFallar(id, repo);
+  // HU-50: un evento de varios días (o que va a pasar a serlo) se modifica día por día, por otro
+  // camino. El de un solo día sigue exactamente como antes.
+  const dias = diasDeModificacion(pedido);
+  // Un pedido con los campos sueltos de un solo día no puede tocar un evento de varios días: se
+  // leería como achicarlo a un día y borraría el resto. Para eso está `dias`.
+  if (!pedido.dias && esDeVariosDias(presupuesto.evento)) {
+    throw ErrorApi.reglaNegocio(
+      'Este evento dura varios días: para modificarlo mandá el detalle de cada día (dias)',
+    );
+  }
+  if (dias.length > 1 || esDeVariosDias(presupuesto.evento)) {
+    return modificarPorDias(id, presupuesto, pedido, dias, repo);
+  }
+  const datos = aModificacionDeUnDia(pedido);
   const confirmado = esConfirmadoVigente(presupuesto);
   if (!confirmado) exigirConsultaEnCurso(presupuesto, 'modificar');
   if (confirmado && datos.salones.length === 0) {
     throw ErrorApi.reglaNegocio('Un evento confirmado necesita salón');
   }
-  const tipo = resolverTipo(datos, presupuesto.evento);
+  const tipo = resolverTipo(datos, presupuesto.evento, datos.salones.length > 0);
   // HU-54: con otra fecha, los precios congelados dejan de valer (dominio.md, «Recálculo
   // automático»). `fecha` viaja como YYYY-MM-DD y el evento la guarda a medianoche UTC.
   const cambioFecha = datos.fecha !== presupuesto.evento.fecha.toISOString().slice(0, 10);
@@ -755,85 +968,18 @@ export async function modificarPresupuesto(
     if (!encontrados.has(id)) throw ErrorApi.noEncontrado(`No existe el salón ${id}`);
   }
 
-  // Un servicio puede estar más de una vez, una por modalidad (RN-11). La línea anterior de un
-  // servicio elegido es la de su misma modalidad; si no la hay pero el servicio tenía una sola
-  // línea, es esa con la modalidad cambiada, y conserva su precio base.
-  const lineasDeServicio = presupuesto.lineas.filter((linea) => linea.servicioId !== null);
-  const lineaAnterior = (servicioId: number, modalidad: ModalidadServicio) => {
-    const delServicio = lineasDeServicio.filter((linea) => linea.servicioId === servicioId);
-    return (
-      delServicio.find((linea) => linea.modalidad === modalidad) ??
-      (delServicio.length === 1 ? delServicio[0] : undefined)
-    );
-  };
   const ids = datos.servicios.map((s) => s.servicioId);
   const catalogo = new Map(
     (ids.length > 0 ? await repo.buscarServiciosPorIds(ids) : []).map((s) => [s.id, s]),
   );
 
   const proyeccion = await proyeccionHasta(datos.fecha, repo);
-  const lineasServicios = datos.servicios.map((elegido) => {
-    const servicio = catalogo.get(elegido.servicioId);
-    if (!servicio) throw ErrorApi.noEncontrado(`No existe el servicio ${elegido.servicioId}`);
-    const modalidad = elegido.modalidad ?? 'Normal';
-    const anterior = lineaAnterior(elegido.servicioId, modalidad);
-    if (!anterior && !servicio.activo) {
-      throw ErrorApi.reglaNegocio(`El servicio "${servicio.nombre}" no está activo`);
-    }
-    exigirCantidadPosible(servicio, elegido.cantidad, datos.cantidadPersonas);
-    exigirModalidadAdmitida(servicio, modalidad, anterior?.modalidad);
-    // Lo que ya tenía precio conserva su precio base; lo nuevo, y lo que seguía a cotizar, toma el
-    // del catálogo proyectado a la fecha (RN-13), que también puede ser null (sigue a cotizar).
-    // Cambiar la modalidad no cambia el base: el recargo se vuelve a calcular sobre él (RN-11).
-    const congelado =
-      anterior && !anterior.aCotizar && !cambioFecha
-        ? (anterior.precioBase ?? anterior.precioUnitario)
-        : undefined;
-    const precioBase =
-      elegido.precioUnitario ?? congelado ?? precioVigenteDeServicio(servicio, proyeccion);
-    return lineaDeServicio(
-      servicio,
-      elegido.cantidad,
-      precioBase,
-      modalidad,
-      elegido.horaEstimada ?? null,
-      anterior?.descripcion ?? servicio.nombre,
-    );
+  const lineas = lineasDeModificacion(datos, presupuesto.lineas, {
+    catalogo,
+    salones: encontrados,
+    proyeccion,
+    cambioFecha,
   });
-
-  // Cada salón conserva su precio congelado si ya estaba y no cambió la jornada; si es nuevo, o si
-  // la jornada cambió, toma el vigente. Un precioUnitario explícito es un ajuste comercial (RN-03).
-  const salonesAnteriores = new Map(
-    presupuesto.lineas
-      .filter((linea) => linea.salonId !== null)
-      .map((linea) => [linea.salonId!, linea]),
-  );
-  const lineasSalones = datos.salones.map((elegido) => {
-    const salon = encontrados.get(elegido.salonId)!;
-    const anterior = salonesAnteriores.get(elegido.salonId);
-    const mismaJornada =
-      !!anterior && jornadaDeLineaSalon(anterior.descripcion) === datos.tipoJornada;
-    const congelado = mismaJornada && !cambioFecha ? anterior.precioUnitario : undefined;
-    return lineaDeSalon(
-      salon,
-      datos.tipoJornada,
-      elegido.precioUnitario ??
-        congelado ??
-        precioProyectado(precioDeSalon(salon, datos.tipoJornada), proyeccion),
-    );
-  });
-
-  const adicionales = datos.adicionales.map((adicional) =>
-    calcularLinea(
-      null,
-      adicional.descripcion,
-      adicional.cantidad,
-      adicional.precioUnitario,
-      adicional.horaEstimada ?? null,
-    ),
-  );
-
-  const lineas = [...lineasSalones, ...lineasServicios, ...adicionales];
   const total = sumarLineas(lineas);
   const horario = confirmado ? reubicarHorario(presupuesto.evento, datos) : {};
   const heredados = await armadosHeredados(presupuesto.evento, salonIds, repo);
@@ -903,6 +1049,115 @@ export async function modificarPresupuesto(
     }
     throw error;
   }
+  return obtenerConsulta(id, repo);
+}
+
+/**
+ * HU-50: modifica una consulta de varios días, o una de un día que pasa a durar varios. El pedido
+ * trae el estado completo de cada día (su fecha, personas, jornada, salones, servicios y
+ * adicionales), y cada día se identifica por su fecha: mandar una fecha de más o de menos en un
+ * extremo extiende o achica la franja, y un día nuevo entra con lo que trae.
+ *
+ * - Solo una consulta en curso (Estimado o Expirado) de un evento EnConsulta. Reservar, mover el
+ *   horario o cobrar un evento de varios días todavía no se puede (`exigirEventoDeUnDia`), así que un
+ *   evento confirmado no puede pasar a durar varios días.
+ * - Un solo presupuesto y un solo total: la suma de todos los días.
+ * - RN-13: el último día de la franja es la referencia. Si cambia (la franja se extiende o se
+ *   corre), lo que no trae precio explícito toma el precio de esa fecha, también en los días que ya
+ *   estaban; si solo cambia el primer día, los precios congelados se conservan (HU-54).
+ * - Cada servicio se controla contra las personas de SU día (RN-04).
+ */
+async function modificarPorDias(
+  id: number,
+  presupuesto: PresupuestoDetalladoRepo,
+  pedido: ModificarPresupuesto,
+  dias: DiaModificado[],
+  repo: PresupuestosRepositorio,
+): Promise<ConsultaDetallada> {
+  if (esConfirmadoVigente(presupuesto)) {
+    throw ErrorApi.reglaNegocio(
+      'Todavía no se puede pasar a varios días un evento ya reservado: la reserva por día llega en la próxima etapa',
+    );
+  }
+  exigirConsultaEnCurso(presupuesto, 'modificar');
+  const haySalonCadaDia = dias.every((dia) => dia.salones.length > 0);
+  const tipo = resolverTipo(pedido, presupuesto.evento, haySalonCadaDia);
+
+  const ultimoDia = dias[dias.length - 1]!;
+  const cambioFecha = ultimoDia.fecha !== presupuesto.evento.fechaFin.toISOString().slice(0, 10);
+
+  const salonIds = [...new Set(dias.flatMap((dia) => dia.salones.map((s) => s.salonId)))];
+  const salones = new Map(
+    (salonIds.length > 0 ? await repo.buscarSalonesPorIds(salonIds) : []).map((s) => [s.id, s]),
+  );
+  for (const salonId of salonIds) {
+    if (!salones.has(salonId)) throw ErrorApi.noEncontrado(`No existe el salón ${salonId}`);
+  }
+  const idsServicios = [...new Set(dias.flatMap((dia) => dia.servicios.map((s) => s.servicioId)))];
+  const catalogo = new Map(
+    (idsServicios.length > 0 ? await repo.buscarServiciosPorIds(idsServicios) : []).map((s) => [
+      s.id,
+      s,
+    ]),
+  );
+
+  const proyeccion = await proyeccionHasta(ultimoDia.fecha, repo);
+  const diaPrevioPorFecha = new Map(
+    presupuesto.evento.dias.map((dia) => [dia.fecha.toISOString().slice(0, 10), dia]),
+  );
+  const lineas = dias.flatMap((dia) => {
+    const previo = diaPrevioPorFecha.get(dia.fecha);
+    const previas = previo ? presupuesto.lineas.filter((linea) => linea.diaId === previo.id) : [];
+    return lineasDeModificacion(dia, previas, { catalogo, salones, proyeccion, cambioFecha }).map(
+      (linea) => ({ ...linea, fechaDia: dia.fecha }),
+    );
+  });
+  const total = sumarLineas(lineas);
+  const fechaEmision = new Date();
+
+  await repo.crearEnTransaccion(async (tx) => {
+    // Primero los días y las líneas (las líneas de un día que se saca tienen que irse antes que él),
+    // después los salones de cada día y por último los datos del evento y del presupuesto.
+    const diaIds = await repo.reemplazarDiasYLineas(
+      id,
+      dias.map((dia) => ({
+        fecha: new Date(dia.fecha),
+        cantidadPersonas: dia.cantidadPersonas,
+        tipoJornada: dia.tipoJornada,
+      })),
+      lineas,
+      tx,
+    );
+    for (const dia of dias) {
+      await repo.reemplazarSalonesDelEvento(
+        presupuesto.eventoId,
+        dia.salones.map((s) => s.salonId),
+        tx,
+        new Map(),
+        diaIds.get(dia.fecha),
+      );
+    }
+    await repo.actualizarEvento(
+      presupuesto.eventoId,
+      {
+        ...tipo,
+        // Sin el campo se mantiene; null la borra.
+        horaInicioEstimada: pedido.horaInicioEstimada,
+        horaFinEstimada: pedido.horaFinEstimada,
+      },
+      tx,
+    );
+    await repo.actualizarPresupuesto(
+      id,
+      {
+        estado: 'Estimado',
+        fechaEmision,
+        venceEn: lineas.length > 0 ? calcularVencimiento(fechaEmision) : null,
+        total: total.toFixed(2),
+      },
+      tx,
+    );
+  });
   return obtenerConsulta(id, repo);
 }
 
@@ -1018,6 +1273,8 @@ export async function reutilizarConfiguracion(
 ): Promise<EventoReutilizado> {
   const original = await repo.buscarEventoParaReutilizar(eventoId);
   if (!original) throw ErrorApi.noEncontrado(`No existe el evento ${eventoId}`);
+  // HU-50: reutilizar copia la franja entera, y eso llega en la parte 4.
+  exigirEventoDeUnDia(original, 'reutilizar');
 
   if (datos.fecha <= hoyEnZonaEventos()) {
     throw new ErrorApi(400, CODIGOS_ERROR.VALIDACION, 'Los datos enviados no son válidos', [
@@ -1225,7 +1482,11 @@ export async function recalcularEstimadosEnConsulta(
   const recalculados = presupuestos.map((presupuesto) => {
     const proyeccion: Proyeccion = {
       porcentaje,
-      meses: mesesHastaEvento(hoy, presupuesto.evento.fecha.toISOString().slice(0, 10)),
+      // HU-50: la referencia de los precios es el último día del evento (RN-13).
+      meses: mesesHastaEvento(
+        hoy,
+        (presupuesto.evento.fechaFin ?? presupuesto.evento.fecha).toISOString().slice(0, 10),
+      ),
     };
     const { lineas, total } = recalcularLineas(presupuesto.lineas, proyeccion);
     return {

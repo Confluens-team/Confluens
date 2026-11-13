@@ -186,6 +186,58 @@ uno de varios días hay que cambiar todo esto, que hoy busca «el» día del eve
 | El recálculo (HU-54) y `reubicarHorario` | Mueven un día | Mover toda la franja, con el último día como referencia del incremento |
 | La restricción de exclusión | No es `DEFERRABLE` | Revisar: correr una franja reservada de varios días puede pisar un día con otro mientras se actualizan de a uno |
 
+## Lo que se construyó en la parte 2 (cotizador y presupuesto por día)
+
+**Contrato** (`packages/shared`, con el OK del PO del 12/11/2026). El pedido de un solo día sigue
+valiendo con los campos sueltos de siempre, así que nada de lo que ya funcionaba cambió; el de varios
+días trae `dias[]`. Las dos formas llegan al servicio como la misma lista (`diasDeCotizacion`,
+`diasDeModificacion`):
+
+- `POST /presupuestos`: `dias[]` con fecha, personas, jornada, salones y servicios de cada día.
+- `PATCH /presupuestos/:id`: `dias[]` con el estado completo de cada día (salones, servicios y
+  adicionales). Cada día se identifica por su fecha: mandar una fecha de más o de menos en un extremo
+  extiende o achica la franja. Un pedido con los campos sueltos **no** puede tocar un evento de varios
+  días (se leería como achicarlo a uno y borraría el resto): responde 422.
+- `POST /presupuestos/social`: `fechaFin` opcional; los días entran vacíos, con las personas y la
+  jornada del cliente.
+- `GET /presupuestos/:id`: `evento.fechaFin`, `dias` (con sus salones) y `diaId` en cada línea. El
+  listado trae `fechaFinEvento`.
+
+**Precio.** Un solo presupuesto, un solo total y una sola seña. Los precios se proyectan a la fecha del
+**último día** (RN-13) para todo el presupuesto. Si al modificar cambia el último día, todo se
+reprecia; si solo cambia el primero, lo que ya estaba conserva su precio. Cada servicio se controla
+contra las personas de **su** día (RN-04).
+
+**Cambiar la franja** (`reemplazarDiasYLineas`). Si la franja entera se corrió, cada fila conserva su
+lugar y se mueve a su fecha nueva (hacia adelante desde el último día y hacia atrás desde el primero,
+porque la fecha es única por evento: `@@unique([eventoId, fecha])`); si se extendió o achicó, se
+conservan los días que siguen, se sacan los que quedaron afuera y los nuevos entran vacíos. Las líneas
+se reemplazan todas, así que ninguna impide sacar un día (`LineaPresupuesto.diaId` es Restrict).
+
+**Pantallas.** Selector de franja (un clic = un día; un segundo clic conecta; hasta 32 días, con los
+posteriores deshabilitados), cotizador con una pestaña por día y «copiar el día anterior», documento del
+presupuesto día por día con un único total, y editor del panel día por día para la consulta (también
+para completar una consulta social). El listado muestra hasta cuándo dura.
+
+### Decisiones de esta parte que el PO tiene que mirar
+
+1. **Hora de inicio estimada: una para todo el evento.** `backlog.md` pide que el cliente elija el
+   horario de cada día del cotizador corporativo, pero `EventoDia` no tiene dónde guardar una hora
+   estimada por día (`inicio` y `fin` son el horario real, que se carga al agendar). Hasta decidir si se
+   agrega esa columna, la hora estimada es una sola y vale para todos los días; el horario exacto de
+   cada día lo fija el Responsable de Eventos al agendar (parte 3). Pendiente `S-16` en `pendientes.md`.
+2. **Reservar, cobrar la seña y reutilizar un evento de varios días responden 422** hasta la parte 3:
+   siguen mirando un solo horario por evento y darían un falso solapamiento o un día sin mover. Un evento
+   reservado tampoco se puede estirar a varios días. El recálculo masivo del incremento (HU-54) **sí**
+   alcanza a un evento de varios días y proyecta al último.
+
+### Lo que NO se puede habilitar hasta la parte 3
+
+Se mantienen los puntos de la parte 1 que siguen abiertos: `buscarSolapamiento` (que hoy mira el resumen
+del evento) y el aviso de **todos** los choques por día y salón, la agenda y los filtros por fecha, el
+horario por día al agendar, y la restricción de exclusión no diferida. Con la guarda de arriba nada de
+eso se puede alcanzar con un evento de varios días.
+
 ## Cómo se entrega (propuesta)
 
 HU-50 se parte en cuatro partes que se entregan por separado. **Esta ADR cubre la primera**:
@@ -193,7 +245,7 @@ HU-50 se parte en cuatro partes que se entregan por separado. **Esta ADR cubre l
 1. **Modelo y solapamiento por día** (esta ADR, **construida**): `EventoDia`, `EventoSalon` por día, `diaId` en las
    líneas, las restricciones, los triggers y la migración, con los flujos de hoy adaptados para que
    todo siga funcionando con eventos de un día. **No cambia ninguna pantalla.**
-2. Cotizador y presupuesto por día.
+2. Cotizador y presupuesto por día (**construida**): contrato `dias[]`, selector de franja, pestañas por día, editor del panel y documento por día.
 3. Agenda y comanda por día.
 4. Repetir evento y recálculo con el último día como referencia.
 
