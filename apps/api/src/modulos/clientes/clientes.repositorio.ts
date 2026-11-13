@@ -51,10 +51,9 @@ export async function listarEventosDeCliente(
     where: {
       clienteId,
       estado: estado ? { in: estado } : undefined,
-      fecha: {
-        gte: desde ? new Date(desde) : undefined,
-        lte: hasta ? new Date(hasta) : undefined,
-      },
+      // HU-50: un evento de varios días entra si alguno de sus días cae en el rango.
+      fecha: { lte: hasta ? new Date(hasta) : undefined },
+      fechaFin: { gte: desde ? new Date(desde) : undefined },
     },
     orderBy: [{ fecha: 'desc' }, { id: 'desc' }],
     select: {

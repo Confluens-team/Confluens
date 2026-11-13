@@ -377,10 +377,9 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
       estado: estado ?? { not: 'Confirmado' },
       ocultoEn: null,
       evento: {
-        fecha: {
-          gte: desde ? new Date(desde) : undefined,
-          lte: hasta ? new Date(hasta) : undefined,
-        },
+        // HU-50: un evento de varios días entra si alguno de sus días cae en el rango.
+        fecha: { lte: hasta ? new Date(hasta) : undefined },
+        fechaFin: { gte: desde ? new Date(desde) : undefined },
         cliente: {
           AND: palabras.map((palabra) => ({
             OR: [

@@ -69,7 +69,8 @@ describe('clientes.repositorio: listarEventosDeCliente (HU-18)', () => {
     expect(eventoFindMany.mock.calls[0]![0].where).toEqual({
       clienteId: 3,
       estado: undefined,
-      fecha: { gte: undefined, lte: undefined },
+      fecha: { lte: undefined },
+      fechaFin: { gte: undefined },
     });
   });
 
@@ -84,7 +85,8 @@ describe('clientes.repositorio: listarEventosDeCliente (HU-18)', () => {
     expect(eventoFindMany.mock.calls[0]![0].where).toEqual({
       clienteId: 3,
       estado: { in: ['Cobrado'] },
-      fecha: { gte: new Date('2026-01-01'), lte: new Date('2026-12-31') },
+      fecha: { lte: new Date('2026-12-31') },
+      fechaFin: { gte: new Date('2026-01-01') },
     });
   });
 });
