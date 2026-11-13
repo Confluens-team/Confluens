@@ -34,7 +34,7 @@ import {
 import { Dialog } from 'radix-ui';
 import { useEffect, useRef, useState } from 'react';
 
-import { SelectorFecha, SelectorHora } from '@/components/SelectorFechaHora';
+import { SelectorFecha, SelectorHora, SelectorRangoFechas } from '@/components/SelectorFechaHora';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { IconoEstado } from '@/components/IconoEstado';
@@ -57,6 +57,7 @@ import {
   nombreCompleto,
 } from '@/lib/formato';
 import { cn } from '@/lib/utils';
+import { EditarConsultaPorDias } from './EditarConsultaPorDias';
 import { PresupuestoFormal } from './PresupuestoFormal';
 import { type CambioDePrecio, cambiosDePrecio, preciosParaFecha } from './recalculo-por-fecha';
 import { SeguimientoConsulta } from './SeguimientoConsulta';
@@ -187,25 +188,47 @@ export function EditarConsulta({
   // El presupuesto en PDF para el envío formal. El formulario queda montado (oculto) para no perder
   // lo que se estaba editando.
   const [documentoAbierto, setDocumentoAbierto] = useState(false);
+  // HU-50: la franja a la que el personal quiere estirar un evento de un solo día. Con ella (o con
+  // un evento que ya dura varios días) la consulta se edita día por día.
+  const [franjaNueva, setFranjaNueva] = useState<{ inicio: string; fin: string } | undefined>();
   function alternarDocumento(abierto: boolean) {
     setDocumentoAbierto(abierto);
     window.scrollTo({ top: 0 });
   }
 
-  const formulario = consulta.data && salones.data && servicios.data && configuracion.data && (
-    <Formulario
-      consulta={consulta.data}
-      salones={salones.data}
-      catalogo={servicios.data}
-      porcentajeMensual={configuracion.data.porcentajeMensual}
-      onGuardada={onGuardada}
-      onDadaDeBaja={onDadaDeBaja}
-      onAbrirEvento={onAbrirEvento}
-      onImprimirComanda={onImprimirComanda}
-      onDescargarPresupuesto={() => alternarDocumento(true)}
-      textoVolverAlGuardar={textoVolverAlGuardar}
-    />
-  );
+  const variosDias = !!consulta.data && (consulta.data.dias.length > 1 || !!franjaNueva);
+  const formulario =
+    consulta.data &&
+    salones.data &&
+    servicios.data &&
+    configuracion.data &&
+    (variosDias ? (
+      <EditarConsultaPorDias
+        consulta={consulta.data}
+        salones={salones.data}
+        catalogo={servicios.data}
+        porcentajeMensual={configuracion.data.porcentajeMensual}
+        franjaNueva={franjaNueva}
+        onGuardada={onGuardada}
+        onDadaDeBaja={onDadaDeBaja}
+        onDescargarPresupuesto={() => alternarDocumento(true)}
+        textoVolverAlGuardar={textoVolverAlGuardar}
+      />
+    ) : (
+      <Formulario
+        consulta={consulta.data}
+        salones={salones.data}
+        catalogo={servicios.data}
+        porcentajeMensual={configuracion.data.porcentajeMensual}
+        onGuardada={onGuardada}
+        onDadaDeBaja={onDadaDeBaja}
+        onAbrirEvento={onAbrirEvento}
+        onImprimirComanda={onImprimirComanda}
+        onDescargarPresupuesto={() => alternarDocumento(true)}
+        onVariosDias={(inicio, fin) => setFranjaNueva({ inicio, fin })}
+        textoVolverAlGuardar={textoVolverAlGuardar}
+      />
+    ));
 
   // El formulario no cambia de lugar en el árbol al abrir el documento: si cambiara, React lo
   // volvería a montar y se perdería lo editado.
@@ -245,6 +268,7 @@ function Formulario({
   onAbrirEvento,
   onImprimirComanda,
   onDescargarPresupuesto,
+  onVariosDias,
   textoVolverAlGuardar,
 }: {
   consulta: ConsultaDetallada;
@@ -256,6 +280,8 @@ function Formulario({
   onAbrirEvento: (eventoId: number) => void;
   onImprimirComanda?: (presupuestoId: number) => void;
   onDescargarPresupuesto: () => void;
+  // HU-50: un segundo clic en otro día estira el evento a varios; se sigue en el editor por días.
+  onVariosDias: (inicio: string, fin: string) => void;
   textoVolverAlGuardar: string;
 }) {
   const modificar = useModificarConsulta(consulta.id);
@@ -741,12 +767,28 @@ function Formulario({
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
               <Label htmlFor="consulta-fecha">Fecha</Label>
-              <SelectorFecha
-                id="consulta-fecha"
-                value={fecha}
-                onChange={cambiarFecha}
-                className={cambiosPorFecha.length > 0 ? claseCambiado : undefined}
-              />
+              {/* HU-50: mientras es una consulta, un segundo clic en otro día estira el evento a
+                  varios días y se pasa al editor por días. Uno ya confirmado sigue de un solo día. */}
+              {enCurso ? (
+                <SelectorRangoFechas
+                  id="consulta-fecha"
+                  inicio={fecha}
+                  fin={fecha}
+                  onChange={(nuevoInicio, nuevoFin) =>
+                    nuevoFin === nuevoInicio
+                      ? cambiarFecha(nuevoInicio)
+                      : onVariosDias(nuevoInicio, nuevoFin)
+                  }
+                  className={cambiosPorFecha.length > 0 ? claseCambiado : undefined}
+                />
+              ) : (
+                <SelectorFecha
+                  id="consulta-fecha"
+                  value={fecha}
+                  onChange={cambiarFecha}
+                  className={cambiosPorFecha.length > 0 ? claseCambiado : undefined}
+                />
+              )}
               {cambiosPorFecha.length > 0 && (
                 <p className="flex items-center gap-1 text-xs font-medium text-amber-900">
                   <RefreshCw className="size-3" /> Precios recalculados

@@ -45,6 +45,7 @@ export function DocumentoPresupuesto({
   dias,
   total: totalSinIva,
   salon,
+  horarioDeSalones,
   sinCondiciones = false,
 }: {
   id: number;
@@ -65,6 +66,8 @@ export function DocumentoPresupuesto({
   total: string;
   // El horario que va en la línea del salón (la de `idLinea`), en el presupuesto formal.
   salon?: { idLinea: number; horario: string };
+  // HU-50: con varios días, el mismo horario (el estimado, mientras no se agende) en cada línea de salón.
+  horarioDeSalones?: string;
   // El presupuesto formal trae después las condiciones completas: no hace falta el resumen.
   sinCondiciones?: boolean;
 }) {
@@ -99,6 +102,9 @@ export function DocumentoPresupuesto({
           )}
           {salon?.idLinea === linea.id && (
             <span className="block text-xs text-muted-foreground">{salon.horario}</span>
+          )}
+          {horarioDeSalones && linea.salonId !== null && (
+            <span className="block text-xs text-muted-foreground">{horarioDeSalones}</span>
           )}
         </td>
         <td className="py-3 text-right tabular-nums">{linea.cantidad}</td>

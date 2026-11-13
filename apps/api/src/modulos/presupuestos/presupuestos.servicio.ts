@@ -581,6 +581,8 @@ export async function listarPresupuestos(
     venceEn: presupuesto.venceEn?.toISOString() ?? null,
     total: presupuesto.total.toFixed(2),
     fechaEvento: evento.fecha.toISOString().slice(0, 10),
+    // Sin fecha de fin (un evento armado a mano en un test), dura un solo día.
+    fechaFinEvento: (evento.fechaFin ?? evento.fecha).toISOString().slice(0, 10),
     tipo: evento.tipo,
     tipoSocial: evento.tipoSocial,
     tipoSocialDetalle: evento.tipoSocialDetalle,
@@ -929,6 +931,13 @@ export async function modificarPresupuesto(
   // HU-50: un evento de varios días (o que va a pasar a serlo) se modifica día por día, por otro
   // camino. El de un solo día sigue exactamente como antes.
   const dias = diasDeModificacion(pedido);
+  // Un pedido con los campos sueltos de un solo día no puede tocar un evento de varios días: se
+  // leería como achicarlo a un día y borraría el resto. Para eso está `dias`.
+  if (!pedido.dias && esDeVariosDias(presupuesto.evento)) {
+    throw ErrorApi.reglaNegocio(
+      'Este evento dura varios días: para modificarlo mandá el detalle de cada día (dias)',
+    );
+  }
   if (dias.length > 1 || esDeVariosDias(presupuesto.evento)) {
     return modificarPorDias(id, presupuesto, pedido, dias, repo);
   }

@@ -404,6 +404,7 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
       evento: {
         select: {
           fecha: true,
+          fechaFin: true,
           tipo: true,
           tipoSocial: true,
           tipoSocialDetalle: true,

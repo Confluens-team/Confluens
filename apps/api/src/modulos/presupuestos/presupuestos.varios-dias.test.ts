@@ -406,6 +406,15 @@ describe('modificarPresupuesto con varios días (HU-50)', () => {
     ).rejects.toMatchObject({ status: 422 });
   });
 
+  it('un pedido de un solo día con los campos sueltos no achica un evento de varios días', async () => {
+    const repo = repoParaModificar(presupuestoConDias(['2040-04-30', '2040-05-01']));
+
+    await expect(
+      modificarPresupuesto(77, { ...dia('2040-04-30') } as never, comoRepo(repo)),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(repo.reemplazarDiasYLineas).not.toHaveBeenCalled();
+  });
+
   it('un evento ya reservado no puede pasar a durar varios días todavía', async () => {
     const base = presupuestoConDias(['2040-04-30']);
     const reservado = {
