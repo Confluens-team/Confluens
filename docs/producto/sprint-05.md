@@ -2,12 +2,13 @@
 
 Del 06/11/2026 al 20/11/2026 · Scrum Master: Facundo Andrés Pfening · Release 3 «Gestión y control»
 
-> **Estado al 12/11/2026: todo el alcance propuesto está construido en `sprint-05`.** La propuesta
+> **Estado al 14/11/2026: todo el alcance propuesto está construido en `sprint-05`, y también HU-50
+> (evento de varios días), que entró después.** La propuesta
 > se armó el 06/11/2026 a pedido del PO a partir de la tabla de distribución por sprint del
 > `Seguimiento del Proyecto` (sección 2.8), de `backlog.md` y de lo que ya existe en el código. El
 > 12/11/2026 se revisó cada historia contra el código de la rama y se actualizó la columna
-> «Situación hoy». Lo que sigue pendiente no es código: estimar las historias «a estimar» y pasar
-> alcance, puntos y numeración al Seguimiento y a los documentos de Drive. Hasta entonces este
+> «Situación hoy»; el 14/11/2026 se sumó HU-50 y lo que cambió desde entonces. Lo que sigue
+> pendiente no es código: ver «Pendiente del sprint». Hasta entonces este
 > archivo usa los **códigos de `backlog.md`** («HU-25 del backlog» es la auditoría, no la HU-25 del
 > Sprint 4).
 >
@@ -20,8 +21,9 @@ Del 06/11/2026 al 20/11/2026 · Scrum Master: Facundo Andrés Pfening · Release
 >   bloquea nada de este sprint, porque HU-54 funciona con el porcentaje único de hoy.
 > - **Entró** HU-56 (permisos por rol), que se proponía como candidata si sobraba lugar: ya está
 >   construida (PR #122).
-> - Las HU-50, HU-51 y HU-52 y dos historias que salieron del Sprint 4 (HU-18 y HU-22) no tienen
->   lugar en ningún sprint. Ver «Lo que no entra».
+> - **Entró** HU-50 (evento de varios días), que no tenía lugar en ningún sprint: el PO la definió el
+>   12/11/2026 y ya está construida (PR #141 a #144). HU-51 y HU-52 y dos historias que salieron del
+>   Sprint 4 (HU-18 y HU-22) siguen sin lugar en ningún sprint. Ver «Lo que no entra».
 
 Objetivo: que el sistema aplique las reglas acordadas con el cliente el 05/11/2026 que siguen
 pendientes (recálculo automático y seña de un presupuesto vencido), que deje rastro de quién cambió qué
@@ -38,7 +40,10 @@ administrar al personal.
   verde y la revisión de otro integrante: lo mismo que pide `AGENTS.md` §3, cambiando `develop` por
   `sprint-05`. El CI corre en cualquier pull request, también los que van a `sprint-05`.
 - Después de la exposición, `sprint-05` entra a `develop` por un pull request (merge commit, como
-  siempre).
+  siempre). Al 14/11/2026 `sprint-05` lleva 97 commits que `develop` no tiene y `develop` no tiene
+  ninguno que le falte a `sprint-05`, así que ese pull request entra sin conflictos. Trae migraciones
+  nuevas (HU-50 y las observaciones por día): hay que aplicarlas en cada base donde corra `develop`,
+  probando primero en una copia de la demo con `DATABASE_URL` y `DIRECT_URL` forzadas.
 - Si a `develop` le llega un arreglo urgente antes de eso, se mergea `develop` en `sprint-05` para
   no divergir.
 - **Protección:** del 07/11/2026 al 12/11/2026 la rama tuvo su propio ruleset de GitHub, «Flujo
@@ -64,6 +69,7 @@ administrar al personal.
 | HU-24 | Avisar por WhatsApp la recepción de la consulta y descargar su resumen en PDF | RE | 5 | Revisada contra los criterios en el PR #116, sin cambios. Falta re-estimarla en la Planning |
 | — | Enviar correo de confirmación de consulta | SYS | a estimar | Construido (PR #121 y siguientes): confirmación breve, sin resumen ni PDF adjunto (PO, 07/11/2026); no necesitó dependencia nueva. Sin dominio (S-11) solo llega al dueño de la cuenta de Resend |
 | HU-56 | Restringir el panel interno según el rol | todos | a estimar | Construida (PR #122): matriz de permisos por rol, restricciones en la API y secciones de Configuración según el rol |
+| HU-50 | Reservar un evento de varios días | RE | a estimar | Construida en cuatro partes (PR #141 a #144) y con las correcciones del PO del 13/11/2026 (ver «HU-50 del backlog»). Queda abierto `S-16` (hora estimada por día) |
 | — | Cerrar sesión | todos | — | Cubierta con tests (PR #116) |
 | — | Cambiar contraseña | todos | — | Restablecimiento por correo cubierto con tests (PR #116). Desde Mi cuenta, con HU-30 (PR #114) |
 | | **Total estimado** | | **18 + a estimar** | |
@@ -89,10 +95,13 @@ Entró a la rama después de la propuesta (sin historia propia en este documento
   a los salones, vista previa de las fotos de la landing, correcciones de seguridad (PR #135), el
   segundo cambio de fecha (HU-54, PR #130), el cambio de salón y de fecha de un evento confirmado
   (HU-12, PR #132) y ajustes para la exposición (PR #138).
-- Desde la rama `chore/marca-confluens-en-el-panel` (PR #140, **abierto**, todavía sin mergear en
-  `develop`): la marca de Confluens en el encabezado del panel, las **observaciones generales del
-  evento** (`Evento.observaciones`, internas del personal; migración y endpoint
-  `PATCH /eventos/:id/observaciones`) y «Fiesta empresarial» en lugar de «Fiesta corporativa».
+- Desde la rama `chore/marca-confluens-en-el-panel` (PR #140, mergeado en `develop`): la marca de
+  Confluens en el encabezado del panel, las **observaciones del evento** (internas del personal;
+  migración y endpoint `PATCH /eventos/:id/observaciones`; desde el 13/11/2026 son de cada día, ver
+  HU-50) y «Fiesta empresarial» en lugar de «Fiesta corporativa».
+- HU-50, el evento de varios días (PR #141 a #144), con las correcciones del PO del 13/11/2026 y dos
+  arreglos del panel: tocar la pestaña activa o el logo vuelve al listado, y la pantalla ya no salta
+  al actualizar los datos.
 
 Orden sugerido: HU-55 → HU-54 (las dos tocan el presupuesto y conviene no pisarse) en
 paralelo con HU-25; después HU-30 y HU-31 juntas; HU-24 y el correo al final.
@@ -111,7 +120,9 @@ paralelo con HU-25; después HU-30 y HU-31 juntas; HU-24 y el correo al final.
 **Cambios de modelo** (cada uno se confirma antes de tocar `schema.prisma`, `AGENTS.md` §6):
 `Usuario.activo` (HU-31, confirmado) y `AuditLog.campos` (HU-25, con el trigger que hace inmutable
 el registro). Fuera del alcance original: `Evento.horaFinEstimada` y `Evento.observaciones` (esta
-última confirmada por el PO el 12/11/2026).
+última confirmada por el PO el 12/11/2026 y pasada a `EventoDia.observaciones` el 13/11/2026, cuando
+cada día pasó a tener las suyas). HU-50 sumó la tabla `EventoDia` y sus triggers (ADR 0014, aceptada
+por el PO el 12/11/2026).
 
 **Sin dependencias nuevas.** El correo no lleva el PDF adjunto ni un resumen (PO, 07/11/2026): el PDF
 se sigue descargando desde el cotizador con la impresión del navegador. Así no hace falta una
@@ -188,6 +199,37 @@ Ya existen el botón `wa.me` (`BotonWhatsApp.tsx`, en el detalle y el seguimient
 la descarga del presupuesto en PDF con `window.print()`. Según el PO funciona bien (06/11/2026): se
 revisa contra los criterios de la Definición del Producto y se re-estima.
 
+## HU-50 del backlog — Reservar un evento de varios días
+
+Un evento dura de 1 a 32 días corridos y cada día tiene su horario, jornada, salones con su
+distribución, personas y servicios, con un solo presupuesto, un solo total y una sola seña. La
+definió el PO el 12/11/2026 (`backlog.md`, `dominio.md`) y el diseño de datos está en la ADR 0014, que
+detalla cada parte. Se construyó en cuatro partes, todas mergeadas en `sprint-05`:
+
+1. **Modelo y solapamiento por día** (PR #141): `EventoDia`, `EventoSalon` por día, la restricción de
+   exclusión y la migración de los eventos de hoy, que quedan con un día.
+2. **Cotizador y presupuesto por día** (PR #142): selector de franja de hasta 32 días, una pestaña por
+   día y el documento del presupuesto día por día.
+3. **Agenda, reserva y comanda por día** y 4. **repetir y modificar un evento reservado día por día**
+   (PR #143): horario por día, aviso de todos los choques, agenda en barra larga, comanda por día,
+   repetir con la misma franja y recálculo con el último día como referencia.
+
+**Correcciones del PO del 13/11/2026** (PR #144), también en `sprint-05`:
+
+- **Distribución por día:** el mismo salón puede armarse distinto cada día (`fecha` opcional en cada
+  distribución de `POST /eventos/:id/agendar`).
+- **Observaciones por día:** cada día tiene las suyas (`EventoDia.observaciones`, migración
+  `20261113150000`). Las que ya existían pasaron al primer día; `Evento.observaciones` queda sin uso.
+  Cambia la regla de `dominio.md`.
+- **Detalle del evento de varios días:** un solo bloque con el selector de día y, debajo, las
+  observaciones y el presupuesto de ese día con su subtotal. El total sin IVA se ve siempre.
+- **Lápiz del horario** en los datos del evento; el formulario de horario y distribución sigue en
+  «Agendar y registrar pago» de una consulta.
+
+**Abierto:** `S-16` (hora estimada de inicio por día, `pendientes.md`), la estimación de la historia en
+la Planning, y llevar la regla de las observaciones por día a los documentos de Drive. Sin aplicar
+todavía a las bases que no sean la local: las migraciones de HU-50 y de las observaciones.
+
 ## Cerrar sesión y cambiar contraseña
 
 Ya existen y se cubren con tests: cerrar sesión (`POST /auth/logout`, invalida el token en todos los
@@ -241,15 +283,31 @@ Sprint 6 en lugar de otras y cuáles quedan fuera del alcance de la tesis.
 |---|---|---|---|
 | HU-51 | Agregar servicios propios a un evento | a estimar | Reemplaza la caja de texto del evento social (S-14) |
 | HU-52 | Registrar lo pagado de más como no reintegrable | a estimar | Cambio de modelo |
-| HU-50 | Reservar un evento de varios días | a estimar | Definida por el PO el 12/11/2026 (`backlog.md`, `dominio.md`) y con el diseño de datos aceptado (ADR 0014). **Construida en cuatro partes** (modelo y solapamiento por día; cotizador y presupuesto por día con el selector de franja; horario por día, agenda, comanda y el aviso de todos los choques; repetir evento y recálculo con el último día). Queda abierto `S-16` (hora estimada por día) y falta estimarla en la Planning |
 | HU-18 | Reasignar un evento a otro salón | 8 | Salió del Sprint 4 |
 | HU-22 | Generar el reporte de servicios contratados | 5 | Salió del Sprint 4 |
+
+## Pendiente del sprint
+
+No queda código del alcance. Lo que falta (al 14/11/2026):
+
+- **Pasar `sprint-05` a `develop`** por pull request, después de la exposición, y borrar la rama (ver
+  «Rama del sprint»). Hasta entonces «desplegada y accesible» no se cumple, por diseño.
+- **Estimar en la Planning** HU-54, HU-55, el correo, HU-56 y HU-50, y **re-estimar** HU-24.
+- **Pasar alcance, puntos y numeración** al `Seguimiento del Proyecto` y a los documentos de Drive.
+- **Cargar en Jira** las tres correcciones sin historia (nombre del PDF, importes y botón «Salir»).
+- **Definición del Producto:** criterios, prototipo, casos de prueba y resultados de las historias.
+- **Dominio propio para el correo** (S-11): sin él, la confirmación de consulta y el restablecimiento
+  de contraseña solo le llegan al dueño de la cuenta de Resend.
+- **Revisar en la app el restablecimiento de contraseña por correo** (pedido del PO, 06/11/2026).
+- **Migrar la demo y la base de producción** con las migraciones de HU-50 y de las observaciones por
+  día, probando antes en una copia.
+- **S-16:** decidir si la hora estimada de inicio se guarda por día.
 
 ## Definición de Terminado
 
 La misma del Sprint 4: los criterios pasan como tests automatizados, el código fue revisado por
 otro integrante vía pull request, el CI corre sin errores, la funcionalidad está desplegada y
 accesible, y la Definición del Producto tiene sus criterios, prototipo, casos de prueba y
-resultados. La auditoría deja de quedar afuera: entra con HU-25 del backlog. Al 12/11/2026
+resultados. La auditoría deja de quedar afuera: entra con HU-25 del backlog. Al 14/11/2026
 «desplegada y accesible» no se cumple todavía, por diseño: `sprint-05` entra a `develop` recién
 después de la exposición.
