@@ -244,6 +244,12 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
   const activa = PESTANIAS.find((p) => p.valor === pestania);
   const [oscuro, alternarModoOscuro] = useModoOscuro();
 
+  // Marca el <html> mientras se está en el panel (ver index.css: sin scroll suave).
+  useEffect(() => {
+    document.documentElement.classList.add('panel-interno');
+    return () => document.documentElement.classList.remove('panel-interno');
+  }, []);
+
   // Primero se sale a la landing y después se cierra la sesión: si fuera al revés, la ruta /admin
   // se quedaría sin sesión y redirigiría al login del personal.
   function salir() {
@@ -332,13 +338,13 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
             key={diaEnLaAgenda ? `agenda-${navegacion}` : 'agenda'}
             vista="calendario"
             diaInicial={diaEnLaAgenda}
+            reinicio={navegacion}
           />
         )}
         {pestania === 'eventos' && <Agenda key="eventos" vista="lista" reinicio={navegacion} />}
         {pestania === 'consultas' && <ListadoConsultas reinicio={navegacion} />}
         {pestania === 'clientes' && <ListadoClientes reinicio={navegacion} />}
         {pestania === 'configuracion' && <ConfiguracionDeNegocio sesion={sesion} />}
-        reinicio={navegacion}
         {pestania === 'cuenta' && <MiCuenta sesion={sesion} onCerrarSesion={salir} />}
       </main>
     </div>

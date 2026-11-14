@@ -236,6 +236,14 @@
     @apply font-sans;
     scroll-behavior: smooth;
   }
+  /* En el panel interno cada actualización de datos cambia el alto de la página y el navegador
+     reacomoda el scroll: con scroll suave eso se ve como un salto de unos píxeles que después se
+     asienta. Sin suavizado el reacomodo es instantáneo, y el lugar de la barra se reserva para que
+     el contenido no se corra de costado cuando aparece o desaparece. */
+  html.panel-interno {
+    scroll-behavior: auto;
+    scrollbar-gutter: stable;
+  }
   h1,
   h2,
   h3 {

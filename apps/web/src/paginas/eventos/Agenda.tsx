@@ -347,11 +347,12 @@ export function Agenda({
 
   return (
     <div className="space-y-5">
-      {agenda.isFetching && (
-        <p className="text-right text-xs text-muted-foreground">Actualizando…</p>
-      )}
-
-      <div className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-border">
+      {/* Dentro de la tarjeta de filtros y en absoluto: aparecer y desaparecer en cada cambio de mes
+          no tiene que correr nada de lugar. */}
+      <div className="relative space-y-3 rounded-xl bg-card p-4 ring-1 ring-border">
+        {agenda.isFetching && (
+          <p className="absolute top-2 right-3 text-xs text-muted-foreground">Actualizando…</p>
+        )}
         <div>
           <p className="mb-2 text-xs font-semibold tracking-[0.15em] text-dorado-texto uppercase">
             Salones
