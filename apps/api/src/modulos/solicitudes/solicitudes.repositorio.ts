@@ -1,5 +1,6 @@
 import type { CrearSolicitud } from '@confluens/shared';
 
+import { registrarAuditoria } from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
 
 // Capa de acceso a datos del módulo. Separada del servicio para poder mockear el módulo entero en
@@ -24,14 +25,24 @@ export async function listar() {
 // cuando el formulario no lo manda —se llega a él desde el menú y no desde la ficha de un salón—
 // para que la columna nunca quede en undefined y el listado interno pueda distinguir "sin
 // preferencia" de "prefiere este salón".
+// La que manda el cliente desde la landing no se audita (canal público); la que carga el personal, sí.
 export async function crear(datos: CrearSolicitud, clienteId: number | null = null) {
-  return prisma.solicitud.create({
-    data: {
-      ...datos,
-      fechaDeseada: new Date(datos.fechaDeseada),
-      salonId: datos.salonId ?? null,
-      clienteId,
-    },
+  return prisma.$transaction(async (tx) => {
+    const solicitud = await tx.solicitud.create({
+      data: {
+        ...datos,
+        fechaDeseada: new Date(datos.fechaDeseada),
+        salonId: datos.salonId ?? null,
+        clienteId,
+      },
+    });
+    await registrarAuditoria(tx, {
+      entidad: 'Solicitud',
+      entidadId: solicitud.id,
+      anterior: null,
+      nuevo: solicitud,
+    });
+    return solicitud;
   });
 }
 

@@ -63,13 +63,22 @@ describe('clientes.repositorio: listarEventosDeCliente (HU-18)', () => {
     expect(eventoFindMany.mock.calls[0]![0].orderBy).toEqual([{ fecha: 'desc' }, { id: 'desc' }]);
   });
 
+  // HU-50: el salón se reserva por día; sin `distinct` uno usado tres días saldría tres veces.
+  it('trae cada salón una sola vez aunque el evento lo use varios días', async () => {
+    await listarEventosDeCliente(3, {});
+
+    expect(eventoFindMany.mock.calls[0]![0].select.salones.distinct).toEqual(['salonId']);
+    expect(eventoFindMany.mock.calls[0]![0].select.fechaFin).toBe(true);
+  });
+
   it('sin filtros trae los eventos del cliente en cualquier estado', async () => {
     await listarEventosDeCliente(3, {});
 
     expect(eventoFindMany.mock.calls[0]![0].where).toEqual({
       clienteId: 3,
       estado: undefined,
-      fecha: { gte: undefined, lte: undefined },
+      fecha: { lte: undefined },
+      fechaFin: { gte: undefined },
     });
   });
 
@@ -84,7 +93,8 @@ describe('clientes.repositorio: listarEventosDeCliente (HU-18)', () => {
     expect(eventoFindMany.mock.calls[0]![0].where).toEqual({
       clienteId: 3,
       estado: { in: ['Cobrado'] },
-      fecha: { gte: new Date('2026-01-01'), lte: new Date('2026-12-31') },
+      fecha: { lte: new Date('2026-12-31') },
+      fechaFin: { gte: new Date('2026-01-01') },
     });
   });
 });

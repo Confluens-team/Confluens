@@ -7,6 +7,7 @@ import {
   esquemaModificarMedioPago,
   esquemaResultadoAnulacion,
   esquemaResultadoPago,
+  ROLES_QUE_ADMINISTRAN_MEDIOS_DE_PAGO,
 } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -58,7 +59,7 @@ registroOpenApi.registerPath({
     404: { description: 'No existe el evento, o el medio de pago no existe o está inactivo' },
     409: {
       description:
-        'El evento está Cancelado o Cobrado, no tiene un presupuesto vigente, su presupuesto está Expirado (RN-06), o el salón ya está ocupado en esa franja por otro evento (RN-12)',
+        'El evento está Cancelado o Cobrado, no tiene un presupuesto vigente, o el salón ya está ocupado en esa franja por otro evento (RN-12). Un presupuesto Expirado se cobra igual (HU-55)',
     },
     422: {
       description:
@@ -164,7 +165,10 @@ registroOpenApi.registerPath({
     },
     400: { description: 'Nombre vacío o de más de 40 caracteres, o sin habilitar en ningún caso' },
     401: { description: 'Sin sesión activa' },
-    403: { description: 'La sesión no es del personal' },
+    403: {
+      description:
+        'Solo el Responsable de Finanzas, el Gerente General y el Administrador del Sistema',
+    },
     409: { description: 'Ya existe un medio con ese nombre (sin distinguir mayúsculas)' },
   },
 });
@@ -187,7 +191,10 @@ registroOpenApi.registerPath({
     },
     400: { description: 'Nombre vacío o de más de 40 caracteres, o sin habilitar en ningún caso' },
     401: { description: 'Sin sesión activa' },
-    403: { description: 'La sesión no es del personal' },
+    403: {
+      description:
+        'Solo el Responsable de Finanzas, el Gerente General y el Administrador del Sistema',
+    },
     404: { description: 'No existe el medio de pago indicado' },
     409: { description: 'Otro medio ya tiene ese nombre (sin distinguir mayúsculas)' },
   },
@@ -202,12 +209,12 @@ rutasMediosPago.get(
   validar({ query: esquemaFiltrosMediosPago }),
   asincrono(listarMedios),
 );
-// HU-19: el actor es el Responsable de Finanzas, pero mientras no se dividan las funciones por rol
-// todo el personal ve y hace todo (decisión del PO, 06/10/2026).
+// HU-19 y HU-56: los administran el Responsable de Finanzas, el GG y el ADM; el RE no. El listado de
+// arriba queda para todo el personal porque el RE, el RF y el GG lo usan para registrar un cobro.
 rutasMediosPago.post(
   '/',
   autenticar,
-  autorizar(...ROLES_PERSONAL),
+  autorizar(...ROLES_QUE_ADMINISTRAN_MEDIOS_DE_PAGO),
   validar({ body: esquemaCrearMedioPago }),
   asincrono(crearMedio),
 );
@@ -216,7 +223,7 @@ rutasMediosPago.post(
 rutasMediosPago.patch(
   '/:id',
   autenticar,
-  autorizar(...ROLES_PERSONAL),
+  autorizar(...ROLES_QUE_ADMINISTRAN_MEDIOS_DE_PAGO),
   validar({ params: esquemaIdParam, body: esquemaModificarMedioPago }),
   asincrono(modificarMedio),
 );

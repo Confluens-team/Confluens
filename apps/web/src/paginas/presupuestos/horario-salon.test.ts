@@ -7,6 +7,7 @@ const evento = (cambios: Partial<ConsultaDetallada['evento']>): ConsultaDetallad
   id: 1,
   estado: 'EnConsulta',
   fecha: '2026-11-15',
+  fechaFin: '2026-11-15',
   cantidadPersonas: 30,
   tipo: 'Corporativo',
   tipoSocial: null,

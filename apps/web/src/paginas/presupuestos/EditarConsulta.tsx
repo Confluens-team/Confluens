@@ -34,7 +34,7 @@ import {
 import { Dialog } from 'radix-ui';
 import { useEffect, useRef, useState } from 'react';
 
-import { SelectorFecha, SelectorHora } from '@/components/SelectorFechaHora';
+import { SelectorFecha, SelectorHora, SelectorRangoFechas } from '@/components/SelectorFechaHora';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { IconoEstado } from '@/components/IconoEstado';
@@ -57,6 +57,8 @@ import {
   nombreCompleto,
 } from '@/lib/formato';
 import { cn } from '@/lib/utils';
+import { AvisoDeChoques } from './AvisoDeChoques';
+import { EditarConsultaPorDias } from './EditarConsultaPorDias';
 import { PresupuestoFormal } from './PresupuestoFormal';
 import { type CambioDePrecio, cambiosDePrecio, preciosParaFecha } from './recalculo-por-fecha';
 import { SeguimientoConsulta } from './SeguimientoConsulta';
@@ -150,8 +152,9 @@ const TIPOS_SOCIALES = Object.entries(ETIQUETAS_TIPO_EVENTO_SOCIAL) as [TipoEven
 // HU-12: una consulta abierta desde el listado. Después de hablar con el cliente, el personal
 // corrige fecha, salón, personas, jornada, servicios (del catálogo o escritos a mano), cantidades y
 // precios. Al guardar queda Estimado, la vigencia vuelve a contar 10 días y se vuelve al listado.
-// En una Expirado, «Recalcular» trae los precios vigentes al formulario: al guardar, la misma
-// consulta vuelve a Estimado. Los datos del cliente son suyos: acá solo se muestran.
+// HU-54: no hay botón Recalcular. Cambiar la fecha recalcula los precios del salón y del catálogo con
+// los de la fecha nueva (en cualquier estado); al guardar, una Expirado vuelve a Estimado. Los datos
+// del cliente son suyos: acá solo se muestran.
 // ADR 0008: también se corrigen el tipo de evento y la hora estimada. Una consulta social llega sin
 // salón ni servicios: el personal arma el presupuesto acá y la vigencia arranca al guardarlo.
 export function EditarConsulta({
@@ -186,25 +189,48 @@ export function EditarConsulta({
   // El presupuesto en PDF para el envío formal. El formulario queda montado (oculto) para no perder
   // lo que se estaba editando.
   const [documentoAbierto, setDocumentoAbierto] = useState(false);
+  // HU-50: la franja a la que el personal quiere estirar un evento de un solo día. Con ella (o con
+  // un evento que ya dura varios días) la consulta se edita día por día.
+  const [franjaNueva, setFranjaNueva] = useState<{ inicio: string; fin: string } | undefined>();
   function alternarDocumento(abierto: boolean) {
     setDocumentoAbierto(abierto);
     window.scrollTo({ top: 0 });
   }
 
-  const formulario = consulta.data && salones.data && servicios.data && configuracion.data && (
-    <Formulario
-      consulta={consulta.data}
-      salones={salones.data}
-      catalogo={servicios.data}
-      porcentajeMensual={configuracion.data.porcentajeMensual}
-      onGuardada={onGuardada}
-      onDadaDeBaja={onDadaDeBaja}
-      onAbrirEvento={onAbrirEvento}
-      onImprimirComanda={onImprimirComanda}
-      onDescargarPresupuesto={() => alternarDocumento(true)}
-      textoVolverAlGuardar={textoVolverAlGuardar}
-    />
-  );
+  const variosDias = !!consulta.data && (consulta.data.dias.length > 1 || !!franjaNueva);
+  const formulario =
+    consulta.data &&
+    salones.data &&
+    servicios.data &&
+    configuracion.data &&
+    (variosDias ? (
+      <EditarConsultaPorDias
+        consulta={consulta.data}
+        salones={salones.data}
+        catalogo={servicios.data}
+        porcentajeMensual={configuracion.data.porcentajeMensual}
+        franjaNueva={franjaNueva}
+        onGuardada={onGuardada}
+        onDadaDeBaja={onDadaDeBaja}
+        onAbrirEvento={onAbrirEvento}
+        onDescargarPresupuesto={() => alternarDocumento(true)}
+        textoVolverAlGuardar={textoVolverAlGuardar}
+      />
+    ) : (
+      <Formulario
+        consulta={consulta.data}
+        salones={salones.data}
+        catalogo={servicios.data}
+        porcentajeMensual={configuracion.data.porcentajeMensual}
+        onGuardada={onGuardada}
+        onDadaDeBaja={onDadaDeBaja}
+        onAbrirEvento={onAbrirEvento}
+        onImprimirComanda={onImprimirComanda}
+        onDescargarPresupuesto={() => alternarDocumento(true)}
+        onVariosDias={(inicio, fin) => setFranjaNueva({ inicio, fin })}
+        textoVolverAlGuardar={textoVolverAlGuardar}
+      />
+    ));
 
   // El formulario no cambia de lugar en el árbol al abrir el documento: si cambiara, React lo
   // volvería a montar y se perdería lo editado.
@@ -244,6 +270,7 @@ function Formulario({
   onAbrirEvento,
   onImprimirComanda,
   onDescargarPresupuesto,
+  onVariosDias,
   textoVolverAlGuardar,
 }: {
   consulta: ConsultaDetallada;
@@ -255,6 +282,8 @@ function Formulario({
   onAbrirEvento: (eventoId: number) => void;
   onImprimirComanda?: (presupuestoId: number) => void;
   onDescargarPresupuesto: () => void;
+  // HU-50: un segundo clic en otro día estira el evento a varios; se sigue en el editor por días.
+  onVariosDias: (inicio: string, fin: string) => void;
   textoVolverAlGuardar: string;
 }) {
   const modificar = useModificarConsulta(consulta.id);
@@ -304,7 +333,6 @@ function Formulario({
   );
   const [agregar, setAgregar] = useState('');
   const [otro, setOtro] = useState({ descripcion: '', cantidad: '1', precio: '' });
-  const [recalculado, setRecalculado] = useState(false);
   // Guardar con precios que cambió la fecha pide confirmarlo antes (HU-54 del backlog).
   const [confirmandoPrecios, setConfirmandoPrecios] = useState(false);
   const [guardadaConPreciosNuevos, setGuardadaConPreciosNuevos] = useState(false);
@@ -344,7 +372,9 @@ function Formulario({
   // original; si no, toma el vigente. Después se puede ajustar a mano (RN-03).
   function precioInicial(salonId: number, conJornada: TipoJornada): string {
     const congelado = preciosOriginales.get(salonId);
-    if (congelado && conJornada === guardado.tipoJornada && !recalculado) return congelado;
+    if (congelado && conJornada === guardado.tipoJornada && fecha === guardado.evento.fecha) {
+      return congelado;
+    }
     const salon = salonDe(salonId);
     return salon ? proyectar(precioDeSalon(salon, conJornada)) : '0.00';
   }
@@ -371,26 +401,6 @@ function Formulario({
     );
   }
 
-  // RN-06 / HU-12: un Expirado se recalcula con los precios vigentes del salón y de cada servicio
-  // del catálogo. Los adicionales escritos a mano conservan su precio. Se guarda con «Guardar».
-  function recalcularPrecios() {
-    setSalonesSel((anteriores) =>
-      anteriores.map((s) => {
-        const salon = salonDe(s.salonId);
-        return salon ? { ...s, precio: proyectar(precioDeSalon(salon, jornada)) } : s;
-      }),
-    );
-    setLineas((anteriores) =>
-      anteriores.map((linea) => {
-        const servicio = catalogo.find((s) => s.id === linea.servicioId);
-        const vigente = servicio ? precioVigente(servicio) : null;
-        // Un tercerizado que sigue a cotizar en el catálogo conserva lo que tenía.
-        return vigente != null ? { ...linea, precio: vigente } : linea;
-      }),
-    );
-    setRecalculado(true);
-  }
-
   // HU-54 del backlog (reunión 05/11/2026): cambiar la fecha del evento recalcula solo el salón y
   // los servicios propios con los precios de la fecha nueva (RN-13). Volver a la fecha original
   // recupera los precios guardados. La regla está en recalculo-por-fecha.ts.
@@ -398,9 +408,8 @@ function Formulario({
     setFecha(nuevaFecha);
     if (!nuevaFecha) return;
     const recalculados = preciosParaFecha(nuevaFecha, salonesSel, lineas, {
-      // Un Expirado que ya se recalculó con los vigentes no vuelve a los precios vencidos.
-      originalesSalon: recalculado ? new Map() : preciosOriginales,
-      originalesLinea: recalculado ? new Map() : preciosOriginalesLinea,
+      originalesSalon: preciosOriginales,
+      originalesLinea: preciosOriginalesLinea,
       fechaOriginal: guardado.evento.fecha,
       jornadaOriginalCoincide: jornada === guardado.tipoJornada,
       precioSalonCatalogo: (salonId) => {
@@ -629,7 +638,6 @@ function Formulario({
           setJornada(resultado.tipoJornada);
           setSalonesSel(salonesEditables(resultado));
           setLineas(lineasEditables(resultado));
-          setRecalculado(false);
           setGuardadaConPreciosNuevos(conPreciosNuevos);
           setGuardada(resultado);
         },
@@ -684,15 +692,10 @@ function Formulario({
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-estado-expirado-fondo px-4 py-3 text-sm text-estado-expirado-texto ring-1 ring-estado-expirado/30">
           <p className="flex items-center gap-2 font-medium">
             <AlertTriangle className="size-4 shrink-0" />
-            {recalculado
-              ? 'Precios actualizados a los vigentes. Guardá los cambios para que vuelva a Estimado.'
-              : 'Presupuesto vencido, recalcular'}
+            {fecha !== guardado.evento.fecha
+              ? 'Presupuesto vencido: con la fecha nueva, los precios se recalcularon. Guardá para que vuelva a Estimado.'
+              : 'Presupuesto vencido. Si le cambiás la fecha, se recalcula con los precios de la fecha nueva.'}
           </p>
-          {!recalculado && (
-            <Button type="button" size="sm" variant="outline" onClick={recalcularPrecios}>
-              <RefreshCw /> Recalcular con precios vigentes
-            </Button>
-          )}
         </div>
       )}
       {confirmado && (
@@ -766,12 +769,28 @@ function Formulario({
           <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-1.5">
               <Label htmlFor="consulta-fecha">Fecha</Label>
-              <SelectorFecha
-                id="consulta-fecha"
-                value={fecha}
-                onChange={cambiarFecha}
-                className={cambiosPorFecha.length > 0 ? claseCambiado : undefined}
-              />
+              {/* HU-50: mientras es una consulta, un segundo clic en otro día estira el evento a
+                  varios días y se pasa al editor por días. Uno ya confirmado sigue de un solo día. */}
+              {editable ? (
+                <SelectorRangoFechas
+                  id="consulta-fecha"
+                  inicio={fecha}
+                  fin={fecha}
+                  onChange={(nuevoInicio, nuevoFin) =>
+                    nuevoFin === nuevoInicio
+                      ? cambiarFecha(nuevoInicio)
+                      : onVariosDias(nuevoInicio, nuevoFin)
+                  }
+                  className={cambiosPorFecha.length > 0 ? claseCambiado : undefined}
+                />
+              ) : (
+                <SelectorFecha
+                  id="consulta-fecha"
+                  value={fecha}
+                  onChange={cambiarFecha}
+                  className={cambiosPorFecha.length > 0 ? claseCambiado : undefined}
+                />
+              )}
               {cambiosPorFecha.length > 0 && (
                 <p className="flex items-center gap-1 text-xs font-medium text-amber-900">
                   <RefreshCw className="size-3" /> Precios recalculados
@@ -931,6 +950,9 @@ function Formulario({
               : 'sin agendar todavía (se cargan al registrar el pago)'}
           </p>
         </section>
+
+        {/* HU-50: aviso preventivo: los salones que otro evento ya ocupa ese día (RN-12). */}
+        {enCurso && <AvisoDeChoques consultaId={consulta.id} />}
 
         {tipo === 'Social' && (
           <section className="rounded-xl bg-card p-5 ring-1 ring-tipo-social-suave">
@@ -1360,17 +1382,16 @@ function Formulario({
               <CalendarCheck className="size-4 text-dorado" /> Cobrar la seña
             </h3>
             <p className="text-xs text-muted-foreground">
-              {expirado
-                ? 'La consulta está vencida: recalculala y guardá los cambios antes de cobrar la seña.'
-                : consulta.salones.length === 0
-                  ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
-                  : 'Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda. Guardá antes los cambios de la consulta.'}
+              {/* HU-55: una consulta vencida se cobra igual, sin recalcular (RN-06). */}
+              {consulta.salones.length === 0
+                ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
+                : `${expirado ? 'La consulta está vencida, pero la seña se cobra igual, sin recalcular. ' : ''}Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda. Guardá antes los cambios de la consulta.`}
             </p>
           </div>
           <Button
             type="button"
             variant="outline"
-            disabled={expirado || consulta.salones.length === 0}
+            disabled={consulta.salones.length === 0}
             onClick={() => onAbrirEvento(consulta.evento.id)}
           >
             <CalendarCheck /> Registrar pagos

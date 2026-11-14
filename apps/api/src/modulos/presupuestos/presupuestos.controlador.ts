@@ -1,4 +1,5 @@
 import type {
+  ChoquesDeConsulta,
   ConsultaDetallada,
   CrearConsultaSocial,
   CrearPresupuesto,
@@ -17,6 +18,7 @@ import {
   generarPresupuesto,
   listarPresupuestos,
   modificarPresupuesto,
+  obtenerChoquesDeConsulta,
   obtenerConsulta,
   ocultarPresupuesto,
   registrarConsultaSocial,
@@ -72,6 +74,14 @@ export async function listar(req: Request, res: Response): Promise<void> {
 export async function obtener(req: Request, res: Response): Promise<void> {
   const cuerpo: RespuestaExito<ConsultaDetallada> = {
     data: await obtenerConsulta(Number(req.params.id)),
+  };
+  res.status(200).json(cuerpo);
+}
+
+// HU-50: el aviso preventivo de choques de una consulta.
+export async function obtenerChoques(req: Request, res: Response): Promise<void> {
+  const cuerpo: RespuestaExito<ChoquesDeConsulta> = {
+    data: await obtenerChoquesDeConsulta(Number(req.params.id)),
   };
   res.status(200).json(cuerpo);
 }

@@ -100,6 +100,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
       id: 20,
       clienteId: 10,
       fecha: new Date('2026-11-15T00:00:00.000Z'),
+      fechaFin: new Date('2026-11-15T00:00:00.000Z'),
       inicio: null,
       fin: null,
       cantidadPersonas: 10,
@@ -142,11 +143,25 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
           } | null,
         },
       ],
+      // HU-50: el único día del evento, con sus salones.
+      dias: [
+        {
+          id: 1,
+          eventoId: 20,
+          fecha: new Date('2026-11-15T00:00:00.000Z'),
+          inicio: null,
+          fin: null,
+          tipoJornada: null,
+          cantidadPersonas: 10,
+          salones: [{ salon: salonParana, distribucion: null }],
+        },
+      ],
       ...evento,
     },
     lineas: [
       {
         id: 1,
+        diaId: 1,
         presupuestoId: 31,
         servicioId: null,
         salonId: salonParana.id,
@@ -162,6 +177,7 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
       },
       {
         id: 2,
+        diaId: 1,
         presupuestoId: 31,
         servicioId: 1,
         salonId: null,
@@ -183,8 +199,9 @@ function consulta(datos: Record<string, unknown> = {}, evento: Record<string, un
 const coffee = servicio({ id: 1, nombre: 'Coffee Refresh', precio: '8730' });
 const pantallas = servicio({ id: 2, nombre: 'Pantallas LED', precio: '50000', tercerizado: true });
 
+// La misma fecha del evento del fixture: cambiarla dispara el recálculo de HU-54.
 const bodyBase = {
-  fecha: '2026-11-20',
+  fecha: '2026-11-15',
   salones: [{ salonId: 5 }],
   cantidadPersonas: 12,
   tipoJornada: 'completa',
@@ -210,12 +227,28 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
       estado: 'Estimado',
       total: '222200.00',
       tipoJornada: 'completa',
-      evento: { id: 20, estado: 'EnConsulta', fecha: '2026-11-15', cantidadPersonas: 10 },
+      evento: {
+        id: 20,
+        estado: 'EnConsulta',
+        fecha: '2026-11-15',
+        fechaFin: '2026-11-15',
+        cantidadPersonas: 10,
+      },
       cliente: { nombre: 'Marina', apellido: 'Gómez', telefono: '+5493515551234' },
       salones: [{ id: 5, nombre: 'Paraná', capacidadMaxima: 12 }],
+      // HU-50: un evento de un solo día trae su único día, con el salón adentro.
+      dias: [
+        {
+          id: 1,
+          fecha: '2026-11-15',
+          cantidadPersonas: 10,
+          salones: [{ id: 5, nombre: 'Paraná', capacidadMaxima: 12 }],
+        },
+      ],
     });
     expect(respuesta.body.data.lineas[1]).toEqual({
       id: 2,
+      diaId: 1,
       presupuestoId: 31,
       servicioId: 1,
       descripcion: 'Coffee Refresh',
@@ -349,7 +382,7 @@ describe('GET /api/presupuestos/:id (HU-12)', () => {
     expect(respuesta.status).toBe(404);
   });
 
-  // Provisorio (06/10/2026): todo el personal entra; el Cliente no.
+  // HU-56: los cuatro roles del personal entran; el Cliente no.
   it('responde 401 sin sesión, 403 al Cliente y deja entrar a cualquier rol del personal', async () => {
     expect((await request(app).get('/api/presupuestos/31')).status).toBe(401);
     const cliente = await request(app)
@@ -446,7 +479,7 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
     expect(actualizarEventoMock).toHaveBeenCalledWith(
       20,
       {
-        fecha: new Date('2026-11-20'),
+        fecha: new Date('2026-11-15'),
         cantidadPersonas: 12,
         tipo: 'Corporativo',
         tipoSocial: null,
@@ -1629,6 +1662,41 @@ describe('PATCH /api/presupuestos/:id — modalidad (RN-11) y proyección (RN-13
     expect(respuesta.status).toBe(200);
     expect(lineasGuardadas()[1]).toMatchObject({ servicioId: 3, precioUnitario: '1210.00' });
     expect(lineasGuardadas()[2]).toMatchObject({ servicioId: 4, precioUnitario: '1000.00' });
+    obtenerPorcentajeMensualMock.mockResolvedValue('0');
+  });
+
+  // HU-54: con otra fecha, lo que no trae precio deja de usar el congelado y toma el de la fecha
+  // nueva, proyectado (RN-13). El salón y el coffee estaban a 142200 y 8000.
+  it('si cambia la fecha, el salón y los servicios sin precio toman el de la fecha nueva (HU-54)', async () => {
+    obtenerPorcentajeMensualMock.mockResolvedValue('10');
+    buscarServiciosPorIdsMock.mockResolvedValue([coffeeConModalidad]);
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      // Un mes después del actual: × 1.1.
+      .send({ ...bodyBase, fecha: '2026-11-20' });
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas()[0]).toMatchObject({
+      salonId: 5,
+      precioUnitario: (Number(salonParana.precioJornadaCompleta) * 1.1).toFixed(2),
+    });
+    expect(lineasGuardadas()[1]).toMatchObject({ servicioId: 1, precioUnitario: '9603.00' });
+    obtenerPorcentajeMensualMock.mockResolvedValue('0');
+  });
+
+  it('con la misma fecha conserva los precios congelados aunque el catálogo haya cambiado (HU-54)', async () => {
+    obtenerPorcentajeMensualMock.mockResolvedValue('10');
+    buscarServiciosPorIdsMock.mockResolvedValue([coffeeConModalidad]);
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send(bodyBase);
+
+    expect(respuesta.status).toBe(200);
+    expect(lineasGuardadas()[1]).toMatchObject({ servicioId: 1, precioUnitario: '8000.00' });
     obtenerPorcentajeMensualMock.mockResolvedValue('0');
   });
 

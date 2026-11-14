@@ -8,12 +8,16 @@ import {
   esquemaSalon,
   esquemaSalonConDistribuciones,
   esquemaSalonPublico,
+  puedePublicarEnLanding,
+  ROLES_QUE_CAMBIAN_FOTOS,
+  type ActualizarLandingSalon,
 } from '@confluens/shared';
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 
 import { registroOpenApi } from '../../docs/openapi.js';
 import { asincrono } from '../../lib/asincrono.js';
+import { ErrorApi } from '../../lib/errores.js';
 import { autenticar } from '../../middlewares/autenticar.js';
 import { autorizar, ROLES_PERSONAL } from '../../middlewares/autorizar.js';
 import { validar } from '../../middlewares/validar.js';
@@ -79,7 +83,10 @@ registroOpenApi.registerPath({
       content: { 'application/json': { schema: z.object({ data: esquemaSalon }) } },
     },
     401: { description: 'Sin sesión activa' },
-    403: { description: 'La sesión no es del personal' },
+    403: {
+      description:
+        'Solo el Gerente General y el Administrador del Sistema; publicar un salón, solo el Administrador del Sistema',
+    },
     404: { description: 'No existe el salón indicado' },
   },
 });
@@ -198,18 +205,28 @@ rutasSalones.get('/', autenticar, asincrono(listar));
 
 // autenticar antes que autorizar (autorizar confía en req.usuario) y validar al final, para que
 // un request sin sesión responda 401 y no filtre si el body estaba bien formado.
-// Provisorio (decisión del PO, 06/10/2026): todo el personal ve y hace todo hasta que se dividan
-// las funciones por rol.
+// HU-56: el GG y el ADM cambian la foto; qué salones se publican (visibleEnLanding) lo decide solo el
+// ADM. Va después de validar() para mirar un body ya parseado.
+const soloElAdmPublica: RequestHandler = (req, _res, next) => {
+  const publica = (req.body as ActualizarLandingSalon).visibleEnLanding !== undefined;
+  if (publica && !puedePublicarEnLanding(req.usuario!.rol)) {
+    next(ErrorApi.noAutorizado('Solo el Administrador del Sistema decide qué salones se publican'));
+    return;
+  }
+  next();
+};
+
 rutasSalones.patch(
   '/:id/landing',
   autenticar,
-  autorizar(...ROLES_PERSONAL),
+  autorizar(...ROLES_QUE_CAMBIAN_FOTOS),
   validar({ params: esquemaParamsId, body: esquemaActualizarLandingSalon }),
+  soloElAdmPublica,
   asincrono(actualizarLanding),
 );
 
-// HU-25: mismo orden de middlewares que el de arriba, y la misma decisión provisoria del PO sobre
-// los roles del personal.
+// HU-25: mismo orden de middlewares que el de arriba. Las distribuciones las administran los cuatro
+// roles del personal, como el resto de Salones.
 rutasSalones.post(
   '/:id/distribuciones',
   autenticar,

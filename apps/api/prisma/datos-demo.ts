@@ -754,7 +754,11 @@ async function main() {
             : new Date(ahora.getTime() - caso.presupuesto.emision.haceDias * MS_DIA);
 
         // Líneas del presupuesto, con el precio proyectado a la fecha del evento (RN-13).
-        const lineas: Prisma.LineaPresupuestoUncheckedCreateWithoutPresupuestoInput[] = [];
+        // Sin el día: se agrega al crearlas, cuando el día del evento ya existe (HU-50).
+        const lineas: Omit<
+          Prisma.LineaPresupuestoUncheckedCreateWithoutPresupuestoInput,
+          'diaId'
+        >[] = [];
         if (!caso.presupuesto.sinArmar) {
           for (const { nombre } of caso.salones) {
             const s = salon(nombre);
@@ -812,18 +816,18 @@ async function main() {
         let reservadoEl: Date | null = null;
         const pagos: Prisma.PagoCreateManyInput[] = [];
         const clienteDb = await crearCliente(caso.cliente);
+        const inicio = caso.horario ? instante(caso.fecha, caso.horario.inicio) : null;
+        const fin = caso.horario
+          ? instante(caso.fecha, caso.horario.fin, caso.horario.fin < caso.horario.inicio ? 1 : 0)
+          : null;
         const evento = await tx.evento.create({
           data: {
             clienteId: clienteDb.id,
+            // fecha, inicio, fin, cantidadPersonas y tipoJornada son el resumen del día (HU-50): los
+            // recalcula la base a partir de él, pero el evento los pide al crearse.
             fecha: fecha(caso.fecha),
-            inicio: caso.horario ? instante(caso.fecha, caso.horario.inicio) : null,
-            fin: caso.horario
-              ? instante(
-                  caso.fecha,
-                  caso.horario.fin,
-                  caso.horario.fin < caso.horario.inicio ? 1 : 0,
-                )
-              : null,
+            inicio,
+            fin,
             cantidadPersonas: caso.personas,
             estado: caso.estado,
             tipo: caso.tipo,
@@ -831,21 +835,34 @@ async function main() {
             tipoJornada: caso.jornada ?? null,
             horaInicioEstimada: caso.horario?.inicio ?? caso.horaEstimada?.inicio ?? null,
             observacionesComanda: caso.comanda ?? null,
-            salones: {
-              create: caso.salones.map(({ nombre, distribucion }) => {
-                const s = salon(nombre);
-                const d = buscar(
-                  s.distribuciones,
-                  (x) => x.nombre === distribucion,
-                  `la distribución ${distribucion} de ${nombre}`,
-                );
-                return { salonId: s.id, distribucionId: d.id };
-              }),
+            // Todos los eventos de la demo son de un solo día.
+            dias: {
+              create: {
+                fecha: fecha(caso.fecha),
+                inicio,
+                fin,
+                cantidadPersonas: caso.personas,
+                tipoJornada: caso.jornada ?? null,
+              },
             },
           },
           // Solo el id: así el script no depende de las columnas que una rama nueva le agregue a Evento.
-          select: { id: true },
+          select: { id: true, dias: { select: { id: true } } },
         });
+        const diaId = evento.dias[0]!.id;
+
+        // Los salones son del día: se crean después, con el día ya creado.
+        for (const { nombre, distribucion } of caso.salones) {
+          const s = salon(nombre);
+          const d = buscar(
+            s.distribuciones,
+            (x) => x.nombre === distribucion,
+            `la distribución ${distribucion} de ${nombre}`,
+          );
+          await tx.eventoSalon.create({
+            data: { eventoId: evento.id, diaId, salonId: s.id, distribucionId: d.id },
+          });
+        }
 
         for (const p of caso.pagos ?? []) {
           const monto = p.saldo
@@ -900,7 +917,7 @@ async function main() {
               seguimiento === 'nuevo' ? null : new Date(emision.getTime() + 60 * 60 * 1000),
             envioFormalEn:
               seguimiento === 'enviado' ? new Date(emision.getTime() + 2 * 60 * 60 * 1000) : null,
-            lineas: { create: lineas },
+            lineas: { create: lineas.map((linea) => ({ ...linea, diaId })) },
           },
         });
 

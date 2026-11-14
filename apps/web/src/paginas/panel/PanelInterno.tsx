@@ -1,9 +1,15 @@
-import { administraPersonal, type Rol, type Sesion } from '@confluens/shared';
+import {
+  puedePublicarEnLanding,
+  veSeccion,
+  type SeccionConfiguracion,
+  type Sesion,
+} from '@confluens/shared';
 import {
   Building2,
   CalendarDays,
   CreditCard,
   Globe,
+  History,
   Images,
   Inbox,
   List,
@@ -28,6 +34,8 @@ import { ListadoClientes } from '@/paginas/clientes/ListadoClientes';
 import { Agenda } from '@/paginas/eventos/Agenda';
 import { leerDiaEnLaAgenda } from '@/paginas/eventos/dia-en-la-agenda';
 import { RegistrarMedioPago } from '@/paginas/medios-pago/RegistrarMedioPago';
+import { Auditoria } from '@/paginas/auditoria/Auditoria';
+import { BotonCambiarMiContrasena } from '@/paginas/panel/CambiarMiContrasena';
 import { Personal } from '@/paginas/personal/Personal';
 import { AdministrarLanding } from '@/paginas/salones/AdministrarLanding';
 import { ConsultarSalones } from '@/paginas/salones/ConsultarSalones';
@@ -76,8 +84,6 @@ const PESTANIAS: { valor: Pestania; texto: string; icono: typeof Inbox; bajada: 
   },
 ];
 
-type SeccionConfiguracion = 'salones' | 'servicios' | 'medios' | 'landing' | 'personal';
-
 // Las secciones de la configuración, agrupadas como en el sidebar.
 const GRUPOS_DE_CONFIGURACION: {
   titulo: string;
@@ -98,7 +104,10 @@ const GRUPOS_DE_CONFIGURACION: {
   },
   {
     titulo: 'Equipo',
-    secciones: [{ valor: 'personal', texto: 'Personal', icono: ShieldCheck }],
+    secciones: [
+      { valor: 'personal', texto: 'Personal', icono: ShieldCheck },
+      { valor: 'auditoria', texto: 'Auditoría', icono: History },
+    ],
   },
 ];
 
@@ -106,14 +115,15 @@ const GRUPOS_DE_CONFIGURACION: {
 // (HU-19), el contenido de la landing (HU-08) y el personal (HU-30 y HU-31 del Sprint 4). Cada
 // sección se elige desde el sidebar de la izquierda; en pantallas angostas el sidebar va arriba.
 //
-// Personal la ven solo el GG y el ADM (dominio.md, «Personal»); la API también se lo niega al resto.
-// Las demás secciones las siguen viendo todos hasta HU-56 del backlog (permisos por rol).
-function ConfiguracionDeNegocio({ rol }: { rol: Rol }) {
+// Cada rol ve solo sus secciones (HU-56 del backlog, dominio.md «Configuración de negocio por rol»);
+// la matriz vive en shared y la API también rechaza con 403 lo que el rol no puede hacer.
+function ConfiguracionDeNegocio({ sesion }: { sesion: Sesion }) {
+  const rol = sesion.rol;
   const [seccion, setSeccion] = useState<SeccionConfiguracion>('servicios');
-  const grupos = GRUPOS_DE_CONFIGURACION.filter(
-    ({ secciones }) =>
-      !secciones.some(({ valor }) => valor === 'personal') || administraPersonal(rol),
-  );
+  const grupos = GRUPOS_DE_CONFIGURACION.map((grupo) => ({
+    ...grupo,
+    secciones: grupo.secciones.filter(({ valor }) => veSeccion(rol, valor)),
+  })).filter(({ secciones }) => secciones.length > 0);
   return (
     <div className="grid gap-5 md:grid-cols-[15rem_minmax(0,1fr)] md:items-start">
       {/* top-32: deja libre el encabezado fijo del panel con sus pestañas. */}
@@ -144,11 +154,14 @@ function ConfiguracionDeNegocio({ rol }: { rol: Rol }) {
         ))}
       </nav>
       <div className="rounded-xl bg-card ring-1 ring-border">
-        {seccion === 'salones' && <ConsultarSalones />}
-        {seccion === 'servicios' && <RegistrarServicio />}
-        {seccion === 'medios' && <RegistrarMedioPago />}
-        {seccion === 'landing' && <AdministrarLanding />}
-        {seccion === 'personal' && administraPersonal(rol) && <Personal rol={rol} />}
+        {seccion === 'salones' && veSeccion(rol, 'salones') && <ConsultarSalones />}
+        {seccion === 'servicios' && veSeccion(rol, 'servicios') && <RegistrarServicio />}
+        {seccion === 'medios' && veSeccion(rol, 'medios') && <RegistrarMedioPago />}
+        {seccion === 'landing' && veSeccion(rol, 'landing') && (
+          <AdministrarLanding puedePublicar={puedePublicarEnLanding(rol)} />
+        )}
+        {seccion === 'personal' && veSeccion(rol, 'personal') && <Personal sesion={sesion} />}
+        {seccion === 'auditoria' && veSeccion(rol, 'auditoria') && <Auditoria />}
       </div>
     </div>
   );
@@ -181,20 +194,12 @@ function MiCuenta({ sesion, onCerrarSesion }: { sesion: Sesion; onCerrarSesion: 
             <dd>Se cierra sola tras 2 horas sin actividad</dd>
           </div>
         </dl>
-        <Button variant="outline" className="mt-6" onClick={onCerrarSesion}>
-          <LogOut /> Cerrar sesión
-        </Button>
-      </section>
-
-      <section className="rounded-xl border border-dashed bg-card p-6">
-        <div className="flex items-center gap-2">
-          <Settings className="size-4 text-dorado" />
-          <h3 className="font-medium">Opciones de la cuenta</h3>
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={onCerrarSesion}>
+            <LogOut /> Cerrar sesión
+          </Button>
+          <BotonCambiarMiContrasena />
         </div>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Acá se van a sumar las opciones que agreguemos más adelante, como cambiar la contraseña o
-          administrar los usuarios del sistema.
-        </p>
       </section>
     </div>
   );
@@ -238,6 +243,12 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
   const diaEnLaAgenda = leerDiaEnLaAgenda(parametros);
   const activa = PESTANIAS.find((p) => p.valor === pestania);
   const [oscuro, alternarModoOscuro] = useModoOscuro();
+
+  // Marca el <html> mientras se está en el panel (ver index.css: sin scroll suave).
+  useEffect(() => {
+    document.documentElement.classList.add('panel-interno');
+    return () => document.documentElement.classList.remove('panel-interno');
+  }, []);
 
   // Primero se sale a la landing y después se cierra la sesión: si fuera al revés, la ruta /admin
   // se quedaría sin sesión y redirigiría al login del personal.
@@ -327,12 +338,13 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
             key={diaEnLaAgenda ? `agenda-${navegacion}` : 'agenda'}
             vista="calendario"
             diaInicial={diaEnLaAgenda}
+            reinicio={navegacion}
           />
         )}
-        {pestania === 'eventos' && <Agenda key="eventos" vista="lista" />}
-        {pestania === 'consultas' && <ListadoConsultas />}
-        {pestania === 'clientes' && <ListadoClientes />}
-        {pestania === 'configuracion' && <ConfiguracionDeNegocio rol={sesion.rol} />}
+        {pestania === 'eventos' && <Agenda key="eventos" vista="lista" reinicio={navegacion} />}
+        {pestania === 'consultas' && <ListadoConsultas reinicio={navegacion} />}
+        {pestania === 'clientes' && <ListadoClientes reinicio={navegacion} />}
+        {pestania === 'configuracion' && <ConfiguracionDeNegocio sesion={sesion} />}
         {pestania === 'cuenta' && <MiCuenta sesion={sesion} onCerrarSesion={salir} />}
       </main>
     </div>

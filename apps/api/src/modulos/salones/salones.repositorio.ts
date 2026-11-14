@@ -5,6 +5,7 @@ import type {
   ModificarSalon,
 } from '@confluens/shared';
 
+import { registrarAuditoria } from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
 
 // Orden por capacidad descendente: así el primer elemento de la lista es siempre "la mayor
@@ -46,34 +47,22 @@ export async function obtenerSalonPorId(id: number) {
 }
 
 // Actualiza el contenido de landing del salón y deja el rastro en audit_log (HU-08, criterio 4).
-// Las dos escrituras van en una transacción: un cambio publicado sin auditoría sería justamente
-// el agujero que la Definición de Terminado del sprint pide cerrar, así que o pasan las dos o
-// ninguna.
-//
-// Es la primera escritura de auditoría del repo. Queda acotada a este caso a propósito: HU-25
-// (Sprint 5) define el mecanismo general y va a querer absorber esto.
-//
-// valorAnterior y valorNuevo guardan solo los campos tocados, no el salón entero: lo que importa
-// auditar es el cambio, y así el diff se lee sin comparar dos objetos completos.
+// Las dos escrituras van en una transacción: o pasan las dos o ninguna. Desde HU-25 del backlog usa
+// el mecanismo común de lib/auditoria.ts, que guarda solo los campos que cambiaron.
 export async function actualizarLanding(
   id: number,
   cambios: ActualizarLandingSalon,
   anterior: { visibleEnLanding: boolean; fotoUrl: string | null },
   usuarioId: number,
 ) {
-  const camposTocados = Object.keys(cambios) as (keyof ActualizarLandingSalon)[];
-  const valorAnterior = Object.fromEntries(camposTocados.map((campo) => [campo, anterior[campo]]));
-
   return prisma.$transaction(async (tx) => {
     const salon = await tx.salon.update({ where: { id }, data: cambios });
-    await tx.auditLog.create({
-      data: {
-        usuarioId,
-        entidad: 'Salon',
-        entidadId: String(id),
-        valorAnterior,
-        valorNuevo: cambios,
-      },
+    await registrarAuditoria(tx, {
+      usuarioId,
+      entidad: 'Salon',
+      entidadId: id,
+      anterior,
+      nuevo: salon,
     });
     return salon;
   });
@@ -89,17 +78,31 @@ export async function buscarDistribucionPorNombre(salonId: number, nombre: strin
 }
 
 export async function crearDistribucion(salonId: number, datos: CrearDistribucion) {
-  return prisma.distribucion.create({ data: { ...datos, salonId } });
+  return prisma.$transaction(async (tx) => {
+    const distribucion = await tx.distribucion.create({ data: { ...datos, salonId } });
+    await registrarAuditoria(tx, {
+      entidad: 'Distribucion',
+      entidadId: distribucion.id,
+      anterior: null,
+      nuevo: distribucion,
+    });
+    return distribucion;
+  });
 }
 
 // HU-26 (Sprint 4): modifica los precios. Los presupuestos ya emitidos no cambian: sus líneas
 // guardan el precio congelado (RN-03, RN-10). Devuelve el salón con sus distribuciones, igual que el
 // listado, para que la web no tenga que pedirlo de nuevo.
 export async function modificarSalon(id: number, datos: ModificarSalon) {
-  return prisma.salon.update({
-    where: { id },
-    data: datos,
-    include: { distribuciones: { orderBy: { id: 'asc' } } },
+  return prisma.$transaction(async (tx) => {
+    const anterior = await tx.salon.findUniqueOrThrow({ where: { id } });
+    const salon = await tx.salon.update({
+      where: { id },
+      data: datos,
+      include: { distribuciones: { orderBy: { id: 'asc' } } },
+    });
+    await registrarAuditoria(tx, { entidad: 'Salon', entidadId: id, anterior, nuevo: salon });
+    return salon;
   });
 }
 
@@ -107,15 +110,33 @@ export async function buscarDistribucionPorId(id: number) {
   return prisma.distribucion.findUnique({ where: { id } });
 }
 
+// Edita una distribución y audita lo que cambió, en una transacción (HU-25 del backlog).
+async function actualizarDistribucion(
+  id: number,
+  datos: ModificarDistribucion | { activo: boolean },
+) {
+  return prisma.$transaction(async (tx) => {
+    const anterior = await tx.distribucion.findUniqueOrThrow({ where: { id } });
+    const distribucion = await tx.distribucion.update({ where: { id }, data: datos });
+    await registrarAuditoria(tx, {
+      entidad: 'Distribucion',
+      entidadId: id,
+      anterior,
+      nuevo: distribucion,
+    });
+    return distribucion;
+  });
+}
+
 // HU-26 (Sprint 4): edición de una distribución. Los eventos la referencian por id, así que el
 // cambio de nombre o de capacidad se ve en los que ya la usan; la capacidad es informativa y no
 // pone tope a la cantidad de personas (dominio.md).
 export async function modificarDistribucion(id: number, datos: ModificarDistribucion) {
-  return prisma.distribucion.update({ where: { id }, data: datos });
+  return actualizarDistribucion(id, datos);
 }
 
 // HU-25 (Sprint 4): baja lógica o reactivación. Los eventos que ya la tienen la siguen referenciando
 // por id y no cambian; lo que cambia es que no se ofrece en presupuestos ni agendas nuevas.
 export async function cambiarEstadoDistribucion(id: number, activo: boolean) {
-  return prisma.distribucion.update({ where: { id }, data: { activo } });
+  return actualizarDistribucion(id, { activo });
 }

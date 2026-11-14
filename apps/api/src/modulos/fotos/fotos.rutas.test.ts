@@ -6,7 +6,14 @@ import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 
 const app = crearApp();
 
-function cookieDe(rol: 'RESPONSABLE_EVENTOS' | 'ADMINISTRADOR_SISTEMA' | 'CLIENTE') {
+function cookieDe(
+  rol:
+    | 'RESPONSABLE_EVENTOS'
+    | 'RESPONSABLE_FINANZAS'
+    | 'GERENTE_GENERAL'
+    | 'ADMINISTRADOR_SISTEMA'
+    | 'CLIENTE',
+) {
   return `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 1, email: 'personal@confluens.test', rol })}`;
 }
 
@@ -40,17 +47,33 @@ describe('POST /api/fotos/firma (ADR 0009)', () => {
     expect(respuesta.text).not.toContain('abcd');
   });
 
-  it('todo el personal puede pedirla (provisorio, igual que la landing)', async () => {
+  // HU-56: las fotos de la landing las cambian el GG y el ADM.
+  it('el GG puede pedirla', async () => {
     configurarCloudinary();
 
     const respuesta = await request(app)
       .post('/api/fotos/firma')
-      .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')])
+      .set('Cookie', [cookieDe('GERENTE_GENERAL')])
       .send({ destino: 'salones' });
 
     expect(respuesta.status).toBe(200);
     expect(respuesta.body.data.carpeta).toBe('confluens/salones');
   });
+
+  it.each(['RESPONSABLE_EVENTOS', 'RESPONSABLE_FINANZAS'] as const)(
+    'el %s no puede pedirla: responde 403',
+    async (rol) => {
+      configurarCloudinary();
+
+      const respuesta = await request(app)
+        .post('/api/fotos/firma')
+        .set('Cookie', [cookieDe(rol)])
+        .send({ destino: 'salones' });
+
+      expect(respuesta.status).toBe(403);
+      expect(respuesta.body.error.code).toBe('FORBIDDEN');
+    },
+  );
 
   it('responde 400 con un destino que no existe', async () => {
     configurarCloudinary();

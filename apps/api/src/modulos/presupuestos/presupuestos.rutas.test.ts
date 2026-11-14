@@ -5,6 +5,9 @@ import { crearApp } from '../../app.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { firmarToken, NOMBRE_COOKIE_SESION } from '../../lib/jwt.js';
 
+// El correo de la consulta recibida sale por Resend: en los tests no se manda nada.
+vi.mock('../../lib/correo.js', () => ({ enviarCorreo: vi.fn(() => Promise.resolve()) }));
+
 vi.mock('./presupuestos.repositorio.js', () => ({
   buscarClientePorCorreo: vi.fn(),
   buscarClientePorUsuarioId: vi.fn(),
@@ -60,6 +63,9 @@ const buscarEventoConPresupuestosMock = vi.mocked(buscarEventoConPresupuestos);
 const crearEnTransaccionMock = vi.mocked(crearEnTransaccion);
 const obtenerPresupuestosMock = vi.mocked(obtenerPresupuestos);
 
+const { enviarCorreo } = await import('../../lib/correo.js');
+const enviarCorreoMock = vi.mocked(enviarCorreo);
+
 const app = crearApp();
 
 const salonFixture = {
@@ -113,6 +119,7 @@ const eventoFixture = {
   id: 20,
   clienteId: clienteFixture.id,
   fecha: new Date('2026-11-15'),
+  fechaFin: new Date('2026-11-15'),
   inicio: null,
   fin: null,
   cantidadPersonas: 10,
@@ -201,6 +208,7 @@ function prepararMocksDeCreacion() {
       lineas: datos.lineas.map((linea, indice) => ({
         id: indice + 1,
         presupuestoId: 30,
+        diaId: 1,
         ...linea,
         precioUnitario: new Prisma.Decimal(linea.precioUnitario),
         subtotal: new Prisma.Decimal(linea.subtotal),
@@ -212,6 +220,70 @@ function prepararMocksDeCreacion() {
 
 describe('POST /api/presupuestos', () => {
   beforeEach(prepararMocksDeCreacion);
+
+  describe('correo de consulta recibida', () => {
+    beforeEach(() => {
+      enviarCorreoMock.mockReset();
+      enviarCorreoMock.mockResolvedValue(undefined);
+    });
+
+    it('le manda un correo de confirmación al cliente de la sesión', async () => {
+      const respuesta = await request(app)
+        .post('/api/presupuestos')
+        .set('Cookie', [cookieDe('CLIENTE')])
+        .send(bodyBase);
+
+      expect(respuesta.status).toBe(201);
+      await vi.waitFor(() => expect(enviarCorreoMock).toHaveBeenCalledTimes(1));
+      const correo = enviarCorreoMock.mock.calls[0]![0];
+      // El destinatario es el correo de la ficha de la sesión, no el que viene en el body.
+      expect(correo.para).toBe(clienteFixture.correo);
+      expect(correo.asunto).toContain('N° 30');
+      // Repite el mensaje de la pantalla, con el teléfono de la ficha, y no resume el evento.
+      expect(correo.texto).toContain('generamos tu presupuesto estimado');
+      expect(correo.texto).toContain(clienteFixture.telefono);
+      expect(correo.texto).not.toContain('Coffee Refresh');
+    });
+
+    it('no manda correo cuando cotiza el personal', async () => {
+      buscarClientePorCorreoMock.mockResolvedValue(clienteFixture);
+
+      const respuesta = await request(app)
+        .post('/api/presupuestos')
+        .set('Cookie', [cookieDe('RESPONSABLE_EVENTOS')])
+        .send(bodyBase);
+
+      expect(respuesta.status).toBe(201);
+      expect(enviarCorreoMock).not.toHaveBeenCalled();
+    });
+
+    it('no manda correo si la consulta no se pudo crear', async () => {
+      buscarSalonesPorIdsMock.mockResolvedValue([]);
+
+      const respuesta = await request(app)
+        .post('/api/presupuestos')
+        .set('Cookie', [cookieDe('CLIENTE')])
+        .send(bodyBase);
+
+      expect(respuesta.status).toBe(404);
+      expect(enviarCorreoMock).not.toHaveBeenCalled();
+    });
+
+    it('guarda la consulta y responde 201 aunque falle el envío del correo', async () => {
+      enviarCorreoMock.mockRejectedValue(new Error('Resend respondió 500'));
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const respuesta = await request(app)
+        .post('/api/presupuestos')
+        .set('Cookie', [cookieDe('CLIENTE')])
+        .send(bodyBase);
+
+      expect(respuesta.status).toBe(201);
+      expect(crearPresupuestoConLineasMock).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(error).toHaveBeenCalled());
+      error.mockRestore();
+    });
+  });
 
   it('crea el presupuesto con un cliente nuevo cuando el correo no existe', async () => {
     buscarClientePorCorreoMock.mockResolvedValue(null);
@@ -721,6 +793,7 @@ const presupuestoDelListado = {
   envioFormalEn: new Date('2026-09-21T12:00:00.000Z') as Date | null,
   evento: {
     fecha: new Date('2026-11-15T00:00:00.000Z'),
+    fechaFin: new Date('2026-11-15T00:00:00.000Z'),
     tipo: 'Corporativo' as 'Social' | 'Corporativo',
     tipoSocial: null as 'Casamiento' | null,
     tipoSocialDetalle: null,
@@ -759,6 +832,7 @@ describe('GET /api/presupuestos (HU-10)', () => {
           venceEn: '2026-09-30T15:00:00.000Z',
           total: '229500.00',
           fechaEvento: '2026-11-15',
+          fechaFinEvento: '2026-11-15',
           tipo: 'Corporativo',
           tipoSocial: null,
           tipoSocialDetalle: null,
@@ -891,7 +965,7 @@ describe('GET /api/presupuestos (HU-10)', () => {
     expect(respuesta.body.error.code).toBe('UNAUTHENTICATED');
   });
 
-  // Provisorio (06/10/2026): todo el personal ve las consultas hasta que se dividan las funciones.
+  // HU-56: los cuatro roles del personal ven las consultas.
   it('otro rol del personal también accede', async () => {
     const respuesta = await request(app)
       .get('/api/presupuestos')
@@ -936,10 +1010,67 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
           requiereFactura: false,
           creadoEn: new Date(),
           actualizadoEn: new Date(),
-          evento: { ...eventoFixture, tipo: 'Social', salonId: null },
+          evento: {
+            ...eventoFixture,
+            tipo: 'Social',
+            tipoSocial: 'Casamiento',
+            tipoJornada: 'completa',
+            horaInicioEstimada: '21:00',
+            salonId: null,
+          },
           lineas: [],
         }) as never,
     );
+  });
+
+  describe('correo de consulta recibida', () => {
+    beforeEach(() => {
+      enviarCorreoMock.mockReset();
+      enviarCorreoMock.mockResolvedValue(undefined);
+    });
+
+    it('le manda al cliente de la sesión el correo de confirmación de la consulta social', async () => {
+      const respuesta = await request(app)
+        .post('/api/presupuestos/social')
+        .set('Cookie', [cookieDe('CLIENTE')])
+        .send(bodySocial);
+
+      expect(respuesta.status).toBe(201);
+      await vi.waitFor(() => expect(enviarCorreoMock).toHaveBeenCalledTimes(1));
+      const correo = enviarCorreoMock.mock.calls[0]![0];
+      expect(correo.para).toBe(clienteFixture.correo);
+      expect(correo.asunto).toContain('N° 40');
+      expect(correo.texto).toContain('Cada evento social es único');
+      expect(correo.texto).toContain(clienteFixture.telefono);
+      expect(correo.texto).not.toContain('IVA');
+    });
+
+    it('no manda correo si la consulta no se pudo registrar', async () => {
+      buscarClientePorUsuarioIdMock.mockResolvedValue(null);
+
+      const respuesta = await request(app)
+        .post('/api/presupuestos/social')
+        .set('Cookie', [cookieDe('CLIENTE')])
+        .send(bodySocial);
+
+      expect(respuesta.status).toBe(404);
+      expect(enviarCorreoMock).not.toHaveBeenCalled();
+    });
+
+    it('guarda la consulta y responde 201 aunque falle el envío del correo', async () => {
+      enviarCorreoMock.mockRejectedValue(new Error('Resend respondió 500'));
+      const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const respuesta = await request(app)
+        .post('/api/presupuestos/social')
+        .set('Cookie', [cookieDe('CLIENTE')])
+        .send(bodySocial);
+
+      expect(respuesta.status).toBe(201);
+      expect(crearPresupuestoConLineasMock).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => expect(error).toHaveBeenCalled());
+      error.mockRestore();
+    });
   });
 
   it('crea el evento social sin salón, del cliente de la sesión, con el presupuesto sin armar', async () => {

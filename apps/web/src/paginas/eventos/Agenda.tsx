@@ -14,8 +14,9 @@ import { Button } from '@/components/ui/button';
 import { IconoEstado } from '@/components/IconoEstado';
 import { useAgenda } from '@/hooks/use-eventos';
 import { useSalones } from '@/hooks/use-salones';
+import { horarioDeLosDias, resumenDelEvento } from '@/lib/dias-del-evento';
 import { fechaLocal, formatearPesos, hoyISO, nombreCompleto } from '@/lib/formato';
-import { armadoDeSalones, nombresDeSalones } from '@/lib/formato';
+import { armadoDelEvento, nombresDeSalones } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { CalendarioEventos } from './CalendarioEventos';
 import { EditarConsulta } from '@/paginas/presupuestos/EditarConsulta';
@@ -91,6 +92,8 @@ function ListaDeEventos({
               const estado = ESTADOS[evento.estado];
               const desde = hora(evento.inicio);
               const hasta = hora(evento.fin);
+              // HU-50: el rango de personas, y hasta cuándo dura si son varios días.
+              const resumen = resumenDelEvento(evento);
               return (
                 <li key={evento.id}>
                   <button
@@ -114,10 +117,10 @@ function ListaDeEventos({
                       <p className="truncate font-medium">
                         {evento.salones.length > 1 ? 'Salones' : 'Salón'}{' '}
                         {nombresDeSalones(evento.salones, 'a definir')}
-                        {armadoDeSalones(evento.salones) && (
+                        {armadoDelEvento(evento) && (
                           <span className="font-normal text-muted-foreground">
                             {' '}
-                            · {armadoDeSalones(evento.salones)}
+                            · {armadoDelEvento(evento)}
                           </span>
                         )}
                       </p>
@@ -129,13 +132,33 @@ function ListaDeEventos({
                         <EtiquetaCliente etiqueta={evento.cliente.etiqueta} />
                       </div>
                       <p className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                        {desde && hasta && (
-                          <span className="inline-flex items-center gap-1">
-                            <Clock className="size-3" /> {desde} a {hasta}
+                        {resumen.dias > 1 && (
+                          <span className="inline-flex items-center gap-1 font-medium text-bordo">
+                            <CalendarDays className="size-3" /> al{' '}
+                            {fechaLocal(evento.fechaFin).toLocaleDateString('es-AR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                            })}{' '}
+                            · {resumen.dias} días
                           </span>
                         )}
+                        {resumen.dias > 1
+                          ? horarioDeLosDias(evento.dias) && (
+                              <span className="inline-flex items-center gap-1">
+                                <Clock className="size-3" /> {horarioDeLosDias(evento.dias)}
+                              </span>
+                            )
+                          : desde &&
+                            hasta && (
+                              <span className="inline-flex items-center gap-1">
+                                <Clock className="size-3" /> {desde} a {hasta}
+                              </span>
+                            )}
                         <span className="inline-flex items-center gap-1">
-                          <Users className="size-3" /> {evento.cantidadPersonas} personas
+                          <Users className="size-3" /> {resumen.personas}
+                          {resumen.dias > 1 && resumen.jornada?.startsWith('Varía') && (
+                            <span> · {resumen.jornada}</span>
+                          )}
                         </span>
                       </p>
                     </div>
@@ -187,8 +210,11 @@ function ListaDeEventos({
 export function Agenda({
   vista,
   diaInicial = null,
+  reinicio,
 }: {
   vista: VistaAgenda;
+  // Cambia con cada navegación del panel; ver más abajo.
+  reinicio?: string;
   // «Ver en la agenda» desde la cuenta del evento: abre el calendario en ese día, con el estado del
   // evento sumado al filtro para que se vea aunque no ocupe el salón.
   diaInicial?: DiaEnLaAgenda | null;
@@ -222,6 +248,19 @@ export function Agenda({
   // Comanda de cocina del evento confirmado, para imprimir. Tiene prioridad sobre las otras dos
   // vistas: se abre tanto desde el detalle del evento como desde el del presupuesto.
   const [comandaAbierta, setComandaAbierta] = useState<number | null>(null);
+
+  // Tocar la pestaña activa (o el logo) estando adentro de un detalle vuelve al listado: el panel manda
+  // una señal nueva en cada navegación y acá se cierra lo que estaba abierto. Se compara en el render
+  // y no con un efecto para no pintar un cuadro con el detalle viejo.
+  // La posición del calendario no se toca: es el mes que se estaba recorriendo.
+  const [reinicioVisto, setReinicioVisto] = useState(reinicio);
+  if (reinicioVisto !== reinicio) {
+    setReinicioVisto(reinicio);
+    setResumen(null);
+    setEventoAbierto(null);
+    setPresupuestoAbierto(null);
+    setComandaAbierta(null);
+  }
 
   const salones = useSalones();
   const enCalendario = vista === 'calendario';
@@ -308,11 +347,12 @@ export function Agenda({
 
   return (
     <div className="space-y-5">
-      {agenda.isFetching && (
-        <p className="text-right text-xs text-muted-foreground">Actualizando…</p>
-      )}
-
-      <div className="space-y-3 rounded-xl bg-card p-4 ring-1 ring-border">
+      {/* Dentro de la tarjeta de filtros y en absoluto: aparecer y desaparecer en cada cambio de mes
+          no tiene que correr nada de lugar. */}
+      <div className="relative space-y-3 rounded-xl bg-card p-4 ring-1 ring-border">
+        {agenda.isFetching && (
+          <p className="absolute top-2 right-3 text-xs text-muted-foreground">Actualizando…</p>
+        )}
         <div>
           <p className="mb-2 text-xs font-semibold tracking-[0.15em] text-dorado-texto uppercase">
             Salones

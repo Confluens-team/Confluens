@@ -7,6 +7,7 @@ type Linea = ConsultaDetallada['lineas'][number];
 
 const linea = (id: number, cambios: Partial<Linea>): Linea => ({
   id,
+  diaId: 1,
   presupuestoId: 1,
   servicioId: id,
   salonId: null,

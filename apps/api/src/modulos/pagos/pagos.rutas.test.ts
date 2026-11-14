@@ -139,6 +139,7 @@ const lineaFixture = {
   modalidad: 'Normal' as const,
   precioBase: null,
   horaEstimada: null,
+  diaId: 1,
 };
 
 // El salón del evento sin distribución, como queda antes de agendar.
@@ -179,6 +180,7 @@ function eventoFixtureBase() {
     id: 20,
     clienteId: clienteFixture.id,
     fecha: new Date('2026-11-15'),
+    fechaFin: new Date('2026-11-15'),
     inicio: inicioFixture as Date | null,
     fin: finFixture as Date | null,
     cantidadPersonas: 10,
@@ -200,6 +202,7 @@ function eventoFixtureBase() {
     salones: [
       {
         eventoId: 20,
+        diaId: 1,
         salonId: salonFixture.id,
         distribucionId: distribucionFixture.id as number | null,
         inicio: null as Date | null,
@@ -210,6 +213,10 @@ function eventoFixtureBase() {
         distribucion: distribucionFixture as typeof distribucionFixture | null,
       },
     ],
+    // HU-50: el único día del evento, con su horario. Un evento de un solo día no lo consulta.
+    dias: [
+      { id: 1, fecha: new Date('2026-11-15'), inicio: inicioFixture, fin: finFixture, salones: [] },
+    ] as never[],
     solicitud: null,
     presupuestos: [presupuestoFixture()],
   };
@@ -243,6 +250,8 @@ const cookieDe = (rol: string, email: string) =>
   `${NOMBRE_COOKIE_SESION}=${firmarToken({ id: 1, email, rol: rol as 'RESPONSABLE_EVENTOS' })}`;
 
 const cookieResponsableEventos = cookieDe('RESPONSABLE_EVENTOS', 're@confluens.test');
+// HU-56: el RE no administra medios de pago; los administra el RF (y el GG y el ADM).
+const cookieAdministraMedios = cookieDe('RESPONSABLE_FINANZAS', 'rf@confluens.test');
 
 function registrarPago(monto: string, cookie = cookieResponsableEventos) {
   return request(app).post('/api/eventos/20/pagos').set('Cookie', [cookie]).send(cuerpoPago(monto));
@@ -477,19 +486,36 @@ describe('POST /api/eventos/:id/pagos — rechazos', () => {
     expect(crearMock).not.toHaveBeenCalled();
   });
 
-  // HU-13 C3 / RN-06. La mitad que produce el estado Expirado es de HU-10: este test es el que
-  // deja comprobada la mitad que rechaza el pago, sin depender de que esa historia esté hecha.
-  it('responde 409 si el presupuesto vigente está Expirado, pidiendo recalcularlo', async () => {
+  // HU-55 (RN-06): se cobra aunque el presupuesto esté vencido, sin recalcularlo.
+  it('acepta un pago con el presupuesto Expirado, sin recalcularlo', async () => {
     buscarDetalladoMock.mockResolvedValue(
       eventoFixture({ presupuestos: [presupuestoFixture({ estado: 'Expirado' })] }),
     );
 
     const respuesta = await registrarPago('1000');
 
-    expect(respuesta.status).toBe(409);
-    expect(respuesta.body.error.code).toBe('CONFLICT');
-    expect(respuesta.body.error.message).toContain('vencido');
-    expect(crearMock).not.toHaveBeenCalled();
+    expect(respuesta.status).toBe(201);
+    expect(crearMock).toHaveBeenCalled();
+    expect(respuesta.body.data.estadoEvento).toBe('EnConsulta');
+    expect(confirmarPresupuestoYReservarMock).not.toHaveBeenCalled();
+  });
+
+  // HU-55: la seña de un Expirado lo confirma (Expirado → Confirmado) y reserva el salón, sobre la
+  // base del presupuesto vencido, sin precios nuevos.
+  it('la seña de un presupuesto Expirado lo confirma y reserva el salón', async () => {
+    buscarDetalladoMock.mockResolvedValue(
+      eventoFixture({ presupuestos: [presupuestoFixture({ estado: 'Expirado' })] }),
+    );
+
+    const respuesta = await registrarPago(SENA_SIN_FACTURA);
+
+    expect(respuesta.status).toBe(201);
+    expect(confirmarPresupuestoYReservarMock).toHaveBeenCalledWith(
+      { eventoId: 20, presupuestoId: 30 },
+      undefined,
+    );
+    expect(respuesta.body.data.estadoEvento).toBe('Reservado');
+    expect(respuesta.body.data.reservoElSalon).toBe(true);
   });
 
   it('ignora los presupuestos Cancelados al elegir el vigente', async () => {
@@ -1100,7 +1126,7 @@ describe('GET /api/medios-pago', () => {
 });
 
 describe('POST /api/medios-pago (HU-19)', () => {
-  const alta = (cuerpo: object, cookie = cookieResponsableEventos) =>
+  const alta = (cuerpo: object, cookie = cookieAdministraMedios) =>
     request(app).post('/api/medios-pago').set('Cookie', [cookie]).send(cuerpo);
 
   beforeEach(() => {
@@ -1112,6 +1138,23 @@ describe('POST /api/medios-pago (HU-19)', () => {
       id: 9,
       ...datos,
     }));
+  });
+
+  // HU-56: el RE no administra medios de pago; el RF, el GG y el ADM sí.
+  it.each([
+    ['RESPONSABLE_FINANZAS', 201],
+    ['GERENTE_GENERAL', 201],
+    ['ADMINISTRADOR_SISTEMA', 201],
+    ['RESPONSABLE_EVENTOS', 403],
+    ['CLIENTE', 403],
+  ] as const)('con el rol %s responde %i', async (rol, status) => {
+    const respuesta = await alta({ nombre: 'Vale' }, cookieDe(rol, 'persona@confluens.test'));
+
+    expect(respuesta.status).toBe(status);
+    if (status === 403) {
+      expect(respuesta.body.error.code).toBe('FORBIDDEN');
+      expect(crearMedioPagoMock).not.toHaveBeenCalled();
+    }
   });
 
   // CP-19-01. Desde HU-53 se carga solo el nombre: el medio vale en todos los cobros.
@@ -1187,7 +1230,7 @@ describe('POST /api/medios-pago (HU-19)', () => {
 
 // HU-33 del Sprint 4 («Modificar medio de pago»). Desde HU-53 solo se modifica el nombre.
 describe('PATCH /api/medios-pago/:id (HU-33)', () => {
-  const modificar = (cuerpo: object, cookie = cookieResponsableEventos, id = 1) =>
+  const modificar = (cuerpo: object, cookie = cookieAdministraMedios, id = 1) =>
     request(app).patch(`/api/medios-pago/${id}`).set('Cookie', [cookie]).send(cuerpo);
 
   beforeEach(() => {
@@ -1201,6 +1244,22 @@ describe('PATCH /api/medios-pago/:id (HU-33)', () => {
       id,
       ...datos,
     }));
+  });
+
+  it.each([
+    ['RESPONSABLE_FINANZAS', 200],
+    ['GERENTE_GENERAL', 200],
+    ['ADMINISTRADOR_SISTEMA', 200],
+    ['RESPONSABLE_EVENTOS', 403],
+    ['CLIENTE', 403],
+  ] as const)('HU-56: con el rol %s responde %i', async (rol, status) => {
+    const respuesta = await modificar(
+      { nombre: 'Contado' },
+      cookieDe(rol, 'persona@confluens.test'),
+    );
+
+    expect(respuesta.status).toBe(status);
+    if (status === 403) expect(modificarMedioPagoMock).not.toHaveBeenCalled();
   });
 
   it('cambia el nombre, recortado', async () => {
@@ -1295,11 +1354,7 @@ describe('PATCH /api/medios-pago/:id (HU-33)', () => {
 
   it('con un id que no es entero positivo responde 400 sin consultar', async () => {
     for (const id of ['abc', '0', '-1', '1.5']) {
-      const respuesta = await modificar(
-        { nombre: 'Contado' },
-        cookieResponsableEventos,
-        id as never,
-      );
+      const respuesta = await modificar({ nombre: 'Contado' }, cookieAdministraMedios, id as never);
       expect(respuesta.status, id).toBe(400);
     }
     expect(buscarMedioPagoPorIdMock).not.toHaveBeenCalled();
@@ -1327,7 +1382,7 @@ describe('PATCH /api/medios-pago/:id (HU-33)', () => {
 
     const respuesta = await modificar(
       { nombre: 'Efectivo', conFactura: true, sinFactura: true },
-      cookieResponsableEventos,
+      cookieAdministraMedios,
       99,
     );
 

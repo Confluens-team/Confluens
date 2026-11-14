@@ -161,6 +161,27 @@ export const esquemaRegistrarUsuario = z.object({
 });
 export type RegistrarUsuario = z.infer<typeof esquemaRegistrarUsuario>;
 
+// Body de PATCH /usuarios/:id (HU-30 del backlog): el correo y el rol de un usuario del personal.
+// Qué rol puede asignar cada uno y a quién puede modificar lo controla la API (403).
+export const esquemaModificarUsuario = z.object({
+  email: esquemaEmailDeCuenta,
+  rol: esquemaRolPersonal,
+});
+export type ModificarUsuario = z.infer<typeof esquemaModificarUsuario>;
+
+// Body de PUT /usuarios/:id/contrasena (HU-30 del backlog): la contraseña nueva que el ADM le carga
+// a un usuario. Solo el ADM cambia la contraseña de otro (PO, 06/11/2026).
+export const esquemaCambiarContrasenaUsuario = z.object({ contrasena: esquemaContrasenaNueva });
+export type CambiarContrasenaUsuario = z.infer<typeof esquemaCambiarContrasenaUsuario>;
+
+// Body de POST /auth/contrasena: cada usuario cambia la suya desde Mi cuenta, con la actual (HU-30
+// del backlog; PO, 06/11/2026).
+export const esquemaCambiarMiContrasena = z.object({
+  actual: z.string().min(1, { error: 'Ingresá tu contraseña actual' }),
+  nueva: esquemaContrasenaNueva,
+});
+export type CambiarMiContrasena = z.infer<typeof esquemaCambiarMiContrasena>;
+
 // Body de POST /auth/contrasena/olvido (C8 de HU-48): pide el enlace para restablecer la
 // contraseña. Lo usan el cliente y el personal.
 export const esquemaSolicitarRestablecimiento = z.object({ email: esquemaEmailDeCuenta });

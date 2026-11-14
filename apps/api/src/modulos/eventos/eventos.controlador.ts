@@ -56,8 +56,8 @@ export async function guardarObservacionesComanda(req: Request, res: Response): 
 // req.body ya validado por validar({ body: esquemaGuardarObservacionesEvento }).
 export async function guardarObservaciones(req: Request, res: Response): Promise<void> {
   const id = Number(req.params.id);
-  const { observaciones } = req.body as GuardarObservacionesEvento;
-  const evento = await guardarObservacionesDelEvento(id, observaciones);
+  const { observaciones, fecha } = req.body as GuardarObservacionesEvento;
+  const evento = await guardarObservacionesDelEvento(id, observaciones, fecha);
   const cuerpo: RespuestaExito<EventoDetallado> = { data: evento as unknown as EventoDetallado };
   res.status(200).json(cuerpo);
 }

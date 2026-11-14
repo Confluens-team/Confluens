@@ -1,6 +1,12 @@
-import { ESTADOS_QUE_OCUPAN_SALON, type FiltrosAgenda } from '@confluens/shared';
+import {
+  type ChoqueDeSalon,
+  ESTADOS_QUE_OCUPAN_SALON,
+  type FiltrosAgenda,
+} from '@confluens/shared';
 
+import { enTransaccion, registrarAuditoria, registrarAuditorias } from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
+import { salonesDelEvento } from '../presupuestos/presupuestos.repositorio.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 
 // Capa de acceso a datos del módulo. Cada función acepta un `tx` opcional (default: el cliente
@@ -15,11 +21,18 @@ export async function buscarDetallado(id: number, tx: Prisma.TransactionClient =
       cliente: { include: { etiqueta: { select: { id: true, nombre: true } } } },
       // Cada salón con la distribución que tiene armada en este evento (ADR 0011).
       salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
+      // HU-50: los días con su horario y sus salones.
+      dias: { include: INCLUIR_SALONES_DEL_DIA, orderBy: { fecha: 'asc' } },
       solicitud: true,
       presupuestos: { include: { lineas: true } },
     },
   });
 }
+
+// Los salones de un día con su distribución (HU-50).
+const INCLUIR_SALONES_DEL_DIA = {
+  salones: { include: { salon: true, distribucion: true }, orderBy: { salonId: 'asc' } },
+} as const;
 
 // Agenda del personal interno (HU-15). Sin filtros devuelve los eventos que ocupan el salón
 // (ESTADOS_QUE_OCUPAN_SALON): los EnConsulta no bloquean y los Cancelado ya lo liberaron, así que
@@ -37,10 +50,10 @@ export async function listarAgenda(
       estado: { in: estado ?? [...ESTADOS_QUE_OCUPAN_SALON] },
       // El filtro acierta si el evento ocupa alguno de los salones pedidos (ADR 0011).
       salones: salonId ? { some: { salonId: { in: salonId } } } : undefined,
-      fecha: {
-        gte: desde ? new Date(desde) : undefined,
-        lte: hasta ? new Date(hasta) : undefined,
-      },
+      // HU-50: un evento de varios días entra si alguno de sus días cae en el rango, no solo el
+      // primero: empieza antes del final del rango y termina después de su comienzo.
+      fecha: { lte: hasta ? new Date(hasta) : undefined },
+      fechaFin: { gte: desde ? new Date(desde) : undefined },
     },
     orderBy: [{ fecha: 'asc' }, { inicio: 'asc' }],
     include: {
@@ -60,6 +73,25 @@ export async function listarAgenda(
           distribucion: { select: { id: true, nombre: true } },
         },
         orderBy: { salonId: 'asc' },
+      },
+      dias: {
+        select: {
+          id: true,
+          fecha: true,
+          inicio: true,
+          fin: true,
+          cantidadPersonas: true,
+          tipoJornada: true,
+          observaciones: true,
+          salones: {
+            select: {
+              salon: { select: { id: true, nombre: true } },
+              distribucion: { select: { id: true, nombre: true } },
+            },
+            orderBy: { salonId: 'asc' },
+          },
+        },
+        orderBy: { fecha: 'asc' },
       },
       presupuestos: {
         where: { estado: 'Confirmado' },
@@ -96,16 +128,83 @@ export async function buscarSolapamiento(
   datos: { salonIds: number[]; inicio: Date; fin: Date; excluirEventoId: number },
   tx: Prisma.TransactionClient = prisma,
 ) {
+  // HU-50: se compara contra el horario de CADA DÍA de los otros eventos (el renglón del salón de ese
+  // día), no contra el resumen del evento: un evento de varios días no ocupa las noches entre un día
+  // y el siguiente. La condición del salón y la del horario van en el mismo renglón.
   return tx.evento.findFirst({
     where: {
-      salones: { some: { salonId: { in: datos.salonIds } } },
       id: { not: datos.excluirEventoId },
       estado: { in: ['Reservado', 'Cobrado'] },
-      inicio: { lt: datos.fin },
-      fin: { gt: datos.inicio },
+      salones: {
+        some: {
+          salonId: { in: datos.salonIds },
+          inicio: { lt: datos.fin },
+          fin: { gt: datos.inicio },
+        },
+      },
     },
     include: { salones: { include: { salon: { select: { id: true, nombre: true } } } } },
   });
+}
+
+/**
+ * RN-12 por día (HU-50): TODOS los choques de las franjas de un evento de varios días. Cada franja es
+ * un día con los salones que usa ese día y su horario. Devuelve un choque por cada día, salón y
+ * evento que se superpone, con su fecha, el cliente y el horario del otro evento ese día, para
+ * avisar de todos y no solo del primero. Compara contra el renglón de cada día de los otros eventos.
+ */
+export async function buscarChoquesPorDia(
+  datos: {
+    franjas: { fecha: string; salonIds: number[]; inicio: Date; fin: Date }[];
+    excluirEventoId: number;
+  },
+  tx: Prisma.TransactionClient = prisma,
+): Promise<ChoqueDeSalon[]> {
+  if (datos.franjas.length === 0) return [];
+  const filas = await tx.eventoSalon.findMany({
+    where: {
+      eventoId: { not: datos.excluirEventoId },
+      estado: { in: ['Reservado', 'Cobrado'] },
+      OR: datos.franjas.map((franja) => ({
+        salonId: { in: franja.salonIds },
+        inicio: { lt: franja.fin },
+        fin: { gt: franja.inicio },
+      })),
+    },
+    include: {
+      salon: { select: { id: true, nombre: true } },
+      evento: {
+        select: { id: true, estado: true, cliente: { select: { nombre: true, apellido: true } } },
+      },
+    },
+    orderBy: [{ inicio: 'asc' }, { salonId: 'asc' }],
+  });
+  // Un renglón puede tocar más de una franja (un evento que pasa la medianoche), así que se asigna a
+  // cada franja con la que se superpone y en su mismo salón.
+  return datos.franjas.flatMap((franja) =>
+    filas
+      .filter(
+        (fila) =>
+          franja.salonIds.includes(fila.salonId) &&
+          fila.inicio !== null &&
+          fila.fin !== null &&
+          fila.inicio < franja.fin &&
+          fila.fin > franja.inicio,
+      )
+      .map((fila) => ({
+        fecha: franja.fecha,
+        salon: fila.salon,
+        evento: {
+          id: fila.evento.id,
+          estado: fila.evento.estado,
+          cliente: [fila.evento.cliente.nombre, fila.evento.cliente.apellido]
+            .filter(Boolean)
+            .join(' '),
+          inicio: fila.inicio!.toISOString(),
+          fin: fila.fin!.toISOString(),
+        },
+      })),
+  );
 }
 
 /**
@@ -120,27 +219,57 @@ export async function buscarSolapamiento(
 export async function agendarConDistribuciones(
   datos: {
     eventoId: number;
-    distribuciones: { salonId: number; distribucionId: number }[];
+    // HU-50: una por renglón (día, salón); el renglón se identifica por su clave.
+    distribuciones: { diaId: number; salonId: number; distribucionId: number }[];
+    // Un evento de un solo día: el horario de su único día.
     inicio: Date;
     fin: Date;
+    // HU-50: el horario de cada día (por su fecha, `AAAA-MM-DD`). Si viene, manda sobre `inicio` y
+    // `fin`, que valen para todos los días.
+    horarios?: { fecha: string; inicio: Date; fin: Date }[];
     modalidadSalonRestaurante: boolean;
   },
   tx: Prisma.TransactionClient = prisma,
 ) {
-  await tx.evento.update({
-    where: { id: datos.eventoId },
-    data: {
-      inicio: datos.inicio,
-      fin: datos.fin,
-      modalidadSalonRestaurante: datos.modalidadSalonRestaurante,
-    },
-  });
-  for (const { salonId, distribucionId } of datos.distribuciones) {
-    await tx.eventoSalon.update({
-      where: { eventoId_salonId: { eventoId: datos.eventoId, salonId } },
-      data: { distribucionId },
+  await enTransaccion(tx, async (t) => {
+    const anterior = await t.evento.findUniqueOrThrow({ where: { id: datos.eventoId } });
+    const salonesAntes = await salonesDelEvento(datos.eventoId, t);
+    // HU-50: el horario es del DÍA (hoy el evento tiene uno solo) y el resumen del evento lo escribe la
+    // base a partir de él; en el evento solo queda la modalidad.
+    if (datos.horarios) {
+      // Cada día con su horario: el trigger lo lleva a los salones de ese día (RN-12).
+      for (const { fecha, inicio, fin } of datos.horarios) {
+        await t.eventoDia.updateMany({
+          where: { eventoId: datos.eventoId, fecha: new Date(fecha) },
+          data: { inicio, fin },
+        });
+      }
+    } else {
+      await t.eventoDia.updateMany({
+        where: { eventoId: datos.eventoId },
+        data: { inicio: datos.inicio, fin: datos.fin },
+      });
+    }
+    await t.evento.update({
+      where: { id: datos.eventoId },
+      data: { modalidadSalonRestaurante: datos.modalidadSalonRestaurante },
     });
-  }
+    // Se vuelve a leer: el resumen (inicio y fin) cambió por el trigger y es lo que se audita.
+    const evento = await t.evento.findUniqueOrThrow({ where: { id: datos.eventoId } });
+    for (const { diaId, salonId, distribucionId } of datos.distribuciones) {
+      await t.eventoSalon.update({
+        where: { diaId_salonId: { diaId, salonId } },
+        data: { distribucionId },
+      });
+    }
+    // HU-25 del backlog: el horario y, como un campo más, los salones con su distribución.
+    await registrarAuditoria(t, {
+      entidad: 'Evento',
+      entidadId: datos.eventoId,
+      anterior: { ...anterior, salones: salonesAntes },
+      nuevo: { ...evento, salones: await salonesDelEvento(datos.eventoId, t) },
+    });
+  });
 }
 
 // Varias a la vez: las distribuciones de todos los salones del evento.
@@ -155,20 +284,26 @@ export async function guardarObservacionesComanda(
   observaciones: string,
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.evento.update({
-    where: { id },
-    data: { observacionesComanda: observaciones === '' ? null : observaciones },
+  return enTransaccion(tx, async (t) => {
+    const anterior = await t.evento.findUniqueOrThrow({ where: { id } });
+    const evento = await t.evento.update({
+      where: { id },
+      data: { observacionesComanda: observaciones === '' ? null : observaciones },
+    });
+    await registrarAuditoria(t, { entidad: 'Evento', entidadId: id, anterior, nuevo: evento });
+    return evento;
   });
 }
 
-// Observaciones generales del evento. Igual que las de la comanda: cadena vacía se guarda como null.
-export async function guardarObservaciones(
-  id: number,
+// Observaciones de un día del evento (HU-50). Igual que las de la comanda: cadena vacía se guarda
+// como null.
+export async function guardarObservacionesDelDia(
+  diaId: number,
   observaciones: string,
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.evento.update({
-    where: { id },
+  return tx.eventoDia.update({
+    where: { id: diaId },
     data: { observaciones: observaciones === '' ? null : observaciones },
   });
 }
@@ -176,11 +311,26 @@ export async function guardarObservaciones(
 // Cancelar el evento también cancela su(s) presupuesto(s) activos: un evento Cancelado no puede
 // dejar un Presupuesto Estimado/Confirmado huérfano.
 export async function cancelar(id: number, tx: Prisma.TransactionClient = prisma) {
-  await tx.presupuesto.updateMany({
-    where: { eventoId: id, estado: { in: ['Estimado', 'Confirmado'] } },
-    data: { estado: 'Cancelado' },
+  return enTransaccion(tx, async (t) => {
+    const activos = { eventoId: id, estado: { in: ['Estimado' as const, 'Confirmado' as const] } };
+    const presupuestos = await t.presupuesto.findMany({
+      where: activos,
+      select: { id: true, estado: true },
+    });
+    await t.presupuesto.updateMany({ where: activos, data: { estado: 'Cancelado' } });
+    const anterior = await t.evento.findUniqueOrThrow({ where: { id } });
+    const evento = await t.evento.update({ where: { id }, data: { estado: 'Cancelado' } });
+    await registrarAuditorias(t, [
+      { entidad: 'Evento', entidadId: id, anterior, nuevo: evento },
+      ...presupuestos.map((presupuesto) => ({
+        entidad: 'Presupuesto' as const,
+        entidadId: presupuesto.id,
+        anterior: { estado: presupuesto.estado },
+        nuevo: { estado: 'Cancelado' },
+      })),
+    ]);
+    return evento;
   });
-  return tx.evento.update({ where: { id }, data: { estado: 'Cancelado' } });
 }
 
 export async function crearEnTransaccion<T>(
@@ -194,10 +344,11 @@ export type EventosRepositorio = {
   listarAgenda: typeof listarAgenda;
   buscarPresupuestoEstimado: typeof buscarPresupuestoEstimado;
   buscarSolapamiento: typeof buscarSolapamiento;
+  buscarChoquesPorDia: typeof buscarChoquesPorDia;
   agendarConDistribuciones: typeof agendarConDistribuciones;
   buscarDistribuciones: typeof buscarDistribuciones;
   guardarObservacionesComanda: typeof guardarObservacionesComanda;
-  guardarObservaciones: typeof guardarObservaciones;
+  guardarObservacionesDelDia: typeof guardarObservacionesDelDia;
   cancelar: typeof cancelar;
   crearEnTransaccion: typeof crearEnTransaccion;
 };

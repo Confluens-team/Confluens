@@ -37,9 +37,11 @@ export const esquemaObservacionesEvento = z
   .trim()
   .max(2000, 'Las observaciones pueden tener hasta 2000 caracteres');
 
-// Body de PATCH /eventos/:id/observaciones. Vacío borra lo que hubiera.
+// Body de PATCH /eventos/:id/observaciones. Vacío borra lo que hubiera. HU-50: las observaciones son
+// de cada día, así que `fecha` dice de cuál; un evento de un solo día no necesita decirlo.
 export const esquemaGuardarObservacionesEvento = z.object({
   observaciones: esquemaObservacionesEvento,
+  fecha: esquemaFecha.optional(),
 });
 export type GuardarObservacionesEvento = z.infer<typeof esquemaGuardarObservacionesEvento>;
 
@@ -59,6 +61,9 @@ export const esquemaEvento = z.object({
   id: esquemaId,
   clienteId: esquemaId,
   fecha: esquemaFecha,
+  // HU-50: el último día del evento. Igual a `fecha` si dura un solo día. `inicio` y `fin` son los
+  // del primer y del último día: una sola barra larga en la agenda.
+  fechaFin: esquemaFecha,
   inicio: esquemaFechaHora.nullable(),
   fin: esquemaFechaHora.nullable(),
   cantidadPersonas: z.number().int().positive(),
@@ -77,11 +82,34 @@ export const esquemaEvento = z.object({
   senaRegistradaEn: esquemaFechaHora.nullable(),
   modalidadSalonRestaurante: z.boolean(), // opción interna, no visible al cliente
   observacionesComanda: esquemaObservacionesComanda.nullable(),
+  // Sin uso desde HU-50: las observaciones son de cada día (`DiaDeEvento.observaciones`). La columna se
+  // conserva hasta una migración posterior.
   observaciones: esquemaObservacionesEvento.nullable(),
   creadoEn: esquemaFechaHora,
   actualizadoEn: esquemaFechaHora,
 });
 export type Evento = z.infer<typeof esquemaEvento>;
+
+// Un día del evento con su horario real (null hasta agendar), sus personas, su jornada y sus
+// salones (HU-50). Siempre hay al menos uno.
+export const esquemaDiaDeEvento = z.object({
+  id: esquemaId,
+  fecha: esquemaFecha,
+  inicio: esquemaFechaHora.nullable(),
+  fin: esquemaFechaHora.nullable(),
+  cantidadPersonas: z.number().int().positive(),
+  tipoJornada: esquemaTipoJornada.nullable(),
+  // Observaciones internas de este día (HU-50): cada día puede tener las suyas.
+  observaciones: esquemaObservacionesEvento.nullable(),
+  salones: z.array(
+    z.object({
+      id: esquemaId,
+      nombre: z.string(),
+      distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
+    }),
+  ),
+});
+export type DiaDeEvento = z.infer<typeof esquemaDiaDeEvento>;
 
 // Agenda del panel del Administrador del Sistema: los eventos que ocupan un salón (Reservado y
 // Cobrado), con lo mínimo de cliente, salón y distribución para listarlos sin pedir el detalle de
@@ -103,6 +131,8 @@ export const esquemaEventoAgenda = esquemaEvento.extend({
       distribucion: z.object({ id: esquemaId, nombre: z.string() }).nullable(),
     }),
   ),
+  // Los días del evento, en orden. Un evento de un solo día trae uno.
+  dias: z.array(esquemaDiaDeEvento).min(1),
   totalPresupuesto: esquemaImporte.nullable(),
 });
 export type EventoAgenda = z.infer<typeof esquemaEventoAgenda>;
@@ -151,9 +181,11 @@ export type FiltrosHistorialCliente = z.infer<typeof esquemaFiltrosHistorialClie
 
 // Una fila del historial de un cliente (HU-18 C1). `salones` vacío: consulta social todavía sin
 // salón. `total` es el del presupuesto del evento, sin IVA (RN-05); null si no tiene presupuesto.
+// `fechaFin` es el último día (HU-50): igual a `fecha` en un evento de un solo día.
 export const esquemaEventoHistorial = z.object({
   id: esquemaId,
   fecha: esquemaFecha,
+  fechaFin: esquemaFecha,
   inicio: esquemaFechaHora.nullable(),
   fin: esquemaFechaHora.nullable(),
   estado: esquemaEstadoEvento,

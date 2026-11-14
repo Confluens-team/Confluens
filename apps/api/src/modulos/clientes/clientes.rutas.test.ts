@@ -92,7 +92,7 @@ describe('GET /api/clientes', () => {
     expect(listarConResumenMock).not.toHaveBeenCalled();
   });
 
-  // Provisorio (06/10/2026): todo el personal ve todo hasta que se dividan las funciones por rol.
+  // HU-56: fuera de Configuración de negocio los cuatro roles del personal ven todo.
   it('otro rol del personal también accede', async () => {
     listarConResumenMock.mockResolvedValue([]);
 
@@ -246,6 +246,7 @@ describe('GET /api/clientes/:id/eventos (HU-18)', () => {
   ) => ({
     id,
     fecha: new Date('2026-11-15T00:00:00.000Z'),
+    fechaFin: new Date('2026-11-15T00:00:00.000Z'),
     inicio: null,
     fin: null,
     estado,
@@ -290,6 +291,7 @@ describe('GET /api/clientes/:id/eventos (HU-18)', () => {
     expect(respuesta.body.data.eventos[0]).toEqual({
       id: 4,
       fecha: '2026-11-15',
+      fechaFin: '2026-11-15',
       inicio: null,
       fin: null,
       estado: 'Cancelado',
@@ -300,6 +302,22 @@ describe('GET /api/clientes/:id/eventos (HU-18)', () => {
       salones: [{ id: 5, nombre: 'Paraná' }],
       presupuestoId: 40,
       total: '100000.00',
+    });
+  });
+
+  // HU-50: un evento de varios días trae hasta cuándo dura, para mostrar la franja.
+  it('un evento de varios días trae su último día en fechaFin', async () => {
+    listarEventosDeClienteMock.mockResolvedValue([
+      evento(1, 'Reservado', { fechaFin: new Date('2026-11-17T00:00:00.000Z') }),
+    ] as never);
+
+    const respuesta = await request(app)
+      .get('/api/clientes/1/eventos')
+      .set('Cookie', [cookieDe('GERENTE_GENERAL')]);
+
+    expect(respuesta.body.data.eventos[0]).toMatchObject({
+      fecha: '2026-11-15',
+      fechaFin: '2026-11-17',
     });
   });
 

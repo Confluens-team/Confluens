@@ -192,7 +192,9 @@ function EditorDeFoto({
 // No hay un paso de publicación aparte: cada cambio impacta en la landing apenas responde el PATCH,
 // porque los hooks invalidan ['salones'] / ['servicios'] y las claves públicas cuelgan de esas
 // (criterio 3). El registro de quién cambió qué lo escribe la API en audit_log (criterio 4).
-export function AdministrarLanding() {
+// puedePublicar (HU-56): solo el ADM decide qué salones se publican. El GG ve la casilla, pero no la
+// puede cambiar, y sí cambia las fotos.
+export function AdministrarLanding({ puedePublicar }: { puedePublicar: boolean }) {
   const { data: salones, isLoading: cargandoSalones, isError: errorSalones } = useSalones();
   const { data: servicios, isLoading: cargandoServicios, isError: errorServicios } = useServicios();
 
@@ -204,9 +206,10 @@ export function AdministrarLanding() {
       <div>
         <h1 className="text-2xl font-semibold">Landing page</h1>
         <p className="text-sm text-muted-foreground">
-          Elegí qué salones se publican y subí desde tu galería las fotos que se muestran en el
-          sitio público. Los cambios se ven en la landing al instante, sin ningún paso de
-          publicación adicional.
+          {puedePublicar
+            ? 'Elegí qué salones se publican y subí desde tu galería las fotos que se muestran en el sitio público. '
+            : 'Subí desde tu galería las fotos que se muestran en el sitio público. Qué salones se publican lo decide el Administrador del Sistema. '}
+          Los cambios se ven en la landing al instante, sin ningún paso de publicación adicional.
         </p>
       </div>
 
@@ -240,7 +243,7 @@ export function AdministrarLanding() {
                     <Checkbox
                       id={`visible-${salon.id}`}
                       checked={salon.visibleEnLanding}
-                      disabled={guardando}
+                      disabled={guardando || !puedePublicar}
                       onCheckedChange={(marcado) =>
                         actualizarSalon.mutate({
                           id: salon.id,

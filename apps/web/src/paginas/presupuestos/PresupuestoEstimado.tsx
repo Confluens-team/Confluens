@@ -1,9 +1,11 @@
-import { DIAS_VIGENCIA_PRESUPUESTO } from '@confluens/shared';
+import { DIAS_VIGENCIA_PRESUPUESTO, type LineaPresupuesto } from '@confluens/shared';
 import { CheckCircle2, Home, Printer, RotateCcw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import type { PresupuestoGenerado } from './CotizarEvento';
-import { DocumentoPresupuesto } from './DocumentoPresupuesto';
+import { agruparPorDia } from '@/lib/dias-del-evento';
+import { DocumentoPresupuesto, type DiaDelDocumento } from './DocumentoPresupuesto';
+import { nombrePdfPresupuesto } from './nombre-pdf';
 
 // Presupuesto Estimado recién generado, presentado como el documento que hoy el cliente recibe en
 // PDF por WhatsApp. "Imprimir" usa el diálogo del navegador, que permite guardarlo como PDF.
@@ -17,9 +19,26 @@ export function PresupuestoEstimado({
   onInicio: () => void;
 }) {
   const { presupuesto, salones, tipoJornada, cliente } = resultado;
+  // HU-50: las líneas llegan con el día al que pertenecen. Los días se reparten en el orden en que
+  // aparecen, que es el de la franja, y cada uno toma lo que se cotizó en su lugar.
+  const dias: DiaDelDocumento[] | undefined = resultado.dias?.map((dia, i) => ({
+    ...dia,
+    lineas:
+      agruparPorDia(presupuesto.lineas as (LineaPresupuesto & { diaId?: number })[])[i]?.lineas ??
+      [],
+  }));
   const emision = new Date(presupuesto.fechaEmision);
   const vence = new Date(emision);
   vence.setDate(vence.getDate() + DIAS_VIGENCIA_PRESUPUESTO);
+
+  // El título de la página es el nombre que el navegador le propone al PDF, igual que en el
+  // presupuesto formal: presupuesto-AAAA-MM-DD-apellido (reunión con el cliente, 05/11/2026).
+  function imprimir() {
+    const titulo = document.title;
+    document.title = nombrePdfPresupuesto(presupuesto.evento.fecha.slice(0, 10), cliente);
+    window.addEventListener('afterprint', () => (document.title = titulo), { once: true });
+    window.print();
+  }
 
   return (
     <main className="fondo-papel min-h-screen px-4 py-10 sm:px-6 print:bg-white print:p-0">
@@ -46,11 +65,12 @@ export function PresupuestoEstimado({
           salones={salones}
           tipoJornada={tipoJornada}
           lineas={presupuesto.lineas}
+          dias={dias}
           total={presupuesto.total}
         />
 
         <div className="mt-8 flex flex-col justify-center gap-3 sm:flex-row print:hidden">
-          <Button size="lg" className="h-11" onClick={() => window.print()}>
+          <Button size="lg" className="h-11" onClick={imprimir}>
             <Printer /> Imprimir o guardar PDF
           </Button>
           <Button size="lg" variant="outline" className="h-11" onClick={onOtro}>

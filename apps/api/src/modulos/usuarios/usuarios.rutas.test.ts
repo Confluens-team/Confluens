@@ -27,6 +27,7 @@ const creado = (email: string, rol: Rol) => ({
   id: 7,
   email,
   rol,
+  activo: true,
   creadoEn: FECHA,
   actualizadoEn: FECHA,
 });
@@ -59,6 +60,7 @@ describe('POST /api/usuarios (HU-30 del Sprint 4)', () => {
         id: 7,
         email: 'fran@confluens.test',
         rol: 'RESPONSABLE_EVENTOS',
+        activo: true,
         creadoEn: FECHA.toISOString(),
         actualizadoEn: FECHA.toISOString(),
       },
@@ -406,6 +408,7 @@ describe('POST /api/usuarios (HU-30 del Sprint 4)', () => {
     expect(respuesta.status).toBe(201);
     expect(JSON.stringify(respuesta.body)).not.toMatch(/secreto|hash|versionSesion/i);
     expect(Object.keys(respuesta.body.data).sort()).toEqual([
+      'activo',
       'actualizadoEn',
       'creadoEn',
       'email',
@@ -511,6 +514,7 @@ describe('GET /api/usuarios (HU-31 del Sprint 4)', () => {
         id: 7,
         email: 're@confluens.test',
         rol: 'RESPONSABLE_EVENTOS',
+        activo: true,
         creadoEn: FECHA.toISOString(),
         actualizadoEn: FECHA.toISOString(),
       });
@@ -601,6 +605,7 @@ describe('GET /api/usuarios (HU-31 del Sprint 4)', () => {
 
     expect(respuesta.status).toBe(200);
     expect(Object.keys(respuesta.body.data[0]).sort()).toEqual([
+      'activo',
       'actualizadoEn',
       'creadoEn',
       'email',

@@ -1,4 +1,5 @@
 import {
+  esquemaCambiarMiContrasena,
   esquemaCredenciales,
   esquemaPerfilCliente,
   esquemaRegistroCliente,
@@ -16,6 +17,7 @@ import { autorizar } from '../../middlewares/autorizar.js';
 import { limitadorCredenciales, limitadorRegistro } from '../../middlewares/limitadores.js';
 import { validar } from '../../middlewares/validar.js';
 import {
+  cambiarContrasena,
   login,
   logout,
   olvidoContrasena,
@@ -133,6 +135,25 @@ registroOpenApi.registerPath({
   },
 });
 
+registroOpenApi.registerPath({
+  method: 'post',
+  path: '/auth/contrasena',
+  tags: ['Auth'],
+  summary:
+    'Cambia la contraseña del usuario de la sesión con la actual (HU-30 del backlog). Cierra sus otras sesiones',
+  request: { body: { content: { 'application/json': { schema: esquemaCambiarMiContrasena } } } },
+  responses: {
+    200: {
+      description: 'Contraseña cambiada; la cookie de sesión se renueva',
+      content: { 'application/json': { schema: z.object({ data: esquemaSesion }) } },
+    },
+    400: { description: 'Falta la contraseña actual o la nueva tiene menos de 6 caracteres' },
+    401: { description: 'Sin sesión' },
+    422: { description: 'La contraseña actual no es correcta' },
+    429: { description: 'Demasiados intentos; el límite es por IP y ventana (H2)' },
+  },
+});
+
 export const rutasAuth = Router();
 
 // H2 de la auditoría de seguridad: los limitadores van antes de validar() para que el tope corte
@@ -157,6 +178,14 @@ rutasAuth.post(
   limitadorCredenciales,
   validar({ body: esquemaSolicitarRestablecimiento }),
   olvidoContrasena,
+);
+// Cualquier usuario con sesión cambia la suya; el limitador frena que se adivine la actual.
+rutasAuth.post(
+  '/contrasena',
+  limitadorCredenciales,
+  autenticar,
+  validar({ body: esquemaCambiarMiContrasena }),
+  asincrono(cambiarContrasena),
 );
 rutasAuth.post(
   '/contrasena/restablecer',

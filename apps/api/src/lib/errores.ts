@@ -21,8 +21,9 @@ export class ErrorApi extends Error {
     return new ErrorApi(404, CODIGOS_ERROR.NO_ENCONTRADO, mensaje);
   }
 
-  static conflicto(mensaje: string): ErrorApi {
-    return new ErrorApi(409, CODIGOS_ERROR.CONFLICTO, mensaje);
+  // `detalles`: uno por cada choque, cuando hay varios (RN-12, HU-50).
+  static conflicto(mensaje: string, detalles?: DetalleError[]): ErrorApi {
+    return new ErrorApi(409, CODIGOS_ERROR.CONFLICTO, mensaje, detalles);
   }
 
   static reglaNegocio(mensaje: string, detalles?: DetalleError[]): ErrorApi {

@@ -19,7 +19,7 @@ No leas esta carpeta entera. Abrí solo lo que la tarea necesita.
 |---|---|
 | Escribir cualquier código | `/AGENTS.md` (raíz) + `producto/dominio.md` |
 | Crear archivos, nombrar cosas o correr comandos | + `tecnico/convenciones.md` |
-| Implementar una historia del sprint en curso | + `producto/sprint-04.md` |
+| Implementar una historia del sprint en curso | + `producto/sprint-05.md` |
 | Tocar el modelo de datos o los enums | + `tecnico/modelo-datos.md` |
 | Cargar datos de prueba o precios | + `negocio/tarifario-2026.md` |
 | Entender por qué algo está hecho así | + `tecnico/adr/` |
@@ -39,13 +39,14 @@ docs/
 │   ├── sprint-01.md             Las 8 historias del Sprint 1, cerrado. Se conserva como referencia.
 │   ├── sprint-02.md             Las 7 historias del Sprint 2, cerrado. Se conserva como referencia.
 │   ├── sprint-03.md             Las 9 historias del Sprint 3, cerrado. Se conserva como referencia.
-│   ├── sprint-04.md             Las 12 historias del Sprint 4 (en curso), con criterios propuestos.
+│   ├── sprint-04.md             Las historias del Sprint 4, cerrado. Se conserva como referencia.
+│   ├── sprint-05.md             El Sprint 5 (en curso): propuesta para la Planning, con criterios.
 │   └── pendientes.md            Lo que todavía no definió el cliente. Qué NO asumir.
 ├── tecnico/
 │   ├── arquitectura.md          Monorepo, capas y límites entre workspaces.
 │   ├── modelo-datos.md          Entidades, enums y la restricción de no solapamiento.
 │   ├── convenciones.md          Nombres, archivos, schemas compartidos y comandos.
-│   └── adr/                     Decisiones técnicas (0001 a 0012) + template.md.
+│   └── adr/                     Decisiones técnicas (0001 a 0014) + template.md.
 └── negocio/
     └── tarifario-2026.md        Salones, capacidades y precios reales. Base de los seeds.
 ```

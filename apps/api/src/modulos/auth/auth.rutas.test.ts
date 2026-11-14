@@ -60,6 +60,8 @@ describe('POST /api/auth/login', () => {
       email: 'ge@confluens.test',
       hashContrasena: hash,
       versionSesion: 0,
+
+      activo: true,
       rol: 'GERENTE_GENERAL',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -86,6 +88,8 @@ describe('POST /api/auth/login', () => {
       email: 'ana@empresa.com',
       hashContrasena: await hashearContrasena('secreta123'),
       versionSesion: 0,
+
+      activo: true,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -107,6 +111,8 @@ describe('POST /api/auth/login', () => {
       email: 'ge@confluens.test',
       hashContrasena: hash,
       versionSesion: 0,
+
+      activo: true,
       rol: 'GERENTE_GENERAL',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -251,6 +257,8 @@ describe('POST /api/auth/registro', () => {
       email: datos.email,
       hashContrasena: datos.hashContrasena,
       versionSesion: 0,
+
+      activo: true,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -280,6 +288,8 @@ describe('POST /api/auth/registro', () => {
       email: 'ana@empresa.com',
       hashContrasena: 'x',
       versionSesion: 0,
+
+      activo: true,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -317,6 +327,8 @@ describe('POST /api/auth/registro', () => {
       email: datos.email,
       hashContrasena: datos.hashContrasena,
       versionSesion: 0,
+
+      activo: true,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -396,6 +408,8 @@ describe('POST /api/auth/registro', () => {
       email: datos.email,
       hashContrasena: datos.hashContrasena,
       versionSesion: 0,
+
+      activo: true,
       rol: 'CLIENTE',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -481,6 +495,8 @@ describe('POST /api/auth/contrasena/olvido', () => {
       email: 're@confluens.test',
       hashContrasena: await hashearContrasena('x'),
       versionSesion: 0,
+
+      activo: true,
       rol: 'RESPONSABLE_EVENTOS',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -532,6 +548,8 @@ describe('POST /api/auth/contrasena/restablecer', () => {
       email: 're@confluens.test',
       hashContrasena: hashActual,
       versionSesion: 0,
+
+      activo: true,
       rol: 'RESPONSABLE_EVENTOS',
       creadoEn: new Date(),
       actualizadoEn: new Date(),
@@ -566,6 +584,61 @@ describe('POST /api/auth/contrasena/restablecer', () => {
     expect(respuesta.status).toBe(422);
     expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
     expect(actualizarContrasenaMock).not.toHaveBeenCalled();
+  });
+
+  // Un RE con la contraseña de `hash`. Va en una variable y no literal en mockResolvedValue: así
+  // `activo` (HU-31 del backlog) no choca con el tipo de Usuario antes de que exista la columna.
+  const usuarioConHash = (hash: string, versionSesion = 0) => {
+    const usuario = {
+      id: 1,
+      email: 're@confluens.test',
+      hashContrasena: hash,
+      versionSesion,
+      activo: true,
+      rol: 'RESPONSABLE_EVENTOS' as const,
+      creadoEn: new Date(),
+      actualizadoEn: new Date(),
+    };
+    return usuario;
+  };
+
+  // El enlace sirve una sola vez: se firma con el hash de la contraseña de ese momento, así que una
+  // vez cambiada deja de verificar (C8 de HU-48).
+  it('un enlace ya usado (la contraseña cambió desde que se firmó) responde 422', async () => {
+    const hashViejo = await hashearContrasena('vieja-123');
+    const token = firmarTokenRestablecimiento(1, hashViejo);
+    buscarUsuarioPorIdMock.mockResolvedValue(
+      usuarioConHash(await hashearContrasena('ya-cambiada-456'), 1),
+    );
+
+    const respuesta = await request(app)
+      .post('/api/auth/contrasena/restablecer')
+      .send({ token, contrasena: 'otra-789' });
+
+    expect(respuesta.status).toBe(422);
+    expect(respuesta.body.error.message).toBe('El enlace venció o ya se usó. Pedí uno nuevo.');
+    expect(actualizarContrasenaMock).not.toHaveBeenCalled();
+  });
+
+  // El enlace vence a los 30 minutos.
+  it('un enlace de hace más de 30 minutos responde 422', async () => {
+    const hashActual = await hashearContrasena('vieja-123');
+    buscarUsuarioPorIdMock.mockResolvedValue(usuarioConHash(hashActual));
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      vi.setSystemTime(new Date('2026-11-07T10:00:00.000Z'));
+      const token = firmarTokenRestablecimiento(1, hashActual);
+      vi.setSystemTime(new Date('2026-11-07T10:31:00.000Z'));
+
+      const respuesta = await request(app)
+        .post('/api/auth/contrasena/restablecer')
+        .send({ token, contrasena: 'nueva-456' });
+
+      expect(respuesta.status).toBe(422);
+      expect(actualizarContrasenaMock).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('con una contraseña de menos de 6 caracteres responde 400', async () => {
