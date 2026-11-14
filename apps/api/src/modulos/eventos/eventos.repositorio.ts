@@ -82,6 +82,7 @@ export async function listarAgenda(
           fin: true,
           cantidadPersonas: true,
           tipoJornada: true,
+          observaciones: true,
           salones: {
             select: {
               salon: { select: { id: true, nombre: true } },
@@ -218,7 +219,8 @@ export async function buscarChoquesPorDia(
 export async function agendarConDistribuciones(
   datos: {
     eventoId: number;
-    distribuciones: { salonId: number; distribucionId: number }[];
+    // HU-50: una por renglón (día, salón); el renglón se identifica por su clave.
+    distribuciones: { diaId: number; salonId: number; distribucionId: number }[];
     // Un evento de un solo día: el horario de su único día.
     inicio: Date;
     fin: Date;
@@ -254,9 +256,9 @@ export async function agendarConDistribuciones(
     });
     // Se vuelve a leer: el resumen (inicio y fin) cambió por el trigger y es lo que se audita.
     const evento = await t.evento.findUniqueOrThrow({ where: { id: datos.eventoId } });
-    for (const { salonId, distribucionId } of datos.distribuciones) {
-      await t.eventoSalon.updateMany({
-        where: { eventoId: datos.eventoId, salonId },
+    for (const { diaId, salonId, distribucionId } of datos.distribuciones) {
+      await t.eventoSalon.update({
+        where: { diaId_salonId: { diaId, salonId } },
         data: { distribucionId },
       });
     }
@@ -293,14 +295,15 @@ export async function guardarObservacionesComanda(
   });
 }
 
-// Observaciones generales del evento. Igual que las de la comanda: cadena vacía se guarda como null.
-export async function guardarObservaciones(
-  id: number,
+// Observaciones de un día del evento (HU-50). Igual que las de la comanda: cadena vacía se guarda
+// como null.
+export async function guardarObservacionesDelDia(
+  diaId: number,
   observaciones: string,
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return tx.evento.update({
-    where: { id },
+  return tx.eventoDia.update({
+    where: { id: diaId },
     data: { observaciones: observaciones === '' ? null : observaciones },
   });
 }
@@ -345,7 +348,7 @@ export type EventosRepositorio = {
   agendarConDistribuciones: typeof agendarConDistribuciones;
   buscarDistribuciones: typeof buscarDistribuciones;
   guardarObservacionesComanda: typeof guardarObservacionesComanda;
-  guardarObservaciones: typeof guardarObservaciones;
+  guardarObservacionesDelDia: typeof guardarObservacionesDelDia;
   cancelar: typeof cancelar;
   crearEnTransaccion: typeof crearEnTransaccion;
 };

@@ -269,6 +269,9 @@ model EventoDia {
   fin              DateTime? // horario hasta
   tipoJornada      TipoJornada?
   cantidadPersonas Int
+  // Observaciones internas del día: cada día puede tener las suyas (HU-50). Reemplazan a
+  // Evento.observaciones, que queda sin uso desde esta migración.
+  observaciones    String?
   salones          EventoSalon[]
   lineas           LineaPresupuesto[]
   creadoEn         DateTime           @default(now())

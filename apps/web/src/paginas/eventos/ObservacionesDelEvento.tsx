@@ -8,11 +8,21 @@ import { Textarea } from '@/components/ui/textarea';
 import { useGuardarObservaciones } from '@/hooks/use-eventos';
 import { ErrorApiCliente } from '@/lib/api';
 
-// Observaciones generales del evento: pedidos del cliente, acuerdos, avisos al equipo. Son internas
-// del personal, no salen en el presupuesto ni en la comanda. El borrador vive acá mientras se
-// escribe y se manda con «Guardar»: guardar en cada tecla pegaría a la API en cada letra.
-export function ObservacionesDelEvento({ evento }: { evento: EventoDetallado }) {
-  const guardadas = evento.observaciones ?? '';
+// Observaciones de un día del evento: pedidos del cliente, acuerdos, avisos al equipo. Cada día tiene
+// las suyas (HU-50). Son internas del personal, no salen en el presupuesto ni en la comanda. El
+// borrador vive acá mientras se escribe y se manda con «Guardar»: guardar en cada tecla pegaría a la
+// API en cada letra. El que la usa le pone `key` con el id del día, así cada día arranca con su texto.
+export function ObservacionesDelEvento({
+  evento,
+  dia,
+  integrada = false,
+}: {
+  evento: EventoDetallado;
+  dia: EventoDetallado['dias'][number];
+  // En un evento de varios días va dentro del bloque del día, sin tarjeta propia.
+  integrada?: boolean;
+}) {
+  const guardadas = dia.observaciones ?? '';
   const [texto, setTexto] = useState(guardadas);
   const guardar = useGuardarObservaciones(evento.id);
   const sinGuardar = texto.trim() !== guardadas;
@@ -22,8 +32,8 @@ export function ObservacionesDelEvento({ evento }: { evento: EventoDetallado }) 
   // la tarjeta no aparece.
   if (cancelado && !guardadas) return null;
 
-  return (
-    <Card>
+  const contenido = (
+    <>
       <CardHeader className="flex items-center justify-between gap-2">
         <CardTitle>
           <label htmlFor="evento-observaciones">Observaciones</label>
@@ -43,7 +53,7 @@ export function ObservacionesDelEvento({ evento }: { evento: EventoDetallado }) 
                 size="sm"
                 variant="outline"
                 disabled={guardar.isPending}
-                onClick={() => guardar.mutate(texto.trim())}
+                onClick={() => guardar.mutate({ observaciones: texto.trim(), fecha: dia.fecha })}
               >
                 <Save /> {guardar.isPending ? 'Guardando…' : 'Guardar'}
               </Button>
@@ -65,6 +75,7 @@ export function ObservacionesDelEvento({ evento }: { evento: EventoDetallado }) 
         />
         <p className="text-xs text-muted-foreground">Solo lo ve el personal.</p>
       </CardContent>
-    </Card>
+    </>
   );
+  return integrada ? contenido : <Card>{contenido}</Card>;
 }

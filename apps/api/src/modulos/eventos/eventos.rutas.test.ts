@@ -14,7 +14,7 @@ vi.mock('./eventos.repositorio.js', () => ({
   agendarConDistribuciones: vi.fn(),
   buscarDistribuciones: vi.fn(),
   guardarObservacionesComanda: vi.fn(),
-  guardarObservaciones: vi.fn(),
+  guardarObservacionesDelDia: vi.fn(),
   cancelar: vi.fn(),
   // No hay transacción real en el test: se ejecuta el callback tal cual, `agendar` ya está
   // mockeada arriba y no usa el `tx` que recibiría de una transacción real.
@@ -28,7 +28,7 @@ const {
   agendarConDistribuciones,
   buscarDistribuciones,
   guardarObservacionesComanda,
-  guardarObservaciones,
+  guardarObservacionesDelDia,
   cancelar,
   crearEnTransaccion,
 } = await import('./eventos.repositorio.js');
@@ -39,7 +39,7 @@ const buscarSolapamientoMock = vi.mocked(buscarSolapamiento);
 const agendarConDistribucionesMock = vi.mocked(agendarConDistribuciones);
 const buscarDistribucionesMock = vi.mocked(buscarDistribuciones);
 const guardarObservacionesComandaMock = vi.mocked(guardarObservacionesComanda);
-const guardarObservacionesMock = vi.mocked(guardarObservaciones);
+const guardarObservacionesMock = vi.mocked(guardarObservacionesDelDia);
 const cancelarMock = vi.mocked(cancelar);
 const crearEnTransaccionMock = vi.mocked(crearEnTransaccion);
 
@@ -114,7 +114,13 @@ const presupuestoEstimadoFixture = {
 };
 
 function eventoFixture(datos: Partial<ReturnType<typeof eventoFixtureBase>> = {}) {
-  return { ...eventoFixtureBase(), ...datos };
+  const evento = { ...eventoFixtureBase(), ...datos };
+  // HU-50: los salones del único día son los mismos renglones del evento (la distribución se escribe
+  // y se lee por día); un test que cambia los salones no tiene que acordarse de cambiarlos en el día.
+  if (!datos.dias) {
+    evento.dias = [{ ...((evento.dias[0] ?? {}) as object), salones: evento.salones }] as never[];
+  }
+  return evento;
 }
 
 type EstadoEventoFixture = 'EnConsulta' | 'Reservado' | 'Cobrado' | 'Cancelado';
@@ -319,7 +325,9 @@ describe('POST /api/eventos/:id/agendar', () => {
     const [datosAgenda] = agendarConDistribucionesMock.mock.calls[0]!;
     expect(datosAgenda).toEqual({
       eventoId: 20,
-      distribuciones: [{ salonId: salonFixture.id, distribucionId: distribucionFixture.id }],
+      distribuciones: [
+        { diaId: 1, salonId: salonFixture.id, distribucionId: distribucionFixture.id },
+      ],
       inicio: new Date(inicioValido),
       fin: new Date(finValido),
       modalidadSalonRestaurante: false,
@@ -368,10 +376,14 @@ describe('POST /api/eventos/:id/agendar', () => {
     it('el evento que ya la tenía en ese salón se reagenda con ella', async () => {
       buscarDistribucionesMock.mockResolvedValue([dadaDeBaja]);
       const base = eventoFixture({ estado: 'Reservado' });
-      buscarDetalladoMock.mockResolvedValue({
-        ...base,
-        salones: [{ ...base.salones[0]!, distribucionId: dadaDeBaja.id, distribucion: dadaDeBaja }],
-      });
+      buscarDetalladoMock.mockResolvedValue(
+        eventoFixture({
+          estado: 'Reservado',
+          salones: [
+            { ...base.salones[0]!, distribucionId: dadaDeBaja.id, distribucion: dadaDeBaja },
+          ],
+        }),
+      );
 
       const respuesta = await agendar(cuerpo());
 
@@ -615,8 +627,8 @@ describe('POST /api/eventos/:id/agendar', () => {
     expect(respuesta.status).toBe(200);
     const [datosAgenda] = agendarConDistribucionesMock.mock.calls[0]!;
     expect(datosAgenda.distribuciones).toEqual([
-      { salonId: salonFixture.id, distribucionId: distribucionFixture.id },
-      { salonId: pucara.id, distribucionId: banquetePucara.id },
+      { diaId: 1, salonId: salonFixture.id, distribucionId: distribucionFixture.id },
+      { diaId: 1, salonId: pucara.id, distribucionId: banquetePucara.id },
     ]);
   });
 
@@ -1014,7 +1026,63 @@ describe('PATCH /api/eventos/:id/observaciones', () => {
     const respuesta = await guardar({ observaciones: nota });
 
     expect(respuesta.status).toBe(200);
-    expect(guardarObservacionesMock).toHaveBeenCalledWith(20, nota);
+    // Se guardan en el único día del evento (HU-50): se escribe por el id del día.
+    expect(guardarObservacionesMock).toHaveBeenCalledWith(1, nota);
+  });
+
+  // HU-50: cada día de un evento de varios días tiene sus observaciones.
+  describe('de un evento de varios días', () => {
+    const tresDias = () => {
+      const base = eventoFixture();
+      const dia = (id: number, fecha: string) => ({
+        ...((base.dias[0] ?? {}) as object),
+        id,
+        fecha: new Date(fecha),
+      });
+      return eventoFixture({
+        fechaFin: new Date('2026-11-17'),
+        dias: [dia(1, '2026-11-15'), dia(2, '2026-11-16'), dia(3, '2026-11-17')] as never[],
+      });
+    };
+
+    it('con la fecha, guardan las del día que corresponde y no las de los demás', async () => {
+      buscarDetalladoMock.mockResolvedValue(tresDias());
+
+      const respuesta = await guardar({ observaciones: nota, fecha: '2026-11-16' });
+
+      expect(respuesta.status).toBe(200);
+      expect(guardarObservacionesMock).toHaveBeenCalledTimes(1);
+      expect(guardarObservacionesMock).toHaveBeenCalledWith(2, nota);
+    });
+
+    it('sin la fecha responden 422: callar no dice de qué día son', async () => {
+      buscarDetalladoMock.mockResolvedValue(tresDias());
+
+      const respuesta = await guardar({ observaciones: nota });
+
+      expect(respuesta.status).toBe(422);
+      expect(respuesta.body.error.code).toBe('BUSINESS_RULE_VIOLATION');
+      expect(guardarObservacionesMock).not.toHaveBeenCalled();
+    });
+
+    it('con una fecha que no es de ninguno de sus días responden 422', async () => {
+      buscarDetalladoMock.mockResolvedValue(tresDias());
+
+      const respuesta = await guardar({ observaciones: nota, fecha: '2026-11-20' });
+
+      expect(respuesta.status).toBe(422);
+      expect(respuesta.body.error.message).toContain('20/11/2026');
+      expect(guardarObservacionesMock).not.toHaveBeenCalled();
+    });
+
+    it('un evento de un solo día acepta la fecha de su día', async () => {
+      buscarDetalladoMock.mockResolvedValue(eventoFixture());
+
+      const respuesta = await guardar({ observaciones: nota, fecha: '2026-11-15' });
+
+      expect(respuesta.status).toBe(200);
+      expect(guardarObservacionesMock).toHaveBeenCalledWith(1, nota);
+    });
   });
 
   it('un texto vacío borra las observaciones', async () => {
@@ -1023,7 +1091,7 @@ describe('PATCH /api/eventos/:id/observaciones', () => {
     const respuesta = await guardar({ observaciones: '' });
 
     expect(respuesta.status).toBe(200);
-    expect(guardarObservacionesMock).toHaveBeenCalledWith(20, '');
+    expect(guardarObservacionesMock).toHaveBeenCalledWith(1, '');
   });
 
   it.each(['EnConsulta', 'Reservado', 'Cobrado'] as const)(

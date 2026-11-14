@@ -72,7 +72,7 @@ const fechaCompacta = (fecha: Date) =>
 // IVA: el desglose completo que pide RN-05 (subtotal, IVA 21% y total) va en el presupuesto, que es
 // la consulta y el documento imprimible, no en un índice de muchos. Tres columnas de importes era
 // lo que no dejaba entrar la tabla sin scroll horizontal. Cada fila abre la consulta (HU-12).
-export function ListadoConsultas() {
+export function ListadoConsultas({ reinicio }: { reinicio?: string }) {
   const [estado, setEstado] = useState<EstadoConsulta | undefined>();
   const [textoCliente, setTextoCliente] = useState('');
   const [cliente, setCliente] = useState('');
@@ -82,6 +82,16 @@ export function ListadoConsultas() {
   // Lo que pasó con la última consulta que se cerró (guardada o dada de baja).
   const [aviso, setAviso] = useState<string | null>(null);
   const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
+
+  // Tocar la pestaña activa (o el logo) estando adentro de un detalle vuelve al listado: el panel manda
+  // una señal nueva en cada navegación y acá se cierra lo que estaba abierto. Se compara en el render
+  // y no con un efecto para no pintar un cuadro con el detalle viejo.
+  const [reinicioVisto, setReinicioVisto] = useState(reinicio);
+  if (reinicioVisto !== reinicio) {
+    setReinicioVisto(reinicio);
+    setAbierta(null);
+    setEventoAbierto(null);
+  }
 
   // La búsqueda por cliente espera a que se deje de escribir para no pedir una vez por tecla.
   useEffect(() => {

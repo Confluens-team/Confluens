@@ -249,7 +249,7 @@ Reutilizar un evento de varios días sigue respondiendo 422 hasta la parte 4.
 
 - `POST /eventos/:id/agendar`: `dias[{ fecha, inicio, fin }]`, uno por cada día del evento. Un evento de
   un solo día sigue mandando `inicio` y `fin` sueltos; uno de varios días con el horario suelto responde
-  422. Las distribuciones siguen siendo una por salón y valen en todos los días en que se usa ese salón.
+  422. La distribución (el armado) es de cada día y salón: ver «Distribución por día» más abajo.
 - El detalle del evento y la agenda traen `dias` (con su horario, personas, jornada y salones) y
   `fechaFin`; los salones del resumen no se repiten.
 - `GET /presupuestos/:id/choques`: el aviso preventivo de una consulta (ver abajo).
@@ -295,6 +295,40 @@ un evento a la noche entre dos de sus horarios (no choca), uno que pisa el día 
 choque (409 con las dos líneas), un día del medio sin horario (422, no 500), el aviso preventivo y la agenda
 por rango.
 
+### Distribución por día (corrección del 13/11/2026)
+
+La parte 3 había dejado una distribución **por salón**, igual en todos los días en que se usa. Eso no
+alcanza para el caso del cliente que arma el Auditorio en «Teatro» un día y en «Banquete» otro, y se
+apartaba de la definición del PO (`backlog.md`: cada día tiene «sus salones con su distribución»). La
+base ya lo guardaba así (`EventoSalon` tiene `distribucionId` por día y salón); lo que no dejaba era
+pedirlo. Cambia:
+
+- **Contrato** (`packages/shared`, con el OK del PO): cada entrada de `distribuciones` en
+  `POST /eventos/:id/agendar` suma un `fecha` opcional. Sin `fecha` vale para todos los días del salón
+  (el pedido de siempre sigue funcionando); con `fecha`, solo para ese día. Un salón lleva una general
+  **o** una por día, no las dos (400: no diría cuál manda), y no repite el mismo día.
+- **API:** cada renglón (día, salón) toma la de su día o, si no hay, la general. Falta alguna → 422 que
+  nombra el salón y el día; una `fecha` que no es de un día en que se usa el salón → 422. La capacidad
+  se mira día por día con el armado de **ese** día. Se escribe por la clave del renglón (`diaId`,
+  `salonId`), no por salón, que tocaría todos los días. Una distribución dada de baja se conserva en
+  el renglón que ya la tenía (antes bastaba con que la tuviera algún día del salón).
+- **Web:** en un evento de varios días el selector va dentro de cada día plegable, con «Igual en los N
+  días» para no elegirlo uno por uno. El armado del evento se muestra como «Varía según el día» cuando
+  los días difieren, en lugar del de un solo día; el detalle de cada día lo muestra entre paréntesis.
+- **No cambia:** la auditoría sigue registrando los salones con su distribución (ahora un renglón por
+  día), repetir copia el armado de cada día y la comanda ya lee el de cada día.
+
+### Observaciones y presupuesto por día (corrección del 13/11/2026)
+
+- **Observaciones por día** (decisión del PO): cada día puede tener una observación distinta, así que viven
+  en `EventoDia.observaciones` (migración `20261113150000_observaciones_por_dia`, solo agrega una columna).
+  Las que cada evento ya tenía pasan a su primer día; `Evento.observaciones` queda sin uso y no se borra acá
+  (expand / contract). `PATCH /eventos/:id/observaciones` suma `fecha` (opcional): un evento de varios días
+  la necesita (422 si falta o no es de un día del evento) y uno de un solo día puede omitirla.
+- **Detalle del evento de varios días:** el selector de día (flechas, «Día 3 de 10» y la fecha) va arriba de
+  lo que cambia con el día. Las observaciones y el presupuesto muestran lo de ESE día, con su subtotal; el
+  total del presupuesto, que suma todos los días, se ve siempre.
+
 ## Lo que se construyó en la parte 4 (repetir evento y recálculo con el último día)
 
 Con esta parte HU-50 queda completa salvo `S-16` (la hora estimada por día).
@@ -318,8 +352,9 @@ a emitir con la fecha de hoy:
   al agendar. Es una decisión mía para no dejar el cambio trabado: el PO puede preferir otra.
 - Todos los choques se controlan **antes** de escribir y se avisan juntos (409, el mismo formato que al
   reservar); un choque en cualquier día impide el cambio entero.
-- Los salones que un día deja salen **antes** de mover el día (RN-12), y un salón nuevo hereda el armado
-  que ya tiene en otro día o el del mismo nombre. Cada día necesita al menos un salón.
+- Los salones que un día deja salen **antes** de mover el día (RN-12). Un salón que entra a un día toma
+  el armado del día **más cercano** que ya usa ese salón (el anterior si empatan: cada día puede armarlo
+  distinto) o, si ningún día lo usaba, el del mismo nombre. Cada día necesita al menos un salón.
 - Los precios se recalculan con el último día como referencia, igual que antes (HU-54, parte 2).
 
 La cuenta de qué día de antes es cada día de ahora (corrimiento de la franja entera o cada día por su
