@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { armadoDeSalones, armadoDelEvento, nombresDeSalones } from './formato';
+import { armadoDeSalones, armadoDelEvento, haceCuanto, nombresDeSalones } from './formato';
 
 // ADR 0011: un evento puede ocupar varios salones, cada uno con su distribución.
 describe('nombresDeSalones', () => {
@@ -90,5 +90,31 @@ describe('armadoDelEvento', () => {
   it('sin ningún armado es null', () => {
     const dias = [dia(null), dia(null)];
     expect(armadoDelEvento({ salones: dias[0]!.salones, dias })).toBeNull();
+  });
+});
+
+describe('haceCuanto', () => {
+  const ahora = new Date('2026-11-14T15:00:00.000Z');
+  const hace = (minutos: number) => new Date(ahora.getTime() - minutos * 60_000);
+
+  it('menos de un minuto es «hace un momento»', () => {
+    expect(haceCuanto(hace(0), ahora)).toBe('hace un momento');
+    expect(haceCuanto(hace(0.9), ahora)).toBe('hace un momento');
+  });
+
+  it('hasta una hora cuenta minutos', () => {
+    expect(haceCuanto(hace(1), ahora)).toBe('hace 1 min');
+    expect(haceCuanto(hace(3), ahora)).toBe('hace 3 min');
+    expect(haceCuanto(hace(59), ahora)).toBe('hace 59 min');
+  });
+
+  it('desde una hora cuenta horas enteras', () => {
+    expect(haceCuanto(hace(60), ahora)).toBe('hace 1 h');
+    expect(haceCuanto(hace(119), ahora)).toBe('hace 1 h');
+    expect(haceCuanto(hace(125), ahora)).toBe('hace 2 h');
+  });
+
+  it('un instante en el futuro (reloj desfasado) es «hace un momento»', () => {
+    expect(haceCuanto(hace(-3), ahora)).toBe('hace un momento');
   });
 });

@@ -29,6 +29,7 @@ describe('auth.servicio: iniciarSesion', () => {
         email: 'ge@confluens.test',
         hashContrasena: hash,
         versionSesion: 0,
+        ultimaActividad: null,
 
         activo: true,
         rol: 'GERENTE_GENERAL',
@@ -55,6 +56,7 @@ describe('auth.servicio: iniciarSesion', () => {
         email: 'ge@confluens.test',
         hashContrasena: hash,
         versionSesion: 0,
+        ultimaActividad: null,
 
         activo: true,
         rol: 'GERENTE_GENERAL',
@@ -88,6 +90,7 @@ describe('auth.servicio: restablecer la contraseña', () => {
       email: 'ana@empresa.com',
       hashContrasena: await hashearContrasena('vieja-123'),
       versionSesion: 0,
+      ultimaActividad: null,
 
       activo: true,
       rol: 'CLIENTE',

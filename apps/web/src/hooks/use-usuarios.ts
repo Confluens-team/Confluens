@@ -4,21 +4,24 @@ import type {
   RespuestaExito,
   RolPersonal,
   Usuario,
+  UsuarioDelListado,
 } from '@confluens/shared';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api';
 
 // HU-31 del Sprint 4: los usuarios del personal, por rol y después por correo. El filtro por rol lo
-// resuelve la API.
-export function useUsuarios(rol?: RolPersonal) {
+// resuelve la API. Cada uno trae su estado de conexión; con `refrescar` el listado se vuelve a pedir
+// solo cada 30 segundos (y no en una pestaña oculta) para que la luz se mantenga al día.
+export function useUsuarios(rol?: RolPersonal, refrescar = false) {
   return useQuery({
     queryKey: ['usuarios', rol ?? 'todos'],
     queryFn: async () => {
       const consulta = rol ? `?rol=${rol}` : '';
-      const respuesta = await apiFetch<RespuestaExito<Usuario[]>>(`/usuarios${consulta}`);
+      const respuesta = await apiFetch<RespuestaExito<UsuarioDelListado[]>>(`/usuarios${consulta}`);
       return respuesta.data;
     },
+    refetchInterval: refrescar ? 30_000 : false,
   });
 }
 

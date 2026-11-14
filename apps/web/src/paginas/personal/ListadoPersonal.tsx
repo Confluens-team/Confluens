@@ -1,9 +1,12 @@
 import {
   esquemaRolPersonal,
+  type EstadoDeConexion,
+  MINUTOS_EN_LINEA,
   puedeAdministrarA,
   type RolPersonal,
   type Sesion,
   type Usuario,
+  type UsuarioDelListado,
 } from '@confluens/shared';
 import { ArchiveRestore, Ban, KeyRound, Pencil } from 'lucide-react';
 import { useState } from 'react';
@@ -12,10 +15,37 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useCambiarEstadoUsuario, useUsuarios } from '@/hooks/use-usuarios';
 import { ErrorApiCliente } from '@/lib/api';
-import { formatearFecha } from '@/lib/formato';
+import { formatearFecha, haceCuanto } from '@/lib/formato';
 import { NOMBRES_DE_ROL } from '@/lib/roles';
 import { cn } from '@/lib/utils';
 import { CLASES_SELECT } from '@/paginas/eventos/clases-select';
+
+// Estado de conexión: la luz y su rótulo. El color no va solo: el rótulo también se lee.
+const CONEXION: Record<EstadoDeConexion, { luz: string; etiqueta: string }> = {
+  EnLinea: { luz: 'bg-emerald-500', etiqueta: 'En línea' },
+  Ausente: { luz: 'bg-amber-400', etiqueta: 'Ausente' },
+  SinSesion: { luz: 'bg-muted-foreground/40', etiqueta: 'Sin sesión' },
+};
+
+// Lo que dice el globito sobre la luz: cuánto hace de su última actividad.
+function detalleDeConexion(usuario: UsuarioDelListado): string {
+  if (!usuario.activo) return 'Dado de baja: no puede iniciar sesión';
+  if (usuario.conexion === 'SinSesion') return 'No tiene una sesión abierta';
+  const hace = haceCuanto(new Date(usuario.ultimaActividad!));
+  return usuario.conexion === 'EnLinea'
+    ? `Activo ${hace}`
+    : `Sesión abierta, sin actividad desde ${hace} (más de ${MINUTOS_EN_LINEA} min)`;
+}
+
+function LuzDeConexion({ usuario }: { usuario: UsuarioDelListado }) {
+  const { luz, etiqueta } = CONEXION[usuario.conexion];
+  return (
+    <span className="inline-flex items-center gap-2" title={detalleDeConexion(usuario)}>
+      <span className={cn('size-2.5 rounded-full', luz)} aria-hidden />
+      <span className="text-xs">{etiqueta}</span>
+    </span>
+  );
+}
 
 // HU-31 del Sprint 4: los usuarios del personal con su correo, su rol y su fecha de alta, por rol y
 // después por correo, con filtro por rol. Los clientes no aparecen: están en Clientes.
@@ -33,7 +63,8 @@ export function ListadoPersonal({
   onCambiarContrasena: (usuario: Usuario) => void;
 }) {
   const [rol, setRol] = useState<RolPersonal | undefined>(undefined);
-  const { data: usuarios, isLoading, isError } = useUsuarios(rol);
+  // Se refresca solo: la luz de conexión tiene que estar al día mientras se mira la pantalla.
+  const { data: usuarios, isLoading, isError } = useUsuarios(rol, true);
   const cambiarEstado = useCambiarEstadoUsuario();
   // El usuario cuya baja se está confirmando en su fila.
   const [aDarDeBaja, setADarDeBaja] = useState<number | null>(null);
@@ -86,6 +117,7 @@ export function ListadoPersonal({
               <tr className="border-b text-left text-[0.65rem] tracking-[0.15em] text-muted-foreground uppercase">
                 <th className="px-3 py-2 font-semibold">Correo</th>
                 <th className="px-3 py-2 font-semibold">Rol</th>
+                <th className="px-3 py-2 font-semibold">Conexión</th>
                 <th className="px-3 py-2 font-semibold">Estado</th>
                 <th className="px-3 py-2 font-semibold">Alta</th>
                 <th className="px-3 py-2">
@@ -104,6 +136,9 @@ export function ListadoPersonal({
                       {propio && <span className="ml-1 text-xs font-normal">(vos)</span>}
                     </td>
                     <td className="px-3 py-2.5">{NOMBRES_DE_ROL[usuario.rol]}</td>
+                    <td className="px-3 py-2.5">
+                      <LuzDeConexion usuario={usuario} />
+                    </td>
                     <td className="px-3 py-2.5">
                       <span
                         className={cn(
