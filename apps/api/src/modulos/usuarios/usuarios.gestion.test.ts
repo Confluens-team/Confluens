@@ -294,7 +294,7 @@ describe('PUT /api/usuarios/:id/contrasena (HU-30 del backlog)', () => {
     },
   );
 
-  it('una contraseña de menos de 6 caracteres responde 400', async () => {
+  it('una contraseña de menos de 8 caracteres responde 400', async () => {
     const respuesta = await cambiar('12345');
 
     expect(respuesta.status).toBe(400);

@@ -130,7 +130,10 @@ registroOpenApi.registerPath({
   },
   responses: {
     204: { description: 'Contraseña cambiada' },
-    400: { description: 'La contraseña tiene menos de 6 caracteres' },
+    400: {
+      description:
+        'La contraseña no cumple la política: 8 a 72 bytes, sin ser solo espacios, un carácter repetido ni una contraseña común',
+    },
     401: { description: 'Sin sesión' },
     403: { description: 'La sesión no es del Administrador del Sistema' },
     404: { description: 'No existe el usuario del personal' },

@@ -651,7 +651,7 @@ describe('POST /api/auth/contrasena/restablecer', () => {
     }
   });
 
-  it('con una contraseña de menos de 6 caracteres responde 400', async () => {
+  it('con una contraseña de menos de 8 caracteres responde 400', async () => {
     const respuesta = await request(app)
       .post('/api/auth/contrasena/restablecer')
       .send({ token: 'x', contrasena: '123' });

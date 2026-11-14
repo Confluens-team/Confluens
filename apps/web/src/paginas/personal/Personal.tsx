@@ -257,7 +257,8 @@ function FormularioContrasenaUsuario({
           <p className="text-sm text-destructive">{error}</p>
         ) : (
           <p className="text-xs text-muted-foreground">
-            Al menos 6 caracteres. Se cierran las sesiones abiertas de {usuario.email}.
+            Al menos 8 caracteres, y no una contraseña común. Se cierran las sesiones abiertas de{' '}
+            {usuario.email}.
           </p>
         )}
       </div>

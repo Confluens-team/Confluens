@@ -157,7 +157,8 @@ media jornada). **Jornada completa: más de 4 horas.** Se deriva del horario del
 trabajo, banquete. Nombre único por salón. Su capacidad nunca supera la del salón. **Baja lógica**
 (PO, 06/11/2026): se da de baja aunque la use un evento. Dada de baja no se ofrece al presupuestar
 ni al agendar, ni se publica en la landing, pero los eventos que ya la tienen la conservan. Sigue
-ocupando su nombre en el salón y se puede reactivar.
+ocupando su nombre en el salón y se puede reactivar. Dar de baja o reactivar no pide confirmación,
+porque se puede deshacer (PO, 06/11/2026).
 
 **Cliente.** Persona u organización que contrata. Datos: nombre, apellido (o razón social),
 teléfono y correo. **No hay baja por inactividad**: el cliente se conserva siempre con su
@@ -455,8 +456,8 @@ acceden a todo el sistema.
   modifica y da de baja**. Al registrar un usuario, el GG o el ADM le carga la **contraseña
   inicial**.
 - **Política de contraseñas** (PO, 08/11/2026). Rige para toda contraseña que se crea o se cambia:
-  la inicial del personal, el registro del cliente y restablecerla por correo. Prioriza el largo y
-  frena lo obvio; **no exige mayúsculas, minúsculas ni
+  la inicial del personal, el registro del cliente, restablecerla por correo y cambiarla desde Mi
+  cuenta o por el ADM. Prioriza el largo y frena lo obvio; **no exige mayúsculas, minúsculas ni
   símbolos**, porque empujan a contraseñas como `Contraseña1!` sin hacerlas más fuertes.
   - **Al menos 8 caracteres.** Antes eran 6 (PO, 06/11/2026).
   - **No puede ser solo espacios** ni **un único carácter repetido** (`aaaaaaaa`).
@@ -467,7 +468,7 @@ acceden a todo el sistema.
     bytes: una tilde o un emoji ocupan más de uno.
   - Los espacios de los bordes cuentan como caracteres: la contraseña no se recorta.
   - **El inicio de sesión no aplica la política**, para que entren las cuentas que ya tienen una
-    contraseña más corta o común.
+    contraseña más corta o común. Tampoco se revisa la contraseña actual al cambiarla.
 - Cada usuario tiene **un solo rol a la vez**. Al marcarle un rol nuevo, se desmarca el anterior.
 - **Quién asigna qué rol:** el ADM asigna cualquiera (ADM, GG, RE, RF). El GG asigna GG, RE y RF,
   pero **no ADM**.

@@ -130,7 +130,7 @@ describe('POST /api/auth/contrasena — cambiar la propia contraseña (HU-30 del
     expect(actualizarContrasenaMock).not.toHaveBeenCalled();
   });
 
-  it('una nueva de menos de 6 caracteres responde 400', async () => {
+  it('una nueva de menos de 8 caracteres responde 400', async () => {
     const respuesta = await cambiar({ actual: CONTRASENA, nueva: '12345' });
 
     expect(respuesta.status).toBe(400);
