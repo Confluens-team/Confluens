@@ -5,7 +5,6 @@ import {
   esquemaCrearPago,
   type EventoDetallado,
   PORCENTAJE_SENA,
-  type TipoJornada,
 } from '@confluens/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Ban, CalendarDays, Plus, X } from 'lucide-react';
@@ -15,7 +14,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { Link } from 'react-router';
 
 import { InputImporte } from '@/components/InputImporte';
-import { SelectorFecha, SelectorHora } from '@/components/SelectorFechaHora';
+import { SelectorFecha } from '@/components/SelectorFechaHora';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -27,12 +26,12 @@ import {
   usePagosDeEvento,
   useRegistrarPago,
 } from '@/hooks/use-pagos';
-import { useSalones } from '@/hooks/use-salones';
 import { ErrorApiCliente } from '@/lib/api';
-import { fechaLocal, formatearFechaNumerica, nombreCompleto } from '@/lib/formato';
+import { fechaLocal, nombreCompleto } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { CLASES_SELECT } from './clases-select';
 import { rutaDelDiaEnLaAgenda } from './dia-en-la-agenda';
+import { useHorarioDelEvento } from './use-horario-del-evento';
 
 // Los pagos sí llevan centavos: a diferencia de formatearPesos (que redondea a pesos enteros para
 // la landing), acá el importe es plata que entró y tiene que cuadrar hasta el último centavo.
@@ -42,50 +41,11 @@ const formateadorHorario = new Intl.DateTimeFormat('es-AR', {
   timeStyle: 'short',
   hourCycle: 'h23',
 });
-// Para el fin del evento: la fecha ya la dice el inicio y repetirla daba "10 de abr de 2027, 17:00
-// a 10 de abr de 2027, 23:00". Un evento que termina pasada la medianoche igual se entiende.
-const formateadorFin = new Intl.DateTimeFormat('es-AR', {
-  timeStyle: 'short',
-  hourCycle: 'h23',
-});
-
 interface CuentaDelEventoProps {
   evento: EventoDetallado;
   // Un evento Cancelado o Cobrado no admite más pagos (el servicio los rechaza con 409): se muestra
   // la cuenta de solo lectura.
   admitePagos: boolean;
-}
-
-// Un instante ISO como valor de <input type="datetime-local">, en la hora de quien lo mira.
-function comoFechaHoraLocal(iso: string): string {
-  const fecha = new Date(iso);
-  return new Date(fecha.getTime() - fecha.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
-}
-
-// Duración con la que se propone el fin a partir del inicio. Media jornada: 4 h, el máximo que
-// admite (dominio.md: "hasta 4 horas inclusive"). Jornada completa: dominio.md solo dice "más de
-// 4 horas"; se proponen 8 h por decisión de Franco (08/10/2026). Es una sugerencia: el fin se
-// puede cambiar a mano.
-const HORAS_POR_JORNADA: Record<TipoJornada, number> = { media: 4, completa: 8 };
-
-// La jornada que eligió el cliente. Los eventos anteriores a tipoJornada no la tienen guardada:
-// sale de la línea del salón del presupuesto, que es la primera ("Salón X (media jornada)").
-function jornadaDelEvento(evento: EventoDetallado): TipoJornada {
-  if (evento.tipoJornada) return evento.tipoJornada;
-  const presupuesto = evento.presupuestos.find((p) => p.estado !== 'Cancelado');
-  return presupuesto?.lineas[0]?.descripcion.endsWith('(media jornada)') ? 'media' : 'completa';
-}
-
-// "HH:mm" + horas, dando la vuelta por la medianoche ("20:00" + 8 → "04:00").
-function sumarHoras(hora: string, horas: number): string {
-  const [h = 0, m = 0] = hora.split(':').map(Number);
-  return `${String((h + horas) % 24).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-}
-
-// "YYYY-MM-DD" del día siguiente, sin pasar por la zona del navegador.
-function diaSiguiente(dia: string): string {
-  const [a = 1970, m = 1, d = 1] = dia.split('-').map(Number);
-  return new Date(Date.UTC(a, m - 1, d + 1)).toISOString().slice(0, 10);
 }
 
 /**
@@ -105,10 +65,8 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   const mediosPago = useMediosPago();
   const registrarPago = useRegistrarPago(eventoId);
   const agendarEvento = useAgendarEvento(eventoId);
-  const salones = useSalones();
   const anularPago = useAnularPago(eventoId);
   const [dialogoAbierto, setDialogoAbierto] = useState(false);
-  const [editandoHorario, setEditandoHorario] = useState(false);
   // HU-35: el pago cuya anulación se está confirmando. Anular pide una confirmación explícita en la
   // misma fila antes de llamar a la API.
   const [pagoAAnular, setPagoAAnular] = useState<number | null>(null);
@@ -116,100 +74,13 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   // avisa por qué cambió.
   const [volvioAConfirmado, setVolvioAConfirmado] = useState(false);
 
-  // `fecha` viaja como medianoche UTC del día del evento: el día es la parte YYYY-MM-DD, sin pasar
-  // por Date (que lo correría al día anterior en Argentina). Agendar solo elige las horas de ese
-  // día: el día se cambia modificando la consulta, que además recalcula el presupuesto.
-  const fechaDelEvento = evento.fecha.slice(0, 10);
   // El pago se propone con la fecha de hoy, en la zona de los eventos (ADR 0010).
   const hoy = hoyEnZonaEventos();
 
   // Agendar va en el mismo formulario del pago (ADR 0007: sin distribución y horario no se puede
-  // reservar el salón). Se precargan con lo ya agendado o, si no, el inicio con la hora estimada
-  // de la consulta y el fin calculado según la jornada.
-  const jornada = jornadaDelEvento(evento);
-  const horasJornada = HORAS_POR_JORNADA[jornada];
-  // La distribución de cada salón del evento (ADR 0011): salonId → id de la distribución, '' si
-  // todavía no se eligió. Se precarga con la que cada salón ya tiene armada.
-  const distribucionesIniciales = new Map(
-    evento.salones.map((salon) => [salon.id, salon.distribucion?.id.toString() ?? '']),
-  );
-  const [distribucionPorSalon, setDistribucionPorSalon] = useState(distribucionesIniciales);
-
-  function elegirDistribucion(salonId: number, distribucionId: string) {
-    setDistribucionPorSalon((anteriores) => new Map(anteriores).set(salonId, distribucionId));
-  }
-  // Solo las horas ("HH:mm"): el día es siempre el del evento.
-  const horaInicioGuardada = evento.inicio ? comoFechaHoraLocal(evento.inicio).slice(11, 16) : '';
-  const horaFinGuardada = evento.fin ? comoFechaHoraLocal(evento.fin).slice(11, 16) : '';
-  const [horaInicio, setHoraInicio] = useState(
-    horaInicioGuardada || evento.horaInicioEstimada || '',
-  );
-  const [horaFin, setHoraFin] = useState(
-    horaFinGuardada || (horaInicio ? sumarHoras(horaInicio, horasJornada) : ''),
-  );
-
-  // Cada vez que se elige el inicio, el fin se recalcula con la duración de la jornada. Después se
-  // puede cambiar a mano; si se vuelve a tocar el inicio, se recalcula de nuevo.
-  function elegirInicio(valor: string) {
-    setHoraInicio(valor);
-    setHoraFin(sumarHoras(valor, horasJornada));
-  }
-
-  // HU-50: un evento de varios días tiene el horario de cada día. Se precarga con lo ya agendado o, si
-  // no, con la hora estimada de la consulta y el fin según la jornada de ese día.
-  const variosDias = evento.dias.length > 1;
-  const [horasDelDia, setHorasDelDia] = useState<Record<string, { inicio: string; fin: string }>>(
-    () =>
-      Object.fromEntries(
-        evento.dias.map((dia) => {
-          const inicioDelDia = dia.inicio
-            ? comoFechaHoraLocal(dia.inicio).slice(11, 16)
-            : (evento.horaInicioEstimada ?? '');
-          const finDelDia = dia.fin
-            ? comoFechaHoraLocal(dia.fin).slice(11, 16)
-            : inicioDelDia
-              ? sumarHoras(inicioDelDia, HORAS_POR_JORNADA[dia.tipoJornada ?? 'completa'])
-              : '';
-          return [dia.fecha, { inicio: inicioDelDia, fin: finDelDia }];
-        }),
-      ),
-  );
-  function elegirInicioDelDia(fecha: string, valor: string, jornadaDelDia: TipoJornada | null) {
-    setHorasDelDia((anteriores) => ({
-      ...anteriores,
-      [fecha]: {
-        inicio: valor,
-        fin: sumarHoras(valor, HORAS_POR_JORNADA[jornadaDelDia ?? 'completa']),
-      },
-    }));
-  }
-  function elegirFinDelDia(fecha: string, valor: string) {
-    setHorasDelDia((anteriores) => ({
-      ...anteriores,
-      [fecha]: { inicio: anteriores[fecha]?.inicio ?? '', fin: valor },
-    }));
-  }
-  // «Mismo horario que el día anterior»: copia las horas, no el día.
-  function copiarHorarioDelAnterior(indice: number) {
-    const anterior = evento.dias[indice - 1];
-    const dia = evento.dias[indice];
-    if (!anterior || !dia) return;
-    setHorasDelDia((anteriores) => ({
-      ...anteriores,
-      [dia.fecha]: { ...anteriores[anterior.fecha]! },
-    }));
-  }
-  // El día en que cae un instante: el fin de un día que termina pasada la medianoche es del siguiente.
-  const instanteDelDia = (fecha: string, hora: string, horaDeInicio: string) =>
-    `${hora < horaDeInicio ? diaSiguiente(fecha) : fecha}T${hora}`;
-
-  // El inicio cae siempre el día del evento. Un fin más temprano que el inicio es del día
-  // siguiente: el evento termina pasada la medianoche.
-  const inicio = horaInicio ? `${fechaDelEvento}T${horaInicio}` : '';
-  const fin = horaFin
-    ? `${horaFin < horaInicio ? diaSiguiente(fechaDelEvento) : fechaDelEvento}T${horaFin}`
-    : '';
-  const terminaAlDiaSiguiente = horaInicio !== '' && horaFin !== '' && horaFin < horaInicio;
+  // reservar el salón). Los campos y su estado son los mismos del lápiz del horario del evento
+  // (EditorDeHorario): se precargan con lo ya agendado o, si no, con la hora estimada de la consulta.
+  const horario = useHorarioDelEvento(evento);
 
   const {
     register,
@@ -226,93 +97,12 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
 
   const enConsulta = evento.estado === 'EnConsulta';
   const cobrado = evento.estado === 'Cobrado';
-  // Las distribuciones posibles de cada salón del evento, con la elegida.
-  const porSalon = evento.salones.map((salonDelEvento) => {
-    // HU-25 del Sprint 4: las dadas de baja no se ofrecen, salvo la que el evento ya tiene en ese
-    // salón, que conserva (la baja no lo afecta). La API aplica la misma regla.
-    const opciones = (
-      salones.data?.find((salon) => salon.id === salonDelEvento.id)?.distribuciones ?? []
-    ).filter(
-      (distribucion) => distribucion.activo || distribucion.id === salonDelEvento.distribucion?.id,
-    );
-    const elegidaId = distribucionPorSalon.get(salonDelEvento.id) ?? '';
-    return {
-      salon: salonDelEvento,
-      opciones,
-      elegidaId,
-      elegida: opciones.find((d) => d.id === Number(elegidaId)),
-    };
-  });
-  // Con varios salones la gente se reparte: se compara contra la capacidad sumada. Es un aviso,
-  // no un tope (ADR 0011).
-  const todasElegidas = porSalon.length > 0 && porSalon.every((s) => s.elegida !== undefined);
-  const capacidadElegida = porSalon.reduce((suma, s) => suma + (s.elegida?.capacidad ?? 0), 0);
-  // Con varios días la capacidad se mira día por día, con SUS personas y SUS salones (HU-50).
-  const capacidadDelDia = (dia: (typeof evento.dias)[number]) =>
-    dia.salones.reduce(
-      (suma, s) => suma + (porSalon.find((p) => p.salon.id === s.id)?.elegida?.capacidad ?? 0),
-      0,
-    );
-  const superaCapacidad =
-    todasElegidas &&
-    (variosDias
-      ? evento.dias.some((dia) => dia.cantidadPersonas > capacidadDelDia(dia))
-      : evento.cantidadPersonas > capacidadElegida);
-  const horarioCompleto = variosDias
-    ? todasElegidas &&
-      evento.dias.every((dia) => !!horasDelDia[dia.fecha]?.inicio && !!horasDelDia[dia.fecha]?.fin)
-    : todasElegidas && inicio !== '' && fin !== '';
-  const horarioCambio =
-    porSalon.some((s) => s.elegidaId !== (distribucionesIniciales.get(s.salon.id) ?? '')) ||
-    (variosDias
-      ? evento.dias.some((dia) => {
-          const guardadoInicio = dia.inicio ? comoFechaHoraLocal(dia.inicio).slice(11, 16) : '';
-          const guardadoFin = dia.fin ? comoFechaHoraLocal(dia.fin).slice(11, 16) : '';
-          return (
-            horasDelDia[dia.fecha]?.inicio !== guardadoInicio ||
-            horasDelDia[dia.fecha]?.fin !== guardadoFin
-          );
-        })
-      : inicio !== (evento.inicio ? comoFechaHoraLocal(evento.inicio) : '') ||
-        fin !== (evento.fin ? comoFechaHoraLocal(evento.fin) : ''));
-
-  function datosDelHorario() {
-    const distribuciones = porSalon.map((s) => ({
-      salonId: s.salon.id,
-      distribucionId: Number(s.elegidaId),
-    }));
-    // HU-50: el horario de cada día va en `dias`; un evento de un solo día manda inicio y fin sueltos.
-    const horario = variosDias
-      ? {
-          dias: evento.dias.map((dia) => {
-            const horas = horasDelDia[dia.fecha]!;
-            return {
-              fecha: dia.fecha,
-              inicio: new Date(instanteDelDia(dia.fecha, horas.inicio, horas.inicio)).toISOString(),
-              fin: new Date(instanteDelDia(dia.fecha, horas.fin, horas.inicio)).toISOString(),
-            };
-          }),
-        }
-      : { inicio: new Date(inicio).toISOString(), fin: new Date(fin).toISOString() };
-    return {
-      distribuciones,
-      ...horario,
-      modalidadSalonRestaurante: evento.modalidadSalonRestaurante,
-      // La pantalla ya avisa debajo de las distribuciones que no alcanzan: elegirlas igual es la
-      // confirmación que pide la API.
-      confirmarCapacidadExcedida: superaCapacidad,
-    };
-  }
-
-  // Evento confirmado: agendar no le cambia el estado, solo mueve la franja (RN-12 la controla).
-  function guardarHorario() {
-    agendarEvento.mutate(datosDelHorario(), { onSuccess: () => setEditandoHorario(false) });
-  }
-
   // Al abrir el diálogo se limpian los errores del intento anterior (y el aviso de reserva, que ya
   // se leyó). El formulario conserva lo que tenía, por si se cerró sin querer.
   function abrirDialogo(abrir: boolean) {
     if (abrir) {
+      // El estado de los campos se armó al montar: se vuelve a lo último guardado.
+      horario.reiniciar();
       registrarPago.reset();
       agendarEvento.reset();
       anularPago.reset();
@@ -323,9 +113,9 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   async function registrar(datos: CrearPago) {
     // Primero se agenda (si hay algo nuevo que agendar) y después se cobra: el pago que cruza la
     // seña necesita el horario ya guardado para evaluar RN-12. Si agendar falla, no se cobra.
-    if (enConsulta && horarioCompleto && horarioCambio) {
+    if (enConsulta && horario.completo && horario.cambio) {
       try {
-        await agendarEvento.mutateAsync(datosDelHorario());
+        await agendarEvento.mutateAsync(horario.datos());
       } catch {
         return;
       }
@@ -394,153 +184,12 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
       : 'No se pudo guardar el horario del evento.');
 
   // Distribución, inicio y fin. En consulta van dentro del formulario del pago (agenda y cobra de una
-  // vez); con el evento confirmado van en su propia tarjeta, para cambiarlos sin registrar un pago
+  // vez); con el evento confirmado se cambian con el lápiz del horario, sin registrar un pago
   // (RN-09: el Responsable de Eventos modifica en todo momento).
   const camposHorario = (
     <div className="space-y-4">
-      {/* Una distribución por cada salón: un evento puede ocupar varios a la vez (ADR 0011). */}
-      <div className="space-y-3">
-        {porSalon.map(({ salon, opciones, elegidaId }) => (
-          <div key={salon.id} className="space-y-1.5">
-            <Label htmlFor={`distribucion-${salon.id}`}>
-              {porSalon.length === 1 ? 'Distribución' : `Distribución de ${salon.nombre}`}
-            </Label>
-            <select
-              id={`distribucion-${salon.id}`}
-              className={CLASES_SELECT}
-              value={elegidaId}
-              onChange={(e) => elegirDistribucion(salon.id, e.target.value)}
-            >
-              <option value="">{salones.isLoading ? 'Cargando…' : 'Elegir…'}</option>
-              {opciones.map((distribucion) => (
-                <option key={distribucion.id} value={distribucion.id}>
-                  {distribucion.nombre} · hasta {distribucion.capacidad} personas
-                </option>
-              ))}
-            </select>
-          </div>
-        ))}
-        {superaCapacidad && (
-          <p className="text-xs text-amber-800">
-            El evento es de {evento.cantidadPersonas} personas y{' '}
-            {porSalon.length === 1
-              ? `esta distribución admite ${capacidadElegida}`
-              : `estas distribuciones admiten ${capacidadElegida} entre todas`}
-            . Si las dejás, se agenda igual.
-          </p>
-        )}
-      </div>
-      {variosDias ? (
-        // HU-50: el horario de cada día. Cada día se controla contra los eventos reservados de ESE día.
-        <div className="space-y-3">
-          <p className="text-sm font-medium">
-            Horario de cada día{' '}
-            <span className="font-normal text-muted-foreground">
-              · {evento.dias.length} días, del {formatearFechaNumerica(evento.dias[0]!.fecha)} al{' '}
-              {formatearFechaNumerica(evento.dias[evento.dias.length - 1]!.fecha)}
-            </span>
-          </p>
-          <p className="text-xs text-muted-foreground">
-            Para cambiar los días, modificá la consulta: así se recalcula el presupuesto.
-          </p>
-          <ul className="space-y-3">
-            {evento.dias.map((dia, indice) => {
-              const horas = horasDelDia[dia.fecha] ?? { inicio: '', fin: '' };
-              const terminaDespues =
-                horas.inicio !== '' && horas.fin !== '' && horas.fin < horas.inicio;
-              return (
-                <li key={dia.fecha} className="rounded-lg border border-border p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-medium">
-                      Día {indice + 1} · {formatearFechaNumerica(dia.fecha)}
-                      <span className="ml-2 text-xs font-normal text-muted-foreground">
-                        {dia.cantidadPersonas} personas ·{' '}
-                        {dia.salones.map((salonDelDia) => salonDelDia.nombre).join(', ')}
-                      </span>
-                    </p>
-                    {indice > 0 && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => copiarHorarioDelAnterior(indice)}
-                      >
-                        Mismo horario que el día {indice}
-                      </Button>
-                    )}
-                  </div>
-                  <div className="mt-2 grid gap-3 sm:grid-cols-2">
-                    <div className="space-y-1.5">
-                      <Label htmlFor={`inicio-${dia.fecha}`}>Hora de inicio</Label>
-                      <SelectorHora
-                        id={`inicio-${dia.fecha}`}
-                        value={horas.inicio}
-                        onChange={(valor) => elegirInicioDelDia(dia.fecha, valor, dia.tipoJornada)}
-                        horaSugerida={evento.horaInicioEstimada ?? undefined}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label htmlFor={`fin-${dia.fecha}`}>Hora de fin</Label>
-                      <SelectorHora
-                        id={`fin-${dia.fecha}`}
-                        value={horas.fin}
-                        onChange={(valor) => elegirFinDelDia(dia.fecha, valor)}
-                        horaSugerida={
-                          horas.inicio
-                            ? sumarHoras(
-                                horas.inicio,
-                                HORAS_POR_JORNADA[dia.tipoJornada ?? 'completa'],
-                              )
-                            : undefined
-                        }
-                      />
-                    </div>
-                  </div>
-                  {terminaDespues && (
-                    <p className="mt-1 text-xs text-muted-foreground">Termina al día siguiente.</p>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ) : (
-        <>
-          <p className="text-sm">
-            Día del evento:{' '}
-            <span className="font-medium">{formatearFechaNumerica(fechaDelEvento)}</span>
-            <span className="block text-xs text-muted-foreground">
-              Para cambiar el día, modificá la consulta: así se recalcula el presupuesto.
-            </span>
-          </p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="inicio">Hora de inicio</Label>
-              <SelectorHora
-                id="inicio"
-                value={horaInicio}
-                onChange={elegirInicio}
-                horaSugerida={evento.horaInicioEstimada ?? undefined}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="fin">Hora de fin</Label>
-              <SelectorHora
-                id="fin"
-                value={horaFin}
-                onChange={setHoraFin}
-                horaSugerida={horaInicio ? sumarHoras(horaInicio, horasJornada) : undefined}
-              />
-            </div>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {jornada === 'media' ? 'Media jornada' : 'Jornada completa'}: el fin se calcula{' '}
-            {horasJornada} h después del inicio. Podés cambiarlo.
-            {terminaAlDiaSiguiente && ' Termina al día siguiente.'}
-          </p>
-        </>
-      )}
-      {enConsulta && !horarioCompleto && faltaParaLaSena > 0 && (
+      {horario.campos}
+      {enConsulta && !horario.completo && faltaParaLaSena > 0 && (
         <p className="text-xs text-muted-foreground">
           Para que el pago que llega al {PORCENTAJE_SENA}% reserve el salón, completá distribución,
           hora de inicio y hora de fin.
@@ -872,75 +521,6 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
           </div>
         </CardContent>
       </Card>
-
-      {!enConsulta && evento.estado !== 'Cancelado' && (
-        <Card>
-          <CardHeader className="flex items-center justify-between gap-2">
-            <CardTitle>Horario del evento</CardTitle>
-            {!editandoHorario && (
-              <Button variant="outline" size="sm" onClick={() => setEditandoHorario(true)}>
-                Cambiar
-              </Button>
-            )}
-          </CardHeader>
-          <CardContent className="space-y-4 text-sm">
-            {editandoHorario ? (
-              <>
-                {camposHorario}
-                {errorAgendar && (
-                  <p className="text-sm whitespace-pre-line text-destructive">{errorAgendar}</p>
-                )}
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    className="flex-1"
-                    disabled={!horarioCompleto || !horarioCambio || agendarEvento.isPending}
-                    onClick={guardarHorario}
-                  >
-                    {agendarEvento.isPending ? 'Guardando…' : 'Guardar horario'}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    onClick={() => {
-                      agendarEvento.reset();
-                      setEditandoHorario(false);
-                    }}
-                  >
-                    Cancelar
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <>
-                {variosDias ? (
-                  <ul className="space-y-1">
-                    {evento.dias.map((dia, indice) => (
-                      <li key={dia.fecha}>
-                        <span className="text-muted-foreground">
-                          Día {indice + 1} · {formatearFechaNumerica(dia.fecha)}:
-                        </span>{' '}
-                        {dia.inicio && dia.fin
-                          ? `${formateadorHorario.format(new Date(dia.inicio))} a ${formateadorFin.format(new Date(dia.fin))}`
-                          : 'sin horario'}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p>
-                    {evento.inicio && evento.fin
-                      ? `${formateadorHorario.format(new Date(evento.inicio))} a ${formateadorFin.format(new Date(evento.fin))}`
-                      : 'Sin horario cargado.'}
-                  </p>
-                )}
-                {agendarEvento.isSuccess && (
-                  <p className="text-sm text-emerald-800">Horario guardado.</p>
-                )}
-              </>
-            )}
-          </CardContent>
-        </Card>
-      )}
 
       {admitePagos && (
         <Dialog.Root open={dialogoAbierto} onOpenChange={abrirDialogo}>

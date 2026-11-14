@@ -114,7 +114,13 @@ const presupuestoEstimadoFixture = {
 };
 
 function eventoFixture(datos: Partial<ReturnType<typeof eventoFixtureBase>> = {}) {
-  return { ...eventoFixtureBase(), ...datos };
+  const evento = { ...eventoFixtureBase(), ...datos };
+  // HU-50: los salones del único día son los mismos renglones del evento (la distribución se escribe
+  // y se lee por día); un test que cambia los salones no tiene que acordarse de cambiarlos en el día.
+  if (!datos.dias) {
+    evento.dias = [{ ...((evento.dias[0] ?? {}) as object), salones: evento.salones }] as never[];
+  }
+  return evento;
 }
 
 type EstadoEventoFixture = 'EnConsulta' | 'Reservado' | 'Cobrado' | 'Cancelado';
@@ -319,7 +325,9 @@ describe('POST /api/eventos/:id/agendar', () => {
     const [datosAgenda] = agendarConDistribucionesMock.mock.calls[0]!;
     expect(datosAgenda).toEqual({
       eventoId: 20,
-      distribuciones: [{ salonId: salonFixture.id, distribucionId: distribucionFixture.id }],
+      distribuciones: [
+        { diaId: 1, salonId: salonFixture.id, distribucionId: distribucionFixture.id },
+      ],
       inicio: new Date(inicioValido),
       fin: new Date(finValido),
       modalidadSalonRestaurante: false,
@@ -368,10 +376,14 @@ describe('POST /api/eventos/:id/agendar', () => {
     it('el evento que ya la tenía en ese salón se reagenda con ella', async () => {
       buscarDistribucionesMock.mockResolvedValue([dadaDeBaja]);
       const base = eventoFixture({ estado: 'Reservado' });
-      buscarDetalladoMock.mockResolvedValue({
-        ...base,
-        salones: [{ ...base.salones[0]!, distribucionId: dadaDeBaja.id, distribucion: dadaDeBaja }],
-      });
+      buscarDetalladoMock.mockResolvedValue(
+        eventoFixture({
+          estado: 'Reservado',
+          salones: [
+            { ...base.salones[0]!, distribucionId: dadaDeBaja.id, distribucion: dadaDeBaja },
+          ],
+        }),
+      );
 
       const respuesta = await agendar(cuerpo());
 
@@ -615,8 +627,8 @@ describe('POST /api/eventos/:id/agendar', () => {
     expect(respuesta.status).toBe(200);
     const [datosAgenda] = agendarConDistribucionesMock.mock.calls[0]!;
     expect(datosAgenda.distribuciones).toEqual([
-      { salonId: salonFixture.id, distribucionId: distribucionFixture.id },
-      { salonId: pucara.id, distribucionId: banquetePucara.id },
+      { diaId: 1, salonId: salonFixture.id, distribucionId: distribucionFixture.id },
+      { diaId: 1, salonId: pucara.id, distribucionId: banquetePucara.id },
     ]);
   });
 

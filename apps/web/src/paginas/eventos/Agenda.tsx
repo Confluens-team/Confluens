@@ -16,7 +16,7 @@ import { useAgenda } from '@/hooks/use-eventos';
 import { useSalones } from '@/hooks/use-salones';
 import { horarioDeLosDias, resumenDelEvento } from '@/lib/dias-del-evento';
 import { fechaLocal, formatearPesos, hoyISO, nombreCompleto } from '@/lib/formato';
-import { armadoDeSalones, nombresDeSalones } from '@/lib/formato';
+import { armadoDelEvento, nombresDeSalones } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { CalendarioEventos } from './CalendarioEventos';
 import { EditarConsulta } from '@/paginas/presupuestos/EditarConsulta';
@@ -117,10 +117,10 @@ function ListaDeEventos({
                       <p className="truncate font-medium">
                         {evento.salones.length > 1 ? 'Salones' : 'Salón'}{' '}
                         {nombresDeSalones(evento.salones, 'a definir')}
-                        {armadoDeSalones(evento.salones) && (
+                        {armadoDelEvento(evento) && (
                           <span className="font-normal text-muted-foreground">
                             {' '}
-                            · {armadoDeSalones(evento.salones)}
+                            · {armadoDelEvento(evento)}
                           </span>
                         )}
                       </p>

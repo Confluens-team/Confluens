@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 import { horarioDeLosDias, resumenDelEvento } from '@/lib/dias-del-evento';
 import {
-  armadoDeSalones,
+  armadoDelEvento,
   fechaLocal,
   formatearFecha,
   nombresDeSalones,
@@ -16,6 +16,7 @@ import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { IconoEstado } from '@/components/IconoEstado';
+import { EditorDeHorario } from './EditorDeHorario';
 import { useCancelarEvento, useEvento } from '@/hooks/use-eventos';
 import { useArmarPresupuestoDeEvento } from '@/hooks/use-presupuestos';
 import { ErrorApiCliente } from '@/lib/api';
@@ -322,18 +323,25 @@ export function DetalleEvento({
                 </Dato>
                 <Dato etiqueta="Salón">
                   {nombresDeSalones(evento.salones)} · {resumenDelEvento(evento).personas}
-                  {armadoDeSalones(evento.salones) && (
+                  {armadoDelEvento(evento) && (
                     <span className="block truncate text-xs text-muted-foreground">
-                      {armadoDeSalones(evento.salones)}
+                      {armadoDelEvento(evento)}
                     </span>
                   )}
                 </Dato>
                 <Dato etiqueta="Horario">
-                  {evento.dias.length > 1
-                    ? (horarioDeLosDias(evento.dias) ?? (
-                        <span className="text-muted-foreground">Sin agendar</span>
-                      ))
-                    : (horario ?? <span className="text-muted-foreground">Sin agendar</span>)}
+                  {/* El lápiz está a la derecha del horario: desde ahí se cargan el horario y la
+                      distribución (RN-09), que el pago ya no pide. */}
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate">
+                      {evento.dias.length > 1
+                        ? (horarioDeLosDias(evento.dias) ?? (
+                            <span className="text-muted-foreground">Sin agendar</span>
+                          ))
+                        : (horario ?? <span className="text-muted-foreground">Sin agendar</span>)}
+                    </span>
+                    {evento.estado !== 'Cancelado' && <EditorDeHorario evento={evento} />}
+                  </div>
                 </Dato>
                 {evento.solicitud && (
                   <Dato etiqueta="Consulta original">

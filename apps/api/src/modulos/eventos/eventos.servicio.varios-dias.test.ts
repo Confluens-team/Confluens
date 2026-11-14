@@ -223,3 +223,151 @@ describe('agendarEvento de varios días (HU-50)', () => {
     ).resolves.toBeDefined();
   });
 });
+
+// HU-50: el mismo salón puede llevar una distribución distinta cada día. Cada renglón (día, salón)
+// toma la de su día o, si no hay, la general del salón; la capacidad se mira día por día con la suya.
+describe('agendarEvento: distribución por día (HU-50)', () => {
+  // Paraná: «Banquete» (100) y «Teatro» (200). Pucará: «Banquete» (60).
+  const conTeatro = [
+    ...distribuciones,
+    { id: 3, salonId: 5, nombre: 'Teatro', capacidad: 200, activo: true },
+  ];
+  const repoConTeatro = () => {
+    const repo = repoDeMentira();
+    repo.buscarDistribuciones.mockImplementation(() => Promise.resolve(conTeatro));
+    return repo;
+  };
+  const guardadas = (repo: ReturnType<typeof repoDeMentira>) =>
+    (
+      repo.agendarConDistribuciones.mock.calls[0] as unknown as [
+        { distribuciones: { diaId: number; salonId: number; distribucionId: number }[] },
+      ]
+    )[0].distribuciones;
+
+  it('una distribución general vale en todos los días del salón, y se guarda por renglón', async () => {
+    const repo = repoConTeatro();
+    await agendarEvento(20, pedido(), comoRepo(repo));
+
+    // Paraná los días 1 y 2 (100 y 101 son los ids de esos días), Pucará los días 2 y 3.
+    expect(guardadas(repo)).toEqual([
+      { diaId: 100, salonId: 5, distribucionId: 1 },
+      { diaId: 101, salonId: 5, distribucionId: 1 },
+      { diaId: 101, salonId: 6, distribucionId: 2 },
+      { diaId: 102, salonId: 6, distribucionId: 2 },
+    ]);
+  });
+
+  it('el mismo salón con otra distribución en otro día: cada renglón lleva la suya', async () => {
+    const repo = repoConTeatro();
+    await agendarEvento(
+      20,
+      pedido({
+        distribuciones: [
+          { salonId: 5, distribucionId: 1, fecha: '2027-05-14' },
+          { salonId: 5, distribucionId: 3, fecha: '2027-05-15' },
+          { salonId: 6, distribucionId: 2 },
+        ],
+      }),
+      comoRepo(repo),
+    );
+
+    expect(guardadas(repo)).toEqual([
+      { diaId: 100, salonId: 5, distribucionId: 1 },
+      { diaId: 101, salonId: 5, distribucionId: 3 },
+      { diaId: 101, salonId: 6, distribucionId: 2 },
+      { diaId: 102, salonId: 6, distribucionId: 2 },
+    ]);
+  });
+
+  it('la capacidad de un día se mira con SU distribución, no con la de otro día del mismo salón', async () => {
+    // El día 2 tiene 80 personas en Paraná + Pucará. Con «Teatro» (200) en Paraná sobra; con
+    // «Banquete» (100) también, así que se achica el evento: Paraná con «Banquete» (100) y Pucará
+    // (60) no alcanzan para 170, pero con «Teatro» en el día 2 sí.
+    const evento = eventoDeTresDias();
+    evento.dias[1]!.cantidadPersonas = 170;
+    const repo = repoConTeatro();
+    repo.buscarDetallado.mockResolvedValue(evento);
+
+    const conBanquete = pedido();
+    await expect(agendarEvento(20, conBanquete, comoRepo(repo))).rejects.toMatchObject({
+      status: 422,
+      message: expect.stringContaining('sábado 15/05/2027'),
+    });
+
+    const conTeatroElDia2 = pedido({
+      distribuciones: [
+        { salonId: 5, distribucionId: 1, fecha: '2027-05-14' },
+        { salonId: 5, distribucionId: 3, fecha: '2027-05-15' },
+        { salonId: 6, distribucionId: 2 },
+      ],
+    });
+    await expect(agendarEvento(20, conTeatroElDia2, comoRepo(repo))).resolves.toBeDefined();
+  });
+
+  it('falta la distribución de un día: el mensaje dice el salón y el día', async () => {
+    const repo = repoConTeatro();
+    const sinElDia2 = pedido({
+      distribuciones: [
+        { salonId: 5, distribucionId: 1, fecha: '2027-05-14' },
+        { salonId: 6, distribucionId: 2 },
+      ],
+    });
+
+    await expect(agendarEvento(20, sinElDia2, comoRepo(repo))).rejects.toMatchObject({
+      status: 422,
+      message: 'Falta la distribución de Paraná el sábado 15/05/2027',
+    });
+    expect(repo.agendarConDistribuciones).not.toHaveBeenCalled();
+  });
+
+  it('una distribución para un día en que el salón no se usa se rechaza', async () => {
+    const repo = repoConTeatro();
+    const diaSinParana = pedido({
+      distribuciones: [
+        { salonId: 5, distribucionId: 1 },
+        { salonId: 6, distribucionId: 2, fecha: '2027-05-14' },
+        { salonId: 6, distribucionId: 2, fecha: '2027-05-15' },
+        { salonId: 6, distribucionId: 2, fecha: '2027-05-16' },
+      ],
+    });
+
+    await expect(agendarEvento(20, diaSinParana, comoRepo(repo))).rejects.toMatchObject({
+      status: 422,
+      message: 'El salón Pucará no se usa el viernes 14/05/2027',
+    });
+    expect(repo.agendarConDistribuciones).not.toHaveBeenCalled();
+  });
+
+  it('una distribución dada de baja se conserva solo en el día que ya la tenía', async () => {
+    const dadaDeBaja = { id: 3, salonId: 5, nombre: 'Teatro', capacidad: 200, activo: false };
+    const evento = eventoDeTresDias();
+    // El día 1 ya tenía «Teatro»; el día 2 todavía no.
+    evento.dias[0]!.salones[0] = { ...evento.dias[0]!.salones[0]!, distribucionId: 3 } as never;
+    const repo = repoDeMentira();
+    repo.buscarDetallado.mockResolvedValue(evento);
+    repo.buscarDistribuciones.mockImplementation(() =>
+      Promise.resolve([...distribuciones, dadaDeBaja]),
+    );
+
+    const soloElDia1 = pedido({
+      distribuciones: [
+        { salonId: 5, distribucionId: 3, fecha: '2027-05-14' },
+        { salonId: 5, distribucionId: 1, fecha: '2027-05-15' },
+        { salonId: 6, distribucionId: 2 },
+      ],
+    });
+    await expect(agendarEvento(20, soloElDia1, comoRepo(repo))).resolves.toBeDefined();
+
+    const tambienElDia2 = pedido({
+      distribuciones: [
+        { salonId: 5, distribucionId: 3, fecha: '2027-05-14' },
+        { salonId: 5, distribucionId: 3, fecha: '2027-05-15' },
+        { salonId: 6, distribucionId: 2 },
+      ],
+    });
+    await expect(agendarEvento(20, tambienElDia2, comoRepo(repo))).rejects.toMatchObject({
+      status: 422,
+      message: 'La distribución "Teatro" está dada de baja',
+    });
+  });
+});

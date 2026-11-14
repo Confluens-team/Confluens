@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { armadoDeSalones, nombresDeSalones } from './formato';
+import { armadoDeSalones, armadoDelEvento, nombresDeSalones } from './formato';
 
 // ADR 0011: un evento puede ocupar varios salones, cada uno con su distribución.
 describe('nombresDeSalones', () => {
@@ -56,5 +56,39 @@ describe('armadoDeSalones', () => {
   it('sin ningún salón armado devuelve null', () => {
     expect(armadoDeSalones([{ nombre: 'Auditorio', distribucion: null }])).toBeNull();
     expect(armadoDeSalones([])).toBeNull();
+  });
+});
+
+// HU-50: cada día puede armar distinto el mismo salón.
+describe('armadoDelEvento', () => {
+  const banquete = { nombre: 'Banquete' };
+  const teatro = { nombre: 'Teatro' };
+  const dia = (distribucion: { nombre: string } | null) => ({
+    salones: [{ nombre: 'Auditorio', distribucion }],
+  });
+
+  it('un evento de un solo día se resume como siempre', () => {
+    const salones = [{ nombre: 'Auditorio', distribucion: banquete }];
+    expect(armadoDelEvento({ salones, dias: [{ salones }] })).toBe('Banquete');
+  });
+
+  it('si todos los días usan el mismo armado, dice cuál', () => {
+    const dias = [dia(banquete), dia(banquete)];
+    expect(armadoDelEvento({ salones: dias[0]!.salones, dias })).toBe('Banquete');
+  });
+
+  it('si el armado cambia de un día a otro, no da el de uno solo por el de todos', () => {
+    const dias = [dia(banquete), dia(teatro)];
+    expect(armadoDelEvento({ salones: dias[0]!.salones, dias })).toBe('Varía según el día');
+  });
+
+  it('un día sin armar entre días armados también es «Varía»', () => {
+    const dias = [dia(banquete), dia(null)];
+    expect(armadoDelEvento({ salones: dias[0]!.salones, dias })).toBe('Varía según el día');
+  });
+
+  it('sin ningún armado es null', () => {
+    const dias = [dia(null), dia(null)];
+    expect(armadoDelEvento({ salones: dias[0]!.salones, dias })).toBeNull();
   });
 });

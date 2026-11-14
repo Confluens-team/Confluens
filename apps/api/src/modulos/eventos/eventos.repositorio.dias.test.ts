@@ -20,7 +20,7 @@ describe('eventos.repositorio: agendarConDistribuciones (HU-50)', () => {
       eventoDia: { updateMany: vi.fn().mockResolvedValue({ count: 1 }) },
       eventoSalon: {
         findMany: vi.fn().mockResolvedValue([]),
-        updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+        update: vi.fn().mockResolvedValue({}),
       },
       auditLog: { create: vi.fn() },
     };
@@ -30,8 +30,8 @@ describe('eventos.repositorio: agendarConDistribuciones (HU-50)', () => {
         {
           eventoId: 20,
           distribuciones: [
-            { salonId: 5, distribucionId: 11 },
-            { salonId: 6, distribucionId: 12 },
+            { diaId: 1, salonId: 5, distribucionId: 11 },
+            { diaId: 1, salonId: 6, distribucionId: 12 },
           ],
           inicio,
           fin,
@@ -50,12 +50,13 @@ describe('eventos.repositorio: agendarConDistribuciones (HU-50)', () => {
       where: { id: 20 },
       data: { modalidadSalonRestaurante: true },
     });
-    expect(tx.eventoSalon.updateMany).toHaveBeenCalledWith({
-      where: { eventoId: 20, salonId: 5 },
+    // Cada renglón se escribe por su clave (día, salón): nunca por salón, que tocaría todos los días.
+    expect(tx.eventoSalon.update).toHaveBeenCalledWith({
+      where: { diaId_salonId: { diaId: 1, salonId: 5 } },
       data: { distribucionId: 11 },
     });
-    expect(tx.eventoSalon.updateMany).toHaveBeenCalledWith({
-      where: { eventoId: 20, salonId: 6 },
+    expect(tx.eventoSalon.update).toHaveBeenCalledWith({
+      where: { diaId_salonId: { diaId: 1, salonId: 6 } },
       data: { distribucionId: 12 },
     });
   });

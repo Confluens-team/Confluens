@@ -85,7 +85,8 @@ export async function obtenerDetalle(
  *
  * Reglas aplicadas:
  * - Cada salón del evento lleva su distribución, y cada distribución tiene que pertenecer a su
- *   salón. Un evento puede ocupar varios salones a la vez (ADR 0011).
+ *   salón. Un evento puede ocupar varios salones a la vez (ADR 0011). Con varios días el mismo salón
+ *   puede llevar una distribución distinta cada día (HU-50): `fecha` en cada distribución.
  * - Si cantidadPersonas supera la capacidad sumada de las distribuciones, se exige
  *   `confirmarCapacidadExcedida: true` explícito para continuar. Es un aviso, no un tope.
  * - RN-12: no se agenda sobre una franja que otro evento ya ocupa (Reservado o Cobrado) en
@@ -116,70 +117,101 @@ export async function agendarEvento(
     throw ErrorApi.reglaNegocio('Cargá el salón en la consulta antes de agendar el evento');
   }
 
-  // Una distribución por cada salón del evento, ni más ni menos (ADR 0011).
-  const pedidas = new Map(datos.distribuciones.map((d) => [d.salonId, d.distribucionId]));
-  const faltan = salonesDelEvento.filter((s) => !pedidas.has(s.salonId));
-  if (faltan.length > 0) {
-    throw ErrorApi.reglaNegocio(
-      `Falta la distribución de ${faltan.map((s) => s.salon.nombre).join(', ')}`,
-    );
+  // HU-50: el salón se reserva por día y su armado también. Cada renglón (día, salón) toma la
+  // distribución pedida para ese día o, si no hay, la general del salón; ni más ni menos (ADR 0011).
+  const variosDias = esDeVariosDias(evento);
+  const fechaDelDia = (dia: { fecha: Date }) => dia.fecha.toISOString().slice(0, 10);
+  const renglones = evento.dias.flatMap((dia) =>
+    dia.salones.map((fila) => ({
+      dia,
+      fecha: fechaDelDia(dia),
+      salonId: fila.salonId,
+      nombreDelSalon: fila.salon.nombre,
+      distribucionActualId: fila.distribucionId,
+    })),
+  );
+  const generales = new Map(
+    datos.distribuciones
+      .filter((d) => d.fecha === undefined)
+      .map((d) => [d.salonId, d.distribucionId]),
+  );
+  const delDia = new Map(
+    datos.distribuciones
+      .filter((d) => d.fecha !== undefined)
+      .map((d) => [`${d.fecha}|${d.salonId}`, d.distribucionId]),
+  );
+  type Renglon = (typeof renglones)[number];
+  const pedidaPara = (r: Renglon) =>
+    delDia.get(`${r.fecha}|${r.salonId}`) ?? generales.get(r.salonId);
+  const sinDistribucion = renglones.filter((r) => pedidaPara(r) === undefined);
+  if (sinDistribucion.length > 0) {
+    // Un evento de un solo día (o un salón sin ninguna) nombra el salón; con varios días, cada día.
+    const faltan = variosDias
+      ? sinDistribucion.map((r) => `${r.nombreDelSalon} el ${textoDelDia(r.fecha)}`)
+      : [...new Set(sinDistribucion.map((r) => r.nombreDelSalon))];
+    throw ErrorApi.reglaNegocio(`Falta la distribución de ${faltan.join(', ')}`);
   }
   const ajeno = datos.distribuciones.find((d) => !salonIds.includes(d.salonId));
   if (ajeno) {
     throw ErrorApi.reglaNegocio(`El salón ${ajeno.salonId} no es de este evento`);
   }
-
-  const distribuciones = await repo.buscarDistribuciones(
-    datos.distribuciones.map((d) => d.distribucionId),
+  const fueraDelDia = datos.distribuciones.find(
+    (d) =>
+      d.fecha !== undefined &&
+      !renglones.some((r) => r.fecha === d.fecha && r.salonId === d.salonId),
   );
+  if (fueraDelDia) {
+    const nombre = salonesDelEvento.find((s) => s.salonId === fueraDelDia.salonId)!.salon.nombre;
+    throw ErrorApi.reglaNegocio(
+      `El salón ${nombre} no se usa el ${textoDelDia(fueraDelDia.fecha!)}`,
+    );
+  }
+
+  const distribuciones = await repo.buscarDistribuciones([
+    ...new Set(datos.distribuciones.map((d) => d.distribucionId)),
+  ]);
   const porId = new Map(distribuciones.map((d) => [d.id, d]));
-  for (const { salonId, distribucionId } of datos.distribuciones) {
+  for (const r of renglones) {
+    const distribucionId = pedidaPara(r)!;
     const distribucion = porId.get(distribucionId);
-    if (!distribucion || distribucion.salonId !== salonId) {
+    if (!distribucion || distribucion.salonId !== r.salonId) {
       throw ErrorApi.noEncontrado(
-        `No existe la distribución ${distribucionId} para el salón ${salonId}`,
+        `No existe la distribución ${distribucionId} para el salón ${r.salonId}`,
       );
     }
     // HU-25 del Sprint 4: una dada de baja no se elige de nuevo, pero el evento que ya la tenía en
-    // ese salón la conserva al reagendar (PO, 06/11/2026: la baja no lo afecta).
-    const yaLaTenia = evento.salones.some(
-      (s) => s.salonId === salonId && s.distribucionId === distribucionId,
-    );
-    if (!distribucion.activo && !yaLaTenia) {
+    // ese salón la conserva al reagendar (PO, 06/11/2026: la baja no lo afecta). Se mira renglón por
+    // renglón: la conserva el día que ya la tenía.
+    if (!distribucion.activo && r.distribucionActualId !== distribucionId) {
       throw ErrorApi.reglaNegocio(`La distribución "${distribucion.nombre}" está dada de baja`);
     }
   }
 
-  const variosDias = esDeVariosDias(evento);
   const horariosPedidos = horariosDeAgenda(datos);
 
   // Con varios salones la gente se reparte: cuenta la capacidad sumada. Es un aviso, no un tope. Con
-  // varios días se mira cada uno con SUS personas y SUS salones (HU-50).
-  const capacidadDe = (ids: number[]) =>
-    datos.distribuciones
-      .filter((d) => ids.includes(d.salonId))
-      .reduce((suma, d) => suma + porId.get(d.distribucionId)!.capacidad, 0);
-  const nombresDe = (ids: number[]) =>
-    datos.distribuciones
-      .filter((d) => ids.includes(d.salonId))
-      .map((d) => `"${porId.get(d.distribucionId)!.nombre}"`);
+  // varios días se mira cada uno con SUS personas, SUS salones y SU armado (HU-50).
+  const capacidadDe = (filas: Renglon[]) =>
+    filas.reduce((suma, r) => suma + porId.get(pedidaPara(r)!)!.capacidad, 0);
+  const nombresDe = (filas: Renglon[]) =>
+    filas.map((r) => `"${porId.get(pedidaPara(r)!)!.nombre}"`);
   if (!datos.confirmarCapacidadExcedida) {
     if (variosDias) {
       for (const dia of evento.dias) {
-        const idsDelDia = dia.salones.map((s) => s.salonId);
-        if (idsDelDia.length > 0 && dia.cantidadPersonas > capacidadDe(idsDelDia)) {
+        const delDiaActual = renglones.filter((r) => r.dia === dia);
+        if (delDiaActual.length > 0 && dia.cantidadPersonas > capacidadDe(delDiaActual)) {
           throw ErrorApi.reglaNegocio(
-            `El ${textoDelDia(dia.fecha.toISOString().slice(0, 10))} tiene ${dia.cantidadPersonas} personas y ` +
-              `supera la capacidad de ${nombresDe(idsDelDia).join(' + ')} (${capacidadDe(idsDelDia)}). ` +
+            `El ${textoDelDia(fechaDelDia(dia))} tiene ${dia.cantidadPersonas} personas y ` +
+              `supera la capacidad de ${nombresDe(delDiaActual).join(' + ')} (${capacidadDe(delDiaActual)}). ` +
               'Confirmá para continuar igualmente.',
           );
         }
       }
     } else {
-      const capacidad = capacidadDe(salonIds);
+      const capacidad = capacidadDe(renglones);
       if (evento.cantidadPersonas > capacidad) {
         throw ErrorApi.reglaNegocio(
-          `${evento.cantidadPersonas} personas supera la capacidad de ${nombresDe(salonIds).join(' + ')} ` +
+          `${evento.cantidadPersonas} personas supera la capacidad de ${nombresDe(renglones).join(' + ')} ` +
             `(${capacidad}). Confirmá para continuar igualmente.`,
         );
       }
@@ -266,10 +298,11 @@ export async function agendarEvento(
       repo.agendarConDistribuciones(
         {
           eventoId: id,
-          // En el orden de los salones del evento: la primera es la del primer salón.
-          distribuciones: salonIds.map((salonId) => ({
-            salonId,
-            distribucionId: pedidas.get(salonId)!,
+          // Una por cada renglón (día, salón), por la clave del renglón.
+          distribuciones: renglones.map((r) => ({
+            diaId: r.dia.id,
+            salonId: r.salonId,
+            distribucionId: pedidaPara(r)!,
           })),
           inicio,
           fin,

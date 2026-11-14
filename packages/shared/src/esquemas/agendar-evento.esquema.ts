@@ -13,11 +13,14 @@ import { esquemaSolicitud } from './solicitud.esquema.js';
 // SIN cambiar su estado: queda EnConsulta. La reserva la dispara el pago que cruza el 20% de la
 // base de cobro (HU-13 / HU-14), no esta llamada. Agendar es el paso previo obligatorio: sin
 // inicio y fin cargados no se puede evaluar el solapamiento de RN-12 al momento de reservar.
-// La distribución (el armado) de cada salón del evento: una distribución pertenece a un salón, y
-// un evento puede ocupar varios a la vez (ADR 0011). Tiene que venir una por cada salón.
+// La distribución (el armado) de un salón del evento: una distribución pertenece a un salón, y
+// un evento puede ocupar varios a la vez (ADR 0011). Cada salón del evento necesita la suya.
+// HU-50: el salón se reserva por día y su armado también. `fecha` dice de qué día es; sin `fecha`
+// vale para todos los días en que se usa ese salón (un evento de un solo día no la necesita).
 export const esquemaDistribucionDeSalon = z.object({
   salonId: esquemaId,
   distribucionId: esquemaId,
+  fecha: esquemaFecha.optional(),
 });
 export type DistribucionDeSalon = z.infer<typeof esquemaDistribucionDeSalon>;
 
@@ -36,8 +39,18 @@ export const esquemaAgendarEvento = z
       .array(esquemaDistribucionDeSalon)
       .min(1, 'Elegí la distribución de cada salón')
       .refine(
-        (lista) => new Set(lista.map((d) => d.salonId)).size === lista.length,
-        'Un salón no puede tener dos distribuciones',
+        (lista) => new Set(lista.map((d) => `${d.salonId}|${d.fecha ?? ''}`)).size === lista.length,
+        'Un salón no puede tener dos distribuciones el mismo día',
+      )
+      // O una general para todos los días del salón, o una por cada día: mezclarlas no dice cuál manda.
+      .refine(
+        (lista) =>
+          lista.every(
+            (d) =>
+              d.fecha === undefined ||
+              !lista.some((otra) => otra.salonId === d.salonId && otra.fecha === undefined),
+          ),
+        'Un salón tiene una distribución para todos los días o una por día, no las dos',
       ),
     // HU-50: hay dos formas de pedir el horario. `dias` lleva el de cada día del evento (de 1 a 32, uno
     // por cada día que tiene) y es la de un evento de varios días; `inicio` y `fin` sueltos son la de

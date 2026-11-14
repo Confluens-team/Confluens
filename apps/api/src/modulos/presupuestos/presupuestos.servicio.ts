@@ -1139,18 +1139,38 @@ async function guardarEventoReservadoPorDias(
     };
   });
 
-  // El armado de cada salón: el que ya tiene en otro día, o el que hereda por nombre.
-  const armadoActual = new Map<number, number | null>(
-    actuales.flatMap((dia) => dia.salones.map((s) => [s.salonId, s.distribucionId] as const)),
+  // El armado de un salón que entra a un día: cada día puede tenerlo distinto (HU-50), así que se toma el
+  // del día MÁS CERCANO que ya usa ese salón (el anterior si empatan) o, si ningún día lo usaba, el que
+  // hereda por nombre. Los renglones que ya estaban conservan el suyo: los mantiene el repositorio.
+  const armadoMasCercano = (salonId: number, fecha: string): number | null => {
+    const objetivo = fechaEnMs(fecha);
+    let elegido: { distribucionId: number; distancia: number; fecha: number } | null = null;
+    for (const dia of actuales) {
+      const distribucionId = dia.salones.find((s) => s.salonId === salonId)?.distribucionId;
+      if (distribucionId === undefined || distribucionId === null) continue;
+      const distancia = Math.abs(dia.fecha.getTime() - objetivo);
+      const antes = elegido !== null && dia.fecha.getTime() < elegido.fecha;
+      if (
+        elegido === null ||
+        distancia < elegido.distancia ||
+        (distancia === elegido.distancia && antes)
+      ) {
+        elegido = { distribucionId, distancia, fecha: dia.fecha.getTime() };
+      }
+    }
+    return elegido?.distribucionId ?? null;
+  };
+  const salonesQueYaSeUsaban = new Set(
+    actuales.flatMap((dia) => dia.salones.map((s) => s.salonId)),
   );
   const salonIds = [...new Set(dias.flatMap((dia) => dia.salones.map((s) => s.salonId)))];
   const heredados = await armadosHeredados(
     presupuesto.evento,
-    salonIds.filter((salonId) => !armadoActual.has(salonId)),
+    salonIds.filter((salonId) => !salonesQueYaSeUsaban.has(salonId)),
     repo,
   );
-  const distribucionDe = (salonId: number) =>
-    armadoActual.get(salonId) ?? heredados.get(salonId) ?? null;
+  const distribucionDe = (salonId: number, fecha: string) =>
+    armadoMasCercano(salonId, fecha) ?? heredados.get(salonId) ?? null;
 
   // RN-12: todos los choques, antes de escribir nada.
   const choques = await repo.buscarChoquesPorDia({
@@ -1187,7 +1207,7 @@ async function guardarEventoReservadoPorDias(
           fin: horarios[i]!.fin,
           salones: dia.salones.map((s) => ({
             salonId: s.salonId,
-            distribucionId: distribucionDe(s.salonId),
+            distribucionId: distribucionDe(s.salonId, dia.fecha),
           })),
         })),
         lineas,

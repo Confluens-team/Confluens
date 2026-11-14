@@ -73,6 +73,19 @@ export function armadoDeSalones(
   return armados.map((s) => `${s.nombre}: ${s.distribucion!.nombre}`).join(' · ');
 }
 
+// HU-50: el armado de un evento de varios días. Cada día puede armar distinto el mismo salón, así que el
+// de un solo día no representa al evento: si todos los días coinciden se dice cuál, y si no, «Varía».
+// Un evento de un solo día se resume como siempre (armadoDeSalones).
+export function armadoDelEvento(evento: {
+  salones: { nombre: string; distribucion: { nombre: string } | null }[];
+  dias: { salones: { nombre: string; distribucion: { nombre: string } | null }[] }[];
+}): string | null {
+  if (evento.dias.length <= 1) return armadoDeSalones(evento.salones);
+  const porDia = evento.dias.map((dia) => armadoDeSalones(dia.salones));
+  if (porDia.every((armado) => armado === null)) return null;
+  return porDia.every((armado) => armado === porDia[0]) ? porDia[0]! : 'Varía según el día';
+}
+
 // RN-11: «Continuo en salón (+20%)». Normal va sin recargo.
 export function textoModalidad(modalidad: ModalidadServicio): string {
   const recargo = RECARGO_MODALIDAD[modalidad];

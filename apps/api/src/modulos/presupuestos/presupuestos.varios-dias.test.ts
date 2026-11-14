@@ -660,7 +660,8 @@ describe('modificarPresupuesto de un evento ya reservado, día por día (HU-50, 
   });
 
   // Un evento Reservado con un renglón de Paraná por día, con su armado (14) y 90.000 congelados.
-  function reservado(fechas: string[]) {
+  // `armados`: el de cada día, en orden; sin él, todos los días tienen el 14.
+  function reservado(fechas: string[], armados: number[] = []) {
     const dias = fechas.map((fecha, i) => ({
       id: 500 + i,
       eventoId: 99,
@@ -668,7 +669,14 @@ describe('modificarPresupuesto de un evento ya reservado, día por día (HU-50, 
       ...horario(fecha),
       tipoJornada: 'completa',
       cantidadPersonas: 50,
-      salones: [{ salonId: 5, salon: parana, distribucion: { id: 14 }, distribucionId: 14 }],
+      salones: [
+        {
+          salonId: 5,
+          salon: parana,
+          distribucion: { id: armados[i] ?? 14 },
+          distribucionId: armados[i] ?? 14,
+        },
+      ],
     }));
     return {
       id: 77,
@@ -718,8 +726,13 @@ describe('modificarPresupuesto de un evento ya reservado, día por día (HU-50, 
     };
   }
 
-  function repoReservado(fechas: string[], pagado = '0', choques: object[] = []) {
-    const presupuesto = reservado(fechas);
+  function repoReservado(
+    fechas: string[],
+    pagado = '0',
+    choques: object[] = [],
+    armados: number[] = [],
+  ) {
+    const presupuesto = reservado(fechas, armados);
     return {
       ...repoDeMentira(),
       buscarPresupuestoDetallado: vi.fn(() => Promise.resolve(presupuesto)),
@@ -773,6 +786,40 @@ describe('modificarPresupuesto de un evento ya reservado, día por día (HU-50, 
     ]);
     // El salón ya tenía armado: lo conserva en los días nuevos.
     expect(dias.every((d) => d.salones[0]!.distribucionId === 14)).toBe(true);
+  });
+
+  // HU-50: cada día puede tener su propio armado del mismo salón; el día nuevo toma el del más cercano.
+  it('un día nuevo toma el armado del día más cercano que usa el salón, no el de cualquier día', async () => {
+    const r = repoReservado(['2040-04-30', '2040-05-01'], '0', [], [14, 15]);
+    await modificarPresupuesto(
+      77,
+      { dias: [dia('2040-04-30'), dia('2040-05-01'), dia('2040-05-02')] } as never,
+      comoRepo(r),
+    ).catch(() => undefined);
+
+    const [, dias] = guardado(r);
+    // Cada día existente conserva el suyo y el nuevo, pegado al 01/05, toma el 15 (no el 14 del 30/04).
+    expect(dias.map((d) => [iso(d.fecha), d.salones[0]!.distribucionId])).toEqual([
+      ['2040-04-30', 14],
+      ['2040-05-01', 15],
+      ['2040-05-02', 15],
+    ]);
+  });
+
+  it('extendiendo hacia atrás, el día nuevo toma el armado del primer día', async () => {
+    const r = repoReservado(['2040-04-30', '2040-05-01'], '0', [], [14, 15]);
+    await modificarPresupuesto(
+      77,
+      { dias: [dia('2040-04-29'), dia('2040-04-30'), dia('2040-05-01')] } as never,
+      comoRepo(r),
+    ).catch(() => undefined);
+
+    const [, dias] = guardado(r);
+    expect(dias.map((d) => [iso(d.fecha), d.salones[0]!.distribucionId])).toEqual([
+      ['2040-04-29', 14],
+      ['2040-04-30', 14],
+      ['2040-05-01', 15],
+    ]);
   });
 
   it('corre la franja entera: cada día lleva su horario a la fecha nueva', async () => {
