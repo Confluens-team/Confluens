@@ -1,4 +1,5 @@
 import {
+  esquemaChoquesDeConsulta,
   esquemaConsultaDetallada,
   esquemaCrearConsultaSocial,
   esquemaCrearPresupuesto,
@@ -25,6 +26,7 @@ import {
   listar,
   modificar,
   obtener,
+  obtenerChoques,
   ocultar,
   seguimiento,
 } from './presupuestos.controlador.js';
@@ -127,6 +129,24 @@ registroOpenApi.registerPath({
     200: {
       description: 'La consulta con su evento, cliente, salón y líneas',
       content: respuestaConsulta,
+    },
+    404: { description: 'No existe el presupuesto' },
+    ...erroresDeSesion,
+  },
+});
+
+registroOpenApi.registerPath({
+  method: 'get',
+  path: '/presupuestos/{id}/choques',
+  tags: ['Presupuestos'],
+  summary:
+    'Aviso preventivo: los salones que otros eventos ya ocupan en los días de la consulta (HU-50)',
+  request: { params: esquemaIdParam },
+  responses: {
+    200: {
+      description:
+        'Cada día y salón con el evento reservado que lo ocupa y su horario; lista vacía si no hay',
+      content: { 'application/json': { schema: z.object({ data: esquemaChoquesDeConsulta }) } },
     },
     404: { description: 'No existe el presupuesto' },
     ...erroresDeSesion,
@@ -256,6 +276,12 @@ rutasPresupuestos.get(
   ...personalDeConsultas,
   validar({ params: esquemaIdParam }),
   asincrono(obtener),
+);
+rutasPresupuestos.get(
+  '/:id/choques',
+  ...personalDeConsultas,
+  validar({ params: esquemaIdParam }),
+  asincrono(obtenerChoques),
 );
 rutasPresupuestos.patch(
   '/:id',

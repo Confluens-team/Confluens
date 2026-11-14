@@ -7,6 +7,7 @@ import {
   hoyEnZonaEventos,
   MAXIMO_PERSONAS_EVENTO,
   MODALIDADES_SERVICIO,
+  PORCENTAJE_SENA,
   mesesHastaEvento,
   proyectarPrecio,
   sumarDias,
@@ -22,6 +23,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   Check,
+  CalendarCheck,
   CheckCircle2,
   Copy,
   Plus,
@@ -50,6 +52,7 @@ import { resumenDeJornada, textoDePersonas } from '@/lib/dias-del-evento';
 import { formatearFechaNumerica, formatearPesos, nombreCompleto } from '@/lib/formato';
 import { textoDeDias } from '@/lib/rango-de-fechas';
 import { cn } from '@/lib/utils';
+import { AvisoDeChoques } from './AvisoDeChoques';
 import { type CambioDePrecio, cambiosDePrecio, preciosParaFecha } from './recalculo-por-fecha';
 import { SeguimientoConsulta } from './SeguimientoConsulta';
 
@@ -172,6 +175,7 @@ export function EditarConsultaPorDias({
   franjaNueva,
   onGuardada,
   onDadaDeBaja,
+  onAbrirEvento,
   onDescargarPresupuesto,
   textoVolverAlGuardar,
 }: {
@@ -183,6 +187,7 @@ export function EditarConsultaPorDias({
   franjaNueva?: { inicio: string; fin: string };
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
+  onAbrirEvento: (eventoId: number) => void;
   onDescargarPresupuesto: () => void;
   textoVolverAlGuardar: string;
 }) {
@@ -220,7 +225,12 @@ export function EditarConsultaPorDias({
     (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
     consulta.evento.estado === 'EnConsulta';
   const expirado = consulta.estado === 'Expirado';
-  const editable = enCurso;
+  // RN-09: el Responsable de Eventos modifica en todo momento, también un evento ya reservado. Sigue
+  // Confirmado y sin baja desde acá (se cancela desde el evento, RN-07).
+  const confirmado =
+    consulta.estado === 'Confirmado' &&
+    (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');
+  const editable = enCurso || confirmado;
   const salonDe = (salonId: number) => salones.find((s) => s.id === salonId);
 
   const indice = Math.min(activo, Math.max(dias.length - 1, 0));
@@ -599,6 +609,14 @@ export function EditarConsultaPorDias({
           de esa fecha.
         </p>
       )}
+      {confirmado && (
+        <p className="rounded-xl bg-estado-confirmado-fondo px-4 py-3 text-sm text-estado-confirmado-texto ring-1 ring-estado-confirmado-borde">
+          Evento confirmado: podés modificar todo y sigue confirmado. Si cambiás la franja, el
+          horario de cada día se corre con ella, y un día nuevo entra con el horario del día más
+          cercano (se cambia después al agendar). Si algún día choca con otro evento, se avisan
+          todos los choques y no se guarda nada. Si cambia el total, cambia el saldo a cobrar.
+        </p>
+      )}
       {!editable && (
         <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
           {consulta.estado === 'Cancelado'
@@ -719,6 +737,9 @@ export function EditarConsultaPorDias({
             · {resumenDeJornada(dias.map((d) => d.jornada)).texto}
           </p>
         </section>
+
+        {/* HU-50: los salones que otros eventos ya ocupan en estos días (aviso preventivo, RN-12). */}
+        {enCurso && <AvisoDeChoques consultaId={consulta.id} />}
 
         {/* El detalle de cada día: pestañas para pasar de uno a otro sin perder lo cargado. */}
         <section className="rounded-xl bg-card p-5 ring-1 ring-border">
@@ -1142,15 +1163,19 @@ export function EditarConsultaPorDias({
 
       {editable && (
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            className="text-destructive"
-            disabled={darDeBaja.isPending}
-            onClick={confirmarBaja}
-          >
-            <Trash2 /> Dar de baja
-          </Button>
+          {enCurso ? (
+            <Button
+              type="button"
+              variant="ghost"
+              className="text-destructive"
+              disabled={darDeBaja.isPending}
+              onClick={confirmarBaja}
+            >
+              <Trash2 /> Dar de baja
+            </Button>
+          ) : (
+            <span />
+          )}
           <div className="flex flex-wrap items-center justify-end gap-3">
             {!valido && (
               <p className="text-xs text-destructive">
@@ -1196,13 +1221,29 @@ export function EditarConsultaPorDias({
         </div>
       )}
       {enCurso && (
-        <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
-          Reservar el evento y cobrar la seña de un evento de varios días todavía no está
-          disponible: llega en la próxima etapa, junto con la agenda por día.
-        </p>
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-card p-5 ring-1 ring-border">
+          <div className="max-w-xl">
+            <h3 className="flex items-center gap-2 text-sm font-semibold">
+              <CalendarCheck className="size-4 text-dorado" /> Cobrar la seña
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              {consulta.salones.length === 0
+                ? 'Primero elegí el salón de cada día, armá el presupuesto y guardá los cambios.'
+                : `${expirado ? 'La consulta está vencida, pero la seña se cobra igual, sin recalcular. ' : ''}Registrá el horario de cada día y los pagos. Cuando lo pagado llega al ${PORCENTAJE_SENA}% de la base de cobro, el evento entero queda reservado: un choque en cualquier día lo impide. Guardá antes los cambios de la consulta.`}
+            </p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={consulta.salones.length === 0}
+            onClick={() => onAbrirEvento(consulta.evento.id)}
+          >
+            <CalendarCheck /> Registrar pagos
+          </Button>
+        </section>
       )}
       {modificar.isError && (
-        <p className="text-right text-sm text-destructive">
+        <p className="text-right text-sm whitespace-pre-line text-destructive">
           {mensajeDeError(modificar.error, 'No se pudieron guardar los cambios.')}
         </p>
       )}

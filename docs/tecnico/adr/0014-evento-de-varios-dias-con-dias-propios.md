@@ -238,6 +238,102 @@ del evento) y el aviso de **todos** los choques por día y salón, la agenda y l
 horario por día al agendar, y la restricción de exclusión no diferida. Con la guarda de arriba nada de
 eso se puede alcanzar con un evento de varios días.
 
+## Lo que se construyó en la parte 3 (agenda, reserva y comanda por día)
+
+Esta parte **levanta las guardas de la parte 2 para agendar y cobrar la seña**: un evento de varios días
+ya se agenda día por día, se reserva entero con la seña y se controla contra los eventos de cada día.
+Reutilizar un evento de varios días sigue respondiendo 422 hasta la parte 4.
+
+**Contrato** (`packages/shared`, el mismo patrón de las partes anteriores: lo de siempre sigue valiendo y
+`dias` es la forma nueva):
+
+- `POST /eventos/:id/agendar`: `dias[{ fecha, inicio, fin }]`, uno por cada día del evento. Un evento de
+  un solo día sigue mandando `inicio` y `fin` sueltos; uno de varios días con el horario suelto responde
+  422. Las distribuciones siguen siendo una por salón y valen en todos los días en que se usa ese salón.
+- El detalle del evento y la agenda traen `dias` (con su horario, personas, jornada y salones) y
+  `fechaFin`; los salones del resumen no se repiten.
+- `GET /presupuestos/:id/choques`: el aviso preventivo de una consulta (ver abajo).
+- `ChoqueDeSalon`: día, salón y el evento que lo ocupa (número, cliente, estado y horario).
+
+**RN-12 por día.** El solapamiento se compara contra el horario de **cada día** de los otros eventos (el
+renglón `EventoSalon` de ese día), nunca contra el resumen del evento: el resumen va del inicio del primer
+día al fin del último y daría choques falsos en las noches entre un día y el otro. Lo cambió
+`buscarSolapamiento` (también para un evento de un solo día), `buscarConsultasSuperpuestas` y
+`buscarSalonesReservadosEseDia`. La restricción de exclusión de la base sigue siendo la red de seguridad
+final. No hizo falta diferirla: las filas de un mismo evento no chocan entre sí (parte 1) y cada fila va
+directo a su fecha final.
+
+**Todos los choques, por día y por salón** (decisión del PO, 12/11/2026). Al agendar o al reservar con la
+seña, un evento de varios días se rechaza con **409** y un mensaje que lista cada choque (día, salón,
+evento con su número y cliente, y horario) y dice cuántos días quedan libres; el detalle del error trae
+una línea por choque con la fecha como `campo`. Un choque en cualquier día impide reservar el evento
+entero. Ejemplo:
+
+> No se puede reservar el evento: 2 de sus 5 días tienen un salón ocupado.
+> - viernes 14/05/2027 · Salón Pucará: reservado por el evento #52 (Constructora Medina SRL), de 09:00 a 18:00.
+> - sábado 15/05/2027 · Salón Iguazú: reservado por el evento #61 (Agustina Herrera), de 08:00 a 12:00.
+>
+> Los otros 3 días están libres. Hablá con el cliente para mover el día, el horario o el salón.
+
+**Aviso preventivo** en el panel, al armar o revisar una consulta: los salones que otros eventos ya ocupan
+en los días de la consulta, con su horario. La consulta no bloquea el salón (RN-12). El cliente en el canal
+público no lo ve.
+
+**Seña de un evento de varios días.** Antes de aceptar la plata se controla que **cada día** tenga horario
+y salón (si no, 422 que dice cuál; sin eso el error aparecía recién al cerrar la transacción) y que ningún
+día choque. El estado, el salón y la seña son del evento entero.
+
+**Pantallas.** El formulario de horario pide el de cada día (con «mismo horario que el día anterior»); la
+agenda muestra el evento como **una sola barra larga** y, en las tarjetas y el listado, el rango de
+personas, «Varía» si la jornada cambia y el horario si es el mismo todos los días; el detalle del evento
+suma un bloque día por día y marca cada línea del presupuesto con su día; la **comanda sale una por día**
+(salones, horario, personas y gastronomía de ese día, y las notas del evento repetidas en cada hoja).
+
+**Cómo se probó.** Tests de servicio (agendar y reservar con repositorio de mentira), del mensaje de
+choques y de las consultas de Prisma, y un recorrido contra la base real: reservar un evento de tres días,
+un evento a la noche entre dos de sus horarios (no choca), uno que pisa el día 2 (409), uno con dos días en
+choque (409 con las dos líneas), un día del medio sin horario (422, no 500), el aviso preventivo y la agenda
+por rango.
+
+## Lo que se construyó en la parte 4 (repetir evento y recálculo con el último día)
+
+Con esta parte HU-50 queda completa salvo `S-16` (la hora estimada por día).
+
+**Repetir un evento de varios días** (`POST /eventos/:id/reutilizar`). La consulta nueva copia la **misma
+franja** (la misma cantidad de días seguidos) y lo de **cada día**: personas, jornada, salones con su
+armado, servicios (por persona para las personas de su día) y adicionales. El cliente elige solo la fecha
+de inicio. Los precios son los vigentes proyectados al **último día** de la franja nueva (RN-13). El aviso
+de salones en conflicto se mira día por día y no bloquea (RN-12). `cantidadPersonas` y `tipoJornada` pasan
+a ser opcionales en el contrato: la API los sigue exigiendo (400) para un evento de un solo día y los
+ignora en uno de varios.
+
+**Modificar un evento ya reservado, día por día** (RN-09). `PATCH /presupuestos/:id` con `dias[]` sobre un
+presupuesto Confirmado extiende, corre o achica la franja, o cambia el detalle de un día, y el evento
+sigue Reservado o Cobrado (según lo pagado contra el total nuevo) y el presupuesto sigue Confirmado, vuelto
+a emitir con la fecha de hoy:
+
+- El horario de cada día se conserva. Si la franja entera se corrió, cada día lleva su horario a la fecha
+  nueva. Un día nuevo entra con el horario del **día más cercano**, movido a su fecha: en un evento
+  reservado un día no puede nacer sin horario (lo exige un CHECK del renglón de salón). Se cambia después
+  al agendar. Es una decisión mía para no dejar el cambio trabado: el PO puede preferir otra.
+- Todos los choques se controlan **antes** de escribir y se avisan juntos (409, el mismo formato que al
+  reservar); un choque en cualquier día impide el cambio entero.
+- Los salones que un día deja salen **antes** de mover el día (RN-12), y un salón nuevo hereda el armado
+  que ya tiene en otro día o el del mismo nombre. Cada día necesita al menos un salón.
+- Los precios se recalculan con el último día como referencia, igual que antes (HU-54, parte 2).
+
+La cuenta de qué día de antes es cada día de ahora (corrimiento de la franja entera o cada día por su
+fecha) vive en un solo lugar, `correspondenciaDeDias`, que usan el repositorio (mueve las filas) y el
+servicio (corre los horarios).
+
+**Pantallas.** El diálogo de «Repetir evento» pide solo la fecha de inicio cuando el original dura varios
+días y muestra hasta cuándo dura; el editor del panel por días también edita un evento reservado.
+
+**Cómo se probó.** Tests de servicio y de la cuenta de correspondencia, y un recorrido contra la base real:
+reservar un evento de tres días, extenderlo (el día nuevo hereda el horario y el armado), correrlo entero
+sin recrear las filas, dejar de usar un salón, intentar extenderlo sobre un día ocupado (409 con el choque y
+sin tocar nada), achicarlo, un día sin salón (422) y repetirlo (con y sin salones en conflicto).
+
 ## Cómo se entrega (propuesta)
 
 HU-50 se parte en cuatro partes que se entregan por separado. **Esta ADR cubre la primera**:
@@ -246,8 +342,8 @@ HU-50 se parte en cuatro partes que se entregan por separado. **Esta ADR cubre l
    líneas, las restricciones, los triggers y la migración, con los flujos de hoy adaptados para que
    todo siga funcionando con eventos de un día. **No cambia ninguna pantalla.**
 2. Cotizador y presupuesto por día (**construida**): contrato `dias[]`, selector de franja, pestañas por día, editor del panel y documento por día.
-3. Agenda y comanda por día.
-4. Repetir evento y recálculo con el último día como referencia.
+3. Agenda y comanda por día (**construida**): horario por día al agendar, solapamiento por día con el aviso de todos los choques, reserva del evento entero con la seña, agenda en barra larga y comanda por día.
+4. Repetir evento y recálculo con el último día como referencia (**construida**): repetir copia la franja y lo de cada día, y un evento reservado se modifica día por día.
 
 Los cambios de `schema.prisma`, la migración y `packages/shared` (el esquema del día y la validación
 de la franja de 32 días) necesitan la confirmación del PO (`AGENTS.md` §6) **sobre este diseño** antes

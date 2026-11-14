@@ -146,25 +146,136 @@ function TablaServicios({
   );
 }
 
-function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
+// Lo que cambia de una hoja a otra: con un evento de varios días sale una comanda POR DÍA, con los
+// salones, el horario, las personas y los servicios de ese día (HU-50). Un evento de un solo día
+// tiene una hoja, como siempre.
+interface DiaDeLaHoja {
+  indice: number;
+  total: number;
+  datos: ConsultaDetallada['dias'][number];
+}
+
+// Las notas del evento (Evento.observacionesComanda) son una sola para todo el evento: se editan en
+// la primera hoja y las demás las repiten, para que cada hoja se cuelgue en la cocina por sí sola.
+interface NotasDeLaComanda {
+  texto: string;
+  onTexto: (texto: string) => void;
+  sinGuardar: boolean;
+  guardando: boolean;
+  falloAlGuardar: boolean;
+  onGuardar: () => void;
+}
+
+function Observaciones({
+  notas,
+  densidad,
+  editable,
+}: {
+  notas: NotasDeLaComanda;
+  densidad: Densidad;
+  editable: boolean;
+}) {
+  // Estas hojas siempre terminan con algo anotado: menús especiales, alergias, a quién buscar. Se
+  // escribe acá y queda guardado en el evento, o se deja vacío y se anota a mano sobre el papel. En el
+  // papel va el texto tipeado, no el campo: un textarea con alto fijo recortaría lo que no entra, y
+  // encima imprimiría el borde del control.
+  return (
+    <section className="mt-8 break-inside-avoid">
+      <div className="flex items-center justify-between gap-3">
+        <label
+          htmlFor={editable ? 'comanda-observaciones' : undefined}
+          className="text-[0.65rem] font-semibold tracking-[0.2em] text-muted-foreground uppercase"
+        >
+          Observaciones
+        </label>
+        {editable && (
+          <div className="flex items-center gap-2 print:hidden">
+            {notas.falloAlGuardar && (
+              <span className="text-xs text-destructive">No se pudieron guardar</span>
+            )}
+            {notas.sinGuardar ? (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={notas.guardando}
+                onClick={notas.onGuardar}
+              >
+                <Save /> {notas.guardando ? 'Guardando…' : 'Guardar'}
+              </Button>
+            ) : (
+              <span className="text-xs text-muted-foreground">Guardadas</span>
+            )}
+          </div>
+        )}
+      </div>
+      {editable && (
+        <Textarea
+          id="comanda-observaciones"
+          value={notas.texto}
+          onChange={(e) => notas.onTexto(e.target.value)}
+          placeholder="Menús especiales, alergias, contacto en el salón, lo que haga falta…"
+          className={cn('mt-2 border-dashed print:hidden', densidad.observaciones)}
+        />
+      )}
+      <div
+        className={cn(
+          'mt-2 rounded-md border border-dashed border-black/40 px-3 py-2 whitespace-pre-wrap',
+          editable ? 'hidden print:block' : 'text-sm',
+          densidad.observaciones,
+        )}
+      >
+        {notas.texto}
+      </div>
+    </section>
+  );
+}
+
+function Hoja({
+  consulta,
+  dia,
+  notas,
+  ultima,
+}: {
+  consulta: ConsultaDetallada;
+  dia?: DiaDeLaHoja;
+  notas: NotasDeLaComanda;
+  ultima: boolean;
+}) {
   const { evento } = consulta;
-  // Se guardan en Evento.observacionesComanda. El borrador vive acá mientras se escribe y se
-  // manda con «Guardar»: guardar en cada tecla pegaría a la API en cada letra.
-  const [observaciones, setObservaciones] = useState(evento.observacionesComanda ?? '');
-  const guardar = useGuardarObservacionesComanda(evento.id);
-  const sinGuardar = observaciones.trim() !== (evento.observacionesComanda ?? '');
-  const { gastronomia, aMano } = lineasDeComanda(consulta.lineas);
-  const horario =
-    evento.inicio && evento.fin ? `${hora(evento.inicio)} a ${hora(evento.fin)}` : 'A confirmar';
+  // Con varios días, las líneas, los salones, el horario y las personas son los de este día.
+  const lineasDelDia = dia
+    ? consulta.lineas.filter((linea) => linea.diaId === dia.datos.id)
+    : consulta.lineas;
+  const salones = dia
+    ? dia.datos.salones.map((salon) => ({ ...salon, capacidadMaxima: salon.capacidadMaxima }))
+    : consulta.salones;
+  const fecha = dia ? dia.datos.fecha : evento.fecha;
+  const inicio = dia ? dia.datos.inicio : evento.inicio;
+  const fin = dia ? dia.datos.fin : evento.fin;
+  const personas = dia ? dia.datos.cantidadPersonas : evento.cantidadPersonas;
+  const { gastronomia, aMano } = lineasDeComanda(lineasDelDia);
+  const horario = inicio && fin ? `${hora(inicio)} a ${hora(fin)}` : 'A confirmar';
   // Cuenta los dos bloques: los dos ocupan renglones en la misma hoja.
   const densidad = densidadPara(gastronomia.length + aMano.length);
 
   return (
-    <article className="mx-auto max-w-3xl rounded-xl bg-card p-8 ring-1 ring-border print:max-w-none print:rounded-none print:p-0 print:ring-0">
+    <article
+      className={cn(
+        'mx-auto max-w-3xl rounded-xl bg-card p-8 ring-1 ring-border print:max-w-none print:rounded-none print:p-0 print:ring-0',
+        // Cada día sale en su propia hoja.
+        !ultima && 'print:break-after-page',
+      )}
+    >
       <header className="flex items-baseline justify-between gap-4 border-b-2 border-bordo pb-3 print:border-black">
         <div>
           <h2 className="font-serif text-2xl font-semibold text-bordo print:text-black">
             Comanda de evento
+            {dia && (
+              <span className="ml-3 text-lg font-normal">
+                · Día {dia.indice + 1} de {dia.total}
+              </span>
+            )}
           </h2>
           <p className="text-xs text-muted-foreground">Los Abuelos · Hotel Dr. César Carman</p>
         </div>
@@ -177,7 +288,7 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
           densidad.fecha,
         )}
       >
-        {formatearFecha(fechaLocal(evento.fecha), true)}
+        {formatearFecha(fechaLocal(fecha), true)}
       </p>
 
       <div
@@ -187,17 +298,13 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
         )}
       >
         <Dato
-          rotulo={consulta.salones.length === 1 ? 'Salón' : 'Salones'}
-          valor={nombresDeSalones(consulta.salones)}
+          rotulo={salones.length === 1 ? 'Salón' : 'Salones'}
+          valor={nombresDeSalones(salones)}
           densidad={densidad}
         />
-        <Dato
-          rotulo="Armado"
-          valor={armadoDeSalones(consulta.salones) ?? 'A definir'}
-          densidad={densidad}
-        />
+        <Dato rotulo="Armado" valor={armadoDeSalones(salones) ?? 'A definir'} densidad={densidad} />
         <Dato rotulo="Horario" valor={horario} densidad={densidad} />
-        <Dato rotulo="Personas" valor={String(evento.cantidadPersonas)} densidad={densidad} />
+        <Dato rotulo="Personas" valor={String(personas)} densidad={densidad} />
       </div>
 
       <p className="mt-4 text-sm">
@@ -211,7 +318,7 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
         </h3>
         {gastronomia.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">
-            Este evento no tiene servicios de gastronomía cargados.
+            {dia ? 'Este día no tiene' : 'Este evento no tiene'} servicios de gastronomía cargados.
           </p>
         ) : (
           <TablaServicios lineas={gastronomia} densidad={densidad} />
@@ -227,54 +334,41 @@ function Hoja({ consulta }: { consulta: ConsultaDetallada }) {
         </section>
       )}
 
-      {/* Estas hojas siempre terminan con algo anotado: menús especiales, alergias, a quién
-          buscar. Se escribe acá y queda guardado en el evento, o se deja vacío y se anota a mano
-          sobre el papel. En el papel va el texto tipeado, no el campo: un textarea con alto fijo
-          recortaría lo que no entra, y encima imprimiría el borde del control. */}
-      <section className="mt-8 break-inside-avoid">
-        <div className="flex items-center justify-between gap-3">
-          <label
-            htmlFor="comanda-observaciones"
-            className="text-[0.65rem] font-semibold tracking-[0.2em] text-muted-foreground uppercase"
-          >
-            Observaciones
-          </label>
-          <div className="flex items-center gap-2 print:hidden">
-            {guardar.isError && (
-              <span className="text-xs text-destructive">No se pudieron guardar</span>
-            )}
-            {sinGuardar ? (
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={guardar.isPending}
-                onClick={() => guardar.mutate(observaciones.trim())}
-              >
-                <Save /> {guardar.isPending ? 'Guardando…' : 'Guardar'}
-              </Button>
-            ) : (
-              <span className="text-xs text-muted-foreground">Guardadas</span>
-            )}
-          </div>
-        </div>
-        <Textarea
-          id="comanda-observaciones"
-          value={observaciones}
-          onChange={(e) => setObservaciones(e.target.value)}
-          placeholder="Menús especiales, alergias, contacto en el salón, lo que haga falta…"
-          className={cn('mt-2 border-dashed print:hidden', densidad.observaciones)}
-        />
-        <div
-          className={cn(
-            'mt-2 hidden rounded-md border border-dashed border-black/40 px-3 py-2 whitespace-pre-wrap print:block',
-            densidad.observaciones,
-          )}
-        >
-          {observaciones}
-        </div>
-      </section>
+      <Observaciones notas={notas} densidad={densidad} editable={!dia || dia.indice === 0} />
     </article>
+  );
+}
+
+// Las hojas de la comanda: una por día. Las notas se escriben una sola vez para todo el evento: el
+// borrador vive acá mientras se escribe y se manda con «Guardar», porque guardar en cada tecla
+// pegaría a la API en cada letra.
+function Comanda({ consulta }: { consulta: ConsultaDetallada }) {
+  const { evento } = consulta;
+  const [texto, setTexto] = useState(evento.observacionesComanda ?? '');
+  const guardar = useGuardarObservacionesComanda(evento.id);
+  const notas: NotasDeLaComanda = {
+    texto,
+    onTexto: setTexto,
+    sinGuardar: texto.trim() !== (evento.observacionesComanda ?? ''),
+    guardando: guardar.isPending,
+    falloAlGuardar: guardar.isError,
+    onGuardar: () => guardar.mutate(texto.trim()),
+  };
+  if (consulta.dias.length <= 1) {
+    return <Hoja consulta={consulta} notas={notas} ultima />;
+  }
+  return (
+    <div className="space-y-6 print:space-y-0">
+      {consulta.dias.map((datos, indice) => (
+        <Hoja
+          key={datos.id}
+          consulta={consulta}
+          dia={{ indice, total: consulta.dias.length, datos }}
+          notas={notas}
+          ultima={indice === consulta.dias.length - 1}
+        />
+      ))}
+    </div>
   );
 }
 
@@ -295,7 +389,10 @@ export function ComandaEvento({
         </Button>
         {consulta.data && (
           <Button size="sm" onClick={() => window.print()}>
-            <Printer /> Imprimir comanda
+            <Printer />{' '}
+            {consulta.data.dias.length > 1
+              ? `Imprimir las ${consulta.data.dias.length} comandas`
+              : 'Imprimir comanda'}
           </Button>
         )}
       </div>
@@ -312,7 +409,7 @@ export function ComandaEvento({
           que lo que ves acá todavía puede cambiar.
         </p>
       )}
-      {consulta.data && <Hoja consulta={consulta.data} />}
+      {consulta.data && <Comanda consulta={consulta.data} />}
     </div>
   );
 }

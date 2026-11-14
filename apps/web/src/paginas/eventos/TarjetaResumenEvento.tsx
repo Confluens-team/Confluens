@@ -6,6 +6,7 @@ import { BotonWhatsApp } from '@/components/BotonWhatsApp';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { IconoEstado } from '@/components/IconoEstado';
+import { horarioDeLosDias, resumenDelEvento } from '@/lib/dias-del-evento';
 import { fechaLocal, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 import { mensajeWhatsApp } from '@/lib/whatsapp';
@@ -46,10 +47,6 @@ function horario(evento: EventoAgenda): string {
     : `estimado ${evento.horaInicioEstimada}`;
 }
 
-// tipoJornada no se puede derivar de inicio/fin (tipo-evento.esquema.ts): la elige el cliente. Los
-// eventos anteriores a esa columna no la tienen y acá no hay presupuesto del que sacarla.
-const JORNADAS = { media: 'Media jornada', completa: 'Jornada completa' } as const;
-
 function Dato({
   icono: Icono,
   etiqueta,
@@ -85,6 +82,8 @@ export function TarjetaResumenEvento({
   onVerEvento: () => void;
 }) {
   const estado = ESTADOS[evento.estado];
+  // HU-50: las personas y la jornada de todo el evento (el rango; «Varía» si la jornada cambia).
+  const resumen = resumenDelEvento(evento);
 
   return (
     <div className="space-y-4">
@@ -137,16 +136,18 @@ export function TarjetaResumenEvento({
 
       <div className="grid grid-cols-2 gap-x-4 gap-y-3 border-t pt-3">
         <Dato icono={Users} etiqueta="Salón">
-          {nombresDeSalones(evento.salones)} · {evento.cantidadPersonas} personas
+          {nombresDeSalones(evento.salones)} · {resumen.personas}
         </Dato>
-        <Dato icono={CalendarDays} etiqueta="Fecha">
-          {formateadorFecha.format(fechaLocal(evento.fecha))}
+        <Dato icono={CalendarDays} etiqueta={resumen.dias > 1 ? 'Fechas' : 'Fecha'}>
+          {resumen.dias > 1
+            ? `${formateadorFecha.format(fechaLocal(evento.fecha))} al ${formateadorFecha.format(fechaLocal(evento.fechaFin))} · ${resumen.dias} días`
+            : formateadorFecha.format(fechaLocal(evento.fecha))}
         </Dato>
         <Dato icono={Clock} etiqueta="Hora">
-          {horario(evento)}
+          {resumen.dias > 1 ? (horarioDeLosDias(evento.dias) ?? 'Sin agendar') : horario(evento)}
         </Dato>
         <Dato icono={LayoutGrid} etiqueta="Jornada">
-          {evento.tipoJornada ? JORNADAS[evento.tipoJornada] : 'Sin especificar'}
+          {resumen.jornada ?? 'Sin especificar'}
         </Dato>
       </div>
 

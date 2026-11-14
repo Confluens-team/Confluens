@@ -2,7 +2,14 @@ import type { EstadoEvento } from '@confluens/shared';
 import { Check, ChevronDown, ChevronUp, Printer, Repeat2 } from 'lucide-react';
 import { useState } from 'react';
 
-import { armadoDeSalones, nombresDeSalones, textoModalidad } from '@/lib/formato';
+import { horarioDeLosDias, resumenDelEvento } from '@/lib/dias-del-evento';
+import {
+  armadoDeSalones,
+  fechaLocal,
+  formatearFecha,
+  nombresDeSalones,
+  textoModalidad,
+} from '@/lib/formato';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { BotonWhatsApp } from '@/components/BotonWhatsApp';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
@@ -124,6 +131,10 @@ export function DetalleEvento({
     evento.presupuestos[0];
   const total = presupuestoVigente ? Number(presupuestoVigente.total) : 0;
   const lineas = presupuestoVigente?.lineas ?? [];
+  // HU-50: en un evento de varios días cada línea dice a qué día pertenece.
+  const numeroDeDia = new Map(evento.dias.map((dia, indice) => [dia.id, indice + 1]));
+  const diaDeLaLinea = (linea: (typeof lineas)[number]) =>
+    numeroDeDia.get((linea as { diaId?: number }).diaId ?? -1);
   const lineasOcultas = Math.max(0, lineas.length - LINEAS_VISIBLES);
   const lineasAMostrar = presupuestoDesplegado ? lineas : lineas.slice(0, LINEAS_VISIBLES);
 
@@ -209,6 +220,7 @@ export function DetalleEvento({
       {onAbrirConsulta && evento.estado === 'Cobrado' && (
         <ReutilizarConfiguracion
           eventoId={evento.id}
+          cantidadDeDias={evento.dias.length}
           abierto={repitiendo}
           onCambiarAbierto={setRepitiendo}
           onAbrirConsulta={({ consulta }) => onAbrirConsulta(consulta.id, consulta.evento.id)}
@@ -309,7 +321,7 @@ export function DetalleEvento({
                   />
                 </Dato>
                 <Dato etiqueta="Salón">
-                  {nombresDeSalones(evento.salones)} · {evento.cantidadPersonas} personas
+                  {nombresDeSalones(evento.salones)} · {resumenDelEvento(evento).personas}
                   {armadoDeSalones(evento.salones) && (
                     <span className="block truncate text-xs text-muted-foreground">
                       {armadoDeSalones(evento.salones)}
@@ -317,7 +329,11 @@ export function DetalleEvento({
                   )}
                 </Dato>
                 <Dato etiqueta="Horario">
-                  {horario ?? <span className="text-muted-foreground">Sin agendar</span>}
+                  {evento.dias.length > 1
+                    ? (horarioDeLosDias(evento.dias) ?? (
+                        <span className="text-muted-foreground">Sin agendar</span>
+                      ))
+                    : (horario ?? <span className="text-muted-foreground">Sin agendar</span>)}
                 </Dato>
                 {evento.solicitud && (
                   <Dato etiqueta="Consulta original">
@@ -327,6 +343,40 @@ export function DetalleEvento({
               </dl>
             </CardContent>
           </Card>
+
+          {/* HU-50: un evento de varios días muestra el detalle de cada uno. */}
+          {evento.dias.length > 1 && (
+            <Card>
+              <CardHeader className="flex items-baseline justify-between gap-2">
+                <CardTitle>Día por día</CardTitle>
+                <span className="text-xs text-muted-foreground">{evento.dias.length} días</span>
+              </CardHeader>
+              <CardContent>
+                <ul className="divide-y text-sm">
+                  {evento.dias.map((dia, indice) => (
+                    <li key={dia.id} className="py-2">
+                      <p className="font-medium">
+                        Día {indice + 1} ·{' '}
+                        <span className="first-letter:uppercase">
+                          {formatearFecha(fechaLocal(dia.fecha), true)}
+                        </span>
+                      </p>
+                      <p className="text-muted-foreground">
+                        {nombresDeSalones(dia.salones, 'a definir')} · {dia.cantidadPersonas}{' '}
+                        personas
+                        {dia.tipoJornada &&
+                          ` · ${dia.tipoJornada === 'completa' ? 'jornada completa' : 'media jornada'}`}
+                        {' · '}
+                        {dia.inicio && dia.fin
+                          ? `${formateadorHora.format(new Date(dia.inicio))} a ${formateadorHora.format(new Date(dia.fin))}`
+                          : 'sin horario'}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
 
           <ObservacionesDelEvento key={evento.id} evento={evento} />
 
@@ -343,6 +393,11 @@ export function DetalleEvento({
                   {lineasAMostrar.map((linea) => (
                     <li key={linea.id} className="flex justify-between gap-4 py-1.5">
                       <span className="min-w-0">
+                        {evento.dias.length > 1 && (
+                          <span className="mr-1 text-xs font-medium text-bordo">
+                            Día {diaDeLaLinea(linea)} ·
+                          </span>
+                        )}
                         {linea.descripcion}{' '}
                         <span className="text-muted-foreground">
                           ×{linea.cantidad}

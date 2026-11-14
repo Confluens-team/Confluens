@@ -83,6 +83,7 @@ export async function obtenerHistorialDeCliente(
     eventos: eventos.map(({ salones, presupuestos, ...evento }) => ({
       id: evento.id,
       fecha: evento.fecha.toISOString().slice(0, 10),
+      fechaFin: evento.fechaFin.toISOString().slice(0, 10),
       inicio: evento.inicio?.toISOString() ?? null,
       fin: evento.fin?.toISOString() ?? null,
       estado: evento.estado,

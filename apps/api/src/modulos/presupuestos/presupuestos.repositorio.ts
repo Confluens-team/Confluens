@@ -11,6 +11,7 @@ import {
   registrarAuditoria,
   registrarAuditorias,
 } from '../../lib/auditoria.js';
+import { correspondenciaDeDias } from '../../lib/correspondencia-de-dias.js';
 import { prisma } from '../../lib/prisma.js';
 import type { Prisma } from '../../generated/prisma/client.js';
 
@@ -376,10 +377,9 @@ export async function obtenerPresupuestos(filtros: FiltrosPresupuestos) {
       estado: estado ?? { not: 'Confirmado' },
       ocultoEn: null,
       evento: {
-        fecha: {
-          gte: desde ? new Date(desde) : undefined,
-          lte: hasta ? new Date(hasta) : undefined,
-        },
+        // HU-50: un evento de varios días entra si alguno de sus días cae en el rango.
+        fecha: { lte: hasta ? new Date(hasta) : undefined },
+        fechaFin: { gte: desde ? new Date(desde) : undefined },
         cliente: {
           AND: palabras.map((palabra) => ({
             OR: [
@@ -563,17 +563,27 @@ export interface DiaPorGuardar {
   fecha: Date;
   cantidadPersonas: number;
   tipoJornada: TipoJornada;
+  // Evento reservado: el horario del día, que tiene que existir desde que el día nace (un renglón de
+  // salón reservado sin horario bloquearía el salón para siempre). Sin él, el horario no se toca.
+  inicio?: Date | null;
+  fin?: Date | null;
+  // Evento reservado: los salones del día, con su armado. Se aplican acá y no después porque los que
+  // el día deja tienen que irse ANTES de mover el día: si no, chocarían en la fecha nueva con quien los
+  // tenga reservados, aunque ya no se vayan a usar (RN-12). Sin esto los salones no se tocan.
+  salones?: { salonId: number; distribucionId: number | null }[];
 }
 
 /**
  * HU-50: deja al evento de un presupuesto con exactamente estos días y estas líneas, cada línea en el
  * día de su `fechaDia`. Devuelve el id de cada día por su fecha (`AAAA-MM-DD`) para cargarle los
- * salones. Es solo para un evento EnConsulta: los días no tienen horario ni salón reservado.
+ * salones. Sirve para un evento EnConsulta (los días no tienen horario ni salón reservado) y, con el
+ * horario y los salones de cada día (`DiaPorGuardar`), también para uno ya reservado.
  *
- * Cada día se identifica por su fecha. Si la franja entera se corrió los mismos días (mismo largo,
- * mismo corrimiento), cada fila se mueve a su fecha nueva y conserva su lugar; si no, se conservan
- * los días que siguen en la franja, se sacan los que quedaron afuera y los nuevos entran vacíos. Las
- * líneas se reemplazan todas, así que ninguna impide sacar un día (LineaPresupuesto.diaId es Restrict).
+ * Cada día se identifica por su fecha (`correspondenciaDeDias`). Si la franja entera se corrió los mismos
+ * días (mismo largo, mismo corrimiento), cada fila se mueve a su fecha nueva y conserva su lugar; si no,
+ * se conservan los días que siguen en la franja, se sacan los que quedaron afuera y los nuevos entran.
+ * Las líneas se reemplazan todas, así que ninguna impide sacar un día (LineaPresupuesto.diaId es
+ * Restrict).
  */
 export async function reemplazarDiasYLineas(
   presupuestoId: number,
@@ -598,52 +608,101 @@ export async function reemplazarDiasYLineas(
     await t.lineaPresupuesto.deleteMany({ where: { presupuestoId } });
 
     const iso = (fecha: Date) => fecha.toISOString().slice(0, 10);
-    const corrimiento =
-      actuales.length === dias.length && dias.length > 0
-        ? dias[0]!.fecha.getTime() - actuales[0]!.fecha.getTime()
-        : null;
-    const franjaCorrida =
-      corrimiento !== null &&
-      corrimiento !== 0 &&
-      actuales.every((dia, i) => dias[i]!.fecha.getTime() - dia.fecha.getTime() === corrimiento);
+    const conSalones = dias.some((dia) => dia.salones !== undefined);
+    const salonesAntes = conSalones ? await salonesDelEvento(eventoId, t) : [];
+    const mapa = correspondenciaDeDias(
+      actuales.map((dia) => dia.fecha.getTime()),
+      dias.map((dia) => dia.fecha.getTime()),
+    );
+
+    // Los salones que cada día que sigue deja, antes de mover nada.
+    if (conSalones) {
+      for (const [i, dia] of dias.entries()) {
+        const origen = mapa.origen[i];
+        if (origen === null || origen === undefined || dia.salones === undefined) continue;
+        await t.eventoSalon.deleteMany({
+          where: {
+            diaId: actuales[origen]!.id,
+            salonId: { notIn: dia.salones.map((s) => s.salonId) },
+          },
+        });
+      }
+    }
+
+    // El horario solo se escribe si viene: un evento sin reservar no lo tiene.
+    const horario = (dia: DiaPorGuardar) => ({
+      ...(dia.inicio !== undefined && { inicio: dia.inicio }),
+      ...(dia.fin !== undefined && { fin: dia.fin }),
+    });
 
     const diaIds = new Map<string, number>();
-    if (franjaCorrida) {
+    if (mapa.corrida) {
       // Hacia adelante se mueve desde el último, y hacia atrás desde el primero: así una fila nunca
       // cae sobre la fecha de otra que todavía no se movió (la fecha es única por evento).
       const orden = actuales.map((_, i) => i);
-      if (corrimiento! > 0) orden.reverse();
+      if (mapa.corrimientoEnDias > 0) orden.reverse();
       for (const i of orden) {
-        const { fecha, cantidadPersonas, tipoJornada } = dias[i]!;
+        const dia = dias[i]!;
         await t.eventoDia.update({
           where: { id: actuales[i]!.id },
-          data: { fecha, cantidadPersonas, tipoJornada },
+          data: {
+            fecha: dia.fecha,
+            cantidadPersonas: dia.cantidadPersonas,
+            tipoJornada: dia.tipoJornada,
+            ...horario(dia),
+          },
         });
-        diaIds.set(iso(fecha), actuales[i]!.id);
+        diaIds.set(iso(dia.fecha), actuales[i]!.id);
       }
     } else {
-      const nuevas = new Set(dias.map((dia) => iso(dia.fecha)));
-      const sobran = actuales.filter((dia) => !nuevas.has(iso(dia.fecha)));
+      const usados = new Set(mapa.origen.filter((origen) => origen !== null));
+      const sobran = actuales.filter((_, i) => !usados.has(i));
       if (sobran.length > 0) {
         await t.eventoDia.deleteMany({ where: { id: { in: sobran.map((dia) => dia.id) } } });
       }
-      const quedan = new Map(
-        actuales.filter((dia) => nuevas.has(iso(dia.fecha))).map((dia) => [iso(dia.fecha), dia]),
-      );
-      for (const dia of dias) {
-        const existente = quedan.get(iso(dia.fecha));
-        if (existente) {
+      for (const [i, dia] of dias.entries()) {
+        const origen = mapa.origen[i];
+        if (origen !== null && origen !== undefined) {
+          const existente = actuales[origen]!;
           await t.eventoDia.update({
             where: { id: existente.id },
-            data: { cantidadPersonas: dia.cantidadPersonas, tipoJornada: dia.tipoJornada },
+            data: {
+              cantidadPersonas: dia.cantidadPersonas,
+              tipoJornada: dia.tipoJornada,
+              ...horario(dia),
+            },
           });
           diaIds.set(iso(dia.fecha), existente.id);
         } else {
           const creado = await t.eventoDia.create({
-            data: { eventoId, ...dia },
+            data: {
+              eventoId,
+              fecha: dia.fecha,
+              cantidadPersonas: dia.cantidadPersonas,
+              tipoJornada: dia.tipoJornada,
+              ...horario(dia),
+            },
             select: { id: true },
           });
           diaIds.set(iso(dia.fecha), creado.id);
+        }
+      }
+    }
+
+    // Los salones que cada día suma. Con el día ya en su fecha y su horario, el trigger le copia el
+    // horario y el estado al renglón y la restricción controla el solapamiento (RN-12).
+    if (conSalones) {
+      for (const dia of dias) {
+        if (dia.salones === undefined) continue;
+        const diaId = diaIds.get(iso(dia.fecha))!;
+        const ya = new Set(
+          (await t.eventoSalon.findMany({ where: { diaId }, select: { salonId: true } })).map(
+            (fila) => fila.salonId,
+          ),
+        );
+        for (const { salonId, distribucionId } of dia.salones) {
+          if (ya.has(salonId)) continue;
+          await t.eventoSalon.create({ data: { eventoId, diaId, salonId, distribucionId } });
         }
       }
     }
@@ -659,16 +718,20 @@ export async function reemplazarDiasYLineas(
     });
 
     // Los días cambian como un campo del evento (sus fechas, antes y después) y las líneas como un
-    // campo del presupuesto, igual que en reemplazarLineas.
+    // campo del presupuesto, igual que en reemplazarLineas. Los salones, si se tocaron, también.
     const fechasAntes = actuales.map((dia) => iso(dia.fecha));
     const fechasDespues = dias.map((dia) => iso(dia.fecha));
-    if (fechasAntes.join() !== fechasDespues.join()) {
+    const salonesDespues = conSalones ? await salonesDelEvento(eventoId, t) : [];
+    if (
+      fechasAntes.join() !== fechasDespues.join() ||
+      salonesAntes.join() !== salonesDespues.join()
+    ) {
       await registrarAuditoria(t, {
         usuarioId,
         entidad: 'Evento',
         entidadId: eventoId,
-        anterior: { dias: fechasAntes },
-        nuevo: { dias: fechasDespues },
+        anterior: { dias: fechasAntes, ...(conSalones && { salones: salonesAntes }) },
+        nuevo: { dias: fechasDespues, ...(conSalones && { salones: salonesDespues }) },
       });
     }
     await registrarAuditoria(t, {
@@ -801,6 +864,16 @@ export async function buscarEventoParaReutilizar(
         include: { salon: true, distribucion: { select: { activo: true } } },
         orderBy: { salonId: 'asc' },
       },
+      // HU-50: cada día con sus salones y su armado; repetir copia la franja día por día.
+      dias: {
+        include: {
+          salones: {
+            include: { salon: true, distribucion: { select: { activo: true } } },
+            orderBy: { salonId: 'asc' },
+          },
+        },
+        orderBy: { fecha: 'asc' },
+      },
       presupuestos: {
         include: { lineas: { include: { servicio: true }, orderBy: { id: 'asc' } } },
         orderBy: { id: 'asc' },
@@ -816,10 +889,13 @@ export async function buscarSalonesReservadosEseDia(
   fecha: Date,
   tx: Prisma.TransactionClient = prisma,
 ) {
+  // HU-50: el día se mira en cada renglón por día, no en la fecha del evento (que es solo la del
+  // primer día): un día del medio de un evento reservado también ocupa el salón.
   const filas = await tx.eventoSalon.findMany({
     where: {
       salonId: { in: salonIds },
-      evento: { fecha, estado: { in: ['Reservado', 'Cobrado'] } },
+      dia: { fecha },
+      estado: { in: ['Reservado', 'Cobrado'] },
     },
     select: { salon: { select: { id: true, nombre: true } } },
     distinct: ['salonId'],
@@ -827,6 +903,53 @@ export async function buscarSalonesReservadosEseDia(
   });
   return filas.map((fila) => fila.salon);
 }
+
+/**
+ * Aviso preventivo de una consulta (HU-50): por cada día y salón de la consulta, los eventos
+ * reservados o cobrados que ya ocupan ese salón ese día, con su horario. La consulta no bloquea el
+ * salón (RN-12): es un aviso para que el Responsable de Eventos lo resuelva antes de reservar.
+ */
+export async function buscarSalonesOcupadosPorDia(
+  datos: { eventoId: number; dias: { fecha: string; salonIds: number[] }[] },
+  tx: Prisma.TransactionClient = prisma,
+) {
+  const conSalones = datos.dias.filter((dia) => dia.salonIds.length > 0);
+  if (conSalones.length === 0) return [];
+  const filas = await tx.eventoSalon.findMany({
+    where: {
+      eventoId: { not: datos.eventoId },
+      estado: { in: ['Reservado', 'Cobrado'] },
+      OR: conSalones.map((dia) => ({
+        salonId: { in: dia.salonIds },
+        dia: { fecha: new Date(dia.fecha) },
+      })),
+    },
+    include: {
+      salon: { select: { id: true, nombre: true } },
+      dia: { select: { fecha: true } },
+      evento: {
+        select: { id: true, estado: true, cliente: { select: { nombre: true, apellido: true } } },
+      },
+    },
+    orderBy: [{ dia: { fecha: 'asc' } }, { salonId: 'asc' }],
+  });
+  return filas.map((fila) => ({
+    fecha: fila.dia.fecha.toISOString().slice(0, 10),
+    salon: fila.salon,
+    evento: {
+      id: fila.evento.id,
+      estado: fila.evento.estado,
+      cliente: [fila.evento.cliente.nombre, fila.evento.cliente.apellido].filter(Boolean).join(' '),
+      inicio: fila.inicio?.toISOString() ?? null,
+      fin: fila.fin?.toISOString() ?? null,
+    },
+  }));
+}
+
+// HU-50: el control de solapamiento día por día vive con la agenda (eventos); se re-exporta para que el
+// servicio de presupuestos dependa de un solo módulo, como pagos.
+export { buscarChoquesPorDia } from '../eventos/eventos.repositorio.js';
+import type { buscarChoquesPorDia } from '../eventos/eventos.repositorio.js';
 
 export type PresupuestosRepositorio = {
   buscarClientePorCorreo: typeof buscarClientePorCorreo;
@@ -857,4 +980,6 @@ export type PresupuestosRepositorio = {
   guardarRecalculo: typeof guardarRecalculo;
   buscarEventoParaReutilizar: typeof buscarEventoParaReutilizar;
   buscarSalonesReservadosEseDia: typeof buscarSalonesReservadosEseDia;
+  buscarSalonesOcupadosPorDia: typeof buscarSalonesOcupadosPorDia;
+  buscarChoquesPorDia: typeof buscarChoquesPorDia;
 };

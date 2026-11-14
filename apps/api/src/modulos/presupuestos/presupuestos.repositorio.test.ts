@@ -161,14 +161,12 @@ describe('presupuestos.repositorio: obtenerPresupuestos', () => {
     );
   });
 
-  it('acota la fecha del evento con desde y hasta, ambos inclusive', async () => {
+  it('acota por rango superpuesto con desde y hasta, ambos inclusive (un evento de varios días entra si algún día cae adentro)', async () => {
     await obtenerPresupuestos({ estado: 'Estimado', desde: '2026-11-01', hasta: '2026-11-30' });
 
     const { where } = findMany.mock.calls[0]![0];
     expect(where.estado).toBe('Estimado');
-    expect(where.evento.fecha).toEqual({
-      gte: new Date('2026-11-01'),
-      lte: new Date('2026-11-30'),
-    });
+    expect(where.evento.fecha).toEqual({ lte: new Date('2026-11-30') });
+    expect(where.evento.fechaFin).toEqual({ gte: new Date('2026-11-01') });
   });
 });

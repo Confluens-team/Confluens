@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { IconoEstado } from '@/components/IconoEstado';
 import { useAgenda } from '@/hooks/use-eventos';
 import { useSalones } from '@/hooks/use-salones';
+import { horarioDeLosDias, resumenDelEvento } from '@/lib/dias-del-evento';
 import { fechaLocal, formatearPesos, hoyISO, nombreCompleto } from '@/lib/formato';
 import { armadoDeSalones, nombresDeSalones } from '@/lib/formato';
 import { cn } from '@/lib/utils';
@@ -91,6 +92,8 @@ function ListaDeEventos({
               const estado = ESTADOS[evento.estado];
               const desde = hora(evento.inicio);
               const hasta = hora(evento.fin);
+              // HU-50: el rango de personas, y hasta cuándo dura si son varios días.
+              const resumen = resumenDelEvento(evento);
               return (
                 <li key={evento.id}>
                   <button
@@ -129,13 +132,33 @@ function ListaDeEventos({
                         <EtiquetaCliente etiqueta={evento.cliente.etiqueta} />
                       </div>
                       <p className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                        {desde && hasta && (
-                          <span className="inline-flex items-center gap-1">
-                            <Clock className="size-3" /> {desde} a {hasta}
+                        {resumen.dias > 1 && (
+                          <span className="inline-flex items-center gap-1 font-medium text-bordo">
+                            <CalendarDays className="size-3" /> al{' '}
+                            {fechaLocal(evento.fechaFin).toLocaleDateString('es-AR', {
+                              day: '2-digit',
+                              month: '2-digit',
+                            })}{' '}
+                            · {resumen.dias} días
                           </span>
                         )}
+                        {resumen.dias > 1
+                          ? horarioDeLosDias(evento.dias) && (
+                              <span className="inline-flex items-center gap-1">
+                                <Clock className="size-3" /> {horarioDeLosDias(evento.dias)}
+                              </span>
+                            )
+                          : desde &&
+                            hasta && (
+                              <span className="inline-flex items-center gap-1">
+                                <Clock className="size-3" /> {desde} a {hasta}
+                              </span>
+                            )}
                         <span className="inline-flex items-center gap-1">
-                          <Users className="size-3" /> {evento.cantidadPersonas} personas
+                          <Users className="size-3" /> {resumen.personas}
+                          {resumen.dias > 1 && resumen.jornada?.startsWith('Varía') && (
+                            <span> · {resumen.jornada}</span>
+                          )}
                         </span>
                       </p>
                     </div>

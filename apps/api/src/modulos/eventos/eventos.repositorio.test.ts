@@ -25,15 +25,18 @@ describe('eventos.repositorio: buscarSolapamiento (RN-12)', () => {
   });
 
   const whereDeLaBusqueda = () => findFirst.mock.calls[0]![0].where;
+  // HU-50: la comparación es contra el horario de CADA DÍA del otro evento (su renglón del salón), no
+  // contra el resumen del evento: así un evento de varios días no ocupa las noches entre un día y otro.
+  const renglonDelSalon = () => whereDeLaBusqueda().salones.some;
 
   it('compara con desigualdades estrictas: tocarse en el borde no es solaparse', async () => {
     await buscarSolapamiento({ salonIds: [5], inicio, fin, excluirEventoId: 20 });
 
     // Existente.inicio < nuevo.fin  Y  existente.fin > nuevo.inicio.
-    expect(whereDeLaBusqueda().inicio).toEqual({ lt: fin });
-    expect(whereDeLaBusqueda().fin).toEqual({ gt: inicio });
-    expect(whereDeLaBusqueda().inicio).not.toHaveProperty('lte');
-    expect(whereDeLaBusqueda().fin).not.toHaveProperty('gte');
+    expect(renglonDelSalon().inicio).toEqual({ lt: fin });
+    expect(renglonDelSalon().fin).toEqual({ gt: inicio });
+    expect(renglonDelSalon().inicio).not.toHaveProperty('lte');
+    expect(renglonDelSalon().fin).not.toHaveProperty('gte');
   });
 
   it('solo cuentan los eventos que ocupan el salón: Reservado y Cobrado, no EnConsulta ni Cancelado', async () => {
@@ -51,7 +54,8 @@ describe('eventos.repositorio: buscarSolapamiento (RN-12)', () => {
   it('choca si comparte cualquiera de los salones del evento', async () => {
     await buscarSolapamiento({ salonIds: [5, 9], inicio, fin, excluirEventoId: 20 });
 
-    expect(whereDeLaBusqueda().salones).toEqual({ some: { salonId: { in: [5, 9] } } });
+    // El salón y el horario se piden sobre el MISMO renglón: no vale un salón de un día y un horario de otro.
+    expect(renglonDelSalon()).toMatchObject({ salonId: { in: [5, 9] } });
   });
 
   it('devuelve el evento en conflicto, o null si el salón está libre', async () => {
@@ -115,13 +119,13 @@ describe('eventos.repositorio: listarAgenda', () => {
     expect(whereDeLaConsulta().salones).toBeUndefined();
   });
 
-  it('acota la fecha del evento con desde y hasta, ambos inclusive', async () => {
+  // HU-50: un evento de varios días entra si alguno de sus días cae en el rango, no solo el primero:
+  // empieza antes del final del rango y termina después de su comienzo.
+  it('acota por rango superpuesto, con desde y hasta inclusive', async () => {
     await listarAgenda({ desde: '2026-11-01', hasta: '2026-11-30' });
 
-    expect(whereDeLaConsulta().fecha).toEqual({
-      gte: new Date('2026-11-01'),
-      lte: new Date('2026-11-30'),
-    });
+    expect(whereDeLaConsulta().fecha).toEqual({ lte: new Date('2026-11-30') });
+    expect(whereDeLaConsulta().fechaFin).toEqual({ gte: new Date('2026-11-01') });
   });
 });
 

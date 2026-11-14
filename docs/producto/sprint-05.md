@@ -241,7 +241,7 @@ Sprint 6 en lugar de otras y cuáles quedan fuera del alcance de la tesis.
 |---|---|---|---|
 | HU-51 | Agregar servicios propios a un evento | a estimar | Reemplaza la caja de texto del evento social (S-14) |
 | HU-52 | Registrar lo pagado de más como no reintegrable | a estimar | Cambio de modelo |
-| HU-50 | Reservar un evento de varios días | a estimar | Definida por el PO el 12/11/2026 (`backlog.md`, `dominio.md`) y con el diseño de datos aceptado (ADR 0014). **En construcción por partes:** la 1 (modelo y solapamiento por día) y la 2 (cotizador y presupuesto por día, con el selector de franja) están hechas; faltan la 3 (agenda, comanda, horario por día y el aviso de todos los choques) y la 4 (repetir evento y recálculo con el último día). Hasta la 3, agendar, cobrar la seña y reutilizar un evento de varios días responden 422. Queda abierto `S-16` (hora estimada por día) |
+| HU-50 | Reservar un evento de varios días | a estimar | Definida por el PO el 12/11/2026 (`backlog.md`, `dominio.md`) y con el diseño de datos aceptado (ADR 0014). **Construida en cuatro partes** (modelo y solapamiento por día; cotizador y presupuesto por día con el selector de franja; horario por día, agenda, comanda y el aviso de todos los choques; repetir evento y recálculo con el último día). Queda abierto `S-16` (hora estimada por día) y falta estimarla en la Planning |
 | HU-18 | Reasignar un evento a otro salón | 8 | Salió del Sprint 4 |
 | HU-22 | Generar el reporte de servicios contratados | 5 | Salió del Sprint 4 |
 

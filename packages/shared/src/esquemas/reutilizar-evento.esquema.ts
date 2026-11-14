@@ -8,10 +8,15 @@ import { esquemaHoraEstimada, esquemaTipoJornada } from './tipo-evento.esquema.j
 // original (equipo, 17/10/2026): se pide, como en el cotizador. La fecha es obligatoria y futura
 // (la API la controla contra el día de hoy en Córdoba, ADR 0010); la hora de inicio, aproximada y
 // opcional; el horario exacto se carga después, al agendar (ADR 0007).
+//
+// HU-50: repetir un evento de varios días copia la MISMA franja (la misma cantidad de días seguidos) y
+// lo de cada día (personas, jornada, salones y servicios); el cliente elige solo la fecha de inicio.
+// `cantidadPersonas` y `tipoJornada` son de un evento de un solo día y la API los exige solo ahí; en uno
+// de varios días se ignoran, porque cada día conserva los suyos.
 export const esquemaReutilizarEvento = z.object({
   fecha: esquemaFecha,
-  cantidadPersonas: esquemaCantidadPersonas,
-  tipoJornada: esquemaTipoJornada,
+  cantidadPersonas: esquemaCantidadPersonas.optional(),
+  tipoJornada: esquemaTipoJornada.optional(),
   horaInicioEstimada: esquemaHoraEstimada.optional(),
 });
 export type ReutilizarEvento = z.infer<typeof esquemaReutilizarEvento>;

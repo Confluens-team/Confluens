@@ -157,6 +157,19 @@ function eventoFixtureBase() {
         distribucion: null as typeof distribucionFixture | null,
       },
     ],
+    // HU-50: el único día del evento, con su salón.
+    dias: [
+      {
+        id: 1,
+        eventoId: 20,
+        fecha: new Date('2026-11-15'),
+        inicio: null as Date | null,
+        fin: null as Date | null,
+        tipoJornada: null,
+        cantidadPersonas: 10,
+        salones: [{ salon: salonFixture, distribucion: null as typeof distribucionFixture | null }],
+      },
+    ] as never[],
     solicitud: null,
     presupuestos: [{ ...presupuestoEstimadoFixture, lineas: [lineaFixture] }],
   };

@@ -14,7 +14,8 @@ import {
   type PresupuestoDeBase,
 } from '../../lib/base-de-cobro.js';
 import { ErrorApi } from '../../lib/errores.js';
-import { exigirEventoDeUnDia } from '../../lib/evento-de-varios-dias.js';
+import { avisoDeChoques, textoDelDia } from '../../lib/aviso-de-choques.js';
+import { esDeVariosDias } from '../../lib/evento-de-varios-dias.js';
 import {
   comoConflictoSiYaExiste,
   esViolacionDeSolapamiento,
@@ -89,9 +90,6 @@ export async function registrarPago(
 ) {
   const evento = await repo.buscarDetallado(eventoId);
   if (!evento) throw ErrorApi.noEncontrado(`No existe el evento ${eventoId}`);
-  // HU-50: la seña reserva el salón, y reservar un evento de varios días (un horario y un control de
-  // solapamiento por día) todavía no está (parte 3). Se rechaza antes de aceptar plata sin reservar.
-  exigirEventoDeUnDia(evento, 'cobrar');
 
   if (evento.estado === 'Cancelado' || evento.estado === 'Cobrado') {
     throw ErrorApi.conflicto(
@@ -149,7 +147,42 @@ export async function registrarPago(
 
       let consultasEnConflicto: Awaited<ReturnType<typeof repo.buscarConsultasSuperpuestas>> = [];
 
-      if (reservaElSalon && salonIds.length > 0 && evento.inicio && evento.fin) {
+      // HU-50: un evento de varios días se reserva entero, con el horario y el salón de CADA día, y se
+      // controla cada día por separado. Un día sin horario no se detecta con el resumen del evento y
+      // fallaría al cerrar la transacción: se rechaza acá con un mensaje claro.
+      const variosDias = esDeVariosDias(evento);
+      if (reservaElSalon && variosDias) {
+        const incompletos = evento.dias.filter(
+          (dia) => !dia.inicio || !dia.fin || dia.salones.length === 0,
+        );
+        if (incompletos.length > 0) {
+          throw ErrorApi.reglaNegocio(
+            'Hay que agendar el horario y el salón de cada día del evento antes de cobrar la seña. ' +
+              `Faltan: ${incompletos.map((dia) => textoDelDia(dia.fecha.toISOString().slice(0, 10))).join(', ')}`,
+          );
+        }
+        const franjas = evento.dias.map((dia) => ({
+          fecha: dia.fecha.toISOString().slice(0, 10),
+          salonIds: dia.salones.map((s) => s.salonId),
+          inicio: dia.inicio!,
+          fin: dia.fin!,
+        }));
+        // RN-12 por día: se avisa de TODOS los choques, con su día, salón, evento y horario.
+        const choques = await repo.buscarChoquesPorDia({ franjas, excluirEventoId: eventoId }, tx);
+        if (choques.length > 0) {
+          const { mensaje, detalles } = avisoDeChoques(choques, franjas.length, 'reservar');
+          throw ErrorApi.conflicto(mensaje, detalles);
+        }
+        const porEvento = new Map<number, (typeof consultasEnConflicto)[number]>();
+        for (const franja of franjas) {
+          const delDia = await repo.buscarConsultasSuperpuestas(
+            { ...franja, excluirEventoId: eventoId },
+            tx,
+          );
+          for (const consulta of delDia) porEvento.set(consulta.id, consulta);
+        }
+        consultasEnConflicto = [...porEvento.values()];
+      } else if (reservaElSalon && salonIds.length > 0 && evento.inicio && evento.fin) {
         const franja = {
           salonIds,
           inicio: evento.inicio,

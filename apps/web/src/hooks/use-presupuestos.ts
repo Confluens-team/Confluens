@@ -1,4 +1,5 @@
 import type {
+  ChoquesDeConsulta,
   ConsultaDetallada,
   CrearConsultaSocial,
   CrearPresupuesto,
@@ -118,6 +119,19 @@ export function useConsulta(id: number) {
     queryKey: ['presupuestos', 'consulta', id],
     queryFn: async () => {
       const respuesta = await apiFetch<RespuestaExito<ConsultaDetallada>>(`/presupuestos/${id}`);
+      return respuesta.data;
+    },
+  });
+}
+
+// HU-50: el aviso preventivo de solapamientos de una consulta (día, salón, evento y horario).
+export function useChoquesDeConsulta(id: number) {
+  return useQuery({
+    queryKey: ['presupuestos', 'consulta', id, 'choques'],
+    queryFn: async () => {
+      const respuesta = await apiFetch<RespuestaExito<ChoquesDeConsulta>>(
+        `/presupuestos/${id}/choques`,
+      );
       return respuesta.data;
     },
   });

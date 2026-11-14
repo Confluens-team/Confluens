@@ -1,4 +1,4 @@
-import type { TipoJornada } from '@confluens/shared';
+import { horaDelEvento, type TipoJornada } from '@confluens/shared';
 
 // Cómo se muestra lo que cambia de un día a otro en un evento de varios días (HU-50, `backlog.md`,
 // «Resumen del evento en pantalla»): donde hoy hay una sola cantidad de personas y una sola jornada,
@@ -32,6 +32,49 @@ export function resumenDeJornada(jornadas: TipoJornada[]): { texto: string; vari
 
 export function nombreDeJornada(jornada: TipoJornada): string {
   return NOMBRE_JORNADA[jornada];
+}
+
+/**
+ * Lo que se muestra de un evento en una tarjeta o un renglón (HU-50): sus personas y su jornada
+ * resumidas, y cuánto dura. Un evento de un solo día se lee como siempre; uno de varios muestra el
+ * rango de personas y, si la jornada cambia de un día a otro, «Varía».
+ */
+export function resumenDelEvento(evento: {
+  cantidadPersonas: number;
+  tipoJornada: TipoJornada | null;
+  dias?: { cantidadPersonas: number; tipoJornada: TipoJornada | null }[];
+}): { personas: string; jornada: string | null; dias: number } {
+  const dias = evento.dias ?? [];
+  if (dias.length <= 1) {
+    return {
+      personas: `${evento.cantidadPersonas} personas`,
+      jornada: evento.tipoJornada ? NOMBRE_JORNADA[evento.tipoJornada] : null,
+      dias: 1,
+    };
+  }
+  const jornadas = dias.flatMap((dia) => (dia.tipoJornada ? [dia.tipoJornada] : []));
+  return {
+    personas: textoDePersonas(dias.map((dia) => dia.cantidadPersonas)),
+    jornada: jornadas.length > 0 ? resumenDeJornada(jornadas).texto : null,
+    dias: dias.length,
+  };
+}
+
+/**
+ * El horario de un evento de varios días en una línea: si todos los días empiezan y terminan a la
+ * misma hora, esa hora («09:00 a 18:00, todos los días»); si no, «el horario varía según el día».
+ * Sin horario agendado en algún día, null.
+ */
+export function horarioDeLosDias(
+  dias: { inicio: string | null; fin: string | null }[],
+): string | null {
+  if (dias.length === 0 || dias.some((dia) => !dia.inicio || !dia.fin)) return null;
+  const franjas = new Set(
+    dias.map((dia) => `${horaDelEvento(dia.inicio!)} a ${horaDelEvento(dia.fin!)}`),
+  );
+  return franjas.size === 1
+    ? `${[...franjas][0]}, todos los días`
+    : 'El horario varía según el día';
 }
 
 /**

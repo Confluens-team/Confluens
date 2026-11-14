@@ -4,6 +4,7 @@ import {
   CODIGOS_ERROR,
   DIAS_VIGENCIA_PRESUPUESTO,
   fechasDeLaFranja,
+  sumarDias,
   diasDeCotizacion,
   diasDeModificacion,
   horaDelEvento,
@@ -11,6 +12,7 @@ import {
   mesesHastaEvento,
   minutosDeHora,
   proyectarPrecio,
+  type ChoquesDeConsulta,
   type ConsultaDetallada,
   type CrearConsultaSocial,
   type CrearPresupuesto,
@@ -27,10 +29,12 @@ import {
 } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
+import { avisoDeChoques } from '../../lib/aviso-de-choques.js';
 import { alcanza, calcularBaseDeCobro, PORCENTAJE_TOTAL } from '../../lib/base-de-cobro.js';
+import { correspondenciaDeDias } from '../../lib/correspondencia-de-dias.js';
 import { type Correo, enviarCorreo } from '../../lib/correo.js';
 import { ErrorApi } from '../../lib/errores.js';
-import { esDeVariosDias, exigirEventoDeUnDia } from '../../lib/evento-de-varios-dias.js';
+import { esDeVariosDias } from '../../lib/evento-de-varios-dias.js';
 import { esViolacionDeSolapamiento } from '../../lib/prisma-errores.js';
 import { avisarConsultaRecibida } from './presupuestos.correo.js';
 import * as presupuestosRepositorioReal from './presupuestos.repositorio.js';
@@ -757,6 +761,28 @@ async function armadosHeredados(
   return heredados;
 }
 
+/**
+ * Aviso preventivo de una consulta (HU-50, RN-12): por cada día y salón de la consulta, los eventos
+ * reservados o cobrados que ya ocupan ese salón ese día, con su horario. La consulta no bloquea el
+ * salón: es para que el Responsable de Eventos lo vea y hable con el cliente antes de reservar. Solo
+ * tiene sentido mientras el evento está en consulta; uno ya reservado ya pasó el control.
+ */
+export async function obtenerChoquesDeConsulta(
+  id: number,
+  repo: PresupuestosRepositorio = presupuestosRepositorioReal,
+): Promise<ChoquesDeConsulta> {
+  const presupuesto = await buscarOFallar(id, repo);
+  const dias = presupuesto.evento.dias.map((dia) => ({
+    fecha: dia.fecha.toISOString().slice(0, 10),
+    salonIds: dia.salones.map(({ salon }) => salon.id),
+  }));
+  const choques =
+    presupuesto.evento.estado === 'EnConsulta'
+      ? await repo.buscarSalonesOcupadosPorDia({ eventoId: presupuesto.eventoId, dias })
+      : [];
+  return { dias: dias.length, choques };
+}
+
 export async function obtenerConsulta(
   id: number,
   repo: PresupuestosRepositorio = presupuestosRepositorioReal,
@@ -1053,14 +1079,155 @@ export async function modificarPresupuesto(
 }
 
 /**
+ * HU-50 con RN-09: la franja o el detalle de un evento ya reservado (Reservado o Cobrado), día por día.
+ *
+ * - El horario de cada día se conserva; si la franja entera se corrió, se corre con ella; y un día
+ *   nuevo entra con el horario de su vecino más cercano, movido a su fecha (en un evento reservado un
+ *   día no puede nacer sin horario). Después se puede cambiar al agendar.
+ * - Todos los choques se controlan antes de escribir y se avisan juntos, cada uno con su día, salón,
+ *   evento y horario; un choque en cualquier día impide el cambio entero.
+ * - Los salones que un día deja salen antes de mover el día (RN-12), y un salón nuevo hereda el armado
+ *   que ya tiene en otro día o el del mismo nombre que usa el evento.
+ * - Sigue Confirmado y se vuelve a emitir con la fecha de hoy (RN-08, HU-27); el estado del evento
+ *   (Reservado o Cobrado) sale de lo pagado contra el total nuevo. Si el total queda por debajo de lo
+ *   pagado, se guarda igual y el saldo queda negativo (decisión de Franco, 08/10/2026).
+ */
+async function guardarEventoReservadoPorDias(
+  datos: {
+    id: number;
+    presupuesto: PresupuestoDetalladoRepo;
+    pedido: ModificarPresupuesto;
+    dias: DiaModificado[];
+    lineas: (LineaNueva & { fechaDia: string })[];
+    total: Prisma.Decimal;
+    tipo: ReturnType<typeof resolverTipo>;
+    fechaEmision: Date;
+  },
+  repo: PresupuestosRepositorio,
+): Promise<void> {
+  const { id, presupuesto, pedido, dias, lineas, total, tipo, fechaEmision } = datos;
+  const eventoId = presupuesto.eventoId;
+  const actuales = presupuesto.evento.dias;
+  const fechaEnMs = (fecha: string) => new Date(fecha).getTime();
+  const correspondencia = correspondenciaDeDias(
+    actuales.map((dia) => dia.fecha.getTime()),
+    dias.map((dia) => fechaEnMs(dia.fecha)),
+  );
+
+  // El horario de cada día: el del día del que sale, o el del día más cercano si entra uno nuevo,
+  // corrido hasta su fecha. Argentina no tiene horario de verano: correr días es sumar milisegundos.
+  const horarios = dias.map((dia, i) => {
+    const origen = correspondencia.origen[i];
+    const referencia =
+      origen !== null && origen !== undefined
+        ? actuales[origen]!
+        : actuales.reduce((mejor, candidato) =>
+            Math.abs(candidato.fecha.getTime() - fechaEnMs(dia.fecha)) <
+            Math.abs(mejor.fecha.getTime() - fechaEnMs(dia.fecha))
+              ? candidato
+              : mejor,
+          );
+    if (!referencia.inicio || !referencia.fin) {
+      throw ErrorApi.reglaNegocio(
+        'Hay un día del evento sin horario: agendá el horario de cada día antes de modificarlo',
+      );
+    }
+    const corrimiento = fechaEnMs(dia.fecha) - referencia.fecha.getTime();
+    return {
+      inicio: new Date(referencia.inicio.getTime() + corrimiento),
+      fin: new Date(referencia.fin.getTime() + corrimiento),
+    };
+  });
+
+  // El armado de cada salón: el que ya tiene en otro día, o el que hereda por nombre.
+  const armadoActual = new Map<number, number | null>(
+    actuales.flatMap((dia) => dia.salones.map((s) => [s.salonId, s.distribucionId] as const)),
+  );
+  const salonIds = [...new Set(dias.flatMap((dia) => dia.salones.map((s) => s.salonId)))];
+  const heredados = await armadosHeredados(
+    presupuesto.evento,
+    salonIds.filter((salonId) => !armadoActual.has(salonId)),
+    repo,
+  );
+  const distribucionDe = (salonId: number) =>
+    armadoActual.get(salonId) ?? heredados.get(salonId) ?? null;
+
+  // RN-12: todos los choques, antes de escribir nada.
+  const choques = await repo.buscarChoquesPorDia({
+    franjas: dias.map((dia, i) => ({
+      fecha: dia.fecha,
+      salonIds: dia.salones.map((s) => s.salonId),
+      inicio: horarios[i]!.inicio,
+      fin: horarios[i]!.fin,
+    })),
+    excluirEventoId: eventoId,
+  });
+  if (choques.length > 0) {
+    const { mensaje, detalles } = avisoDeChoques(choques, dias.length, 'modificar');
+    throw ErrorApi.conflicto(mensaje, detalles);
+  }
+
+  try {
+    await repo.crearEnTransaccion(async (tx) => {
+      // Dentro de la transacción, como en los pagos: el acumulado con el que se decide el estado
+      // tiene que ser el del momento de escribir.
+      const pagado = (await repo.sumarPagos(eventoId, tx)) ?? new Prisma.Decimal(0);
+      const base = calcularBaseDeCobro({ ...presupuesto, total: new Prisma.Decimal(total) });
+      const estadoEvento = alcanza(new Prisma.Decimal(pagado), base, PORCENTAJE_TOTAL)
+        ? 'Cobrado'
+        : 'Reservado';
+
+      await repo.reemplazarDiasYLineas(
+        id,
+        dias.map((dia, i) => ({
+          fecha: new Date(dia.fecha),
+          cantidadPersonas: dia.cantidadPersonas,
+          tipoJornada: dia.tipoJornada,
+          inicio: horarios[i]!.inicio,
+          fin: horarios[i]!.fin,
+          salones: dia.salones.map((s) => ({
+            salonId: s.salonId,
+            distribucionId: distribucionDe(s.salonId),
+          })),
+        })),
+        lineas,
+        tx,
+      );
+      await repo.actualizarEvento(
+        eventoId,
+        {
+          ...tipo,
+          // Sin el campo se mantiene; null la borra.
+          horaInicioEstimada: pedido.horaInicioEstimada,
+          horaFinEstimada: pedido.horaFinEstimada,
+          estado: estadoEvento,
+        },
+        tx,
+      );
+      await repo.actualizarPresupuesto(
+        id,
+        { fechaEmision, venceEn: calcularVencimiento(fechaEmision), total: total.toFixed(2) },
+        tx,
+      );
+    });
+  } catch (error) {
+    // La red de seguridad ante una carrera: la restricción de Postgres atrapa lo que se coló.
+    if (esViolacionDeSolapamiento(error)) {
+      throw ErrorApi.conflicto('El salón ya está reservado en ese horario por otro evento');
+    }
+    throw error;
+  }
+}
+
+/**
  * HU-50: modifica una consulta de varios días, o una de un día que pasa a durar varios. El pedido
  * trae el estado completo de cada día (su fecha, personas, jornada, salones, servicios y
  * adicionales), y cada día se identifica por su fecha: mandar una fecha de más o de menos en un
  * extremo extiende o achica la franja, y un día nuevo entra con lo que trae.
  *
- * - Solo una consulta en curso (Estimado o Expirado) de un evento EnConsulta. Reservar, mover el
- *   horario o cobrar un evento de varios días todavía no se puede (`exigirEventoDeUnDia`), así que un
- *   evento confirmado no puede pasar a durar varios días.
+ * - Una consulta en curso (Estimado o Expirado) de un evento EnConsulta, o un evento ya reservado
+ *   (RN-09): ese camino es `guardarEventoReservadoPorDias`, que conserva el horario de cada día, avisa de
+ *   todos los choques y deja el evento Reservado o Cobrado según lo pagado.
  * - Un solo presupuesto y un solo total: la suma de todos los días.
  * - RN-13: el último día de la franja es la referencia. Si cambia (la franja se extiende o se
  *   corre), lo que no trae precio explícito toma el precio de esa fecha, también en los días que ya
@@ -1074,13 +1241,14 @@ async function modificarPorDias(
   dias: DiaModificado[],
   repo: PresupuestosRepositorio,
 ): Promise<ConsultaDetallada> {
-  if (esConfirmadoVigente(presupuesto)) {
-    throw ErrorApi.reglaNegocio(
-      'Todavía no se puede pasar a varios días un evento ya reservado: la reserva por día llega en la próxima etapa',
-    );
-  }
-  exigirConsultaEnCurso(presupuesto, 'modificar');
+  // RN-09: el Responsable de Eventos modifica en todo momento, también un evento ya reservado.
+  const confirmado = esConfirmadoVigente(presupuesto);
+  if (!confirmado) exigirConsultaEnCurso(presupuesto, 'modificar');
   const haySalonCadaDia = dias.every((dia) => dia.salones.length > 0);
+  // Un evento reservado ocupa un salón cada día: ninguno puede quedar «a definir».
+  if (confirmado && !haySalonCadaDia) {
+    throw ErrorApi.reglaNegocio('Un evento confirmado necesita al menos un salón cada día');
+  }
   const tipo = resolverTipo(pedido, presupuesto.evento, haySalonCadaDia);
 
   const ultimoDia = dias[dias.length - 1]!;
@@ -1114,6 +1282,14 @@ async function modificarPorDias(
   });
   const total = sumarLineas(lineas);
   const fechaEmision = new Date();
+
+  if (confirmado) {
+    await guardarEventoReservadoPorDias(
+      { id, presupuesto, pedido, dias, lineas, total, tipo, fechaEmision },
+      repo,
+    );
+    return obtenerConsulta(id, repo);
+  }
 
   await repo.crearEnTransaccion(async (tx) => {
     // Primero los días y las líneas (las líneas de un día que se saca tienen que irse antes que él),
@@ -1273,8 +1449,18 @@ export async function reutilizarConfiguracion(
 ): Promise<EventoReutilizado> {
   const original = await repo.buscarEventoParaReutilizar(eventoId);
   if (!original) throw ErrorApi.noEncontrado(`No existe el evento ${eventoId}`);
-  // HU-50: reutilizar copia la franja entera, y eso llega en la parte 4.
-  exigirEventoDeUnDia(original, 'reutilizar');
+  // HU-50: un evento de varios días se repite con la misma franja y lo de cada día.
+  if (esDeVariosDias(original)) return reutilizarVariosDias(original, datos, repo);
+  if (datos.cantidadPersonas === undefined || datos.tipoJornada === undefined) {
+    throw new ErrorApi(400, CODIGOS_ERROR.VALIDACION, 'Los datos enviados no son válidos', [
+      ...(datos.cantidadPersonas === undefined
+        ? [{ campo: 'cantidadPersonas', mensaje: 'Ingresá la cantidad de personas' }]
+        : []),
+      ...(datos.tipoJornada === undefined
+        ? [{ campo: 'tipoJornada', mensaje: 'Elegí la jornada' }]
+        : []),
+    ]);
+  }
 
   if (datos.fecha <= hoyEnZonaEventos()) {
     throw new ErrorApi(400, CODIGOS_ERROR.VALIDACION, 'Los datos enviados no son válidos', [
@@ -1361,6 +1547,146 @@ export async function reutilizarConfiguracion(
         eventoId: evento.id,
         fechaEmision,
         venceEn: lineas.length > 0 ? calcularVencimiento(fechaEmision) : null,
+        total: total.toFixed(2),
+        lineas,
+      },
+      tx,
+    );
+  });
+
+  return {
+    consulta: await obtenerConsulta(creado.id, repo),
+    serviciosOmitidos,
+    salonesEnConflicto,
+  };
+}
+
+type OriginalParaReutilizar = NonNullable<
+  Awaited<ReturnType<PresupuestosRepositorio['buscarEventoParaReutilizar']>>
+>;
+
+/**
+ * HU-50: repetir un evento de varios días. La consulta nueva dura los mismos días seguidos que el
+ * original y cada uno conserva lo suyo: personas, jornada, salones con su armado, servicios (por persona
+ * para las de SU día) y adicionales. El cliente elige solo el día de inicio; los precios son los
+ * vigentes proyectados al ÚLTIMO día de la franja nueva (RN-13). El aviso de conflicto de salón se
+ * mira día por día: la consulta no bloquea el salón (RN-12).
+ */
+async function reutilizarVariosDias(
+  original: OriginalParaReutilizar,
+  datos: ReutilizarEvento,
+  repo: PresupuestosRepositorio,
+): Promise<EventoReutilizado> {
+  if (datos.fecha <= hoyEnZonaEventos()) {
+    throw new ErrorApi(400, CODIGOS_ERROR.VALIDACION, 'Los datos enviados no son válidos', [
+      { campo: 'fecha', mensaje: 'La fecha del evento nuevo tiene que ser futura' },
+    ]);
+  }
+  const fechas = fechasDeLaFranja(datos.fecha, sumarDias(datos.fecha, original.dias.length - 1)!);
+  const proyeccion = await proyeccionHasta(fechas[fechas.length - 1]!, repo);
+
+  // El presupuesto del evento: el último que no se dio de baja, o el último si todos se cancelaron.
+  const presupuestos = [...original.presupuestos].reverse();
+  const origen = presupuestos.find((p) => p.estado !== 'Cancelado') ?? presupuestos[0];
+  const lineasOriginales = origen?.lineas ?? [];
+
+  const serviciosOmitidos: EventoReutilizado['serviciosOmitidos'] = [];
+  const dias = original.dias.map((dia, i) => {
+    const jornada = dia.tipoJornada ?? 'completa';
+    const personas = dia.cantidadPersonas;
+    const lineas: LineaCalculada[] = dia.salones.map(({ salon }) =>
+      lineaDeSalon(salon, jornada, precioProyectado(precioDeSalon(salon, jornada), proyeccion)),
+    );
+    for (const linea of lineasOriginales.filter((l) => l.diaId === dia.id)) {
+      if (linea.salonId !== null) continue;
+      if (linea.servicio === null) {
+        lineas.push(calcularLinea(null, linea.descripcion, 1, linea.precioUnitario));
+        continue;
+      }
+      const { servicio } = linea;
+      if (!servicio.activo) {
+        if (!serviciosOmitidos.some((omitido) => omitido.id === servicio.id)) {
+          serviciosOmitidos.push({ id: servicio.id, nombre: servicio.nombre });
+        }
+        continue;
+      }
+      lineas.push(
+        lineaDeServicio(
+          servicio,
+          servicio.porPersona ? personas : 1,
+          precioVigenteDeServicio(servicio, proyeccion),
+          // Si el servicio dejó de admitir modalidad, el recargo ya no corresponde.
+          servicio.admiteModalidad ? linea.modalidad : 'Normal',
+          null,
+        ),
+      );
+    }
+    return {
+      fecha: fechas[i]!,
+      personas,
+      jornada,
+      salonIds: dia.salones.map((s) => s.salonId),
+      // Una distribución dada de baja no se copia: el evento nuevo la elegiría de nuevo.
+      distribuciones: new Map(
+        dia.salones.flatMap((s) =>
+          s.distribucionId === null || !s.distribucion?.activo
+            ? []
+            : [[s.salonId, s.distribucionId] as const],
+        ),
+      ),
+      lineas,
+    };
+  });
+
+  const total = sumarLineas(dias.flatMap((dia) => dia.lineas));
+  // El aviso de conflicto: los salones que cada día ya tienen reservados (el evento nuevo todavía no
+  // existe, así que no se excluye ninguno).
+  const ocupados = await repo.buscarSalonesOcupadosPorDia({
+    eventoId: 0,
+    dias: dias.map((dia) => ({ fecha: dia.fecha, salonIds: dia.salonIds })),
+  });
+  const salonesEnConflicto = [...new Map(ocupados.map((o) => [o.salon.id, o.salon])).values()];
+
+  const fechaEmision = new Date();
+  const hayLineas = dias.some((dia) => dia.lineas.length > 0);
+  const creado = await repo.crearEnTransaccion(async (tx) => {
+    const [primero] = dias;
+    const evento = await repo.crearEvento(
+      {
+        clienteId: original.clienteId,
+        fecha: new Date(primero!.fecha),
+        cantidadPersonas: primero!.personas,
+        tipo: original.tipo,
+        tipoSocial: original.tipoSocial,
+        tipoSocialDetalle: original.tipoSocialDetalle,
+        tipoJornada: primero!.jornada,
+        horaInicioEstimada: datos.horaInicioEstimada ?? null,
+      },
+      tx,
+    );
+    const todosLosDias = await repo.crearDiasDelEvento(
+      evento.id,
+      dias.slice(1).map((dia) => ({
+        fecha: new Date(dia.fecha),
+        cantidadPersonas: dia.personas,
+        tipoJornada: dia.jornada,
+      })),
+      tx,
+    );
+    const diaIdPorFecha = new Map(
+      todosLosDias.map((dia) => [dia.fecha.toISOString().slice(0, 10), dia.id]),
+    );
+    const lineas: LineaNueva[] = [];
+    for (const dia of dias) {
+      const diaId = diaIdPorFecha.get(dia.fecha)!;
+      await repo.reemplazarSalonesDelEvento(evento.id, dia.salonIds, tx, dia.distribuciones, diaId);
+      lineas.push(...dia.lineas.map((linea) => ({ ...linea, diaId })));
+    }
+    return repo.crearPresupuestoConLineas(
+      {
+        eventoId: evento.id,
+        fechaEmision,
+        venceEn: hayLineas ? calcularVencimiento(fechaEmision) : null,
         total: total.toFixed(2),
         lineas,
       },
