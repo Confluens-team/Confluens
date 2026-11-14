@@ -13,10 +13,19 @@ import { FichaCliente } from './FichaCliente';
 // eventos y solicitudes lleva y su etiqueta interna, en orden alfabético por apellido y nombre.
 // Lo único editable es la etiqueta: los datos de contacto los mantiene el cliente desde su cuenta.
 // Cada nombre abre la ficha del cliente.
-export function ListadoClientes() {
+export function ListadoClientes({ reinicio }: { reinicio?: string }) {
   const [texto, setTexto] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const [abierto, setAbierto] = useState<number | null>(null);
+
+  // Tocar la pestaña activa (o el logo) estando adentro de un detalle vuelve al listado: el panel manda
+  // una señal nueva en cada navegación y acá se cierra lo que estaba abierto. Se compara en el render
+  // y no con un efecto para no pintar un cuadro con el detalle viejo.
+  const [reinicioVisto, setReinicioVisto] = useState(reinicio);
+  if (reinicioVisto !== reinicio) {
+    setReinicioVisto(reinicio);
+    setAbierto(null);
+  }
   const clientes = useClientes({ busqueda });
   const etiquetas = useEtiquetas();
 

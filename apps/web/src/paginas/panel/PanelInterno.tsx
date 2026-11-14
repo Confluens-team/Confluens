@@ -334,10 +334,11 @@ export function PanelInterno({ sesion }: { sesion: Sesion }) {
             diaInicial={diaEnLaAgenda}
           />
         )}
-        {pestania === 'eventos' && <Agenda key="eventos" vista="lista" />}
-        {pestania === 'consultas' && <ListadoConsultas />}
-        {pestania === 'clientes' && <ListadoClientes />}
+        {pestania === 'eventos' && <Agenda key="eventos" vista="lista" reinicio={navegacion} />}
+        {pestania === 'consultas' && <ListadoConsultas reinicio={navegacion} />}
+        {pestania === 'clientes' && <ListadoClientes reinicio={navegacion} />}
         {pestania === 'configuracion' && <ConfiguracionDeNegocio sesion={sesion} />}
+        reinicio={navegacion}
         {pestania === 'cuenta' && <MiCuenta sesion={sesion} onCerrarSesion={salir} />}
       </main>
     </div>

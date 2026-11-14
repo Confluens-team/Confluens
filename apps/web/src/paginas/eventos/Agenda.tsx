@@ -210,8 +210,11 @@ function ListaDeEventos({
 export function Agenda({
   vista,
   diaInicial = null,
+  reinicio,
 }: {
   vista: VistaAgenda;
+  // Cambia con cada navegación del panel; ver más abajo.
+  reinicio?: string;
   // «Ver en la agenda» desde la cuenta del evento: abre el calendario en ese día, con el estado del
   // evento sumado al filtro para que se vea aunque no ocupe el salón.
   diaInicial?: DiaEnLaAgenda | null;
@@ -245,6 +248,19 @@ export function Agenda({
   // Comanda de cocina del evento confirmado, para imprimir. Tiene prioridad sobre las otras dos
   // vistas: se abre tanto desde el detalle del evento como desde el del presupuesto.
   const [comandaAbierta, setComandaAbierta] = useState<number | null>(null);
+
+  // Tocar la pestaña activa (o el logo) estando adentro de un detalle vuelve al listado: el panel manda
+  // una señal nueva en cada navegación y acá se cierra lo que estaba abierto. Se compara en el render
+  // y no con un efecto para no pintar un cuadro con el detalle viejo.
+  // La posición del calendario no se toca: es el mes que se estaba recorriendo.
+  const [reinicioVisto, setReinicioVisto] = useState(reinicio);
+  if (reinicioVisto !== reinicio) {
+    setReinicioVisto(reinicio);
+    setResumen(null);
+    setEventoAbierto(null);
+    setPresupuestoAbierto(null);
+    setComandaAbierta(null);
+  }
 
   const salones = useSalones();
   const enCalendario = vista === 'calendario';
