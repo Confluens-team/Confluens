@@ -62,21 +62,23 @@ administrar al personal.
 | Backlog | Título | Actor | SP | Situación hoy |
 |---|---|---|---|---|
 | HU-25 | Registrar el usuario y la fecha de cada modificación (auditoría) | SYS | 8 | Construida (PR #118): mecanismo común, consulta para el GG y el ADM y pestaña Auditoría (ADR 0013) |
-| HU-54 | Recalcular el presupuesto automáticamente | SYS | a estimar | Construida (PR #113). El cambio de fecha también marca en pantalla los precios que cambiaron y pide confirmarlos al guardar (de `develop`, 09/11/2026) |
-| HU-55 | Cobrar la seña de un presupuesto vencido | RF | a estimar | Construida (PR #112). El panel también deja registrar pagos con la consulta vencida |
+| HU-54 | Recalcular el presupuesto automáticamente | SYS | 5 | Construida (PR #113). El cambio de fecha también marca en pantalla los precios que cambiaron y pide confirmarlos al guardar (de `develop`, 09/11/2026) |
+| HU-55 | Cobrar la seña de un presupuesto vencido | RF | 5 | Construida (PR #112). El panel también deja registrar pagos con la consulta vencida |
 | HU-30 | Modificar un usuario | GG / ADM | 3 | Construida (PR #114): modificar el rol y cambiar la contraseña, también desde Mi cuenta |
 | HU-31 | Dar de baja un usuario | GG / ADM | 2 | Construida (PR #114), con `Usuario.activo` |
 | HU-24 | Avisar por WhatsApp la recepción de la consulta y descargar su resumen en PDF | RE | 5 | Revisada contra los criterios en el PR #116, sin cambios. Falta re-estimarla en la Planning |
 | — | Enviar correo de confirmación de consulta | SYS | a estimar | Construido (PR #121 y siguientes): confirmación breve, sin resumen ni PDF adjunto (PO, 07/11/2026); no necesitó dependencia nueva. Sin dominio (S-11) solo llega al dueño de la cuenta de Resend |
-| HU-56 | Restringir el panel interno según el rol | todos | a estimar | Construida (PR #122): matriz de permisos por rol, restricciones en la API y secciones de Configuración según el rol |
+| HU-56 | Restringir el panel interno según el rol | todos | 8 | Construida (PR #122): matriz de permisos por rol, restricciones en la API y secciones de Configuración según el rol |
 | HU-50 | Reservar un evento de varios días | RE | a estimar | Construida en cuatro partes (PR #141 a #144) y con las correcciones del PO del 13/11/2026 (ver «HU-50 del backlog»). Queda abierto `S-16` (hora estimada por día) |
 | — | Cerrar sesión | todos | — | Cubierta con tests (PR #116) |
 | — | Cambiar contraseña | todos | — | Restablecimiento por correo cubierto con tests (PR #116). Desde Mi cuenta, con HU-30 (PR #114) |
-| | **Total estimado** | | **18 + a estimar** | |
+| | **Total estimado** | | **36 + a estimar** | |
 
-Velocidad de los sprints anteriores: 31, 32, 36 y 34. Con 18 SP estimados quedan unos 15 para
-HU-54, HU-55 y el correo. HU-56 (permisos por rol), que se proponía como candidata si sobraba
-lugar, entró y está construida: sus reglas están en `dominio.md`.
+Velocidad de los sprints anteriores: 31, 32, 36 y 34. El PO estimó HU-54 y HU-55 en 5 SP cada una y HU-56
+en 8 el 14/11/2026, con lo que el sprint suma 36 SP estimados (HU-25, HU-30, HU-31, HU-24, HU-54,
+HU-55 y HU-56): el máximo de esas velocidades, y todavía faltan por estimar HU-50 y el correo. HU-56
+(permisos por rol), que se proponía como candidata si sobraba lugar, entró y está construida: sus
+reglas están en `dominio.md`.
 
 Correcciones sin historia (`backlog.md`, reunión 05/11/2026), que se arreglan en este sprint y ya están hechas (PR #115):
 
@@ -292,7 +294,8 @@ No queda código del alcance. Lo que falta (al 14/11/2026):
 
 - **Pasar `sprint-05` a `develop`** por pull request, después de la exposición, y borrar la rama (ver
   «Rama del sprint»). Hasta entonces «desplegada y accesible» no se cumple, por diseño.
-- **Estimar en la Planning** HU-54, HU-55, el correo, HU-56 y HU-50, y **re-estimar** HU-24.
+- **Estimar en la Planning** HU-50 y el correo, y **re-estimar** HU-24. HU-54, HU-55 y HU-56 las estimó
+  el PO el 14/11/2026 (5, 5 y 8 SP).
 - **Pasar alcance, puntos y numeración** al `Seguimiento del Proyecto` y a los documentos de Drive.
 - **Cargar en Jira** las tres correcciones sin historia (nombre del PDF, importes y botón «Salir»).
 - **Definición del Producto:** criterios, prototipo, casos de prueba y resultados de las historias.
