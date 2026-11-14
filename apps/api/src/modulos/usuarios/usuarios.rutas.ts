@@ -5,6 +5,7 @@ import {
   esquemaModificarUsuario,
   esquemaRegistrarUsuario,
   esquemaUsuario,
+  esquemaUsuarioDelListado,
 } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -28,12 +29,15 @@ registroOpenApi.registerPath({
   method: 'get',
   path: '/usuarios',
   tags: ['Usuarios'],
-  summary: 'Lista los usuarios del personal, por rol y después por correo (HU-31)',
+  summary:
+    'Lista los usuarios del personal, por rol y después por correo (HU-31), con su última actividad y su estado de conexión',
   request: { query: esquemaFiltrosUsuarios },
   responses: {
     200: {
       description: 'Usuarios del personal, sin los clientes',
-      content: { 'application/json': { schema: z.object({ data: z.array(esquemaUsuario) }) } },
+      content: {
+        'application/json': { schema: z.object({ data: z.array(esquemaUsuarioDelListado) }) },
+      },
     },
     400: { description: 'El rol del filtro no es del personal' },
     401: { description: 'Sin sesión' },

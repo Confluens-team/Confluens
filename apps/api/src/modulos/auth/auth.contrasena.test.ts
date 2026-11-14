@@ -40,6 +40,7 @@ const usuarioRE = (activo = true) => ({
   hashContrasena: HASH,
   rol: 'RESPONSABLE_EVENTOS' as const,
   versionSesion: 2,
+  ultimaActividad: null,
   activo,
   creadoEn: new Date(),
   actualizadoEn: new Date(),

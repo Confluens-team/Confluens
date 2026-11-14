@@ -7,3 +7,10 @@ import { vi } from 'vitest';
 vi.mock('../lib/sesion-vigente.js', () => ({
   sesionVigente: vi.fn(async (sesion: unknown) => sesion),
 }));
+
+// autenticar.ts anota la actividad del personal en la base (lib/actividad.ts). Los tests de rutas
+// corren sin Postgres, así que acá no se anota nada. La lógica real se prueba en lib/actividad.test.ts.
+vi.mock('../lib/actividad.js', () => ({
+  anotarActividad: vi.fn(),
+  olvidarActividad: vi.fn(),
+}));

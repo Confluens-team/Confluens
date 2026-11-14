@@ -93,3 +93,12 @@ export function textoModalidad(modalidad: ModalidadServicio): string {
     ? `${NOMBRE_MODALIDAD[modalidad]} (+${recargo}%)`
     : NOMBRE_MODALIDAD[modalidad];
 }
+
+// Cuánto hace que pasó algo, para la luz de conexión de Personal: «hace un momento», «hace 3 min»,
+// «hace 2 h». Un instante en el futuro (reloj desfasado) cuenta como «hace un momento».
+export function haceCuanto(fecha: Date, ahora: Date = new Date()): string {
+  const minutos = Math.floor((ahora.getTime() - fecha.getTime()) / 60_000);
+  if (minutos < 1) return 'hace un momento';
+  if (minutos < 60) return `hace ${minutos} min`;
+  return `hace ${Math.floor(minutos / 60)} h`;
+}

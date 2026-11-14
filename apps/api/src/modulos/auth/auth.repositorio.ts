@@ -1,4 +1,5 @@
 import { registrarAuditoria } from '../../lib/auditoria.js';
+import { olvidarActividad } from '../../lib/actividad.js';
 import { prisma } from '../../lib/prisma.js';
 
 // Capa de acceso a datos del módulo auth. Separada del servicio para poder
@@ -94,10 +95,12 @@ export async function actualizarContrasena(id: number, hashContrasena: string): 
 // (otro logout, contraseña restablecida) no le puede cerrar la sesión a quien la abrió después.
 // updateMany para no fallar si el usuario ya no existe o su versión ya cambió.
 export async function invalidarSesiones(id: number, version: number): Promise<void> {
-  await prisma.usuario.updateMany({
+  const { count } = await prisma.usuario.updateMany({
     where: { id, versionSesion: version },
-    data: { versionSesion: { increment: 1 } },
+    // Sin sesión, sin marca de actividad: pasa a «sin sesión» de inmediato en Personal.
+    data: { versionSesion: { increment: 1 }, ultimaActividad: null },
   });
+  if (count > 0) olvidarActividad(id);
 }
 
 export async function buscarClientePorUsuarioId(usuarioId: number) {

@@ -42,7 +42,7 @@ administrar al personal.
 - Después de la exposición, `sprint-05` entra a `develop` por un pull request (merge commit, como
   siempre). Al 14/11/2026 `sprint-05` lleva 97 commits que `develop` no tiene y `develop` no tiene
   ninguno que le falte a `sprint-05`, así que ese pull request entra sin conflictos. Trae migraciones
-  nuevas (HU-50 y las observaciones por día): hay que aplicarlas en cada base donde corra `develop`,
+  nuevas (HU-50, las observaciones por día y la última actividad del personal): hay que aplicarlas en cada base donde corra `develop`,
   probando primero en una copia de la demo con `DATABASE_URL` y `DIRECT_URL` forzadas.
 - Si a `develop` le llega un arreglo urgente antes de eso, se mergea `develop` en `sprint-05` para
   no divergir.
@@ -69,6 +69,7 @@ administrar al personal.
 | HU-24 | Avisar por WhatsApp la recepción de la consulta y descargar su resumen en PDF | RE | 5 | Revisada contra los criterios en el PR #116, sin cambios. Falta re-estimarla en la Planning |
 | — | Enviar correo de confirmación de consulta | SYS | a estimar | Construido (PR #121 y siguientes): confirmación breve, sin resumen ni PDF adjunto (PO, 07/11/2026); no necesitó dependencia nueva. Sin dominio (S-11) solo llega al dueño de la cuenta de Resend |
 | HU-56 | Restringir el panel interno según el rol | todos | 8 | Construida (PR #122): matriz de permisos por rol, restricciones en la API y secciones de Configuración según el rol |
+| — | Estado de conexión del personal (luz en Personal) | GG / ADM | a estimar | Construido (PO, 14/11/2026): En línea, Ausente o Sin sesión según la última actividad (5 minutos), solo para el GG y el ADM; `Usuario.ultimaActividad`, sin latido |
 | HU-50 | Reservar un evento de varios días | RE | a estimar | Construida en cuatro partes (PR #141 a #144) y con las correcciones del PO del 13/11/2026 (ver «HU-50 del backlog»). Queda abierto `S-16` (hora estimada por día) |
 | — | Cerrar sesión | todos | — | Cubierta con tests (PR #116) |
 | — | Cambiar contraseña | todos | — | Restablecimiento por correo cubierto con tests (PR #116). Desde Mi cuenta, con HU-30 (PR #114) |
@@ -294,7 +295,8 @@ No queda código del alcance. Lo que falta (al 14/11/2026):
 
 - **Pasar `sprint-05` a `develop`** por pull request, después de la exposición, y borrar la rama (ver
   «Rama del sprint»). Hasta entonces «desplegada y accesible» no se cumple, por diseño.
-- **Estimar en la Planning** HU-50 y el correo, y **re-estimar** HU-24. HU-54, HU-55 y HU-56 las estimó
+- **Estimar en la Planning** HU-50, el correo y el estado de conexión del personal, y **re-estimar**
+  HU-24. HU-54, HU-55 y HU-56 las estimó
   el PO el 14/11/2026 (5, 5 y 8 SP).
 - **Pasar alcance, puntos y numeración** al `Seguimiento del Proyecto` y a los documentos de Drive.
 - **Cargar en Jira** las tres correcciones sin historia (nombre del PDF, importes y botón «Salir»).

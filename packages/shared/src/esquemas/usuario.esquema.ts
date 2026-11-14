@@ -24,6 +24,17 @@ export const esquemaUsuario = z.object({
 });
 export type Usuario = z.infer<typeof esquemaUsuario>;
 
+// Estado de conexión del personal, para la luz de Personal (ver dominio/conexion-del-personal.ts).
+export const esquemaEstadoDeConexion = z.enum(['EnLinea', 'Ausente', 'SinSesion']);
+
+// Un usuario del listado de Personal (GET /usuarios): además trae su última actividad y el estado de
+// conexión que la API calcula con su reloj, para que la pantalla no dependa del reloj del navegador.
+export const esquemaUsuarioDelListado = esquemaUsuario.extend({
+  ultimaActividad: esquemaFechaHora.nullable(),
+  conexion: esquemaEstadoDeConexion,
+});
+export type UsuarioDelListado = z.infer<typeof esquemaUsuarioDelListado>;
+
 // Los roles del personal: los que se asignan desde Personal (HU-30 del Sprint 4). CLIENTE queda
 // afuera: el cliente se registra solo en la landing (dominio.md, «Roles»).
 export const esquemaRolPersonal = z.enum(

@@ -17,6 +17,10 @@ const SELECCION = {
   actualizadoEn: true,
 } as const;
 
+// El listado de Personal además trae la última actividad. No va en SELECCION: esa es la foto que se
+// audita, y anotar actividad no es un cambio del usuario.
+const SELECCION_DEL_LISTADO = { ...SELECCION, ultimaActividad: true } as const;
+
 // Usuario.email es único entre todos los roles, clientes incluidos: un correo que ya es de un
 // cliente tampoco se puede usar para el personal.
 export async function buscarPorEmail(email: string) {
@@ -61,7 +65,7 @@ export async function listar(rol?: RolPersonal) {
   return prisma.usuario.findMany({
     where: { rol: rol ?? { not: 'CLIENTE' } },
     orderBy: [{ rol: 'asc' }, { email: 'asc' }],
-    select: SELECCION,
+    select: SELECCION_DEL_LISTADO,
   });
 }
 
@@ -87,7 +91,11 @@ export async function cambiarEstado(
   activo: boolean,
   tx: Prisma.TransactionClient = prisma,
 ) {
-  return actualizar(id, activo ? { activo } : { activo, versionSesion: { increment: 1 } }, tx);
+  return actualizar(
+    id,
+    activo ? { activo } : { activo, versionSesion: { increment: 1 }, ultimaActividad: null },
+    tx,
+  );
 }
 
 // HU-30 del backlog: la contraseña que el ADM le carga a un usuario. Sube la versión de sesión: las
@@ -96,7 +104,8 @@ export async function cambiarContrasena(id: number, hashContrasena: string) {
   await prisma.$transaction(async (tx) => {
     await tx.usuario.update({
       where: { id },
-      data: { hashContrasena, versionSesion: { increment: 1 } },
+      // Se cierran sus sesiones: ya no está conectado.
+      data: { hashContrasena, versionSesion: { increment: 1 }, ultimaActividad: null },
     });
     // La contraseña nunca se guarda en la auditoría: solo que se cambió.
     await registrarAuditoria(tx, {

@@ -1,13 +1,17 @@
-import type {
-  CambiarContrasenaUsuario,
-  CambiarEstadoUsuario,
-  FiltrosUsuarios,
-  ModificarUsuario,
-  RegistrarUsuario,
-  RespuestaExito,
-  Usuario,
+import {
+  estadoDeConexion,
+  type CambiarContrasenaUsuario,
+  type CambiarEstadoUsuario,
+  type FiltrosUsuarios,
+  type ModificarUsuario,
+  type RegistrarUsuario,
+  type RespuestaExito,
+  type Usuario,
+  type UsuarioDelListado,
 } from '@confluens/shared';
 import type { Request, Response } from 'express';
+
+import { JWT_EXPIRA_MINUTOS } from '../../lib/jwt.js';
 
 import {
   cambiarContrasenaUsuario,
@@ -37,7 +41,19 @@ const comoRespuesta = (usuario: UsuarioDeBase) => aUsuarioPublico(usuario) as un
 // req.query ya validado por validar({ query: esquemaFiltrosUsuarios }) en usuarios.rutas.ts.
 export async function listar(req: Request, res: Response): Promise<void> {
   const usuarios = await listarUsuarios(req.query as FiltrosUsuarios);
-  const cuerpo: RespuestaExito<Usuario[]> = { data: usuarios.map(comoRespuesta) };
+  // El estado de conexión se calcula acá, con el reloj del servidor, y no en el navegador.
+  const ahora = new Date();
+  const data = usuarios.map((usuario) => ({
+    ...aUsuarioPublico(usuario),
+    ultimaActividad: usuario.ultimaActividad,
+    conexion: estadoDeConexion({
+      ultimaActividad: usuario.ultimaActividad,
+      activo: usuario.activo,
+      ahora,
+      minutosDeSesion: JWT_EXPIRA_MINUTOS,
+    }),
+  })) as unknown as UsuarioDelListado[];
+  const cuerpo: RespuestaExito<UsuarioDelListado[]> = { data };
   res.status(200).json(cuerpo);
 }
 

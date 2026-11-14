@@ -1,5 +1,6 @@
 // Constantes y cálculos de las reglas de negocio de dominio.md que necesitan API y web por igual.
 // Re-exportar cada archivo nuevo desde acá.
+export * from './conexion-del-personal.js';
 export * from './evento.js';
 export * from './franja-de-dias.js';
 export * from './importes.js';

@@ -32,6 +32,18 @@ const creado = (email: string, rol: Rol) => ({
   actualizadoEn: FECHA,
 });
 
+// Un renglón del listado de Personal: además trae su última actividad (null: sin sesión).
+const delListado = (
+  email: string,
+  rol: Rol,
+  ultimaActividad: Date | null = null,
+  activo = true,
+) => ({
+  ...creado(email, rol),
+  activo,
+  ultimaActividad,
+});
+
 const alta = { email: 'fran@confluens.test', rol: 'RESPONSABLE_EVENTOS', contrasena: 'inicial1' };
 
 // Contraseña de `largo` caracteres con letras distintas: una sola letra repetida no pasa la política.
@@ -500,8 +512,8 @@ describe('GET /api/usuarios (HU-31 del Sprint 4)', () => {
     'con sesión de %s lista el personal con correo, rol y fecha de alta, sin hash',
     async (rol) => {
       listarMock.mockResolvedValue([
-        creado('re@confluens.test', 'RESPONSABLE_EVENTOS'),
-        creado('gg@confluens.test', 'GERENTE_GENERAL'),
+        delListado('re@confluens.test', 'RESPONSABLE_EVENTOS'),
+        delListado('gg@confluens.test', 'GERENTE_GENERAL'),
       ]);
 
       const respuesta = await request(app)
@@ -517,13 +529,15 @@ describe('GET /api/usuarios (HU-31 del Sprint 4)', () => {
         activo: true,
         creadoEn: FECHA.toISOString(),
         actualizadoEn: FECHA.toISOString(),
+        ultimaActividad: null,
+        conexion: 'SinSesion',
       });
       expect(listarMock).toHaveBeenCalledWith(undefined);
     },
   );
 
   it('filtra por rol', async () => {
-    listarMock.mockResolvedValue([creado('rf@confluens.test', 'RESPONSABLE_FINANZAS')]);
+    listarMock.mockResolvedValue([delListado('rf@confluens.test', 'RESPONSABLE_FINANZAS')]);
 
     const respuesta = await request(app)
       .get('/api/usuarios?rol=RESPONSABLE_FINANZAS')
@@ -531,6 +545,55 @@ describe('GET /api/usuarios (HU-31 del Sprint 4)', () => {
 
     expect(respuesta.status).toBe(200);
     expect(listarMock).toHaveBeenCalledWith('RESPONSABLE_FINANZAS');
+  });
+
+  // Estado de conexión de Personal: la API lo calcula con su reloj y la duración de la sesión.
+  describe('estado de conexión', () => {
+    const haceMinutos = (minutos: number) => new Date(Date.now() - minutos * 60_000);
+    const conexionDe = async (ultimaActividad: Date | null, activo = true) => {
+      listarMock.mockResolvedValue([
+        delListado('re@confluens.test', 'RESPONSABLE_EVENTOS', ultimaActividad, activo),
+      ]);
+      const respuesta = await request(app)
+        .get('/api/usuarios')
+        .set('Cookie', [cookieDe('GERENTE_GENERAL')]);
+      expect(respuesta.status).toBe(200);
+      return respuesta.body.data[0];
+    };
+
+    it('con actividad hace menos de 5 minutos está en línea y trae la marca', async () => {
+      const marca = haceMinutos(2);
+      const usuario = await conexionDe(marca);
+
+      expect(usuario.conexion).toBe('EnLinea');
+      expect(usuario.ultimaActividad).toBe(marca.toISOString());
+    });
+
+    it('con actividad hace más de 5 minutos y la sesión abierta está ausente', async () => {
+      expect((await conexionDe(haceMinutos(30))).conexion).toBe('Ausente');
+    });
+
+    it('pasadas las 2 horas de la sesión no tiene sesión', async () => {
+      expect((await conexionDe(haceMinutos(200))).conexion).toBe('SinSesion');
+    });
+
+    it('sin marca no tiene sesión', async () => {
+      expect((await conexionDe(null)).conexion).toBe('SinSesion');
+    });
+
+    it('un usuario dado de baja no tiene sesión aunque tenga una marca reciente', async () => {
+      expect((await conexionDe(haceMinutos(1), false)).conexion).toBe('SinSesion');
+    });
+
+    it('solo lo ven el GG y el ADM: el RE y el RF reciben 403 y no se consulta', async () => {
+      for (const rol of ['RESPONSABLE_EVENTOS', 'RESPONSABLE_FINANZAS'] as const) {
+        const respuesta = await request(app)
+          .get('/api/usuarios')
+          .set('Cookie', [cookieDe(rol)]);
+        expect(respuesta.status).toBe(403);
+      }
+      expect(listarMock).not.toHaveBeenCalled();
+    });
   });
 
   it.each([
@@ -593,7 +656,7 @@ describe('GET /api/usuarios (HU-31 del Sprint 4)', () => {
   it('nunca expone el hash ni la versión de sesión, aunque el repositorio los devuelva', async () => {
     listarMock.mockResolvedValue([
       {
-        ...creado('re@confluens.test', 'RESPONSABLE_EVENTOS'),
+        ...delListado('re@confluens.test', 'RESPONSABLE_EVENTOS'),
         hashContrasena: '$2b$10$secreto',
         versionSesion: 3,
       } as never,
@@ -607,10 +670,12 @@ describe('GET /api/usuarios (HU-31 del Sprint 4)', () => {
     expect(Object.keys(respuesta.body.data[0]).sort()).toEqual([
       'activo',
       'actualizadoEn',
+      'conexion',
       'creadoEn',
       'email',
       'id',
       'rol',
+      'ultimaActividad',
     ]);
     expect(JSON.stringify(respuesta.body)).not.toMatch(/secreto|hash|versionSesion/i);
   });
