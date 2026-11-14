@@ -487,6 +487,13 @@ acceden a todo el sistema.
 - **Baja lógica:** el usuario queda **inactivo**. No puede entrar y se cierran sus sesiones, pero se
   sigue viendo en la auditoría y en lo que registró. Se puede reactivar si después se recupera la
   cuenta.
+- **Estado de conexión** (PO, 14/11/2026): el listado muestra una luz por usuario. **En línea**
+  (verde) si hizo algo en los últimos 5 minutos, **Ausente** (amarillo) si la sesión sigue abierta
+  pero hace más que eso que no hace nada, y **Sin sesión** (gris) si cerró sesión, está dado de baja,
+  nunca entró o pasó el tiempo de la sesión (2 horas sin actividad). No hay una conexión permanente
+  (la sesión es una cookie): «conectado» se deduce de la última actividad, así que quien tiene el
+  panel abierto sin tocar nada pasa a Ausente a los 5 minutos. Lo ven solo el GG y el ADM, porque
+  Personal es de ellos, y se actualiza solo cada 30 segundos mientras la pantalla está a la vista.
 
 Personal está construido (HU-30 y HU-31 del Sprint 4; HU-30 y HU-31 del backlog en el Sprint 5,
 con `Usuario.activo`). Los permisos por rol (HU-56) también: los cuatro roles del personal entran al
