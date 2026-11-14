@@ -120,7 +120,8 @@ registroOpenApi.registerPath({
   method: 'patch',
   path: '/eventos/{id}/observaciones',
   tags: ['Eventos'],
-  summary: 'Guarda las observaciones generales del evento. Texto libre, interno del personal',
+  summary:
+    'Guarda las observaciones de un día del evento (fecha). Texto libre, interno del personal',
   request: {
     params: esquemaIdParam,
     body: {
@@ -132,6 +133,10 @@ registroOpenApi.registerPath({
     400: { description: 'El texto supera los 2000 caracteres' },
     404: { description: 'No existe el evento' },
     409: { description: 'El evento está cancelado' },
+    422: {
+      description:
+        'Un evento de varios días necesita la fecha, o la fecha no es de ninguno de sus días',
+    },
     401: { description: 'Sin sesión activa' },
     403: { description: 'La sesión no es del personal' },
   },

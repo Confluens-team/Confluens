@@ -350,12 +350,14 @@ export async function guardarObservacionesDeComanda(
 }
 
 /**
- * Guarda las observaciones generales del evento. Texto libre del personal, sin reglas de negocio:
- * el único control es que el evento exista y no esté cancelado.
+ * Guarda las observaciones de un día del evento (HU-50: cada día tiene las suyas). Texto libre del
+ * personal, sin reglas de negocio: se controla que el evento exista, que no esté cancelado y qué día
+ * es. Un evento de un solo día no necesita decirlo; uno de varios días sí, porque callar no dice cuál.
  */
 export async function guardarObservacionesDelEvento(
   id: number,
   observaciones: string,
+  fecha: string | undefined,
   repo: EventosRepositorio = eventosRepositorioReal,
 ) {
   const evento = await repo.buscarDetallado(id);
@@ -363,7 +365,20 @@ export async function guardarObservacionesDelEvento(
   if (evento.estado === 'Cancelado') {
     throw ErrorApi.conflicto(`El evento ${id} está cancelado: no admite observaciones`);
   }
-  await repo.guardarObservaciones(id, observaciones);
+  const dia =
+    fecha === undefined
+      ? evento.dias.length === 1
+        ? evento.dias[0]
+        : undefined
+      : evento.dias.find((d) => d.fecha.toISOString().slice(0, 10) === fecha);
+  if (!dia) {
+    throw ErrorApi.reglaNegocio(
+      fecha === undefined
+        ? 'Este evento dura varios días: indicá de qué día son las observaciones (fecha)'
+        : `El evento no tiene el ${textoDelDia(fecha)}`,
+    );
+  }
+  await repo.guardarObservacionesDelDia(dia.id, observaciones);
   return releerDetalle(id, repo);
 }
 

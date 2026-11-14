@@ -93,18 +93,18 @@ export function useGuardarObservacionesComanda(eventoId: number) {
   });
 }
 
-// Observaciones generales del evento. Son internas y ninguna otra pantalla las lee, así que alcanza
-// con invalidar los eventos (el detalle y la agenda).
+// Observaciones de un día del evento (HU-50). Son internas y ninguna otra pantalla las lee, así que
+// alcanza con invalidar los eventos (el detalle y la agenda). `fecha` dice de qué día son.
 export function useGuardarObservaciones(eventoId: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (observaciones: string) => {
+    mutationFn: async ({ observaciones, fecha }: { observaciones: string; fecha: string }) => {
       const respuesta = await apiFetch<RespuestaExito<EventoDetallado>>(
         `/eventos/${eventoId}/observaciones`,
         {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ observaciones }),
+          body: JSON.stringify({ observaciones, fecha }),
         },
       );
       return respuesta.data;

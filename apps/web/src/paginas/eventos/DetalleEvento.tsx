@@ -3,28 +3,24 @@ import { Check, ChevronDown, ChevronUp, Printer, Repeat2 } from 'lucide-react';
 import { useState } from 'react';
 
 import { horarioDeLosDias, resumenDelEvento } from '@/lib/dias-del-evento';
-import {
-  armadoDelEvento,
-  fechaLocal,
-  formatearFecha,
-  nombresDeSalones,
-  textoModalidad,
-} from '@/lib/formato';
+import { armadoDelEvento, nombresDeSalones, textoModalidad } from '@/lib/formato';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { BotonWhatsApp } from '@/components/BotonWhatsApp';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { IconoEstado } from '@/components/IconoEstado';
-import { EditorDeHorario } from './EditorDeHorario';
 import { useCancelarEvento, useEvento } from '@/hooks/use-eventos';
 import { useArmarPresupuestoDeEvento } from '@/hooks/use-presupuestos';
 import { ErrorApiCliente } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { mensajeWhatsApp } from '@/lib/whatsapp';
 import { CuentaDelEvento } from './CuentaDelEvento';
+import { EditorDeHorario } from './EditorDeHorario';
 import { ESTADOS } from './estado-evento';
 import { ObservacionesDelEvento } from './ObservacionesDelEvento';
+import { NavegadorDeDias } from './NavegadorDeDias';
+import { PresupuestoPorDia } from './PresupuestoPorDia';
 import { ReutilizarConfiguracion } from './ReutilizarConfiguracion';
 
 // En 24 horas, como la agenda de la que se viene y como la tarjeta de resumen: "6:00 a. m." al
@@ -120,6 +116,8 @@ export function DetalleEvento({
   const armarPresupuesto = useArmarPresupuestoDeEvento(eventoId);
   const [presupuestoDesplegado, setPresupuestoDesplegado] = useState(false);
   const [repitiendo, setRepitiendo] = useState(false);
+  // HU-50: el día que se está mirando de un evento de varios días (observaciones y presupuesto).
+  const [diaVisible, setDiaVisible] = useState(0);
 
   if (isLoading) return <p className="py-6 text-sm text-muted-foreground">Cargando…</p>;
   if (isError || !evento) {
@@ -132,10 +130,6 @@ export function DetalleEvento({
     evento.presupuestos[0];
   const total = presupuestoVigente ? Number(presupuestoVigente.total) : 0;
   const lineas = presupuestoVigente?.lineas ?? [];
-  // HU-50: en un evento de varios días cada línea dice a qué día pertenece.
-  const numeroDeDia = new Map(evento.dias.map((dia, indice) => [dia.id, indice + 1]));
-  const diaDeLaLinea = (linea: (typeof lineas)[number]) =>
-    numeroDeDia.get((linea as { diaId?: number }).diaId ?? -1);
   const lineasOcultas = Math.max(0, lineas.length - LINEAS_VISIBLES);
   const lineasAMostrar = presupuestoDesplegado ? lineas : lineas.slice(0, LINEAS_VISIBLES);
 
@@ -352,43 +346,43 @@ export function DetalleEvento({
             </CardContent>
           </Card>
 
-          {/* HU-50: un evento de varios días muestra el detalle de cada uno. */}
-          {evento.dias.length > 1 && (
+          {/* HU-50: un evento de varios días va en un solo bloque: el selector de día y, debajo, lo que
+              cambia con él (las observaciones y el presupuesto de ese día, con el total siempre). */}
+          {evento.dias.length > 1 ? (
             <Card>
-              <CardHeader className="flex items-baseline justify-between gap-2">
-                <CardTitle>Día por día</CardTitle>
-                <span className="text-xs text-muted-foreground">{evento.dias.length} días</span>
-              </CardHeader>
-              <CardContent>
-                <ul className="divide-y text-sm">
-                  {evento.dias.map((dia, indice) => (
-                    <li key={dia.id} className="py-2">
-                      <p className="font-medium">
-                        Día {indice + 1} ·{' '}
-                        <span className="first-letter:uppercase">
-                          {formatearFecha(fechaLocal(dia.fecha), true)}
-                        </span>
-                      </p>
-                      <p className="text-muted-foreground">
-                        {nombresDeSalones(dia.salones, 'a definir')} · {dia.cantidadPersonas}{' '}
-                        personas
-                        {dia.tipoJornada &&
-                          ` · ${dia.tipoJornada === 'completa' ? 'jornada completa' : 'media jornada'}`}
-                        {' · '}
-                        {dia.inicio && dia.fin
-                          ? `${formateadorHora.format(new Date(dia.inicio))} a ${formateadorHora.format(new Date(dia.fin))}`
-                          : 'sin horario'}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
+              <NavegadorDeDias
+                dias={evento.dias}
+                indice={Math.min(diaVisible, evento.dias.length - 1)}
+                onCambiar={setDiaVisible}
+              />
+              <div className="border-t pt-(--card-spacing)">
+                <ObservacionesDelEvento
+                  key={evento.dias[Math.min(diaVisible, evento.dias.length - 1)]!.id}
+                  evento={evento}
+                  dia={evento.dias[Math.min(diaVisible, evento.dias.length - 1)]!}
+                  integrada
+                />
+              </div>
+              {presupuestoVigente && (
+                <div className="border-t pt-(--card-spacing)">
+                  <PresupuestoPorDia
+                    evento={evento}
+                    presupuesto={presupuestoVigente}
+                    indice={diaVisible}
+                    onVerPresupuesto={onVerPresupuesto}
+                    onImprimirComanda={onImprimirComanda}
+                  />
+                </div>
+              )}
             </Card>
+          ) : (
+            <ObservacionesDelEvento
+              key={evento.dias[0]!.id}
+              evento={evento}
+              dia={evento.dias[0]!}
+            />
           )}
-
-          <ObservacionesDelEvento key={evento.id} evento={evento} />
-
-          {presupuestoVigente && (
+          {presupuestoVigente && evento.dias.length === 1 && (
             <Card>
               <CardHeader className="flex items-baseline justify-between gap-2">
                 <CardTitle>Presupuesto ({presupuestoVigente.estado})</CardTitle>
@@ -401,11 +395,6 @@ export function DetalleEvento({
                   {lineasAMostrar.map((linea) => (
                     <li key={linea.id} className="flex justify-between gap-4 py-1.5">
                       <span className="min-w-0">
-                        {evento.dias.length > 1 && (
-                          <span className="mr-1 text-xs font-medium text-bordo">
-                            Día {diaDeLaLinea(linea)} ·
-                          </span>
-                        )}
                         {linea.descripcion}{' '}
                         <span className="text-muted-foreground">
                           ×{linea.cantidad}

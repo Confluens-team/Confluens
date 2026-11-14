@@ -37,9 +37,11 @@ export const esquemaObservacionesEvento = z
   .trim()
   .max(2000, 'Las observaciones pueden tener hasta 2000 caracteres');
 
-// Body de PATCH /eventos/:id/observaciones. Vacío borra lo que hubiera.
+// Body de PATCH /eventos/:id/observaciones. Vacío borra lo que hubiera. HU-50: las observaciones son
+// de cada día, así que `fecha` dice de cuál; un evento de un solo día no necesita decirlo.
 export const esquemaGuardarObservacionesEvento = z.object({
   observaciones: esquemaObservacionesEvento,
+  fecha: esquemaFecha.optional(),
 });
 export type GuardarObservacionesEvento = z.infer<typeof esquemaGuardarObservacionesEvento>;
 
@@ -80,6 +82,8 @@ export const esquemaEvento = z.object({
   senaRegistradaEn: esquemaFechaHora.nullable(),
   modalidadSalonRestaurante: z.boolean(), // opción interna, no visible al cliente
   observacionesComanda: esquemaObservacionesComanda.nullable(),
+  // Sin uso desde HU-50: las observaciones son de cada día (`DiaDeEvento.observaciones`). La columna se
+  // conserva hasta una migración posterior.
   observaciones: esquemaObservacionesEvento.nullable(),
   creadoEn: esquemaFechaHora,
   actualizadoEn: esquemaFechaHora,
@@ -95,6 +99,8 @@ export const esquemaDiaDeEvento = z.object({
   fin: esquemaFechaHora.nullable(),
   cantidadPersonas: z.number().int().positive(),
   tipoJornada: esquemaTipoJornada.nullable(),
+  // Observaciones internas de este día (HU-50): cada día puede tener las suyas.
+  observaciones: esquemaObservacionesEvento.nullable(),
   salones: z.array(
     z.object({
       id: esquemaId,
