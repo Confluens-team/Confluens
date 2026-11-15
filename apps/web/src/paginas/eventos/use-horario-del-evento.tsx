@@ -113,18 +113,23 @@ export function useHorarioDelEvento(evento: EventoDetallado) {
   }
 
   // HU-50: un evento de varios días tiene el horario de cada día. Se precarga con lo ya agendado o, si
-  // no, con la hora estimada de la consulta y el fin según la jornada de ese día.
+  // no, con el horario que pidió el cliente para ese día (S-16); si tampoco, con la hora estimada de
+  // la consulta y el fin según la jornada de ese día.
   const horasIniciales = (): Record<string, { inicio: string; fin: string }> =>
     Object.fromEntries(
       evento.dias.map((dia) => {
         const inicioDelDia = dia.inicio
           ? comoFechaHoraLocal(dia.inicio).slice(11, 16)
-          : (evento.horaInicioEstimada ?? '');
+          : (dia.horaInicioEstimada ?? evento.horaInicioEstimada ?? '');
+        const finEstimadoDelDia =
+          !dia.inicio && dia.horaInicioEstimada ? dia.horaFinEstimada : null;
         const finDelDia = dia.fin
           ? comoFechaHoraLocal(dia.fin).slice(11, 16)
-          : inicioDelDia
-            ? sumarHoras(inicioDelDia, HORAS_POR_JORNADA[dia.tipoJornada ?? 'completa'])
-            : '';
+          : finEstimadoDelDia
+            ? finEstimadoDelDia
+            : inicioDelDia
+              ? sumarHoras(inicioDelDia, HORAS_POR_JORNADA[dia.tipoJornada ?? 'completa'])
+              : '';
         return [dia.fecha, { inicio: inicioDelDia, fin: finDelDia }];
       }),
     );

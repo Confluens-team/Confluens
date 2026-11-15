@@ -50,6 +50,7 @@ import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
 import { resumenDeJornada, textoDePersonas } from '@/lib/dias-del-evento';
 import { formatearFechaNumerica, formatearPesos, nombreCompleto } from '@/lib/formato';
+import { textoHorarioEstimado } from '@/lib/jornada';
 import { textoDeDias } from '@/lib/rango-de-fechas';
 import { cn } from '@/lib/utils';
 import { AvisoDeChoques } from './AvisoDeChoques';
@@ -235,6 +236,16 @@ export function EditarConsultaPorDias({
 
   const indice = Math.min(activo, Math.max(dias.length - 1, 0));
   const dia = dias[indice] ?? diaVacio();
+  // S-16: el horario que pidió el cliente para este día en el cotizador. Solo se muestra: el horario
+  // real se carga al agendar.
+  const guardadoDelDiaActivo = consulta.dias.find((d) => d.fecha === fechas[indice]);
+  const horarioPedido =
+    guardadoDelDiaActivo?.horaInicioEstimada || guardadoDelDiaActivo?.horaFinEstimada
+      ? textoHorarioEstimado(
+          guardadoDelDiaActivo.horaInicioEstimada,
+          guardadoDelDiaActivo.horaFinEstimada,
+        )
+      : null;
 
   function cambiarDia(
     cambio: Partial<DiaEditable> | ((anterior: DiaEditable) => Partial<DiaEditable>),
@@ -807,6 +818,11 @@ export function EditarConsultaPorDias({
                 <option value="completa">Jornada completa</option>
                 <option value="media">Media jornada (hasta 4 h)</option>
               </select>
+              {horarioPedido && (
+                <p className="text-xs text-muted-foreground">
+                  Horario que pidió el cliente: {horarioPedido}
+                </p>
+              )}
             </div>
             {indice > 0 && (
               <div className="flex items-end">

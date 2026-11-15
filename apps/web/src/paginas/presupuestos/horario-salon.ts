@@ -18,3 +18,22 @@ export function horarioSalon(evento: ConsultaDetallada['evento']): string {
   if (evento.horaInicioEstimada) return `Desde ${conPunto(evento.horaInicioEstimada)} hs`;
   return 'A confirmar horario';
 }
+
+/**
+ * El horario de UN día de un evento de varios días (HU-50, S-16): el real de ese día si ya está
+ * agendado; si no, el que pidió el cliente para ese día en el cotizador; y sin ninguno de los dos,
+ * el del evento (`horarioSalon`), como antes.
+ */
+export function horarioDelDia(
+  dia: ConsultaDetallada['dias'][number],
+  evento: ConsultaDetallada['evento'],
+): string {
+  if (dia.inicio && dia.fin) {
+    return `${conPunto(horaDelEvento(dia.inicio))} a ${conPunto(horaDelEvento(dia.fin))} hs`;
+  }
+  if (dia.horaInicioEstimada && dia.horaFinEstimada) {
+    return `Desde ${conPunto(dia.horaInicioEstimada)} hasta ${conPunto(dia.horaFinEstimada)} hs`;
+  }
+  if (dia.horaInicioEstimada) return `Desde ${conPunto(dia.horaInicioEstimada)} hs`;
+  return horarioSalon(evento);
+}
