@@ -217,7 +217,7 @@ function Contenido({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function Calendario({
+function Calendario({
   dia,
   onElegir,
   mesVisible,
@@ -227,7 +227,6 @@ export function Calendario({
   diaMaximo,
   previsualizacion,
   onPasarPor,
-  diasMarcados,
   className,
 }: {
   dia: string;
@@ -245,8 +244,6 @@ export function Calendario({
   previsualizacion?: { inicio: string; fin: string } | null;
   // El día por el que pasa el mouse (null al salir del calendario), para armar la previsualización.
   onPasarPor?: (dia: string | null) => void;
-  // Días con un punto debajo del número (en el cotizador, los días que ya están completos).
-  diasMarcados?: string[];
   className?: string;
 }) {
   const anio = mesVisible.getFullYear();
@@ -311,7 +308,7 @@ export function Calendario({
               onMouseEnter={() => onPasarPor?.(iso)}
               onFocus={() => onPasarPor?.(iso)}
               className={cn(
-                'relative mx-auto flex size-8 items-center justify-center rounded-full text-sm transition-colors disabled:pointer-events-none disabled:opacity-30',
+                'mx-auto flex size-8 items-center justify-center rounded-full text-sm transition-colors disabled:pointer-events-none disabled:opacity-30',
                 elegido ? 'bg-bordo font-semibold text-white' : 'hover:bg-muted',
                 // Los días de la franja se leen como una barra: un fondo continuo entre los dos
                 // extremos, sin el redondeo de cada día.
@@ -328,15 +325,6 @@ export function Calendario({
               )}
             >
               {fecha.getDate()}
-              {diasMarcados?.includes(iso) && (
-                <span
-                  aria-hidden
-                  className={cn(
-                    'absolute bottom-0.5 left-1/2 size-1 -translate-x-1/2 rounded-full',
-                    elegido ? 'bg-crema' : 'bg-estado-confirmado',
-                  )}
-                />
-              )}
             </button>
           );
         })}

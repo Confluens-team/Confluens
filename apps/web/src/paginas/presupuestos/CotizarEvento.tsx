@@ -13,7 +13,6 @@ import {
   desglosarIva,
   ETIQUETAS_TIPO_EVENTO_SOCIAL,
   etiquetaTipoEvento,
-  diasDeLaFranja,
   fechasDeLaFranja,
   hoyEnZonaEventos,
   MAXIMO_PERSONAS_EVENTO,
@@ -49,10 +48,9 @@ import { agruparPorCategoria } from '@/lib/catalogo';
 import { nombreDeJornada, resumenDeJornada, textoDePersonas } from '@/lib/dias-del-evento';
 import { formatearPesos, hoyISO, nombreCompleto, textoModalidad } from '@/lib/formato';
 import { FOTOS, fotoDeSalon, fotoOptimizada } from '@/lib/fotos';
-import { jornadaDeHoras, textoHorarioEstimado } from '@/lib/jornada';
-import { type CambioDeFranja, correrDias, textoDeDias } from '@/lib/rango-de-fechas';
+import { horaDentroDelHorario, jornadaDeHoras, textoHorarioEstimado } from '@/lib/jornada';
+import { textoDeDias } from '@/lib/rango-de-fechas';
 import { cn } from '@/lib/utils';
-import { CalendarioDelEvento } from './cotizador/CalendarioDelEvento';
 import { CopiarDiaCargado, type OpcionDeCopia } from './cotizador/CopiarDiaCargado';
 import { TarjetaDia } from './cotizador/TarjetaDia';
 
@@ -133,18 +131,18 @@ function Paso({
 }: {
   numero: number;
   titulo: string;
-  bajada: string;
+  bajada?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="rounded-2xl bg-card p-6 shadow-sm ring-1 ring-border sm:p-8">
-      <div className="flex items-start gap-4">
+      <div className={cn('flex gap-4', bajada ? 'items-start' : 'items-center')}>
         <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-bordo font-serif text-sm text-crema">
           {numero}
         </span>
         <div>
           <h2 className="text-xl font-semibold text-bordo">{titulo}</h2>
-          <p className="text-sm text-muted-foreground">{bajada}</p>
+          {bajada && <p className="text-sm text-muted-foreground">{bajada}</p>}
         </div>
       </div>
       <div className="mt-6">{children}</div>
@@ -262,9 +260,18 @@ const copiaDeDia = (dia: EstadoDeDia): EstadoDeDia => ({
 const jornadaDe = (dia: EstadoDeDia) => jornadaDeHoras(dia.horaDesde, dia.horaHasta);
 const tieneHorario = (dia: EstadoDeDia) =>
   !!dia.horaDesde && !!dia.horaHasta && dia.horaDesde !== dia.horaHasta;
-// Un día está listo con personas, al menos un salón y su horario.
+// La hora pedida para un servicio cae fuera del horario del día (por ejemplo, porque después se
+// achicó el horario). Sin hora o sin horario completo no hay nada que marcar.
+const horaFueraDelHorario = (dia: EstadoDeDia, servicioId: number) => {
+  const hora = dia.horas.get(servicioId);
+  return !!hora && tieneHorario(dia) && !horaDentroDelHorario(hora, dia.horaDesde, dia.horaHasta);
+};
+// Un día está listo con personas, al menos un salón, su horario y cada servicio dentro de él.
 const diaCompleto = (dia: EstadoDeDia) =>
-  (Number(dia.personas) || 0) > 0 && dia.salonIds.length > 0 && tieneHorario(dia);
+  (Number(dia.personas) || 0) > 0 &&
+  dia.salonIds.length > 0 &&
+  tieneHorario(dia) &&
+  [...dia.horas.keys()].every((id) => !horaFueraDelHorario(dia, id));
 const diaEmpezado = (dia: EstadoDeDia) =>
   dia.personas !== '' ||
   dia.salonIds.length > 0 ||
@@ -360,6 +367,9 @@ export function CotizarEvento({
   const [diaAbierto, setDiaAbierto] = useState<number | null>(0);
   // El paso 1 se resume en una línea cuando el cliente sigue con los días.
   const [pasoUnoAbierto, setPasoUnoAbierto] = useState(true);
+  // El paso 2 aparece recién con el botón del paso 1. Una vez habilitado queda: si después se
+  // cambian las fechas, lo cargado de cada día sigue a la vista.
+  const [pasoDosHabilitado, setPasoDosHabilitado] = useState(false);
   // Solo en un evento social, que no carga día por día: cuándo empieza y termina.
   const [hora, setHora] = useState('');
   const [horaFin, setHoraFin] = useState('');
@@ -426,21 +436,6 @@ export function CotizarEvento({
           ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
       50,
     );
-  }
-
-  // Desde el calendario del costado: sumar días antes o después, o sacar el primero o el último.
-  // Lo cargado de cada día sigue en su fecha.
-  function cambiarFranjaDesdeCalendario(cambio: CambioDeFranja) {
-    const largo = diasDeLaFranja(cambio.inicio, cambio.fin) ?? 1;
-    setDias((anteriores) => correrDias(anteriores, cambio, () => diaVacio()));
-    setErroresDeDias({});
-    setFecha(cambio.inicio);
-    setFechaFin(cambio.fin);
-    setDiaAbierto((abierto) => {
-      if (abierto === null) return null;
-      const corrido = abierto + cambio.corrimiento;
-      return corrido >= 0 && corrido < largo ? corrido : null;
-    });
   }
 
   // «Copiar día cargado»: le pasa al día `hacia` todo lo del día `desde` (personas, horario,
@@ -703,6 +698,10 @@ export function CotizarEvento({
             'La cantidad de cada servicio tiene que estar entre 1 y el total de personas';
           erroresDelDia[`servicio-${id}`] = 'Cantidad inválida';
         }
+        if (horaFueraDelHorario(dia, id)) {
+          erroresDelDia['horasDeServicios'] =
+            'La hora de cada servicio tiene que estar dentro del horario del día';
+        }
       }
     }
     return erroresDelDia;
@@ -932,12 +931,6 @@ export function CotizarEvento({
             {errores['horario'] && <p className="text-xs text-destructive">{errores['horario']}</p>}
           </div>
         )}
-        {!errores['personas'] && (
-          <p className="text-xs text-muted-foreground sm:col-span-3 lg:col-span-4">
-            Hasta {MAXIMO_PERSONAS_EVENTO} personas. Si termina después de la medianoche, elegí la
-            hora de la madrugada: se toma como del día siguiente.
-          </p>
-        )}
       </div>
 
       <section className="flex flex-col gap-2.5" aria-label="Salones">
@@ -1033,15 +1026,12 @@ export function CotizarEvento({
       </section>
 
       <section className="flex flex-col gap-3" aria-label="Gastronomía">
-        <div>
-          <span className="text-sm font-medium">Gastronomía</span>
-          <p className="text-xs text-muted-foreground">
-            Opcional. {variosDias ? 'Es de este día: la de un día no se suma a los demás. ' : ''}
-            Podés contratar un servicio para menos personas que las del día.
-          </p>
-        </div>
+        <span className="text-sm font-medium">Gastronomía</span>
         {servicios.isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
         {errores['servicios'] && <p className="text-sm text-destructive">{errores['servicios']}</p>}
+        {errores['horasDeServicios'] && (
+          <p className="text-sm text-destructive">{errores['horasDeServicios']}</p>
+        )}
         <div className="flex flex-wrap gap-2">
           {grupos.map(([nombre, items]) => {
             const cuantos = items.filter((s) => elegidos.has(s.id)).length;
@@ -1172,14 +1162,19 @@ export function CotizarEvento({
                     <label htmlFor={`hora-${servicio.id}`} className="ml-2">
                       Hora
                     </label>
+                    {/* La hora tiene que caer dentro del horario del día: el selector no deja
+                        aceptar una afuera, y si después cambia el horario del día se avisa. */}
                     <SelectorHora
                       id={`hora-${servicio.id}`}
                       value={horas.get(servicio.id) ?? ''}
                       onChange={(valor) => cambiarHora(servicio.id, valor)}
                       horaSugerida={diaActual.horaDesde || undefined}
+                      horaMinima={tieneHorario(diaActual) ? diaActual.horaDesde : undefined}
+                      horaMaxima={tieneHorario(diaActual) ? diaActual.horaHasta : undefined}
                       opcional
                       placeholder="--:--"
                       className="h-8 w-32"
+                      aria-invalid={horaFueraDelHorario(diaActual, servicio.id)}
                     />
                     <span>(opcional)</span>
                     {cantidadPersonas > 0 && servicio.precio !== null && (
@@ -1189,6 +1184,12 @@ export function CotizarEvento({
                             cantidadDe(servicio.id, servicio.porPersona),
                         )}
                       </span>
+                    )}
+                    {horaFueraDelHorario(diaActual, servicio.id) && (
+                      <p className="w-full text-destructive">
+                        La hora tiene que estar dentro del horario del día ({diaActual.horaDesde} a{' '}
+                        {diaActual.horaHasta}).
+                      </p>
                     )}
                   </div>
                 )}
@@ -1268,12 +1269,8 @@ export function CotizarEvento({
                     className="h-11"
                     aria-invalid={!!errores['fecha']}
                   />
-                  {errores['fecha'] ? (
+                  {errores['fecha'] && (
                     <p className="text-xs text-destructive">{errores['fecha']}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Al abrir el calendario elegí si dura 1 día o más de uno.
-                    </p>
                   )}
                 </div>
                 {/* Un evento corporativo carga las personas en cada día; el social, acá. */}
@@ -1303,10 +1300,7 @@ export function CotizarEvento({
               </div>
 
               <div className="mt-6 border-t border-dashed border-border pt-5">
-                <p className="text-sm font-medium">¿Qué tipo de evento es?</p>
-                <p className="mb-3 text-xs text-muted-foreground">
-                  Los eventos sociales son muy personalizables: los armamos juntos.
-                </p>
+                <p className="mb-3 text-sm font-medium">¿Qué tipo de evento es?</p>
                 {errores['tipo'] && (
                   <p className="mb-3 text-sm text-destructive">{errores['tipo']}</p>
                 )}
@@ -1419,7 +1413,13 @@ export function CotizarEvento({
 
               {corporativo && fecha && (
                 <div className="mt-6 flex justify-end border-t border-dashed border-border pt-5">
-                  <Button type="button" onClick={() => setPasoUnoAbierto(false)}>
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setPasoUnoAbierto(false);
+                      setPasoDosHabilitado(true);
+                    }}
+                  >
                     Seguir con {variosDias ? 'cada día' : 'tu evento'}
                   </Button>
                 </div>
@@ -1427,16 +1427,8 @@ export function CotizarEvento({
             </Paso>
           )}
 
-          {corporativo && (
-            <Paso
-              numero={2}
-              titulo={variosDias ? 'Armá cada día' : 'Armá tu evento'}
-              bajada={
-                variosDias
-                  ? 'Cada día es una tarjeta con sus personas, su horario, sus salones y su gastronomía. Los que ya cargaste quedan resumidos.'
-                  : 'Personas, horario, salones y gastronomía. Precios sin IVA: el total se actualiza al instante.'
-              }
-            >
+          {corporativo && pasoDosHabilitado && (
+            <Paso numero={2} titulo={variosDias ? 'Armá cada día' : 'Armá tu evento'}>
               {!variosDias ? (
                 editorDelDia
               ) : (
@@ -1457,9 +1449,6 @@ export function CotizarEvento({
                         className="bg-dorado"
                         style={{ width: `${(diasEmpezados / cantidadDeDias) * 100}%` }}
                       />
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      Para sumar días, tocalos en el calendario
                     </span>
                   </div>
 
@@ -1533,20 +1522,6 @@ export function CotizarEvento({
             />
           ) : (
             <>
-              {corporativo && fecha && (
-                <CalendarioDelEvento
-                  key={fecha}
-                  inicio={fecha}
-                  fin={fechas[fechas.length - 1] ?? fecha}
-                  diaMinimo={hoyISO()}
-                  diasCompletos={bloques.filter((b) => b.completo && b.fecha).map((b) => b.fecha!)}
-                  onCambiarFranja={cambiarFranjaDesdeCalendario}
-                  onAbrirDia={(fechaDelDia) => {
-                    const indice = fechas.indexOf(fechaDelDia);
-                    if (indice >= 0) irAlDia(indice);
-                  }}
-                />
-              )}
               <div className="overflow-hidden rounded-2xl bg-card shadow-lg ring-1 ring-border">
                 <div className="bg-bordo px-6 py-5 text-crema">
                   <p className="text-xs font-semibold tracking-[0.25em] text-dorado-claro uppercase">
@@ -1672,7 +1647,12 @@ export function CotizarEvento({
                   <Button
                     size="lg"
                     className="mt-6 h-12 w-full text-sm"
-                    disabled={solicitar.isPending || !perfil.data || primerDiaIncompleto >= 0}
+                    disabled={
+                      solicitar.isPending ||
+                      !perfil.data ||
+                      (corporativo && !pasoDosHabilitado) ||
+                      primerDiaIncompleto >= 0
+                    }
                     onClick={generar}
                     hidden={!tipo}
                   >
