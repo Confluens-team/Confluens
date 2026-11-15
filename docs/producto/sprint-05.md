@@ -92,6 +92,9 @@ Los campos de importe ya los cubría `InputImporte`. **Pendiente: cargar estas t
 
 Entró a la rama después de la propuesta (sin historia propia en este documento):
 
+- Auditoría para Gerencia (15/11/2026, rama `feat/HU-25-auditoria-para-gerencia`): Resumen y Registro
+  en la pestaña Auditoría, cambios sensibles con la revisión del Gerente General, y las pestañas
+  Detalle · Pagos · Historial en la consulta y el evento (ver el agregado del ADR 0013).
 - La confirmación por correo también para la consulta social (PR #124).
 - Desde `develop` (mergeado en `sprint-05` el 12/11/2026): hora de fin estimada de la consulta de un
   evento social, selectores de hora en la landing y el cotizador, la duración del cotizador que pasa
