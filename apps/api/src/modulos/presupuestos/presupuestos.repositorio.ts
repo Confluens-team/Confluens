@@ -199,14 +199,17 @@ export async function crearEvento(
     tipoJornada: TipoJornada;
     horaInicioEstimada?: string | null;
     horaFinEstimada?: string | null;
+    // S-16: el horario estimado del primer día, que se guarda en el día y no en el evento.
+    horarioDelDia?: { horaInicioEstimada: string | null; horaFinEstimada: string | null };
   },
   tx: Prisma.TransactionClient = prisma,
 ) {
+  const { horarioDelDia, ...delEvento } = datos;
   // estado: EnConsulta es el default del schema, no hace falta pasarlo.
   return enTransaccion(tx, async (t) => {
     const evento = await t.evento.create({
       data: {
-        ...datos,
+        ...delEvento,
         // HU-50: el evento nace con su único día. fecha, cantidadPersonas y tipoJornada de arriba
         // son el resumen: una vez creado el día, los recalcula la base a partir de él.
         dias: {
@@ -214,6 +217,7 @@ export async function crearEvento(
             fecha: datos.fecha,
             cantidadPersonas: datos.cantidadPersonas,
             tipoJornada: datos.tipoJornada,
+            ...horarioDelDia,
           },
         },
       },
@@ -236,7 +240,14 @@ export async function crearEvento(
  */
 export async function crearDiasDelEvento(
   eventoId: number,
-  dias: { fecha: Date; cantidadPersonas: number; tipoJornada: TipoJornada }[],
+  dias: {
+    fecha: Date;
+    cantidadPersonas: number;
+    tipoJornada: TipoJornada;
+    // S-16: el horario estimado del día, si el cliente lo indicó en el cotizador.
+    horaInicioEstimada?: string | null;
+    horaFinEstimada?: string | null;
+  }[],
   tx: Prisma.TransactionClient = prisma,
 ) {
   for (const dia of dias) {

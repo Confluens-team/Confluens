@@ -41,6 +41,28 @@ describe('esquemaCrearPresupuesto', () => {
     expect(dias[1]).toMatchObject({ salonIds: [2, 3], tipoJornada: 'media', servicios: [] });
   });
 
+  it('acepta el horario estimado de cada día y rechaza uno de cero minutos (S-16)', () => {
+    const datos = esquemaCrearPresupuesto.parse({
+      ...contacto,
+      dias: [
+        { ...unDia('2040-04-30'), horaInicioEstimada: '09:00', horaFinEstimada: '18:00' },
+        unDia('2040-05-01'),
+      ],
+    });
+    expect(diasDeCotizacion(datos)[0]).toMatchObject({
+      horaInicioEstimada: '09:00',
+      horaFinEstimada: '18:00',
+    });
+    expect(diasDeCotizacion(datos)[1]?.horaInicioEstimada).toBeUndefined();
+
+    const igual = esquemaCrearPresupuesto.safeParse({
+      ...contacto,
+      dias: [{ ...unDia('2040-04-30'), horaInicioEstimada: '10:00', horaFinEstimada: '10:00' }],
+    });
+    expect(igual.success).toBe(false);
+    expect(JSON.stringify(igual.error?.issues)).toContain('distinta');
+  });
+
   it('rechaza un día libre en el medio y los días fuera de orden', () => {
     for (const fechas of [
       ['2040-05-15', '2040-05-17'],

@@ -99,6 +99,9 @@ export const esquemaDiaDeEvento = z.object({
   fin: esquemaFechaHora.nullable(),
   cantidadPersonas: z.number().int().positive(),
   tipoJornada: esquemaTipoJornada.nullable(),
+  // S-16: el horario que pidió el cliente para este día en el cotizador (de referencia).
+  horaInicioEstimada: esquemaHoraEstimada.nullable(),
+  horaFinEstimada: esquemaHoraEstimada.nullable(),
   // Observaciones internas de este día (HU-50): cada día puede tener las suyas.
   observaciones: esquemaObservacionesEvento.nullable(),
   salones: z.array(

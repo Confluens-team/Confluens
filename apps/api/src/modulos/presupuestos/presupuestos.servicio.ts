@@ -220,6 +220,14 @@ function exigirCantidadPosible(
   }
 }
 
+// S-16: el horario estimado de un día cotizado, como se guarda en EventoDia (null si no vino).
+function horarioEstimadoDe(dia: DiaCotizado) {
+  return {
+    horaInicioEstimada: dia.horaInicioEstimada ?? null,
+    horaFinEstimada: dia.horaFinEstimada ?? null,
+  };
+}
+
 /**
  * Genera un presupuesto estimado a partir de salón, fecha, cantidad de personas y servicios
  * seleccionados (HU-09). En una única operación: busca o crea el Cliente por correo, crea el
@@ -349,7 +357,11 @@ export async function generarPresupuesto(
         cantidadPersonas: primerDia!.cantidadPersonas,
         tipo: 'Corporativo',
         tipoJornada: primerDia!.tipoJornada,
-        horaInicioEstimada: datos.horaInicioEstimada ?? null,
+        // S-16: el horario de cada día va en su día. El del evento queda como el del primero, para
+        // lo que todavía lee la hora del evento (la agenda, el PDF de un solo día, el agendar).
+        horaInicioEstimada: datos.horaInicioEstimada ?? primerDia!.horaInicioEstimada ?? null,
+        horaFinEstimada: primerDia!.horaFinEstimada ?? null,
+        horarioDelDia: horarioEstimadoDe(primerDia!),
       },
       tx,
     );
@@ -367,6 +379,7 @@ export async function generarPresupuesto(
           fecha: new Date(dia.fecha),
           cantidadPersonas: dia.cantidadPersonas,
           tipoJornada: dia.tipoJornada,
+          ...horarioEstimadoDe(dia),
         })),
         tx,
       );
@@ -654,6 +667,8 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       tipoJornada: dia.tipoJornada,
       inicio: dia.inicio?.toISOString() ?? null,
       fin: dia.fin?.toISOString() ?? null,
+      horaInicioEstimada: dia.horaInicioEstimada,
+      horaFinEstimada: dia.horaFinEstimada,
       salones: dia.salones.map(({ salon, distribucion }) => ({
         id: salon.id,
         nombre: salon.nombre,

@@ -31,20 +31,34 @@ export const esquemaServicioSeleccionado = z.object({
 export type ServicioSeleccionado = z.infer<typeof esquemaServicioSeleccionado>;
 
 // Un día del cotizador corporativo (HU-50): cada día tiene su fecha, su cantidad de personas, su
-// jornada, sus salones y sus servicios, y los de un día pueden ser distintos de los de otro. La hora
-// de inicio estimada no es del día sino de todo el evento (ver `esquemaCrearPresupuesto`).
+// jornada, sus salones y sus servicios, y los de un día pueden ser distintos de los de otro.
 // Un evento puede ocupar varios salones a la vez, hasta los cinco (ADR 0011).
-export const esquemaDiaCotizado = z.object({
-  fecha: esquemaFecha,
-  cantidadPersonas: esquemaCantidadPersonas,
-  tipoJornada: esquemaTipoJornada,
-  salonIds: z
-    .array(esquemaId)
-    .min(1, 'Elegí al menos un salón')
-    .refine((ids) => new Set(ids).size === ids.length, 'Un salón no puede repetirse'),
-  // Puede venir vacío: un día solo con el salón es válido.
-  servicios: z.array(esquemaServicioSeleccionado).default([]),
-});
+// S-16: cada día puede traer su horario estimado (desde y hasta), que el cliente elige en el
+// cotizador. Es opcional para que el panel del personal y los pedidos de un solo día sigan igual.
+export const esquemaDiaCotizado = z
+  .object({
+    fecha: esquemaFecha,
+    cantidadPersonas: esquemaCantidadPersonas,
+    tipoJornada: esquemaTipoJornada,
+    salonIds: z
+      .array(esquemaId)
+      .min(1, 'Elegí al menos un salón')
+      .refine((ids) => new Set(ids).size === ids.length, 'Un salón no puede repetirse'),
+    // Puede venir vacío: un día solo con el salón es válido.
+    servicios: z.array(esquemaServicioSeleccionado).default([]),
+    horaInicioEstimada: esquemaHoraEstimada.optional(),
+    horaFinEstimada: esquemaHoraEstimada.optional(),
+  })
+  .superRefine((dia, ctx) => {
+    // Igual que en la consulta social: un horario de cero minutos no es un horario.
+    if (dia.horaInicioEstimada && dia.horaFinEstimada === dia.horaInicioEstimada) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['horaFinEstimada'],
+        message: 'La hora de fin tiene que ser distinta de la de inicio',
+      });
+    }
+  });
 export type DiaCotizado = z.infer<typeof esquemaDiaCotizado>;
 
 // Las fechas de `dias` tienen que ser una franja (HU-50): seguidas, en orden y hasta 32. La API lo

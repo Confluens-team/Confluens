@@ -83,6 +83,9 @@ export const esquemaConsultaDetallada = z.object({
         tipoJornada: esquemaTipoJornada.nullable(),
         inicio: esquemaFechaHora.nullable(),
         fin: esquemaFechaHora.nullable(),
+        // S-16: el horario que pidió el cliente para este día en el cotizador (de referencia).
+        horaInicioEstimada: esquemaHoraEstimada.nullable(),
+        horaFinEstimada: esquemaHoraEstimada.nullable(),
         salones: z.array(
           z.object({
             id: esquemaId,
