@@ -1273,30 +1273,6 @@ export function CotizarEvento({
                     <p className="text-xs text-destructive">{errores['fecha']}</p>
                   )}
                 </div>
-                {/* Un evento corporativo carga las personas en cada día; el social, acá. */}
-                {!corporativo && (
-                  <div className="flex flex-col gap-1.5">
-                    <Label htmlFor="personas-social" className="inline-flex items-center gap-1.5">
-                      <Users className="size-4 text-dorado" /> Cantidad de personas
-                    </Label>
-                    <InputEntero
-                      id="personas-social"
-                      max={MAXIMO_PERSONAS_EVENTO}
-                      placeholder="Ej: 50"
-                      value={personas}
-                      onChangeValor={setPersonas}
-                      className="h-11"
-                    />
-                    {errores['personas'] ? (
-                      <p className="text-xs text-destructive">{errores['personas']}</p>
-                    ) : (
-                      <p className="text-xs text-muted-foreground">
-                        Hasta {MAXIMO_PERSONAS_EVENTO} personas. Para un evento más grande,
-                        consultanos.
-                      </p>
-                    )}
-                  </div>
-                )}
               </div>
 
               <div className="mt-6 border-t border-dashed border-border pt-5">
@@ -1386,8 +1362,26 @@ export function CotizarEvento({
                     </div>
                   )}
 
-                  {/* Sin salón no hay precio que dependa de la duración: alcanza con el horario. */}
+                  {/* Sin salón no hay precio que dependa de la duración: alcanza con las personas
+                      y el horario. Un evento corporativo carga las personas en cada día. */}
                   <div className="mt-6 grid gap-5 border-t border-dashed border-border pt-5 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5 sm:col-span-2 sm:max-w-[calc(50%-0.625rem)]">
+                      <Label htmlFor="personas-social" className="inline-flex items-center gap-1.5">
+                        <Users className="size-4 text-dorado" /> Cantidad de personas
+                      </Label>
+                      <InputEntero
+                        id="personas-social"
+                        max={MAXIMO_PERSONAS_EVENTO}
+                        placeholder="Ej: 50"
+                        value={personas}
+                        onChangeValor={setPersonas}
+                        className="h-11"
+                        aria-invalid={!!errores['personas']}
+                      />
+                      {errores['personas'] && (
+                        <p className="text-xs text-destructive">{errores['personas']}</p>
+                      )}
+                    </div>
                     <CampoHora
                       id="hora"
                       etiqueta="Hora de inicio estimada"
