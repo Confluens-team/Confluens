@@ -48,7 +48,7 @@ import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
 import { nombreDeJornada, resumenDeJornada, textoDePersonas } from '@/lib/dias-del-evento';
 import { formatearPesos, hoyISO, nombreCompleto, textoModalidad } from '@/lib/formato';
-import { FOTOS, fotoOptimizada } from '@/lib/fotos';
+import { FOTOS, fotoDeSalon, fotoOptimizada } from '@/lib/fotos';
 import { jornadaDeHoras, textoHorarioEstimado } from '@/lib/jornada';
 import { type CambioDeFranja, correrDias, textoDeDias } from '@/lib/rango-de-fechas';
 import { cn } from '@/lib/utils';
@@ -974,39 +974,51 @@ export function CotizarEvento({
                 aria-pressed={elegido}
                 onClick={() => alternarSalon(salon.id)}
                 className={cn(
-                  'flex flex-col gap-1.5 rounded-xl border-2 p-3 text-left transition-all',
-                  elegido ? 'border-bordo bg-bordo/5' : 'border-border hover:border-dorado',
+                  'group flex flex-col overflow-hidden rounded-xl border-2 text-left transition-all',
+                  elegido
+                    ? 'border-bordo bg-bordo/5 shadow-md'
+                    : 'border-border hover:border-dorado',
                 )}
               >
-                <span className="flex items-center justify-between gap-2">
-                  <span className="font-serif text-base leading-tight font-semibold text-bordo">
-                    {salon.nombre}
-                  </span>
+                {/* La foto del salón arriba, como en la landing, con la marca de elegido encima. */}
+                <span className="relative block h-24 overflow-hidden">
+                  <img
+                    src={fotoDeSalon(salon, 400)}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
                   <span
                     className={cn(
-                      'flex size-4 shrink-0 items-center justify-center rounded border-2',
-                      elegido ? 'border-bordo bg-bordo text-crema' : 'border-input',
+                      'absolute top-2 right-2 flex size-5 items-center justify-center rounded-md border-2',
+                      elegido ? 'border-bordo bg-bordo text-crema' : 'border-white/90 bg-white/70',
                     )}
                   >
                     {elegido && <Check className="size-3" />}
                   </span>
+                  {recomendado?.id === salon.id && (
+                    <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-crema/95 px-2 py-0.5 text-[0.6rem] font-semibold tracking-wide text-bordo uppercase">
+                      <Sparkles className="size-3" /> Recomendado
+                    </span>
+                  )}
                 </span>
-                <span className="text-xs text-muted-foreground">
-                  Hasta {salon.capacidadMaxima} personas
+                <span className="flex flex-1 flex-col gap-1 p-3">
+                  <span className="font-serif text-base leading-tight font-semibold text-bordo">
+                    {salon.nombre}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Hasta {salon.capacidadMaxima} personas · {salon.superficie} m²
+                  </span>
+                  <strong className="mt-auto pt-1 text-sm tabular-nums">
+                    {formatearPesos(precioDeSalon(salon))}
+                  </strong>
+                  {superaCapacidad && salonIds.length <= 1 && (
+                    <span className="text-[0.7rem] leading-snug text-amber-700">
+                      Supera su capacidad: lo vemos con vos
+                    </span>
+                  )}
                 </span>
-                {recomendado?.id === salon.id && (
-                  <span className="inline-flex w-fit items-center gap-1 rounded-full bg-dorado/20 px-2 py-0.5 text-[0.6rem] font-semibold tracking-wide text-bordo uppercase">
-                    <Sparkles className="size-3" /> Recomendado
-                  </span>
-                )}
-                <strong className="text-sm tabular-nums">
-                  {formatearPesos(precioDeSalon(salon))}
-                </strong>
-                {superaCapacidad && salonIds.length <= 1 && (
-                  <span className="text-[0.7rem] leading-snug text-amber-700">
-                    Supera su capacidad: lo vemos con vos
-                  </span>
-                )}
               </button>
             );
           })}
@@ -1086,21 +1098,15 @@ export function CotizarEvento({
                     !servicio.fotoUrl && 'py-3 pl-4',
                   )}
                 >
-                  <span
-                    className={cn(
-                      'flex size-5 shrink-0 items-center justify-center rounded-md border-2',
-                      marcado ? 'border-bordo bg-bordo text-crema' : 'border-input',
-                    )}
-                  >
-                    {marcado && <Check className="size-3" />}
-                  </span>
+                  {/* Sin foto propia no se deja el hueco: el texto ocupa todo el ancho, como en
+                      la carta de la landing. */}
                   {servicio.fotoUrl && (
                     <img
                       src={fotoOptimizada(servicio.fotoUrl, 200)}
                       alt=""
                       loading="lazy"
                       decoding="async"
-                      className="size-14 shrink-0 rounded-lg object-cover"
+                      className="size-16 shrink-0 rounded-lg object-cover sm:size-20"
                     />
                   )}
                   <div className="min-w-0 flex-1">
@@ -1121,9 +1127,17 @@ export function CotizarEvento({
                     </span>
                   </div>
                   <div className="hidden shrink-0 text-right sm:block">
-                    <p className="font-semibold tabular-nums">{precio}</p>
+                    <p className="font-serif text-lg font-semibold">{precio}</p>
                     <p className="text-[0.65rem] text-muted-foreground uppercase">{unidad}</p>
                   </div>
+                  <span
+                    className={cn(
+                      'flex size-5 shrink-0 items-center justify-center rounded-md border-2',
+                      marcado ? 'border-bordo bg-bordo text-crema' : 'border-input',
+                    )}
+                  >
+                    {marcado && <Check className="size-3" />}
+                  </span>
                 </button>
                 {marcado && (
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-3 border-t border-dashed border-bordo/20 px-4 py-3 text-xs text-muted-foreground">
