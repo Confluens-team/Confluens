@@ -16,6 +16,7 @@ import {
   type TipoEvento,
   type TipoEventoSocial,
   type TipoJornada,
+  veAuditoria,
 } from '@confluens/shared';
 import {
   AlertTriangle,
@@ -25,6 +26,8 @@ import {
   Check,
   CheckCircle2,
   ClipboardList,
+  FileText,
+  History,
   Plus,
   Printer,
   RefreshCw,
@@ -35,18 +38,18 @@ import { Dialog } from 'radix-ui';
 import { useEffect, useRef, useState } from 'react';
 
 import { SelectorFecha, SelectorHora, SelectorRangoFechas } from '@/components/SelectorFechaHora';
-import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
-import { EtiquetaCliente } from '@/components/EtiquetaCliente';
-import { IconoEstado } from '@/components/IconoEstado';
+import { TarjetaCliente } from '@/components/TarjetaCliente';
 import { InputEntero } from '@/components/InputEntero';
 import { InputImporte } from '@/components/InputImporte';
 import { SelectorModalidad } from '@/components/SelectorModalidad';
+import { Pestanias } from '@/components/Pestanias';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useConfiguracionPrecios } from '@/hooks/use-configuracion-precios';
 import { useConsulta, useDarDeBajaConsulta, useModificarConsulta } from '@/hooks/use-presupuestos';
 import { useSalones } from '@/hooks/use-salones';
+import { useSesion } from '@/hooks/use-sesion';
 import { useServicios } from '@/hooks/use-servicios';
 import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
@@ -62,6 +65,8 @@ import { EditarConsultaPorDias } from './EditarConsultaPorDias';
 import { PresupuestoFormal } from './PresupuestoFormal';
 import { type CambioDePrecio, cambiosDePrecio, preciosParaFecha } from './recalculo-por-fecha';
 import { ComentariosDelCliente } from './ComentariosDelCliente';
+import { EncabezadoDeConsulta, type PestaniaDeConsulta } from './EncabezadoDeConsulta';
+import { HistorialDelRegistro } from '@/paginas/auditoria/HistorialDelRegistro';
 import { SeguimientoConsulta } from './SeguimientoConsulta';
 
 // Una línea del detalle mientras se edita. servicioId null = adicional escrito a mano. Un
@@ -115,9 +120,6 @@ function lineasEditables(consulta: ConsultaDetallada): LineaEditable[] {
 
 const OTRO = 'otro';
 
-const fechaCorta = (fecha: Date) =>
-  fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
 const precioDeSalon = (salon: SalonConDistribuciones, jornada: TipoJornada) =>
   jornada === 'completa' ? salon.precioJornadaCompleta : salon.precioMediaJornada;
 
@@ -138,13 +140,6 @@ const hora = horaDelEvento;
 
 const mensajeDeError = (error: unknown, porDefecto: string) =>
   error instanceof ErrorApiCliente ? error.message : porDefecto;
-
-const ESTADOS: Record<string, string> = {
-  Estimado: 'bg-estado-consulta-fondo text-estado-consulta-texto',
-  Expirado: 'bg-estado-expirado-fondo text-estado-expirado-texto',
-  Cancelado: 'bg-estado-cancelado-fondo text-estado-cancelado-texto',
-  Confirmado: 'bg-estado-confirmado-fondo text-estado-confirmado-texto',
-};
 
 const claseSelect = 'h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm';
 
@@ -197,6 +192,23 @@ export function EditarConsulta({
     setDocumentoAbierto(abierto);
     window.scrollTo({ top: 0 });
   }
+  // 15/11/2026: Detalle o Historial, arriba a la derecha del título. El Historial (diseño D) lo ven
+  // solo los roles que ven la auditoría.
+  const [pestania, setPestania] = useState<PestaniaDeConsulta>('detalle');
+  const { data: sesion } = useSesion();
+  const veHistorial = !!sesion && veAuditoria(sesion.rol);
+  const pestanias = veHistorial ? (
+    <Pestanias<PestaniaDeConsulta>
+      etiqueta="Secciones de la consulta"
+      valor={pestania}
+      onCambiar={setPestania}
+      pestanias={[
+        { valor: 'detalle', texto: 'Detalle', icono: FileText },
+        { valor: 'historial', texto: 'Historial', icono: History },
+      ]}
+    />
+  ) : null;
+  const pestaniaVisible: PestaniaDeConsulta = veHistorial ? pestania : 'detalle';
 
   const variosDias = !!consulta.data && (consulta.data.dias.length > 1 || !!franjaNueva);
   const formulario =
@@ -216,6 +228,8 @@ export function EditarConsulta({
         onAbrirEvento={onAbrirEvento}
         onDescargarPresupuesto={() => alternarDocumento(true)}
         textoVolverAlGuardar={textoVolverAlGuardar}
+        pestania={pestaniaVisible}
+        pestanias={pestanias}
       />
     ) : (
       <Formulario
@@ -230,6 +244,8 @@ export function EditarConsulta({
         onDescargarPresupuesto={() => alternarDocumento(true)}
         onVariosDias={(inicio, fin) => setFranjaNueva({ inicio, fin })}
         textoVolverAlGuardar={textoVolverAlGuardar}
+        pestania={pestaniaVisible}
+        pestanias={pestanias}
       />
     ));
 
@@ -273,6 +289,8 @@ function Formulario({
   onDescargarPresupuesto,
   onVariosDias,
   textoVolverAlGuardar,
+  pestania,
+  pestanias,
 }: {
   consulta: ConsultaDetallada;
   salones: SalonConDistribuciones[];
@@ -286,6 +304,9 @@ function Formulario({
   // HU-50: un segundo clic en otro día estira el evento a varios; se sigue en el editor por días.
   onVariosDias: (inicio: string, fin: string) => void;
   textoVolverAlGuardar: string;
+  // 15/11/2026: la pestaña elegida y las pestañas, que van arriba a la derecha del título.
+  pestania: PestaniaDeConsulta;
+  pestanias: React.ReactNode;
 }) {
   const modificar = useModificarConsulta(consulta.id);
   const darDeBaja = useDarDeBajaConsulta(consulta.id);
@@ -662,755 +683,717 @@ function Formulario({
 
   return (
     <form onSubmit={guardar} className="space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          {/* Un Confirmado ya no es una consulta: pasó a la agenda (HU-11 desde HU-15). */}
-          <h2 className="text-xl font-semibold text-bordo">
-            {consulta.estado === 'Confirmado' ? 'Presupuesto' : 'Consulta'} {consulta.id}
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Emitida el {fechaCorta(new Date(consulta.fechaEmision))} ·{' '}
-            {consulta.venceEn
-              ? `vence el ${fechaCorta(new Date(consulta.venceEn))}`
-              : 'presupuesto sin armar'}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <BadgeTipoEvento evento={consulta.evento} />
-          <span
-            className={cn(
-              'inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-semibold',
-              ESTADOS[consulta.estado] ?? '',
-            )}
-          >
-            <IconoEstado estado={consulta.estado} />
-            {consulta.estado}
-          </span>
-        </div>
-      </header>
+      <EncabezadoDeConsulta consulta={consulta} derecha={pestanias} />
 
-      {expirado && enCurso && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-estado-expirado-fondo px-4 py-3 text-sm text-estado-expirado-texto ring-1 ring-estado-expirado/30">
-          <p className="flex items-center gap-2 font-medium">
-            <AlertTriangle className="size-4 shrink-0" />
-            {fecha !== guardado.evento.fecha
-              ? 'Presupuesto vencido: con la fecha nueva, los precios se recalcularon. Guardá para que vuelva a Estimado.'
-              : 'Presupuesto vencido. Si le cambiás la fecha, se recalcula con los precios de la fecha nueva.'}
-          </p>
-        </div>
-      )}
-      {confirmado && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-estado-confirmado-fondo px-4 py-3 text-sm text-estado-confirmado-texto ring-1 ring-estado-confirmado-borde">
-          <p>
-            Evento confirmado: podés modificar todo y sigue confirmado. Si cambia el total, cambia
-            el saldo a cobrar; si cambiás la fecha, el horario se corre al mismo día.
-          </p>
-          {onImprimirComanda && (
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => onImprimirComanda(consulta.id)}
-            >
-              <Printer /> Comanda de cocina
-            </Button>
-          )}
-        </div>
-      )}
-      {sobrante && (
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
-          <p>
-            Este presupuesto quedó de más: el evento ya está confirmado con otro presupuesto, así
-            que no se puede recalcular. Podés darlo de baja sin tocar el evento.
-          </p>
-          <Button
-            type="button"
-            variant="ghost"
-            className="text-destructive"
-            disabled={darDeBaja.isPending}
-            onClick={confirmarBaja}
-          >
-            <Trash2 /> Dar de baja
-          </Button>
-        </div>
-      )}
-      {!editable && !sobrante && (
-        <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
-          {consulta.estado === 'Cancelado'
-            ? 'Esta consulta se dio de baja'
-            : consulta.estado === 'Confirmado'
-              ? 'Esta consulta ya se confirmó y pasó a la agenda'
-              : 'El evento de esta consulta ya no está en consulta'}
-          : se puede ver, pero no modificar.
-        </p>
-      )}
+      {pestania === 'historial' && <HistorialDelRegistro eventoId={consulta.evento.id} />}
 
-      <section className="rounded-xl bg-card p-5 ring-1 ring-border">
-        <h3 className="text-sm font-semibold">Cliente</h3>
-        <div className="mt-2 flex flex-wrap items-start justify-between gap-x-6 gap-y-4">
-          <div className="min-w-0">
-            <p className="flex flex-wrap items-center gap-2 font-medium">
-              {nombreCompleto(consulta.cliente)}
-              <EtiquetaCliente etiqueta={consulta.cliente.etiqueta} />
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {consulta.cliente.correo} · {consulta.cliente.telefono}
-            </p>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Los datos de contacto los mantiene el cliente desde su cuenta.
+      {/* Las pestañas cambian todo menos el título: el detalle se oculta, no se desmonta, para no
+          perder lo que se estaba editando. */}
+      <div className={pestania === 'historial' ? 'hidden' : 'space-y-6'}>
+        {expirado && enCurso && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-estado-expirado-fondo px-4 py-3 text-sm text-estado-expirado-texto ring-1 ring-estado-expirado/30">
+            <p className="flex items-center gap-2 font-medium">
+              <AlertTriangle className="size-4 shrink-0" />
+              {fecha !== guardado.evento.fecha
+                ? 'Presupuesto vencido: con la fecha nueva, los precios se recalcularon. Guardá para que vuelva a Estimado.'
+                : 'Presupuesto vencido. Si le cambiás la fecha, se recalcula con los precios de la fecha nueva.'}
             </p>
           </div>
-          <SeguimientoConsulta consulta={consulta} onDescargar={onDescargarPresupuesto} />
-        </div>
-      </section>
-
-      <ComentariosDelCliente comentarios={consulta.evento.comentariosCliente} />
-
-      <fieldset disabled={!editable} className="space-y-6">
-        <section className="rounded-xl bg-card p-5 ring-1 ring-border">
-          <h3 className="text-sm font-semibold">Evento</h3>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="consulta-fecha">Fecha</Label>
-              {/* HU-50: mientras es una consulta, un segundo clic en otro día estira el evento a
-                  varios días y se pasa al editor por días. Uno ya confirmado sigue de un solo día. */}
-              {editable ? (
-                <SelectorRangoFechas
-                  id="consulta-fecha"
-                  inicio={fecha}
-                  fin={fecha}
-                  onChange={(nuevoInicio, nuevoFin) =>
-                    nuevoFin === nuevoInicio
-                      ? cambiarFecha(nuevoInicio)
-                      : onVariosDias(nuevoInicio, nuevoFin)
-                  }
-                  className={cambiosPorFecha.length > 0 ? claseCambiado : undefined}
-                />
-              ) : (
-                <SelectorFecha
-                  id="consulta-fecha"
-                  value={fecha}
-                  onChange={cambiarFecha}
-                  className={cambiosPorFecha.length > 0 ? claseCambiado : undefined}
-                />
-              )}
-              {cambiosPorFecha.length > 0 && (
-                <p className="flex items-center gap-1 text-xs font-medium text-amber-900">
-                  <RefreshCw className="size-3" /> Precios recalculados
-                </p>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="consulta-personas">Personas</Label>
-              <InputEntero
-                id="consulta-personas"
-                max={MAXIMO_PERSONAS_EVENTO}
-                value={personas}
-                aria-invalid={!esEntero(personas)}
-                onChangeValor={setPersonas}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="consulta-jornada">Jornada</Label>
-              <select
-                id="consulta-jornada"
-                className={claseSelect}
-                value={jornada}
-                onChange={(e) => cambiarJornada(e.target.value as TipoJornada)}
-              >
-                <option value="completa">Jornada completa</option>
-                <option value="media">Media jornada (hasta 4 h)</option>
-              </select>
-            </div>
-          </div>
-          {/* Un evento puede ocupar varios salones a la vez, incluso los cinco (ADR 0011). */}
-          <fieldset className="mt-4 space-y-2">
-            <legend className="text-sm font-medium">Salones</legend>
-            <div className="flex flex-wrap gap-2">
-              {salones.map((s) => {
-                const elegido = salonesSel.some((sel) => sel.salonId === s.id);
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    aria-pressed={elegido}
-                    onClick={() => alternarSalon(s.id)}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
-                      elegido
-                        ? 'border-bordo bg-bordo text-crema'
-                        : 'border-input hover:border-bordo/60',
-                    )}
-                  >
-                    {elegido && <Check className="size-3.5" />}
-                    {s.nombre}
-                    <span className={elegido ? 'text-crema/75' : 'text-muted-foreground'}>
-                      · hasta {s.capacidadMaxima}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-            {salonesSel.length > 1 && (
-              <p className="text-xs text-muted-foreground">
-                {salonesSel.length} salones · capacidad sumada {capacidadElegida} personas
-              </p>
-            )}
-          </fieldset>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-1.5">
-              <Label htmlFor="consulta-tipo">Tipo de evento</Label>
-              <select
-                id="consulta-tipo"
-                className={claseSelect}
-                value={tipo}
-                onChange={(e) => setTipo(e.target.value as TipoEvento)}
-              >
-                <option value="Corporativo">Corporativo</option>
-                <option value="Social">Social</option>
-              </select>
-            </div>
-            {tipo === 'Social' && (
-              <div className="space-y-1.5">
-                <Label htmlFor="consulta-tipo-social">¿Qué evento?</Label>
-                <select
-                  id="consulta-tipo-social"
-                  className={claseSelect}
-                  value={tipoSocial}
-                  aria-invalid={!tipoSocial}
-                  onChange={(e) => setTipoSocial(e.target.value as TipoEventoSocial)}
-                >
-                  <option value="" disabled>
-                    Elegí…
-                  </option>
-                  {TIPOS_SOCIALES.map(([valor, etiqueta]) => (
-                    <option key={valor} value={valor}>
-                      {etiqueta}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {tipo === 'Social' && tipoSocial === 'Otro' && (
-              <div className="space-y-1.5">
-                <Label htmlFor="consulta-detalle-otro">Detalle</Label>
-                <Input
-                  id="consulta-detalle-otro"
-                  maxLength={120}
-                  value={detalleOtro}
-                  aria-invalid={!detalleOtro.trim()}
-                  onChange={(e) => setDetalleOtro(e.target.value)}
-                />
-              </div>
-            )}
-            <div className="space-y-1.5">
-              <Label htmlFor="consulta-hora">Hora de inicio estimada</Label>
-              <SelectorHora
-                id="consulta-hora"
-                value={horaEstimada}
-                onChange={setHoraEstimada}
-                opcional
-              />
-            </div>
-            {tipo === 'Social' && (
-              <div className="space-y-1.5">
-                <Label htmlFor="consulta-hora-fin">Hora de fin estimada</Label>
-                <SelectorHora
-                  id="consulta-hora-fin"
-                  value={horaFinEstimada}
-                  onChange={setHoraFinEstimada}
-                  horaSugerida={horaEstimada || undefined}
-                  opcional
-                  aria-invalid={!horarioEstimadoValido}
-                />
-                {!horarioEstimadoValido && (
-                  <p className="text-xs text-destructive">
-                    {horaEstimada
-                      ? 'La hora de fin tiene que ser distinta de la de inicio.'
-                      : 'Cargá también la hora de inicio.'}
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-          {tipo === 'Corporativo' && salonesSel.length === 0 && (
-            <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-destructive">
-              <AlertTriangle className="size-3.5" /> Un evento corporativo necesita al menos un
-              salón.
+        )}
+        {confirmado && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-estado-confirmado-fondo px-4 py-3 text-sm text-estado-confirmado-texto ring-1 ring-estado-confirmado-borde">
+            <p>
+              Evento confirmado: podés modificar todo y sigue confirmado. Si cambia el total, cambia
+              el saldo a cobrar; si cambiás la fecha, el horario se corre al mismo día.
             </p>
-          )}
-          {excedeCapacidad && (
-            <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-amber-900">
-              <AlertTriangle className="size-3.5" /> {personas} personas superan la capacidad{' '}
-              {salonesSel.length > 1 ? 'sumada de los salones' : 'del salón'} ({capacidadElegida}).
-              Es un aviso: se puede guardar igual.
+          </div>
+        )}
+        {sobrante && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
+            <p>
+              Este presupuesto quedó de más: el evento ya está confirmado con otro presupuesto, así
+              que no se puede recalcular. Podés darlo de baja sin tocar el evento.
             </p>
-          )}
-          <p className="mt-4 text-sm">
-            <span className="text-muted-foreground">Distribución y horario: </span>
-            {armado && inicio && fin
-              ? `${armado} · de ${hora(inicio)} a ${hora(fin)}`
-              : 'sin agendar todavía (se cargan al registrar el pago)'}
+          </div>
+        )}
+        {!editable && !sobrante && (
+          <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
+            {consulta.estado === 'Cancelado'
+              ? 'Esta consulta se dio de baja'
+              : consulta.estado === 'Confirmado'
+                ? 'Esta consulta ya se confirmó y pasó a la agenda'
+                : 'El evento de esta consulta ya no está en consulta'}
+            : se puede ver, pero no modificar.
           </p>
-        </section>
-
-        {/* HU-50: aviso preventivo: los salones que otro evento ya ocupa ese día (RN-12). */}
-        {enCurso && <AvisoDeChoques consultaId={consulta.id} />}
-
-        {tipo === 'Social' && (
-          <section className="rounded-xl bg-card p-5 ring-1 ring-tipo-social-suave">
-            <h3 className="flex items-center gap-2 text-sm font-semibold">
-              <ClipboardList className="size-4 text-tipo-social" /> Detalle del evento social
-            </h3>
-            {/* Vacío a propósito: falta la plantilla de campos del evento social (pendientes.md). */}
-            <div className="mt-3 rounded-lg border border-dashed border-tipo-social-suave px-4 py-8 text-center text-sm text-muted-foreground">
-              Todavía no hay plantilla para los eventos sociales. Acá van a ir los datos propios del
-              evento.
-            </div>
-          </section>
         )}
 
-        <section className="rounded-xl bg-card p-5 ring-1 ring-border">
-          <h3 className="text-sm font-semibold">Detalle</h3>
-          <p className="text-xs text-muted-foreground">
-            Precios unitarios sin IVA. Lo que ya estaba conserva su precio; lo nuevo entra con el
-            vigente, proyectado a la fecha del evento. Si cambiás la fecha, el salón y los servicios
-            propios se recalculan solos. Se pueden ajustar a mano. En los servicios con modalidad,
-            el precio es el base y el recargo se suma solo.
-          </p>
-          {cambiosPorFecha.length > 0 && (
-            <div
-              role="status"
-              className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-950 ring-2 ring-amber-300"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="max-w-2xl">
-                  <p className="flex items-center gap-2 font-semibold">
-                    <RefreshCw className="size-4 shrink-0" />
-                    Precios recalculados por el cambio de fecha
-                  </p>
-                  <p className="mt-1">
-                    El evento pasa del {formatearFechaNumerica(guardado.evento.fecha)} al{' '}
-                    {formatearFechaNumerica(fecha)}. El salón y los servicios propios se proyectaron
-                    con el incremento del {Number(porcentajeMensual)}% mensual
-                    {mesesHastaFechaNueva > 0 &&
-                      ` (${mesesHastaFechaNueva} ${mesesHastaFechaNueva === 1 ? 'mes' : 'meses'} desde hoy)`}
-                    . Los tercerizados y los adicionales escritos a mano no cambian. Si habías
-                    ajustado a mano un precio recalculado, se reemplazó: podés volver a ajustarlo.
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="bg-card"
-                  onClick={() => cambiarFecha(guardado.evento.fecha)}
-                >
-                  Volver al {formatearFechaNumerica(guardado.evento.fecha)}
-                </Button>
-              </div>
-              <ResumenCambios cambios={cambiosPorFecha} />
-              <TotalAntesYAhora antes={totalGuardado} ahora={importes.total} />
-            </div>
-          )}
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[36rem] text-sm">
-              <thead className="text-left text-xs text-muted-foreground">
-                <tr>
-                  <th className="pb-2 font-medium">Concepto</th>
-                  <th className="w-24 pb-2 font-medium">Cantidad</th>
-                  {/* Opcional: a qué hora del evento se espera cada servicio. El salón no lleva,
-                      su horario es el del evento. Agendado el evento, se limita a su franja. */}
-                  <th className="w-28 pb-2 font-medium">
-                    Hora
-                    {franja && (
-                      <span className="block font-normal">
-                        {franja.desde} a {franja.hasta}
-                      </span>
-                    )}
-                  </th>
-                  <th className="w-36 pb-2 font-medium">Precio unitario</th>
-                  <th className="w-32 pb-2 text-right font-medium">Subtotal</th>
-                  <th className="w-10 pb-2" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {quedaSinArmar && (
-                  <tr>
-                    <td colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
-                      Presupuesto sin armar: elegí el salón y agregá los servicios.
-                    </td>
-                  </tr>
+        <TarjetaCliente
+          nombre={nombreCompleto(consulta.cliente)}
+          correo={consulta.cliente.correo}
+          telefono={consulta.cliente.telefono}
+          etiqueta={consulta.cliente.etiqueta}
+          nota="Los datos de contacto los mantiene el cliente desde su cuenta."
+        >
+          <SeguimientoConsulta consulta={consulta} onDescargar={onDescargarPresupuesto} />
+          <div className="flex flex-wrap justify-end gap-2">
+            {confirmado && onImprimirComanda && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => onImprimirComanda(consulta.id)}
+              >
+                <Printer /> Comanda de cocina
+              </Button>
+            )}
+            {/* HU-55: una consulta vencida se cobra igual, sin recalcular (RN-06). */}
+            {enCurso && (
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={consulta.salones.length === 0}
+                title={
+                  consulta.salones.length === 0
+                    ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
+                    : `${expirado ? 'La consulta está vencida, pero la seña se cobra igual, sin recalcular. ' : ''}Registrá los pagos junto con la distribución y el horario del evento: con el 20% de la base de cobro, el evento queda confirmado. Guardá antes los cambios de la consulta.`
+                }
+                onClick={() => onAbrirEvento(consulta.evento.id)}
+              >
+                <CalendarCheck /> Registrar pagos
+              </Button>
+            )}
+            {/* Un evento confirmado no se da de baja desde acá: se cancela desde el evento (RN-07). */}
+            {(enCurso || sobrante) && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="text-destructive"
+                disabled={darDeBaja.isPending}
+                onClick={confirmarBaja}
+              >
+                <Trash2 /> Dar de baja
+              </Button>
+            )}
+          </div>
+        </TarjetaCliente>
+
+        <ComentariosDelCliente comentarios={consulta.evento.comentariosCliente} />
+
+        <fieldset disabled={!editable} className="space-y-6">
+          <section className="rounded-xl bg-card p-5 ring-1 ring-border">
+            <h3 className="text-sm font-semibold">Evento</h3>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="consulta-fecha">Fecha</Label>
+                {/* HU-50: mientras es una consulta, un segundo clic en otro día estira el evento a
+                  varios días y se pasa al editor por días. Uno ya confirmado sigue de un solo día. */}
+                {editable ? (
+                  <SelectorRangoFechas
+                    id="consulta-fecha"
+                    inicio={fecha}
+                    fin={fecha}
+                    onChange={(nuevoInicio, nuevoFin) =>
+                      nuevoFin === nuevoInicio
+                        ? cambiarFecha(nuevoInicio)
+                        : onVariosDias(nuevoInicio, nuevoFin)
+                    }
+                    className={cambiosPorFecha.length > 0 ? claseCambiado : undefined}
+                  />
+                ) : (
+                  <SelectorFecha
+                    id="consulta-fecha"
+                    value={fecha}
+                    onChange={cambiarFecha}
+                    className={cambiosPorFecha.length > 0 ? claseCambiado : undefined}
+                  />
                 )}
-                {/* Una línea por salón, cada una con su precio ajustable (RN-03). */}
-                {salonesSel.map((sel) => {
-                  const nombre = salonDe(sel.salonId)?.nombre ?? '';
+                {cambiosPorFecha.length > 0 && (
+                  <p className="flex items-center gap-1 text-xs font-medium text-amber-900">
+                    <RefreshCw className="size-3" /> Precios recalculados
+                  </p>
+                )}
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="consulta-personas">Personas</Label>
+                <InputEntero
+                  id="consulta-personas"
+                  max={MAXIMO_PERSONAS_EVENTO}
+                  value={personas}
+                  aria-invalid={!esEntero(personas)}
+                  onChangeValor={setPersonas}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="consulta-jornada">Jornada</Label>
+                <select
+                  id="consulta-jornada"
+                  className={claseSelect}
+                  value={jornada}
+                  onChange={(e) => cambiarJornada(e.target.value as TipoJornada)}
+                >
+                  <option value="completa">Jornada completa</option>
+                  <option value="media">Media jornada (hasta 4 h)</option>
+                </select>
+              </div>
+            </div>
+            {/* Un evento puede ocupar varios salones a la vez, incluso los cinco (ADR 0011). */}
+            <fieldset className="mt-4 space-y-2">
+              <legend className="text-sm font-medium">Salones</legend>
+              <div className="flex flex-wrap gap-2">
+                {salones.map((s) => {
+                  const elegido = salonesSel.some((sel) => sel.salonId === s.id);
                   return (
-                    <tr key={`salon-${sel.salonId}`}>
-                      <td className="py-2 pr-3">
-                        Salón {nombre} (
-                        {jornada === 'completa' ? 'jornada completa' : 'media jornada'})
-                      </td>
-                      <td className="py-2 pr-3 text-muted-foreground">1</td>
-                      <td className="py-2 pr-3 text-muted-foreground">—</td>
-                      <td className="py-2 pr-3">
-                        <InputImporte
-                          aria-label={`Precio del salón ${nombre}`}
-                          value={sel.precio}
-                          className={
-                            precioAnterior.has(`salon-${sel.salonId}`) ? claseCambiado : undefined
-                          }
-                          aria-invalid={!esImporte(sel.precio)}
-                          onChange={(e) => cambiarPrecioSalon(sel.salonId, e.target.value)}
-                        />
-                        <PrecioAnterior antes={precioAnterior.get(`salon-${sel.salonId}`)} />
-                      </td>
-                      <td className="py-2 text-right whitespace-nowrap">
-                        {esImporte(sel.precio) ? formatearPesos(sel.precio) : '—'}
-                      </td>
-                      <td />
-                    </tr>
+                    <button
+                      key={s.id}
+                      type="button"
+                      aria-pressed={elegido}
+                      onClick={() => alternarSalon(s.id)}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
+                        elegido
+                          ? 'border-bordo bg-bordo text-crema'
+                          : 'border-input hover:border-bordo/60',
+                      )}
+                    >
+                      {elegido && <Check className="size-3.5" />}
+                      {s.nombre}
+                      <span className={elegido ? 'text-crema/75' : 'text-muted-foreground'}>
+                        · hasta {s.capacidadMaxima}
+                      </span>
+                    </button>
                   );
                 })}
-                {lineas.map((linea) => (
-                  <tr key={linea.clave}>
-                    <td className="py-2 pr-3">
-                      {linea.servicioId === null ? (
-                        <Input
-                          aria-label="Descripción del adicional"
-                          value={linea.descripcion}
-                          aria-invalid={!linea.descripcion.trim()}
-                          onChange={(e) =>
-                            actualizarLinea(linea.clave, { descripcion: e.target.value })
-                          }
-                        />
-                      ) : (
-                        <>
-                          {linea.descripcion}
-                          {linea.tercerizado && (
-                            <span className="ml-1 text-xs text-muted-foreground">
-                              (tercerizado)
-                            </span>
-                          )}
-                          {/* RN-11: una línea que ya tenía recargo lo muestra aunque el servicio
-                              haya dejado de admitir modalidad. */}
-                          {(linea.admiteModalidad || linea.modalidad !== 'Normal') && (
-                            <SelectorModalidad
-                              id={`modalidad-${linea.clave}`}
-                              className="mt-1 block w-full"
-                              value={linea.modalidad}
-                              onChange={(modalidad) => actualizarLinea(linea.clave, { modalidad })}
-                            />
-                          )}
-                          {repetida(linea) && (
-                            <span className="mt-1 block text-xs text-destructive">
-                              Ya está con esta modalidad: elegí otra o quitá una de las dos.
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <InputEntero
-                        aria-label={`Cantidad de ${linea.descripcion}`}
-                        max={topeDeLinea(linea.servicioId)}
-                        value={linea.cantidad}
-                        aria-invalid={!esEntero(linea.cantidad) || !cantidadPosible(linea)}
-                        onChangeValor={(cantidad) => actualizarLinea(linea.clave, { cantidad })}
-                      />
-                    </td>
-                    <td className="py-2 pr-3">
-                      <SelectorHora
-                        aria-label={`Hora de ${linea.descripcion} (opcional)`}
-                        value={linea.hora}
-                        onChange={(hora) => actualizarLinea(linea.clave, { hora })}
-                        opcional
-                        placeholder="--:--"
-                        // Abre en la hora del evento, como el cotizador.
-                        horaSugerida={franja?.desde ?? (horaEstimada || undefined)}
-                        // El rango no deja elegir una hora afuera, pero una que ya estaba (el
-                        // evento se reprogramó) queda marcada por horaValida, que es lo que
-                        // deshabilita «Guardar».
-                        horaMinima={franja?.desde}
-                        horaMaxima={franja?.hasta}
-                        aria-invalid={!horaValida(linea)}
-                      />
-                    </td>
-                    <td className="py-2 pr-3">
-                      <InputImporte
-                        aria-label={`Precio unitario de ${linea.descripcion}`}
-                        sinSigno={aCotizar(linea)}
-                        value={linea.precio}
-                        placeholder={linea.tercerizado ? 'A cotizar' : undefined}
-                        className={precioAnterior.has(linea.clave) ? claseCambiado : undefined}
-                        aria-invalid={!precioValido(linea)}
-                        onChange={(e) => actualizarLinea(linea.clave, { precio: e.target.value })}
-                      />
-                      <PrecioAnterior antes={precioAnterior.get(linea.clave)} />
-                      {linea.modalidad !== 'Normal' && esImporte(linea.precio) && (
-                        <span className="mt-1 block text-xs text-muted-foreground">
-                          Con recargo: {formatearPesos(precioConRecargo(linea))}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 text-right whitespace-nowrap">
-                      {aCotizar(linea) ? (
-                        <span className="text-xs font-medium text-amber-900">A cotizar</span>
-                      ) : esEntero(linea.cantidad) && esImporte(linea.precio) ? (
-                        formatearPesos(subtotalDeLinea(linea))
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="py-2 text-right">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Quitar ${linea.descripcion}`}
-                        onClick={() =>
-                          setLineas((anteriores) =>
-                            anteriores.filter((l) => l.clave !== linea.clave),
-                          )
-                        }
-                      >
-                        <X />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Pasa cuando se reprograma el evento y alguna hora queda afuera de la franja nueva.
-              Sin esto el aviso llegaría recién al guardar, con el 422 de la API. */}
-          {franja && lineas.some((l) => !horaValida(l)) && (
-            <p className="mt-3 flex items-start gap-1.5 text-xs font-medium text-destructive">
-              <AlertTriangle className="mt-px size-3.5 shrink-0" />
-              <span>
-                {lineas
-                  .filter((l) => !horaValida(l))
-                  .map((l) => l.descripcion.trim() || 'Un servicio')
-                  .join(', ')}{' '}
-                {lineas.filter((l) => !horaValida(l)).length === 1 ? 'queda' : 'quedan'} fuera del
-                horario del evento, que va de {franja.desde} a {franja.hasta}.
-              </span>
-            </p>
-          )}
-
-          <div className="mt-4 space-y-3 rounded-lg bg-muted/50 p-3">
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="min-w-0 flex-1 space-y-1.5">
-                <Label htmlFor="consulta-agregar">Agregar servicio</Label>
+              </div>
+              {salonesSel.length > 1 && (
+                <p className="text-xs text-muted-foreground">
+                  {salonesSel.length} salones · capacidad sumada {capacidadElegida} personas
+                </p>
+              )}
+            </fieldset>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="consulta-tipo">Tipo de evento</Label>
                 <select
-                  id="consulta-agregar"
-                  className={cn(claseSelect, 'bg-card')}
-                  value={agregar}
-                  onChange={(e) => setAgregar(e.target.value)}
+                  id="consulta-tipo"
+                  className={claseSelect}
+                  value={tipo}
+                  onChange={(e) => setTipo(e.target.value as TipoEvento)}
                 >
-                  <option value="">Elegí un servicio…</option>
-                  {agruparPorCategoria(disponibles).map(([categoria, delTipo]) => (
-                    <optgroup key={categoria} label={categoria}>
-                      {delTipo.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.nombre} · {s.precio === null ? 'a cotizar' : formatearPesos(s.precio)}
-                          {s.porPersona ? ' por persona' : ''}
-                          {s.tercerizado ? ' (tercerizado)' : ''}
-                        </option>
-                      ))}
-                    </optgroup>
-                  ))}
-                  <optgroup label="Otro">
-                    <option value={OTRO}>Otro servicio (escribirlo a mano)</option>
-                  </optgroup>
+                  <option value="Corporativo">Corporativo</option>
+                  <option value="Social">Social</option>
                 </select>
               </div>
-              {agregar !== OTRO && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!puedeAgregar}
-                  onClick={agregarLinea}
-                >
-                  <Plus /> Agregar
-                </Button>
+              {tipo === 'Social' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="consulta-tipo-social">¿Qué evento?</Label>
+                  <select
+                    id="consulta-tipo-social"
+                    className={claseSelect}
+                    value={tipoSocial}
+                    aria-invalid={!tipoSocial}
+                    onChange={(e) => setTipoSocial(e.target.value as TipoEventoSocial)}
+                  >
+                    <option value="" disabled>
+                      Elegí…
+                    </option>
+                    {TIPOS_SOCIALES.map(([valor, etiqueta]) => (
+                      <option key={valor} value={valor}>
+                        {etiqueta}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {tipo === 'Social' && tipoSocial === 'Otro' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="consulta-detalle-otro">Detalle</Label>
+                  <Input
+                    id="consulta-detalle-otro"
+                    maxLength={120}
+                    value={detalleOtro}
+                    aria-invalid={!detalleOtro.trim()}
+                    onChange={(e) => setDetalleOtro(e.target.value)}
+                  />
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label htmlFor="consulta-hora">Hora de inicio estimada</Label>
+                <SelectorHora
+                  id="consulta-hora"
+                  value={horaEstimada}
+                  onChange={setHoraEstimada}
+                  opcional
+                />
+              </div>
+              {tipo === 'Social' && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="consulta-hora-fin">Hora de fin estimada</Label>
+                  <SelectorHora
+                    id="consulta-hora-fin"
+                    value={horaFinEstimada}
+                    onChange={setHoraFinEstimada}
+                    horaSugerida={horaEstimada || undefined}
+                    opcional
+                    aria-invalid={!horarioEstimadoValido}
+                  />
+                  {!horarioEstimadoValido && (
+                    <p className="text-xs text-destructive">
+                      {horaEstimada
+                        ? 'La hora de fin tiene que ser distinta de la de inicio.'
+                        : 'Cargá también la hora de inicio.'}
+                    </p>
+                  )}
+                </div>
               )}
             </div>
-            {agregar === OTRO && (
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_9rem_auto] sm:items-end">
-                <div className="space-y-1.5">
-                  <Label htmlFor="otro-descripcion">¿Qué servicio?</Label>
-                  <Input
-                    id="otro-descripcion"
+            {tipo === 'Corporativo' && salonesSel.length === 0 && (
+              <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-destructive">
+                <AlertTriangle className="size-3.5" /> Un evento corporativo necesita al menos un
+                salón.
+              </p>
+            )}
+            {excedeCapacidad && (
+              <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-amber-900">
+                <AlertTriangle className="size-3.5" /> {personas} personas superan la capacidad{' '}
+                {salonesSel.length > 1 ? 'sumada de los salones' : 'del salón'} ({capacidadElegida}
+                ). Es un aviso: se puede guardar igual.
+              </p>
+            )}
+            <p className="mt-4 text-sm">
+              <span className="text-muted-foreground">Distribución y horario: </span>
+              {armado && inicio && fin
+                ? `${armado} · de ${hora(inicio)} a ${hora(fin)}`
+                : 'sin agendar todavía (se cargan al registrar el pago)'}
+            </p>
+          </section>
+
+          {/* HU-50: aviso preventivo: los salones que otro evento ya ocupa ese día (RN-12). */}
+          {enCurso && <AvisoDeChoques consultaId={consulta.id} />}
+
+          {tipo === 'Social' && (
+            <section className="rounded-xl bg-card p-5 ring-1 ring-tipo-social-suave">
+              <h3 className="flex items-center gap-2 text-sm font-semibold">
+                <ClipboardList className="size-4 text-tipo-social" /> Detalle del evento social
+              </h3>
+              {/* Vacío a propósito: falta la plantilla de campos del evento social (pendientes.md). */}
+              <div className="mt-3 rounded-lg border border-dashed border-tipo-social-suave px-4 py-8 text-center text-sm text-muted-foreground">
+                Todavía no hay plantilla para los eventos sociales. Acá van a ir los datos propios
+                del evento.
+              </div>
+            </section>
+          )}
+
+          <section className="rounded-xl bg-card p-5 ring-1 ring-border">
+            <h3 className="text-sm font-semibold">Detalle</h3>
+            <p className="text-xs text-muted-foreground">
+              Precios unitarios sin IVA. Lo que ya estaba conserva su precio; lo nuevo entra con el
+              vigente, proyectado a la fecha del evento. Si cambiás la fecha, el salón y los
+              servicios propios se recalculan solos. Se pueden ajustar a mano. En los servicios con
+              modalidad, el precio es el base y el recargo se suma solo.
+            </p>
+            {cambiosPorFecha.length > 0 && (
+              <div
+                role="status"
+                className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-950 ring-2 ring-amber-300"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="max-w-2xl">
+                    <p className="flex items-center gap-2 font-semibold">
+                      <RefreshCw className="size-4 shrink-0" />
+                      Precios recalculados por el cambio de fecha
+                    </p>
+                    <p className="mt-1">
+                      El evento pasa del {formatearFechaNumerica(guardado.evento.fecha)} al{' '}
+                      {formatearFechaNumerica(fecha)}. El salón y los servicios propios se
+                      proyectaron con el incremento del {Number(porcentajeMensual)}% mensual
+                      {mesesHastaFechaNueva > 0 &&
+                        ` (${mesesHastaFechaNueva} ${mesesHastaFechaNueva === 1 ? 'mes' : 'meses'} desde hoy)`}
+                      . Los tercerizados y los adicionales escritos a mano no cambian. Si habías
+                      ajustado a mano un precio recalculado, se reemplazó: podés volver a ajustarlo.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
                     className="bg-card"
-                    placeholder="Por ejemplo: decoración con globos"
-                    maxLength={120}
-                    value={otro.descripcion}
-                    onChange={(e) => setOtro({ ...otro, descripcion: e.target.value })}
-                  />
+                    onClick={() => cambiarFecha(guardado.evento.fecha)}
+                  >
+                    Volver al {formatearFechaNumerica(guardado.evento.fecha)}
+                  </Button>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="otro-cantidad">Cantidad</Label>
-                  <InputEntero
-                    id="otro-cantidad"
-                    className="bg-card"
-                    value={otro.cantidad}
-                    aria-invalid={!esEntero(otro.cantidad)}
-                    onChangeValor={(cantidad) => setOtro({ ...otro, cantidad })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="otro-precio">Precio sin IVA</Label>
-                  <InputImporte
-                    id="otro-precio"
-                    className="bg-card"
-                    placeholder="0.00"
-                    value={otro.precio}
-                    onChange={(e) => setOtro({ ...otro, precio: e.target.value })}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!puedeAgregar}
-                  onClick={agregarLinea}
-                >
-                  <Plus /> Agregar
-                </Button>
+                <ResumenCambios cambios={cambiosPorFecha} />
+                <TotalAntesYAhora antes={totalGuardado} ahora={importes.total} />
               </div>
             )}
-          </div>
-        </section>
-      </fieldset>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[36rem] text-sm">
+                <thead className="text-left text-xs text-muted-foreground">
+                  <tr>
+                    <th className="pb-2 font-medium">Concepto</th>
+                    <th className="w-24 pb-2 font-medium">Cantidad</th>
+                    {/* Opcional: a qué hora del evento se espera cada servicio. El salón no lleva,
+                      su horario es el del evento. Agendado el evento, se limita a su franja. */}
+                    <th className="w-28 pb-2 font-medium">
+                      Hora
+                      {franja && (
+                        <span className="block font-normal">
+                          {franja.desde} a {franja.hasta}
+                        </span>
+                      )}
+                    </th>
+                    <th className="w-36 pb-2 font-medium">Precio unitario</th>
+                    <th className="w-32 pb-2 text-right font-medium">Subtotal</th>
+                    <th className="w-10 pb-2" />
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {quedaSinArmar && (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
+                        Presupuesto sin armar: elegí el salón y agregá los servicios.
+                      </td>
+                    </tr>
+                  )}
+                  {/* Una línea por salón, cada una con su precio ajustable (RN-03). */}
+                  {salonesSel.map((sel) => {
+                    const nombre = salonDe(sel.salonId)?.nombre ?? '';
+                    return (
+                      <tr key={`salon-${sel.salonId}`}>
+                        <td className="py-2 pr-3">
+                          Salón {nombre} (
+                          {jornada === 'completa' ? 'jornada completa' : 'media jornada'})
+                        </td>
+                        <td className="py-2 pr-3 text-muted-foreground">1</td>
+                        <td className="py-2 pr-3 text-muted-foreground">—</td>
+                        <td className="py-2 pr-3">
+                          <InputImporte
+                            aria-label={`Precio del salón ${nombre}`}
+                            value={sel.precio}
+                            className={
+                              precioAnterior.has(`salon-${sel.salonId}`) ? claseCambiado : undefined
+                            }
+                            aria-invalid={!esImporte(sel.precio)}
+                            onChange={(e) => cambiarPrecioSalon(sel.salonId, e.target.value)}
+                          />
+                          <PrecioAnterior antes={precioAnterior.get(`salon-${sel.salonId}`)} />
+                        </td>
+                        <td className="py-2 text-right whitespace-nowrap">
+                          {esImporte(sel.precio) ? formatearPesos(sel.precio) : '—'}
+                        </td>
+                        <td />
+                      </tr>
+                    );
+                  })}
+                  {lineas.map((linea) => (
+                    <tr key={linea.clave}>
+                      <td className="py-2 pr-3">
+                        {linea.servicioId === null ? (
+                          <Input
+                            aria-label="Descripción del adicional"
+                            value={linea.descripcion}
+                            aria-invalid={!linea.descripcion.trim()}
+                            onChange={(e) =>
+                              actualizarLinea(linea.clave, { descripcion: e.target.value })
+                            }
+                          />
+                        ) : (
+                          <>
+                            {linea.descripcion}
+                            {linea.tercerizado && (
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                (tercerizado)
+                              </span>
+                            )}
+                            {/* RN-11: una línea que ya tenía recargo lo muestra aunque el servicio
+                              haya dejado de admitir modalidad. */}
+                            {(linea.admiteModalidad || linea.modalidad !== 'Normal') && (
+                              <SelectorModalidad
+                                id={`modalidad-${linea.clave}`}
+                                className="mt-1 block w-full"
+                                value={linea.modalidad}
+                                onChange={(modalidad) =>
+                                  actualizarLinea(linea.clave, { modalidad })
+                                }
+                              />
+                            )}
+                            {repetida(linea) && (
+                              <span className="mt-1 block text-xs text-destructive">
+                                Ya está con esta modalidad: elegí otra o quitá una de las dos.
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <InputEntero
+                          aria-label={`Cantidad de ${linea.descripcion}`}
+                          max={topeDeLinea(linea.servicioId)}
+                          value={linea.cantidad}
+                          aria-invalid={!esEntero(linea.cantidad) || !cantidadPosible(linea)}
+                          onChangeValor={(cantidad) => actualizarLinea(linea.clave, { cantidad })}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <SelectorHora
+                          aria-label={`Hora de ${linea.descripcion} (opcional)`}
+                          value={linea.hora}
+                          onChange={(hora) => actualizarLinea(linea.clave, { hora })}
+                          opcional
+                          placeholder="--:--"
+                          // Abre en la hora del evento, como el cotizador.
+                          horaSugerida={franja?.desde ?? (horaEstimada || undefined)}
+                          // El rango no deja elegir una hora afuera, pero una que ya estaba (el
+                          // evento se reprogramó) queda marcada por horaValida, que es lo que
+                          // deshabilita «Guardar».
+                          horaMinima={franja?.desde}
+                          horaMaxima={franja?.hasta}
+                          aria-invalid={!horaValida(linea)}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <InputImporte
+                          aria-label={`Precio unitario de ${linea.descripcion}`}
+                          sinSigno={aCotizar(linea)}
+                          value={linea.precio}
+                          placeholder={linea.tercerizado ? 'A cotizar' : undefined}
+                          className={precioAnterior.has(linea.clave) ? claseCambiado : undefined}
+                          aria-invalid={!precioValido(linea)}
+                          onChange={(e) => actualizarLinea(linea.clave, { precio: e.target.value })}
+                        />
+                        <PrecioAnterior antes={precioAnterior.get(linea.clave)} />
+                        {linea.modalidad !== 'Normal' && esImporte(linea.precio) && (
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            Con recargo: {formatearPesos(precioConRecargo(linea))}
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2 text-right whitespace-nowrap">
+                        {aCotizar(linea) ? (
+                          <span className="text-xs font-medium text-amber-900">A cotizar</span>
+                        ) : esEntero(linea.cantidad) && esImporte(linea.precio) ? (
+                          formatearPesos(subtotalDeLinea(linea))
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td className="py-2 text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Quitar ${linea.descripcion}`}
+                          onClick={() =>
+                            setLineas((anteriores) =>
+                              anteriores.filter((l) => l.clave !== linea.clave),
+                            )
+                          }
+                        >
+                          <X />
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-      <section className="rounded-xl bg-card p-5 ring-1 ring-border">
-        <dl className="ml-auto max-w-xs space-y-1.5 text-sm">
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">Subtotal sin IVA</dt>
-            <dd>{formatearPesos(importes.subtotal)}</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted-foreground">IVA 21%</dt>
-            <dd>{formatearPesos(importes.iva)}</dd>
-          </div>
-          <div className="flex justify-between gap-4 border-t pt-1.5 text-base font-semibold">
-            <dt>Total con IVA</dt>
-            <dd>{formatearPesos(importes.total)}</dd>
-          </div>
-        </dl>
-        {cantidadACotizar > 0 && (
-          <p className="mt-3 text-right text-xs text-amber-900">
-            {cantidadACotizar === 1
-              ? 'Un servicio está a cotizar y no suma al total.'
-              : `${cantidadACotizar} servicios están a cotizar y no suman al total.`}
-          </p>
-        )}
-        {/* Pasa al bajar la cantidad de personas con los servicios ya cargados: el campo queda
-            marcado pero sin esto no se entiende por qué no deja guardar. */}
-        {lineas.some((l) => esEntero(l.cantidad) && !cantidadPosible(l)) && (
-          <p className="mt-3 text-right text-xs text-destructive">
-            Hay un servicio por persona contratado para más gente que la que asiste. Ajustá su
-            cantidad a {personas} o menos.
-          </p>
-        )}
-        <p className="mt-3 text-right text-xs text-muted-foreground">
-          {quedaSinArmar
-            ? `La vigencia de ${DIAS_VIGENCIA_PRESUPUESTO} días empieza cuando guardes el presupuesto con el salón o algún servicio.`
-            : `Este presupuesto tiene una validez de ${DIAS_VIGENCIA_PRESUPUESTO} días.`}
-        </p>
-      </section>
+            {/* Pasa cuando se reprograma el evento y alguna hora queda afuera de la franja nueva.
+              Sin esto el aviso llegaría recién al guardar, con el 422 de la API. */}
+            {franja && lineas.some((l) => !horaValida(l)) && (
+              <p className="mt-3 flex items-start gap-1.5 text-xs font-medium text-destructive">
+                <AlertTriangle className="mt-px size-3.5 shrink-0" />
+                <span>
+                  {lineas
+                    .filter((l) => !horaValida(l))
+                    .map((l) => l.descripcion.trim() || 'Un servicio')
+                    .join(', ')}{' '}
+                  {lineas.filter((l) => !horaValida(l)).length === 1 ? 'queda' : 'quedan'} fuera del
+                  horario del evento, que va de {franja.desde} a {franja.hasta}.
+                </span>
+              </p>
+            )}
 
-      {editable && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {/* Un evento confirmado no se da de baja desde acá: se cancela desde el evento (RN-07). */}
-          {enCurso ? (
-            <Button
-              type="button"
-              variant="ghost"
-              className="text-destructive"
-              disabled={darDeBaja.isPending}
-              onClick={confirmarBaja}
-            >
-              <Trash2 /> Dar de baja
-            </Button>
-          ) : (
-            <span />
+            <div className="mt-4 space-y-3 rounded-lg bg-muted/50 p-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Label htmlFor="consulta-agregar">Agregar servicio</Label>
+                  <select
+                    id="consulta-agregar"
+                    className={cn(claseSelect, 'bg-card')}
+                    value={agregar}
+                    onChange={(e) => setAgregar(e.target.value)}
+                  >
+                    <option value="">Elegí un servicio…</option>
+                    {agruparPorCategoria(disponibles).map(([categoria, delTipo]) => (
+                      <optgroup key={categoria} label={categoria}>
+                        {delTipo.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.nombre} ·{' '}
+                            {s.precio === null ? 'a cotizar' : formatearPesos(s.precio)}
+                            {s.porPersona ? ' por persona' : ''}
+                            {s.tercerizado ? ' (tercerizado)' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    <optgroup label="Otro">
+                      <option value={OTRO}>Otro servicio (escribirlo a mano)</option>
+                    </optgroup>
+                  </select>
+                </div>
+                {agregar !== OTRO && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!puedeAgregar}
+                    onClick={agregarLinea}
+                  >
+                    <Plus /> Agregar
+                  </Button>
+                )}
+              </div>
+              {agregar === OTRO && (
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_9rem_auto] sm:items-end">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="otro-descripcion">¿Qué servicio?</Label>
+                    <Input
+                      id="otro-descripcion"
+                      className="bg-card"
+                      placeholder="Por ejemplo: decoración con globos"
+                      maxLength={120}
+                      value={otro.descripcion}
+                      onChange={(e) => setOtro({ ...otro, descripcion: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="otro-cantidad">Cantidad</Label>
+                    <InputEntero
+                      id="otro-cantidad"
+                      className="bg-card"
+                      value={otro.cantidad}
+                      aria-invalid={!esEntero(otro.cantidad)}
+                      onChangeValor={(cantidad) => setOtro({ ...otro, cantidad })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="otro-precio">Precio sin IVA</Label>
+                    <InputImporte
+                      id="otro-precio"
+                      className="bg-card"
+                      placeholder="0.00"
+                      value={otro.precio}
+                      onChange={(e) => setOtro({ ...otro, precio: e.target.value })}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!puedeAgregar}
+                    onClick={agregarLinea}
+                  >
+                    <Plus /> Agregar
+                  </Button>
+                </div>
+              )}
+            </div>
+          </section>
+        </fieldset>
+
+        <section className="rounded-xl bg-card p-5 ring-1 ring-border">
+          <dl className="ml-auto max-w-xs space-y-1.5 text-sm">
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Subtotal sin IVA</dt>
+              <dd>{formatearPesos(importes.subtotal)}</dd>
+            </div>
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">IVA 21%</dt>
+              <dd>{formatearPesos(importes.iva)}</dd>
+            </div>
+            <div className="flex justify-between gap-4 border-t pt-1.5 text-base font-semibold">
+              <dt>Total con IVA</dt>
+              <dd>{formatearPesos(importes.total)}</dd>
+            </div>
+          </dl>
+          {cantidadACotizar > 0 && (
+            <p className="mt-3 text-right text-xs text-amber-900">
+              {cantidadACotizar === 1
+                ? 'Un servicio está a cotizar y no suma al total.'
+                : `${cantidadACotizar} servicios están a cotizar y no suman al total.`}
+            </p>
           )}
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <p className="text-xs text-muted-foreground">
-              {confirmado
-                ? 'Al guardar, el evento sigue confirmado y el saldo se recalcula con el total nuevo.'
-                : quedaSinArmar
-                  ? 'Sin salón ni servicios, el presupuesto sigue sin armar.'
-                  : `Al guardar, la vigencia vuelve a contar ${DIAS_VIGENCIA_PRESUPUESTO} días.`}
+          {/* Pasa al bajar la cantidad de personas con los servicios ya cargados: el campo queda
+            marcado pero sin esto no se entiende por qué no deja guardar. */}
+          {lineas.some((l) => esEntero(l.cantidad) && !cantidadPosible(l)) && (
+            <p className="mt-3 text-right text-xs text-destructive">
+              Hay un servicio por persona contratado para más gente que la que asiste. Ajustá su
+              cantidad a {personas} o menos.
             </p>
-            <Button type="submit" disabled={!valido || modificar.isPending}>
-              {modificar.isPending ? 'Guardando…' : 'Guardar cambios'}
-            </Button>
-          </div>
-        </div>
-      )}
-      {guardada && (
-        <div
-          ref={refAviso}
-          role="status"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200"
-        >
-          <p className="flex items-center gap-2 font-medium">
-            <CheckCircle2 className="size-4 shrink-0" /> Cambios guardados
-            {guardadaConPreciosNuevos && ', con los precios actualizados a la fecha nueva'}. ¿Querés{' '}
-            {textoVolverAlGuardar.charAt(0).toLowerCase() + textoVolverAlGuardar.slice(1)}?
+          )}
+          <p className="mt-3 text-right text-xs text-muted-foreground">
+            {quedaSinArmar
+              ? `La vigencia de ${DIAS_VIGENCIA_PRESUPUESTO} días empieza cuando guardes el presupuesto con el salón o algún servicio.`
+              : `Este presupuesto tiene una validez de ${DIAS_VIGENCIA_PRESUPUESTO} días.`}
           </p>
-          <div className="flex items-center gap-2">
-            <Button type="button" size="sm" onClick={() => onGuardada(guardada)}>
-              <ArrowLeft /> {textoVolverAlGuardar}
-            </Button>
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              aria-label="Cerrar el aviso"
-              onClick={() => setGuardada(null)}
-            >
-              <X />
-            </Button>
-          </div>
-        </div>
-      )}
-      {enCurso && (
-        <section className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-card p-5 ring-1 ring-border">
-          <div className="max-w-xl">
-            <h3 className="flex items-center gap-2 text-sm font-semibold">
-              <CalendarCheck className="size-4 text-dorado" /> Cobrar la seña
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              {/* HU-55: una consulta vencida se cobra igual, sin recalcular (RN-06). */}
-              {consulta.salones.length === 0
-                ? 'Primero elegí el salón, armá el presupuesto y guardá los cambios.'
-                : `${expirado ? 'La consulta está vencida, pero la seña se cobra igual, sin recalcular. ' : ''}Registrá los pagos junto con la distribución y el horario del evento. Cuando lo pagado llega al 20% de la base de cobro, el evento queda confirmado y pasa a la agenda. Guardá antes los cambios de la consulta.`}
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={consulta.salones.length === 0}
-            onClick={() => onAbrirEvento(consulta.evento.id)}
-          >
-            <CalendarCheck /> Registrar pagos
-          </Button>
         </section>
-      )}
-      {modificar.isError && (
-        <p className="text-right text-sm text-destructive">
-          {mensajeDeError(modificar.error, 'No se pudieron guardar los cambios.')}
-        </p>
-      )}
-      {darDeBaja.isError && (
-        <p className="text-sm text-destructive">
-          {mensajeDeError(darDeBaja.error, 'No se pudo dar de baja la consulta.')}
-        </p>
-      )}
+
+        {editable && (
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <p className="text-xs text-muted-foreground">
+                {confirmado
+                  ? 'Al guardar, el evento sigue confirmado y el saldo se recalcula con el total nuevo.'
+                  : quedaSinArmar
+                    ? 'Sin salón ni servicios, el presupuesto sigue sin armar.'
+                    : `Al guardar, la vigencia vuelve a contar ${DIAS_VIGENCIA_PRESUPUESTO} días.`}
+              </p>
+              <Button type="submit" disabled={!valido || modificar.isPending}>
+                {modificar.isPending ? 'Guardando…' : 'Guardar cambios'}
+              </Button>
+            </div>
+          </div>
+        )}
+        {guardada && (
+          <div
+            ref={refAviso}
+            role="status"
+            className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200"
+          >
+            <p className="flex items-center gap-2 font-medium">
+              <CheckCircle2 className="size-4 shrink-0" /> Cambios guardados
+              {guardadaConPreciosNuevos && ', con los precios actualizados a la fecha nueva'}.
+              ¿Querés {textoVolverAlGuardar.charAt(0).toLowerCase() + textoVolverAlGuardar.slice(1)}
+              ?
+            </p>
+            <div className="flex items-center gap-2">
+              <Button type="button" size="sm" onClick={() => onGuardada(guardada)}>
+                <ArrowLeft /> {textoVolverAlGuardar}
+              </Button>
+              <Button
+                type="button"
+                size="icon-sm"
+                variant="ghost"
+                aria-label="Cerrar el aviso"
+                onClick={() => setGuardada(null)}
+              >
+                <X />
+              </Button>
+            </div>
+          </div>
+        )}
+        {modificar.isError && (
+          <p className="text-right text-sm text-destructive">
+            {mensajeDeError(modificar.error, 'No se pudieron guardar los cambios.')}
+          </p>
+        )}
+        {darDeBaja.isError && (
+          <p className="text-sm text-destructive">
+            {mensajeDeError(darDeBaja.error, 'No se pudo dar de baja la consulta.')}
+          </p>
+        )}
+      </div>
 
       {/* HU-54 del backlog: guardar precios que cambió la fecha se confirma viendo qué cambia. */}
       <Dialog.Root open={confirmandoPrecios} onOpenChange={setConfirmandoPrecios}>

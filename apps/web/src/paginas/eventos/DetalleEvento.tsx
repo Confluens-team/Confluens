@@ -1,17 +1,35 @@
-import type { EstadoEvento } from '@confluens/shared';
-import { Check, ChevronDown, ChevronUp, Printer, Repeat2 } from 'lucide-react';
+import { type EstadoEvento, veAuditoria } from '@confluens/shared';
+import {
+  Check,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  History,
+  Printer,
+  Repeat2,
+  Wallet,
+  XCircle,
+} from 'lucide-react';
 import { useState } from 'react';
 
 import { horarioDeLosDias, resumenDelEvento } from '@/lib/dias-del-evento';
-import { armadoDelEvento, nombresDeSalones, textoModalidad } from '@/lib/formato';
+import {
+  armadoDelEvento,
+  formatearFechaNumerica,
+  nombresDeSalones,
+  textoModalidad,
+} from '@/lib/formato';
+import { textoDeDias } from '@/lib/rango-de-fechas';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { BotonWhatsApp } from '@/components/BotonWhatsApp';
-import { EtiquetaCliente } from '@/components/EtiquetaCliente';
+import { Pestanias } from '@/components/Pestanias';
+import { TarjetaCliente } from '@/components/TarjetaCliente';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { IconoEstado } from '@/components/IconoEstado';
 import { useCancelarEvento, useEvento } from '@/hooks/use-eventos';
 import { useArmarPresupuestoDeEvento } from '@/hooks/use-presupuestos';
+import { useSesion } from '@/hooks/use-sesion';
 import { ErrorApiCliente } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { mensajeWhatsApp } from '@/lib/whatsapp';
@@ -22,6 +40,10 @@ import { ObservacionesDelEvento } from './ObservacionesDelEvento';
 import { NavegadorDeDias } from './NavegadorDeDias';
 import { PresupuestoPorDia } from './PresupuestoPorDia';
 import { ReutilizarConfiguracion } from './ReutilizarConfiguracion';
+import { HistorialDelRegistro } from '@/paginas/auditoria/HistorialDelRegistro';
+
+// Las pestañas del detalle de un evento (15/11/2026). Historial solo para el GG y el ADM.
+type PestaniaDeEvento = 'detalle' | 'pagos' | 'historial';
 
 // En 24 horas, como la agenda de la que se viene y como la tarjeta de resumen: "6:00 a. m." al
 // lado de "06:00" se lee como dos horarios distintos.
@@ -118,6 +140,13 @@ export function DetalleEvento({
   const [repitiendo, setRepitiendo] = useState(false);
   // HU-50: el día que se está mirando de un evento de varios días (observaciones y presupuesto).
   const [diaVisible, setDiaVisible] = useState(0);
+  // 15/11/2026: Detalle, Pagos o Historial, arriba a la derecha del título. El Historial (diseño D)
+  // lo ven solo los roles que ven la auditoría.
+  const [pestania, setPestania] = useState<PestaniaDeEvento>('detalle');
+  const { data: sesion } = useSesion();
+  const veHistorial = !!sesion && veAuditoria(sesion.rol);
+  const pestaniaVisible: PestaniaDeEvento =
+    pestania === 'historial' && !veHistorial ? 'detalle' : pestania;
 
   if (isLoading) return <p className="py-6 text-sm text-muted-foreground">Cargando…</p>;
   if (isError || !evento) {
@@ -180,23 +209,68 @@ export function DetalleEvento({
       ? `${formateadorFecha.format(new Date(evento.inicio))} a ${formateadorHora.format(new Date(evento.fin))}`
       : null;
 
+  // Las fechas pueden llegar con hora (medianoche UTC): se comparan como días de calendario.
+  const primerDia = evento.fecha.slice(0, 10);
+  const ultimoDia = (evento.dias[evento.dias.length - 1]?.fecha ?? evento.fecha).slice(0, 10);
+  const fechaDelEvento =
+    ultimoDia !== primerDia
+      ? `Del ${formatearFechaNumerica(primerDia)} al ${formatearFechaNumerica(ultimoDia)} · ${textoDeDias(primerDia, ultimoDia)}`
+      : formatearFechaNumerica(primerDia);
+  const sePuedeCancelar = evento.estado === 'EnConsulta' || evento.estado === 'Reservado';
+
+  // Lo de la pestaña Pagos: la cuenta o, sin base de cobro, el aviso con «Armar el presupuesto».
+  const pagos =
+    presupuestoVigente && !presupuestoSinArmar ? (
+      <CuentaDelEvento
+        evento={evento}
+        admitePagos={evento.estado !== 'Cancelado' && evento.estado !== 'Cobrado'}
+      />
+    ) : (
+      <Card>
+        <CardHeader>
+          <CardTitle>{presupuestoSinArmar ? 'Presupuesto sin armar' : 'Sin presupuesto'}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm text-muted-foreground">
+          <p>
+            {presupuestoSinArmar
+              ? 'El presupuesto todavía no tiene nada cargado, así que no hay base de cobro que calcular.'
+              : 'El evento no tiene ningún presupuesto asociado al que calcularle una base de cobro.'}
+          </p>
+          {armarPresupuesto.isError && (
+            <p className="text-destructive">
+              {armarPresupuesto.error instanceof ErrorApiCliente
+                ? armarPresupuesto.error.message
+                : 'No se pudo armar el presupuesto.'}
+            </p>
+          )}
+          {/* Armar el presupuesto solo tiene sentido con el evento en consulta: el que se crea nace
+              Estimado y la API rechaza un Estimado sobre un evento ya reservado, cobrado o
+              cancelado. El sin armar ya existe, así que solo se abre. */}
+          {(presupuestoSinArmar || evento.estado === 'EnConsulta') && (
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={armarPresupuesto.isPending}
+              onClick={armarElPresupuesto}
+            >
+              {armarPresupuesto.isPending ? 'Armando…' : 'Armar el presupuesto'}
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+
   return (
     // Todo el evento vive en un solo panel: las tarjetas blancas sueltas sobre el crema de la
     // página se leían como recortes sin relación. El panel va en el beige de la paleta, con un
     // filete dorado, y adentro las tarjetas quedan como hojas apoyadas sobre él.
     <div className="space-y-5 rounded-2xl bg-secondary/80 p-4 ring-1 ring-dorado/25 sm:p-6">
-      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-dorado/25 pb-4">
-        <div>
-          <div className="flex flex-wrap items-center gap-3">
+      {/* El título queda en todas las pestañas: número, estado, tipo, fecha y avance. Las pestañas
+          van arriba a la derecha (15/11/2026). */}
+      <header className="flex flex-wrap items-start justify-between gap-4 border-b border-dorado/25 pb-4">
+        <div className="min-w-0 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2.5">
             <h1 className="text-xl font-semibold text-bordo">Evento #{evento.id}</h1>
-            {/* HU-24: solo se repite un evento Cobrado (decisión de Franco, 17/10/2026). */}
-            {onAbrirConsulta && evento.estado === 'Cobrado' && (
-              <Button variant="outline" size="sm" onClick={() => setRepitiendo(true)}>
-                <Repeat2 /> Repetir evento
-              </Button>
-            )}
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <span
               title={estado.ayuda}
               className={cn(
@@ -209,9 +283,22 @@ export function DetalleEvento({
             </span>
             <BadgeTipoEvento evento={evento} />
           </div>
+          <p className="text-sm text-muted-foreground">{fechaDelEvento}</p>
+          <PasosDelEvento estado={evento.estado} />
         </div>
-        <PasosDelEvento estado={evento.estado} />
-      </div>
+        <Pestanias<PestaniaDeEvento>
+          etiqueta="Secciones del evento"
+          valor={pestaniaVisible}
+          onCambiar={setPestania}
+          pestanias={[
+            { valor: 'detalle', texto: 'Detalle', icono: FileText },
+            { valor: 'pagos', texto: 'Pagos', icono: Wallet },
+            ...(veHistorial
+              ? [{ valor: 'historial' as const, texto: 'Historial', icono: History }]
+              : []),
+          ]}
+        />
+      </header>
       {onAbrirConsulta && evento.estado === 'Cobrado' && (
         <ReutilizarConfiguracion
           eventoId={evento.id}
@@ -222,99 +309,68 @@ export function DetalleEvento({
         />
       )}
 
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(340px,380px)] lg:items-start">
-        {/* Columna de la cuenta. Va primero en el DOM para quedar arriba en mobile; en lg pasa a la
-            segunda columna. top-28: deja libre el encabezado fijo del panel. */}
-        <div className="space-y-4 lg:sticky lg:top-28 lg:col-start-2 lg:row-start-1">
-          {/* HU-14: el saldo, el cobro y el historial. Cuando no hay base de cobro va el aviso
-              en su lugar: la vista es la misma se entre desde la agenda o desde la consulta, y el
-              hueco se explica en vez de desaparecer. */}
-          {presupuestoVigente && !presupuestoSinArmar ? (
-            <CuentaDelEvento
-              evento={evento}
-              admitePagos={evento.estado !== 'Cancelado' && evento.estado !== 'Cobrado'}
-            />
-          ) : (
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  {presupuestoSinArmar ? 'Presupuesto sin armar' : 'Sin presupuesto'}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm text-muted-foreground">
-                <p>
-                  {presupuestoSinArmar
-                    ? 'El presupuesto todavía no tiene nada cargado, así que no hay base de cobro que calcular.'
-                    : 'El evento no tiene ningún presupuesto asociado al que calcularle una base de cobro.'}
-                </p>
-                {armarPresupuesto.isError && (
-                  <p className="text-destructive">
-                    {armarPresupuesto.error instanceof ErrorApiCliente
-                      ? armarPresupuesto.error.message
-                      : 'No se pudo armar el presupuesto.'}
-                  </p>
-                )}
-                {/* Armar el presupuesto solo tiene sentido con el evento en consulta: el que se
-                    crea nace Estimado y la API rechaza un Estimado sobre un evento ya reservado,
-                    cobrado o cancelado. El sin armar ya existe, así que solo se abre. */}
-                {(presupuestoSinArmar || evento.estado === 'EnConsulta') && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={armarPresupuesto.isPending}
-                    onClick={armarElPresupuesto}
-                  >
-                    {armarPresupuesto.isPending ? 'Armando…' : 'Armar el presupuesto'}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          )}
-          {evento.estado === 'EnConsulta' && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Cancelar la consulta</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <p className="text-muted-foreground">
-                  Si el cliente desiste, la consulta se cancela en cualquier momento y queda en su
-                  historial.
-                </p>
-                {errorDeCancelacion}
-                <Button
-                  variant="destructive"
-                  disabled={cancelarEvento.isPending}
-                  onClick={manejarCancelacion}
-                >
-                  Cancelar consulta
-                </Button>
-              </CardContent>
-            </Card>
-          )}
-          {(evento.estado === 'Cancelado' || evento.estado === 'Cobrado') && (
-            <p className="text-sm text-muted-foreground">
-              Este evento está {evento.estado === 'Cancelado' ? 'cancelado' : 'cobrado'}, no admite
-              más acciones.
-            </p>
-          )}
-        </div>
+      {pestaniaVisible === 'historial' && <HistorialDelRegistro eventoId={evento.id} />}
 
-        <div className="space-y-4 lg:col-start-1 lg:row-start-1">
+      {/* Detalle y Pagos se ocultan, no se desmontan: el horario o las observaciones que se estaban
+          editando no se pierden al cambiar de pestaña. */}
+      <div className={pestaniaVisible === 'historial' ? 'hidden' : 'space-y-4'}>
+        <TarjetaCliente
+          nombre={evento.cliente.nombre}
+          correo={evento.cliente.correo}
+          telefono={evento.cliente.telefono}
+          etiqueta={evento.cliente.etiqueta}
+        >
+          <div className="flex flex-wrap justify-end gap-2">
+            <BotonWhatsApp
+              telefono={evento.cliente.telefono}
+              mensaje={mensajeWhatsApp(evento.cliente.nombre, evento.estado)}
+            />
+            {/* HU-24: solo se repite un evento Cobrado (decisión de Franco, 17/10/2026). */}
+            {onAbrirConsulta && evento.estado === 'Cobrado' && (
+              <Button variant="outline" size="sm" onClick={() => setRepitiendo(true)}>
+                <Repeat2 /> Repetir evento
+              </Button>
+            )}
+            {onVerPresupuesto && presupuestoVigente && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onVerPresupuesto(presupuestoVigente.id)}
+              >
+                <FileText /> Ver presupuesto
+              </Button>
+            )}
+            {/* Solo con el presupuesto confirmado: antes de la seña el evento todavía se puede caer y
+                la cocina no tiene nada que preparar. */}
+            {onImprimirComanda && presupuestoVigente?.estado === 'Confirmado' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onImprimirComanda(presupuestoVigente.id)}
+              >
+                <Printer /> Comanda de cocina
+              </Button>
+            )}
+            {sePuedeCancelar && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-destructive"
+                disabled={cancelarEvento.isPending}
+                onClick={manejarCancelacion}
+              >
+                <XCircle />{' '}
+                {evento.estado === 'Reservado' ? 'Cancelar evento' : 'Cancelar consulta'}
+              </Button>
+            )}
+          </div>
+          {errorDeCancelacion}
+        </TarjetaCliente>
+
+        <div className={pestaniaVisible === 'detalle' ? 'space-y-4' : 'hidden'}>
           <Card>
             <CardContent>
-              <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
-                <Dato etiqueta="Cliente">
-                  <span className="font-medium">{evento.cliente.nombre}</span>
-                  <span className="block truncate text-xs text-muted-foreground">
-                    {evento.cliente.telefono} · {evento.cliente.correo}
-                  </span>
-                  <EtiquetaCliente etiqueta={evento.cliente.etiqueta} className="mt-1" />
-                  <BotonWhatsApp
-                    telefono={evento.cliente.telefono}
-                    mensaje={mensajeWhatsApp(evento.cliente.nombre, evento.estado)}
-                    className="mt-2"
-                  />
-                </Dato>
+              <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
                 <Dato etiqueta="Salón">
                   {nombresDeSalones(evento.salones)} · {resumenDelEvento(evento).personas}
                   {armadoDelEvento(evento) && (
@@ -346,8 +402,8 @@ export function DetalleEvento({
             </CardContent>
           </Card>
 
-          {/* HU-50: un evento de varios días va en un solo bloque: el selector de día y, debajo, lo que
-              cambia con él (las observaciones y el presupuesto de ese día, con el total siempre). */}
+          {/* HU-50: un evento de varios días va en un solo bloque: el selector de día y, debajo, lo
+              que cambia con él (las observaciones y el presupuesto de ese día, con el total). */}
           {evento.dias.length > 1 ? (
             <Card>
               <NavegadorDeDias
@@ -434,36 +490,12 @@ export function DetalleEvento({
                     )}
                   </Button>
                 )}
-                <div className="mt-2 flex items-center justify-between gap-3 border-t pt-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {onVerPresupuesto && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onVerPresupuesto(presupuestoVigente.id)}
-                      >
-                        Ver detalle del presupuesto
-                      </Button>
-                    )}
-                    {/* Solo con el presupuesto confirmado: antes de la seña el evento todavía se
-                        puede caer y la cocina no tiene nada que preparar. */}
-                    {onImprimirComanda && presupuestoVigente.estado === 'Confirmado' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => onImprimirComanda(presupuestoVigente.id)}
-                      >
-                        <Printer /> Comanda de cocina
-                      </Button>
-                    )}
-                  </div>
-                  <p className="text-right">
-                    <span className="block text-xs text-muted-foreground">Total sin IVA</span>
-                    <span className="font-medium tabular-nums">
-                      {formateadorMoneda.format(total)}
-                    </span>
-                  </p>
-                </div>
+                <p className="mt-2 border-t pt-3 text-right">
+                  <span className="block text-xs text-muted-foreground">Total sin IVA</span>
+                  <span className="font-medium tabular-nums">
+                    {formateadorMoneda.format(total)}
+                  </span>
+                </p>
               </CardContent>
             </Card>
           )}
@@ -473,31 +505,30 @@ export function DetalleEvento({
               <CardHeader>
                 <CardTitle>Reserva</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm">
+              <CardContent className="space-y-2 text-sm text-muted-foreground">
                 {evento.senaRegistradaEn && (
-                  <p className="text-muted-foreground">
+                  <p>
                     El salón quedó reservado el{' '}
                     {formateadorFecha.format(new Date(evento.senaRegistradaEn))}, cuando los pagos
                     alcanzaron la seña.
                   </p>
                 )}
-
-                <p className="text-muted-foreground">
+                <p>
                   Se puede cancelar hasta 48 horas corridas antes del inicio. El salón queda libre y
                   los pagos se conservan en la cuenta: lo abonado no se reintegra.
                 </p>
-                {errorDeCancelacion}
-                <Button
-                  variant="destructive"
-                  disabled={cancelarEvento.isPending}
-                  onClick={manejarCancelacion}
-                >
-                  Cancelar evento
-                </Button>
               </CardContent>
             </Card>
           )}
+          {(evento.estado === 'Cancelado' || evento.estado === 'Cobrado') && (
+            <p className="text-sm text-muted-foreground">
+              Este evento está {evento.estado === 'Cancelado' ? 'cancelado' : 'cobrado'}, no admite
+              más acciones.
+            </p>
+          )}
         </div>
+
+        <div className={pestaniaVisible === 'pagos' ? 'space-y-4' : 'hidden'}>{pagos}</div>
       </div>
     </div>
   );
