@@ -82,6 +82,8 @@ export async function listarAgenda(
           fin: true,
           cantidadPersonas: true,
           tipoJornada: true,
+          horaInicioEstimada: true,
+          horaFinEstimada: true,
           observaciones: true,
           salones: {
             select: {

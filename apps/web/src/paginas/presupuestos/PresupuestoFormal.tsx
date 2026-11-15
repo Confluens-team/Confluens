@@ -7,7 +7,7 @@ import { nombreCompleto } from '@/lib/formato';
 import { CondicionesContratacion } from './CondicionesContratacion';
 import { DocumentoPresupuesto } from './DocumentoPresupuesto';
 import { HojaImagen } from './HojaA4';
-import { horarioSalon } from './horario-salon';
+import { horarioDelDia, horarioSalon } from './horario-salon';
 import { nombrePdfPresupuesto } from './nombre-pdf';
 
 // Al imprimir, las hojas de imagen y las de condiciones van a sangre (sin margen); el detalle lleva
@@ -42,6 +42,7 @@ export function PresupuestoFormal({
         tipoJornada: dia.tipoJornada ?? consulta.tipoJornada,
         salones: dia.salones,
         lineas: consulta.lineas.filter((linea) => linea.diaId === dia.id),
+        horario: horarioDelDia(dia, consulta.evento),
       }))
     : undefined;
 

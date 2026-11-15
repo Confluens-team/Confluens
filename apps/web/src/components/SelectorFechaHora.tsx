@@ -6,9 +6,13 @@ import { Button } from '@/components/ui/button';
 import {
   diaMaximoParaElegir,
   elegirDia,
+  elegirDiaEnModo,
   estadoInicialDeRango,
+  modoInicial,
+  rangoPrevisualizado,
   textoDeDias,
   type EstadoDeRango,
+  type ModoDeRango,
 } from '@/lib/rango-de-fechas';
 import { cn } from '@/lib/utils';
 
@@ -221,6 +225,9 @@ function Calendario({
   diaMinimo,
   rango,
   diaMaximo,
+  previsualizacion,
+  onPasarPor,
+  className,
 }: {
   dia: string;
   onElegir: (dia: string) => void;
@@ -232,13 +239,19 @@ function Calendario({
   rango?: { inicio: string; fin: string };
   // No se pueden elegir días posteriores a este (el tope de 32 días de la franja).
   diaMaximo?: string;
+  // Los días que se sumarían con el clic, mientras el mouse pasa por uno: se pintan como la franja
+  // y el día del puntero queda marcado como el extremo.
+  previsualizacion?: { inicio: string; fin: string } | null;
+  // El día por el que pasa el mouse (null al salir del calendario), para armar la previsualización.
+  onPasarPor?: (dia: string | null) => void;
+  className?: string;
 }) {
   const anio = mesVisible.getFullYear();
   const mes = mesVisible.getMonth();
   const hoy = diaISO(new Date());
 
   return (
-    <div className="w-64">
+    <div className={cn('w-64', className)} onMouseLeave={() => onPasarPor?.(null)}>
       <div className="mb-2 flex items-center justify-between">
         <Button
           type="button"
@@ -272,6 +285,15 @@ function Calendario({
           const extremo = rango ? iso === rango.inicio || iso === rango.fin : false;
           const elegido = rango ? extremo : iso === dia;
           const enElMedio = !!rango && !extremo && iso > rango.inicio && iso < rango.fin;
+          // Lo que se sumaría con el clic: los días entre la franja y el puntero, y el del puntero.
+          const enPrevisualizacion =
+            !!previsualizacion &&
+            !elegido &&
+            !enElMedio &&
+            iso >= previsualizacion.inicio &&
+            iso <= previsualizacion.fin;
+          const extremoPrevisto =
+            enPrevisualizacion && (iso === previsualizacion.inicio || iso === previsualizacion.fin);
           const deshabilitado =
             (diaMinimo !== undefined && iso < diaMinimo) ||
             (diaMaximo !== undefined && iso > diaMaximo);
@@ -283,13 +305,23 @@ function Calendario({
               aria-pressed={elegido || enElMedio}
               aria-label={formateadorDia.format(fecha)}
               onClick={() => onElegir(iso)}
+              onMouseEnter={() => onPasarPor?.(iso)}
+              onFocus={() => onPasarPor?.(iso)}
               className={cn(
                 'mx-auto flex size-8 items-center justify-center rounded-full text-sm transition-colors disabled:pointer-events-none disabled:opacity-30',
                 elegido ? 'bg-bordo font-semibold text-white' : 'hover:bg-muted',
                 // Los días de la franja se leen como una barra: un fondo continuo entre los dos
                 // extremos, sin el redondeo de cada día.
                 enElMedio && 'w-full rounded-none bg-bordo/15 text-bordo',
-                !elegido && !enElMedio && iso === hoy && 'ring-1 ring-dorado',
+                enPrevisualizacion &&
+                  (extremoPrevisto
+                    ? 'bg-bordo/70 font-semibold text-white hover:bg-bordo/70'
+                    : 'w-full rounded-none bg-bordo/15 text-bordo hover:bg-bordo/15'),
+                !elegido &&
+                  !enElMedio &&
+                  !enPrevisualizacion &&
+                  iso === hoy &&
+                  'ring-1 ring-dorado',
               )}
             >
               {fecha.getDate()}
@@ -531,7 +563,16 @@ interface SelectorRangoFechasProps {
   placeholder?: string;
   className?: string;
   'aria-invalid'?: boolean;
+  // Cotizador del cliente: arriba del calendario se elige «1 día» o «Más de 1 día». Con «Más de 1
+  // día», al pasar el mouse se pintan los días entre el inicio y el puntero. Sin esto, el selector
+  // funciona como siempre (el panel del personal).
+  conModo?: boolean;
 }
+
+const OPCIONES_DE_MODO: { valor: ModoDeRango; texto: string }[] = [
+  { valor: 'uno', texto: '1 día' },
+  { valor: 'varios', texto: 'Más de 1 día' },
+];
 
 /**
  * La franja de días de un evento (HU-50). Un clic elige el día de inicio: si no hay un segundo, el
@@ -548,21 +589,33 @@ export function SelectorRangoFechas({
   placeholder = 'Elegí el día o la franja',
   className,
   'aria-invalid': ariaInvalid,
+  conModo = false,
 }: SelectorRangoFechasProps) {
   const [abierto, setAbierto] = useState(false);
   const [estado, setEstado] = useState<EstadoDeRango>(() => estadoInicialDeRango(inicio, fin));
   const [mesVisible, setMesVisible] = useState(() => new Date());
+  const [modo, setModo] = useState<ModoDeRango>(() => modoInicial(inicio, fin));
+  const [diaBajoMouse, setDiaBajoMouse] = useState<string | null>(null);
 
   function abrir(abrir: boolean) {
     if (abrir) {
       setEstado(estadoInicialDeRango(inicio, fin));
       setMesVisible(mesDe(inicio || diaMinimo || diaISO(new Date())));
+      setModo(modoInicial(inicio, fin));
+      setDiaBajoMouse(null);
     }
     setAbierto(abrir);
   }
 
+  // Cambiar de modo no cambia lo elegido: el próximo clic empieza la elección de nuevo.
+  function cambiarModo(nuevo: ModoDeRango) {
+    setModo(nuevo);
+    setEstado(estadoInicialDeRango(inicio, fin));
+    setDiaBajoMouse(null);
+  }
+
   function elegir(dia: string) {
-    const siguiente = elegirDia(estado, dia);
+    const siguiente = conModo ? elegirDiaEnModo(estado, dia, modo) : elegirDia(estado, dia);
     setEstado(siguiente);
     // El primer clic ya deja un evento de un día; el segundo completa la franja y cierra.
     onChange(siguiente.inicio, siguiente.fin);
@@ -586,6 +639,29 @@ export function SelectorRangoFechas({
         ariaInvalid={ariaInvalid}
       />
       <Contenido>
+        {conModo && (
+          <div
+            role="radiogroup"
+            aria-label="Duración del evento"
+            className="mb-3 grid grid-cols-2 overflow-hidden rounded-lg border border-input text-xs font-medium"
+          >
+            {OPCIONES_DE_MODO.map((opcion) => (
+              <button
+                key={opcion.valor}
+                type="button"
+                role="radio"
+                aria-checked={modo === opcion.valor}
+                onClick={() => cambiarModo(opcion.valor)}
+                className={cn(
+                  'px-3 py-1.5 transition-colors',
+                  modo === opcion.valor ? 'bg-bordo text-crema' : 'hover:bg-muted',
+                )}
+              >
+                {opcion.texto}
+              </button>
+            ))}
+          </div>
+        )}
         <Calendario
           dia={estado.inicio}
           rango={estado.inicio ? { inicio: estado.inicio, fin: estado.fin } : undefined}
@@ -594,11 +670,21 @@ export function SelectorRangoFechas({
           onCambiarMes={setMesVisible}
           diaMinimo={diaMinimo}
           diaMaximo={diaMaximo}
+          previsualizacion={
+            conModo && modo === 'varios' ? rangoPrevisualizado(estado, diaBajoMouse) : null
+          }
+          onPasarPor={conModo ? setDiaBajoMouse : undefined}
         />
         <p className="mt-3 max-w-64 text-xs text-muted-foreground" aria-live="polite">
-          {estado.esperandoFin
-            ? 'Elegí el último día del evento, o tocá el mismo día si dura uno solo. El evento puede durar hasta 32 días.'
-            : 'Tocá el primer día. Si tu evento dura varios, después tocá el último.'}
+          {conModo && modo === 'uno'
+            ? 'Tocá el día de tu evento.'
+            : estado.esperandoFin
+              ? conModo
+                ? 'Ahora tocá el último día. El evento puede durar hasta 32 días.'
+                : 'Elegí el último día del evento, o tocá el mismo día si dura uno solo. El evento puede durar hasta 32 días.'
+              : conModo
+                ? 'Tocá el primer día de tu evento.'
+                : 'Tocá el primer día. Si tu evento dura varios, después tocá el último.'}
         </p>
       </Contenido>
     </Popover.Root>

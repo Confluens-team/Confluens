@@ -235,6 +235,9 @@ model Evento {
   // "HH:mm", solo de referencia, igual que horaInicioEstimada. La carga el cliente en la consulta de
   // un evento social, que no tiene salón ni precio; menor que la de inicio es el día siguiente.
   horaFinEstimada           String?
+  // Lo que el cliente quiso contar en la consulta de un evento social (pedidos, ideas, dudas). Lo
+  // escribe el cliente; las observaciones del personal van aparte, en cada día.
+  comentariosCliente        String?
   // Columna del Sprint 1 que quedó sin escribirse: la vigencia de los 10 días es del presupuesto y
   // no del evento (RN-06, RN-08).
   senaVenceEn               DateTime?
@@ -265,21 +268,25 @@ model Evento {
 // Que los días sean consecutivos y no pasen de 32, y que un evento Reservado o Cobrado tenga horario y
 // salón en cada día, lo garantizan constraint triggers de la base (SQL crudo en la migración).
 model EventoDia {
-  id               Int                @id @default(autoincrement())
-  eventoId         Int
-  evento           Evento             @relation(fields: [eventoId], references: [id], onDelete: Cascade)
-  fecha            DateTime           @db.Date
-  inicio           DateTime? // horario desde; obligatorio fuera de EnConsulta y Cancelado
-  fin              DateTime? // horario hasta
-  tipoJornada      TipoJornada?
-  cantidadPersonas Int
+  id                 Int                @id @default(autoincrement())
+  eventoId           Int
+  evento             Evento             @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  fecha              DateTime           @db.Date
+  inicio             DateTime? // horario desde; obligatorio fuera de EnConsulta y Cancelado
+  fin                DateTime? // horario hasta
+  tipoJornada        TipoJornada?
+  cantidadPersonas   Int
+  // "HH:mm", solo de referencia (S-16): el horario que pidió el cliente para ESTE día en el
+  // cotizador. El horario real sigue en inicio/fin, que se cargan al agendar.
+  horaInicioEstimada String?
+  horaFinEstimada    String?
   // Observaciones internas del día: cada día puede tener las suyas (HU-50). Reemplazan a
   // Evento.observaciones, que queda sin uso desde esta migración.
-  observaciones    String?
-  salones          EventoSalon[]
-  lineas           LineaPresupuesto[]
-  creadoEn         DateTime           @default(now())
-  actualizadoEn    DateTime           @updatedAt
+  observaciones      String?
+  salones            EventoSalon[]
+  lineas             LineaPresupuesto[]
+  creadoEn           DateTime           @default(now())
+  actualizadoEn      DateTime           @updatedAt
 
   @@unique([eventoId, fecha])
   @@index([eventoId])

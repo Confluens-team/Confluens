@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { duracionEnMinutos, jornadaDeHoras, textoHorarioEstimado } from './jornada';
+import {
+  duracionEnMinutos,
+  horaDentroDelHorario,
+  jornadaDeHoras,
+  textoHorarioEstimado,
+} from './jornada';
 
 describe('jornadaDeHoras', () => {
   it('toma como media jornada una duración de hasta 4 horas inclusive', () => {
@@ -31,5 +36,29 @@ describe('textoHorarioEstimado', () => {
     expect(textoHorarioEstimado('21:00', '01:00')).toBe('21:00 a 01:00 h');
     expect(textoHorarioEstimado('21:00')).toBe('Desde 21:00 h');
     expect(textoHorarioEstimado(null, null)).toBe('A definir');
+  });
+});
+
+describe('horaDentroDelHorario', () => {
+  it('acepta las horas dentro del horario del día, con los extremos', () => {
+    expect(horaDentroDelHorario('10:30', '09:00', '13:00')).toBe(true);
+    expect(horaDentroDelHorario('09:00', '09:00', '13:00')).toBe(true);
+    expect(horaDentroDelHorario('13:00', '09:00', '13:00')).toBe(true);
+  });
+
+  it('rechaza las horas antes o después del horario', () => {
+    expect(horaDentroDelHorario('08:55', '09:00', '13:00')).toBe(false);
+    expect(horaDentroDelHorario('13:05', '09:00', '13:00')).toBe(false);
+  });
+
+  it('con un horario que cruza la medianoche acepta la noche y la madrugada', () => {
+    expect(horaDentroDelHorario('23:00', '20:00', '02:00')).toBe(true);
+    expect(horaDentroDelHorario('01:30', '20:00', '02:00')).toBe(true);
+    expect(horaDentroDelHorario('15:00', '20:00', '02:00')).toBe(false);
+  });
+
+  it('sin horario completo no hay con qué comparar', () => {
+    expect(horaDentroDelHorario('07:00', '', '13:00')).toBe(true);
+    expect(horaDentroDelHorario('', '09:00', '13:00')).toBe(true);
   });
 });

@@ -1,7 +1,7 @@
 import type { ConsultaDetallada } from '@confluens/shared';
 import { describe, expect, it } from 'vitest';
 
-import { horarioSalon } from './horario-salon';
+import { horarioDelDia, horarioSalon } from './horario-salon';
 
 const evento = (cambios: Partial<ConsultaDetallada['evento']>): ConsultaDetallada['evento'] => ({
   id: 1,
@@ -14,6 +14,7 @@ const evento = (cambios: Partial<ConsultaDetallada['evento']>): ConsultaDetallad
   tipoSocialDetalle: null,
   horaInicioEstimada: null,
   horaFinEstimada: null,
+  comentariosCliente: null,
   observacionesComanda: null,
   inicio: null,
   fin: null,
@@ -52,5 +53,44 @@ describe('horarioSalon', () => {
 
   it('sin ninguna de las dos queda a confirmar', () => {
     expect(horarioSalon(evento({}))).toBe('A confirmar horario');
+  });
+});
+
+describe('horarioDelDia (S-16)', () => {
+  const dia = (
+    cambios: Partial<ConsultaDetallada['dias'][number]>,
+  ): ConsultaDetallada['dias'][number] => ({
+    id: 1,
+    fecha: '2026-11-16',
+    cantidadPersonas: 30,
+    tipoJornada: 'completa',
+    inicio: null,
+    fin: null,
+    horaInicioEstimada: null,
+    horaFinEstimada: null,
+    salones: [],
+    ...cambios,
+  });
+
+  it('con el día agendado da su rango real', () => {
+    expect(
+      horarioDelDia(
+        dia({ inicio: '2026-11-16T12:00:00.000Z', fin: '2026-11-16T21:00:00.000Z' }),
+        evento({ horaInicioEstimada: '08:00' }),
+      ),
+    ).toBe('09.00 a 18.00 hs');
+  });
+
+  it('sin agendar usa el horario que pidió el cliente para ese día', () => {
+    expect(
+      horarioDelDia(
+        dia({ horaInicioEstimada: '14:00', horaFinEstimada: '17:30' }),
+        evento({ horaInicioEstimada: '09:00' }),
+      ),
+    ).toBe('Desde 14.00 hasta 17.30 hs');
+  });
+
+  it('sin horario propio usa el del evento', () => {
+    expect(horarioDelDia(dia({}), evento({ horaInicioEstimada: '09:00' }))).toBe('Desde 09.00 hs');
   });
 });

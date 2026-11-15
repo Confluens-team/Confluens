@@ -119,9 +119,16 @@ describe('generarPresupuesto con varios días (HU-50)', () => {
       undefined,
     );
     const [, diasNuevos] = repo.crearDiasDelEvento.mock.calls[0]!;
+    // Sin horario estimado en el pedido, cada día queda sin el suyo (S-16).
+    const sinHorario = { horaInicioEstimada: null, horaFinEstimada: null };
     expect(diasNuevos).toEqual([
-      { fecha: new Date('2040-05-01'), cantidadPersonas: 50, tipoJornada: 'media' },
-      { fecha: new Date('2040-05-02'), cantidadPersonas: 80, tipoJornada: 'completa' },
+      { fecha: new Date('2040-05-01'), cantidadPersonas: 50, tipoJornada: 'media', ...sinHorario },
+      {
+        fecha: new Date('2040-05-02'),
+        cantidadPersonas: 80,
+        tipoJornada: 'completa',
+        ...sinHorario,
+      },
     ]);
     // Cada día con SUS salones y el id de SU día.
     const salonesPorDia = repo.reemplazarSalonesDelEvento.mock.calls.map(
@@ -139,6 +146,30 @@ describe('generarPresupuesto con varios días (HU-50)', () => {
       [501, 'Salón Pucará (media jornada)'],
       [501, 'Coffee Refresh'],
       [502, 'Salón Pucará (jornada completa)'],
+    ]);
+  });
+
+  it('guarda el horario estimado de cada día en su día y el del primero en el evento (S-16)', async () => {
+    const repo = repoDeMentira();
+    const conHorario = [
+      { ...dias[0]!, horaInicioEstimada: '09:00', horaFinEstimada: '18:00' },
+      { ...dias[1]!, horaInicioEstimada: '14:00', horaFinEstimada: '17:30' },
+      dias[2]!,
+    ];
+    await generarPresupuesto(crear({ ...contacto, dias: conHorario }), comoRepo(repo));
+
+    expect(repo.crearEvento).toHaveBeenCalledWith(
+      expect.objectContaining({
+        horaInicioEstimada: '09:00',
+        horaFinEstimada: '18:00',
+        horarioDelDia: { horaInicioEstimada: '09:00', horaFinEstimada: '18:00' },
+      }),
+      undefined,
+    );
+    const [, diasNuevos] = repo.crearDiasDelEvento.mock.calls[0]!;
+    expect(diasNuevos).toMatchObject([
+      { horaInicioEstimada: '14:00', horaFinEstimada: '17:30' },
+      { horaInicioEstimada: null, horaFinEstimada: null },
     ]);
   });
 

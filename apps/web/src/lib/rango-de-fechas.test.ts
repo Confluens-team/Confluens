@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   diaMaximoParaElegir,
   elegirDia,
+  elegirDiaEnModo,
   estadoInicialDeRango,
+  modoInicial,
+  rangoPrevisualizado,
   textoDeDias,
   type EstadoDeRango,
 } from './rango-de-fechas';
@@ -99,5 +102,43 @@ describe('textoDeDias', () => {
     expect(textoDeDias('2040-05-15', '2040-05-15')).toBe('1 día');
     expect(textoDeDias('2040-04-30', '2040-05-02')).toBe('3 días');
     expect(textoDeDias('2040-05-15', '')).toBe('1 día');
+  });
+});
+
+describe('selector con modo', () => {
+  it('abre en «Más de 1 día» solo si ya hay una franja', () => {
+    expect(modoInicial('', '')).toBe('uno');
+    expect(modoInicial('2040-05-10', '2040-05-10')).toBe('uno');
+    expect(modoInicial('2040-05-10', '2040-05-12')).toBe('varios');
+  });
+
+  it('en «1 día» un clic deja el evento en ese día y cierra', () => {
+    expect(elegirDiaEnModo(vacio, '2040-05-10', 'uno')).toEqual({
+      inicio: '2040-05-10',
+      fin: '2040-05-10',
+      esperandoFin: false,
+    });
+  });
+
+  it('en «Más de 1 día» el primer clic espera el fin y el segundo cierra la franja', () => {
+    const primero = elegirDiaEnModo(vacio, '2040-05-10', 'varios');
+    expect(primero.esperandoFin).toBe(true);
+    expect(elegirDiaEnModo(primero, '2040-05-13', 'varios')).toEqual({
+      inicio: '2040-05-10',
+      fin: '2040-05-13',
+      esperandoFin: false,
+    });
+  });
+
+  it('al pasar el mouse pinta del inicio al día del puntero, sin pasar el tope', () => {
+    const esperando = elegirDiaEnModo(vacio, '2040-05-10', 'varios');
+    expect(rangoPrevisualizado(esperando, '2040-05-14')).toEqual({
+      inicio: '2040-05-10',
+      fin: '2040-05-14',
+    });
+    expect(rangoPrevisualizado(esperando, '2040-05-09')).toBeNull();
+    expect(rangoPrevisualizado(esperando, '2040-05-10')).toBeNull();
+    expect(rangoPrevisualizado(esperando, '2040-06-11')).toBeNull(); // serían 33 días
+    expect(rangoPrevisualizado(vacio, '2040-05-14')).toBeNull();
   });
 });

@@ -15,6 +15,7 @@ import {
   etiquetaTipoEvento,
   fechasDeLaFranja,
   hoyEnZonaEventos,
+  MAXIMO_COMENTARIOS_CLIENTE,
   MAXIMO_PERSONAS_EVENTO,
   mesesHastaEvento,
   PORCENTAJE_SENA,
@@ -26,7 +27,6 @@ import {
   CalendarDays,
   Check,
   Clock,
-  Copy,
   PartyPopper,
   Sparkles,
   Users,
@@ -39,6 +39,7 @@ import { SelectorModalidad } from '@/components/SelectorModalidad';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { useConfiguracionPrecios } from '@/hooks/use-configuracion-precios';
 import { useEnviarConsultaSocial, useSolicitarPresupuesto } from '@/hooks/use-presupuestos';
 import { useSalones } from '@/hooks/use-salones';
@@ -49,9 +50,11 @@ import { agruparPorCategoria } from '@/lib/catalogo';
 import { nombreDeJornada, resumenDeJornada, textoDePersonas } from '@/lib/dias-del-evento';
 import { formatearPesos, hoyISO, nombreCompleto, textoModalidad } from '@/lib/formato';
 import { FOTOS, fotoDeSalon, fotoOptimizada } from '@/lib/fotos';
-import { jornadaDeHoras, textoHorarioEstimado } from '@/lib/jornada';
+import { horaDentroDelHorario, jornadaDeHoras, textoHorarioEstimado } from '@/lib/jornada';
 import { textoDeDias } from '@/lib/rango-de-fechas';
 import { cn } from '@/lib/utils';
+import { CopiarDiaCargado, type OpcionDeCopia } from './cotizador/CopiarDiaCargado';
+import { TarjetaDia } from './cotizador/TarjetaDia';
 
 interface ContactoCliente {
   nombre: string;
@@ -89,6 +92,8 @@ export interface ConsultaSocialEnviada {
     horaFinEstimada?: string;
     tipoSocial: TipoEventoSocial;
     tipoSocialDetalle?: string;
+    // Lo que el cliente quiso contar de su evento, con cualquier tipo de evento social.
+    comentarios?: string;
   };
   cliente: ContactoCliente;
 }
@@ -130,68 +135,22 @@ function Paso({
 }: {
   numero: number;
   titulo: string;
-  bajada: string;
+  bajada?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="rounded-2xl bg-card p-6 shadow-sm ring-1 ring-border sm:p-8">
-      <div className="flex items-start gap-4">
+      <div className={cn('flex gap-4', bajada ? 'items-start' : 'items-center')}>
         <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-bordo font-serif text-sm text-crema">
           {numero}
         </span>
         <div>
           <h2 className="text-xl font-semibold text-bordo">{titulo}</h2>
-          <p className="text-sm text-muted-foreground">{bajada}</p>
+          {bajada && <p className="text-sm text-muted-foreground">{bajada}</p>}
         </div>
       </div>
       <div className="mt-6">{children}</div>
     </section>
-  );
-}
-
-// Las dos duraciones que el cliente puede elegir en un evento corporativo. No llevan precio propio:
-// el que cambia es el de cada salón y el del presupuesto, y mostrarlo también acá parecía un
-// importe más para sumar.
-const OPCIONES_JORNADA = [
-  { valor: 'media', titulo: 'Media jornada', detalle: 'Hasta 4 horas inclusive' },
-  { valor: 'completa', titulo: 'Jornada completa', detalle: 'Más de 4 horas' },
-] as const;
-
-function OpcionesJornada({
-  jornada,
-  onChange,
-}: {
-  jornada: TipoJornada;
-  onChange: (jornada: TipoJornada) => void;
-}) {
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {OPCIONES_JORNADA.map((opcion) => (
-        <button
-          key={opcion.valor}
-          type="button"
-          aria-pressed={jornada === opcion.valor}
-          onClick={() => onChange(opcion.valor)}
-          className={cn(
-            'flex items-center gap-3 rounded-xl border-2 px-4 py-3 text-left transition-colors',
-            jornada === opcion.valor
-              ? 'border-bordo bg-bordo/5'
-              : 'border-border hover:border-dorado',
-          )}
-        >
-          <Clock
-            className={cn(
-              'size-5 shrink-0',
-              jornada === opcion.valor ? 'text-bordo' : 'text-muted-foreground',
-            )}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block font-medium">{opcion.titulo}</span>
-            <span className="block text-xs text-muted-foreground">{opcion.detalle}</span>
-          </span>
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -262,11 +221,14 @@ function CantidadDeServicio({
   );
 }
 
-// HU-50: lo que cambia de un día a otro en un evento corporativo de varios días. Cada día tiene sus
-// personas, su jornada, sus salones y sus servicios; lo del evento entero (tipo, hora estimada) no.
+// HU-50: lo que cambia de un día a otro en un evento corporativo. Cada día tiene sus personas, su
+// horario, sus salones y sus servicios; lo del evento entero (las fechas, el tipo) no.
 interface EstadoDeDia {
   personas: string;
-  jornada: TipoJornada;
+  // S-16: el horario estimado del día ("HH:mm"), que se guarda por día. La jornada sale de acá
+  // (media: hasta 4 horas inclusive; completa: más de 4).
+  horaDesde: string;
+  horaHasta: string;
   // El orden es el de la elección: es el orden de las líneas del presupuesto (ADR 0011).
   salonIds: number[];
   // null = "para todas las personas del día": sigue a la cantidad total si el cliente la cambia.
@@ -280,7 +242,8 @@ interface EstadoDeDia {
 
 const diaVacio = (salonIds: number[] = []): EstadoDeDia => ({
   personas: '',
-  jornada: 'completa',
+  horaDesde: '',
+  horaHasta: '',
   salonIds,
   elegidos: new Map(),
   horas: new Map(),
@@ -296,25 +259,90 @@ const copiaDeDia = (dia: EstadoDeDia): EstadoDeDia => ({
   modalidades: new Map(dia.modalidades),
 });
 
+// La jornada de un día sale de su horario. Sin horario todavía se toma completa, para mostrar algún
+// precio de los salones mientras se carga.
+const jornadaDe = (dia: EstadoDeDia) => jornadaDeHoras(dia.horaDesde, dia.horaHasta);
+const tieneHorario = (dia: EstadoDeDia) =>
+  !!dia.horaDesde && !!dia.horaHasta && dia.horaDesde !== dia.horaHasta;
+// La hora pedida para un servicio cae fuera del horario del día (por ejemplo, porque después se
+// achicó el horario). Sin hora o sin horario completo no hay nada que marcar.
+const horaFueraDelHorario = (dia: EstadoDeDia, servicioId: number) => {
+  const hora = dia.horas.get(servicioId);
+  return !!hora && tieneHorario(dia) && !horaDentroDelHorario(hora, dia.horaDesde, dia.horaHasta);
+};
+// Un día está listo con personas, al menos un salón, su horario y cada servicio dentro de él.
+const diaCompleto = (dia: EstadoDeDia) =>
+  (Number(dia.personas) || 0) > 0 &&
+  dia.salonIds.length > 0 &&
+  tieneHorario(dia) &&
+  [...dia.horas.keys()].every((id) => !horaFueraDelHorario(dia, id));
+const diaEmpezado = (dia: EstadoDeDia) =>
+  dia.personas !== '' ||
+  dia.salonIds.length > 0 ||
+  dia.horaDesde !== '' ||
+  dia.horaHasta !== '' ||
+  dia.elegidos.size > 0;
+
 const formateadorDiaSemana = new Intl.DateTimeFormat('es-AR', {
   weekday: 'short',
   timeZone: 'UTC',
 });
-// «lun 16/11»: el día de la semana y la fecha, para las pestañas y los títulos de cada día.
+const formateadorFechaLarga = new Intl.DateTimeFormat('es-AR', {
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  timeZone: 'UTC',
+});
+// «lun 16/11»: el día de la semana y la fecha, para los títulos de cada día.
 const nombreDeDia = (fecha: string) => {
   const [, mes = '', dia = ''] = fecha.split('-');
   const semana = formateadorDiaSemana.format(new Date(`${fecha}T00:00:00Z`)).replace('.', '');
   return `${semana} ${dia}/${mes}`;
 };
+// «jueves 10 de diciembre», para el resumen del paso 1.
+const fechaLarga = (fecha: string) =>
+  formateadorFechaLarga.format(new Date(`${fecha}T00:00:00Z`)).replace(',', '');
 
 function precioSalon(salon: SalonConDistribuciones, jornada: TipoJornada) {
   return jornada === 'completa' ? salon.precioJornadaCompleta : salon.precioMediaJornada;
 }
 
-// Cotizador del cliente registrado: la vista con precios de la landing. Primero el evento (fecha,
-// personas, jornada, hora estimada) y después el tipo (ADR 0008):
-// - Corporativo: elige salón y servicios y ve el total estimado en vivo; el presupuesto que vale es
-//   el que devuelve POST /presupuestos (HU-09), que es donde viven las reglas de cálculo.
+// Los errores de un día como una sola frase, para la tarjeta cerrada.
+const mensajeDeErrores = (errores: Record<string, string> | undefined) =>
+  errores
+    ? [
+        ...new Set(
+          Object.entries(errores)
+            .filter(([clave]) => !clave.startsWith('servicio-'))
+            .map(([, mensaje]) => mensaje),
+        ),
+      ].join('. ')
+    : undefined;
+
+// El cartel de la jornada: sale del horario del día, no se elige (diseño del cotizador por días).
+function CartelJornada({ dia }: { dia: EstadoDeDia }) {
+  if (!tieneHorario(dia)) {
+    return (
+      <p className="rounded-lg bg-muted px-3 py-2.5 text-xs text-muted-foreground">
+        Con el horario te decimos si es <strong>media jornada</strong> (hasta 4 horas) o{' '}
+        <strong>jornada completa</strong>.
+      </p>
+    );
+  }
+  const jornada = jornadaDe(dia);
+  return (
+    <p className="rounded-lg bg-dorado/15 px-3 py-2.5 text-sm text-dorado-texto" aria-live="polite">
+      <strong>{nombreDeJornada(jornada)}</strong> ·{' '}
+      {jornada === 'media' ? 'hasta 4 horas' : 'más de 4 horas'}
+    </p>
+  );
+}
+
+// Cotizador del cliente registrado: la vista con precios de la landing. Primero el evento (las
+// fechas y el tipo) y después, si es corporativo, cada día (ADR 0008, HU-50):
+// - Corporativo: cada día es una tarjeta con sus personas, su horario, sus salones y su
+//   gastronomía, y el total estimado se ve en vivo; el presupuesto que vale es el que devuelve
+//   POST /presupuestos (HU-09), que es donde viven las reglas de cálculo.
 // - Social: elige qué evento es y manda la consulta, sin salón, servicios ni precios. El
 //   presupuesto lo arma el Responsable de Eventos.
 export function CotizarEvento({
@@ -331,16 +359,23 @@ export function CotizarEvento({
   const solicitar = useSolicitarPresupuesto();
   const enviarSocial = useEnviarConsultaSocial();
 
-  // HU-50: la franja del evento. Sin segundo clic dura un solo día (`fechaFin` igual a `fecha`).
+  // HU-50: la franja del evento. Con un solo día, `fechaFin` es igual a `fecha`.
   const [fecha, setFecha] = useState('');
   const [fechaFin, setFechaFin] = useState('');
-  // Lo de cada día, por posición en la franja: al correr o achicar la franja se conserva lo cargado.
+  // Lo de cada día, por posición en la franja. Al cambiar las fechas en el paso 1 se conserva por
+  // posición; al sumar o sacar días desde el calendario, cada día sigue en su fecha.
   const [dias, setDias] = useState<EstadoDeDia[]>(() => [
     diaVacio(salonInicialId ? [salonInicialId] : []),
   ]);
-  const [indiceActivo, setIndiceActivo] = useState(0);
+  // La tarjeta abierta: una sola a la vez (null, todas cerradas).
+  const [diaAbierto, setDiaAbierto] = useState<number | null>(0);
+  // El paso 1 se resume en una línea cuando el cliente sigue con los días.
+  const [pasoUnoAbierto, setPasoUnoAbierto] = useState(true);
+  // El paso 2 aparece recién con el botón del paso 1. Una vez habilitado queda: si después se
+  // cambian las fechas, lo cargado de cada día sigue a la vista.
+  const [pasoDosHabilitado, setPasoDosHabilitado] = useState(false);
+  // Solo en un evento social, que no carga día por día: cuándo empieza y termina.
   const [hora, setHora] = useState('');
-  // Solo en un evento social, que no elige salón ni duración: cuenta cuándo empieza y termina.
   const [horaFin, setHoraFin] = useState('');
   // Si llega desde un salón de la landing (?salon=), es un evento corporativo.
   const [tipo, setTipo] = useState<TipoEvento | undefined>(
@@ -348,19 +383,21 @@ export function CotizarEvento({
   );
   const [tipoSocial, setTipoSocial] = useState<TipoEventoSocial | undefined>();
   const [detalleOtro, setDetalleOtro] = useState('');
+  const [comentarios, setComentarios] = useState('');
   const [categoria, setCategoria] = useState<string | null>(null);
   const [erroresGlobales, setErrores] = useState<Record<string, string>>({});
-  // Los errores de cada día, por posición: al validar se avisa de todos y se salta al primero.
+  // Los errores de cada día, por posición: al validar se marcan las tarjetas y se abre la primera.
   const [erroresDeDias, setErroresDeDias] = useState<Record<number, Record<string, string>>>({});
 
-  // Las fechas de la franja y el día que se está cargando. Un evento social no tiene pestañas: es
-  // una sola consulta para todos los días (el detalle lo arma el Responsable de Eventos).
   const fechas = fecha ? fechasDeLaFranja(fecha, fechaFin || fecha) : [];
   const cantidadDeDias = Math.max(fechas.length, 1);
-  const variosDias = tipo === 'Corporativo' && cantidadDeDias > 1;
-  const activo = tipo === 'Social' ? 0 : Math.min(indiceActivo, cantidadDeDias - 1);
+  const corporativo = tipo === 'Corporativo';
+  const variosDias = corporativo && cantidadDeDias > 1;
+  // El día que se está editando. Un evento social no carga días: usa siempre el primero.
+  const activo = tipo === 'Social' ? 0 : Math.min(diaAbierto ?? 0, cantidadDeDias - 1);
   const diaActual = dias[activo] ?? diaVacio();
-  const { personas, jornada, salonIds, elegidos, horas, modalidades } = diaActual;
+  const { personas, salonIds, elegidos, horas, modalidades } = diaActual;
+  const jornada = jornadaDe(diaActual);
   // Lo que se muestra: los errores del evento y los del día que se está cargando.
   const errores = { ...erroresGlobales, ...erroresDeDias[activo] };
 
@@ -381,7 +418,8 @@ export function CotizarEvento({
         return siguientes;
       });
   const setPersonas = delActivo('personas');
-  const setJornada = delActivo('jornada');
+  const setHoraDesde = delActivo('horaDesde');
+  const setHoraHasta = delActivo('horaHasta');
   const setSalonIds = delActivo('salonIds');
   const setElegidos = delActivo('elegidos');
   const setHoras = delActivo('horas');
@@ -390,28 +428,46 @@ export function CotizarEvento({
   function elegirFranja(inicio: string, fin: string) {
     setFecha(inicio);
     setFechaFin(fin);
-    setIndiceActivo(0);
+    setDiaAbierto(0);
   }
 
-  // «Copiar el día anterior»: le pasa al día que se está mirando los salones, la jornada, las
-  // personas y los servicios del anterior (el horario estimado es uno para todo el evento).
-  function copiarDiaAnterior() {
-    if (activo === 0) return;
+  // Abre la tarjeta de un día y la lleva a la vista.
+  function irAlDia(indice: number) {
+    setDiaAbierto(indice);
+    window.setTimeout(
+      () =>
+        document
+          .getElementById(`dia-${indice}`)
+          ?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+      50,
+    );
+  }
+
+  // «Copiar día cargado»: le pasa al día `hacia` todo lo del día `desde` (personas, horario,
+  // salones y servicios), para cambiar después solo lo distinto.
+  function copiarDia(desde: number, hacia: number) {
     setDias((anteriores) => {
       const siguientes = [...anteriores];
-      while (siguientes.length <= activo) siguientes.push(diaVacio());
-      siguientes[activo] = copiaDeDia(siguientes[activo - 1]!);
+      while (siguientes.length <= Math.max(desde, hacia)) siguientes.push(diaVacio());
+      siguientes[hacia] = copiaDeDia(siguientes[desde]!);
       return siguientes;
     });
-    setErroresDeDias((anteriores) => ({ ...anteriores, [activo]: {} }));
+    setErroresDeDias((anteriores) => {
+      const siguientes = { ...anteriores };
+      delete siguientes[hacia];
+      return siguientes;
+    });
+    irAlDia(hacia);
   }
 
   const cantidadPersonas = Number(personas) || 0;
   // El cliente solo ve los salones publicados (HU-08), igual que en la landing.
   const salonesVisibles = (salones.data ?? []).filter((s) => s.visibleEnLanding);
-  const salonesElegidos = salonIds
-    .map((id) => salonesVisibles.find((s) => s.id === id))
-    .filter((s): s is SalonConDistribuciones => s !== undefined);
+  const salonesDe = (dia: EstadoDeDia) =>
+    dia.salonIds
+      .map((id) => salonesVisibles.find((s) => s.id === id))
+      .filter((s): s is SalonConDistribuciones => s !== undefined);
+  const salonesElegidos = salonesDe(diaActual);
   // Capacidad sumada de lo elegido: la gente se reparte entre los salones (ADR 0011).
   const capacidadElegida = salonesElegidos.reduce((suma, s) => suma + s.capacidadMaxima, 0);
 
@@ -471,15 +527,13 @@ export function CotizarEvento({
   // Las líneas del ticket de un día: sus salones y sus servicios, con el precio proyectado al último
   // día de la franja.
   function lineasDelDia(dia: EstadoDeDia) {
-    const salonesDelDia = dia.salonIds
-      .map((id) => salonesVisibles.find((s) => s.id === id))
-      .filter((s): s is SalonConDistribuciones => s !== undefined);
+    const jornadaDelDia = jornadaDe(dia);
     return [
-      ...salonesDelDia.map((salon) => ({
+      ...salonesDe(dia).map((salon) => ({
         clave: `salon-${salon.id}`,
         descripcion: `Salón ${salon.nombre}`,
-        detalle: nombreDeJornada(dia.jornada),
-        subtotal: precioDeSalonEn(salon, dia.jornada),
+        detalle: nombreDeJornada(jornadaDelDia),
+        subtotal: precioDeSalonEn(salon, jornadaDelDia),
         aCotizar: false,
       })),
       ...catalogo
@@ -518,7 +572,16 @@ export function CotizarEvento({
   // Un bloque por día; con un solo día es el ticket de siempre.
   const bloques = Array.from({ length: cantidadDeDias }, (_, i) => {
     const dia = tipo === 'Social' ? diaVacio() : (dias[i] ?? diaVacio());
-    return { indice: i, fecha: fechas[i], dia, lineas: lineasDelDia(dia) };
+    const lineasDeEsteDia = lineasDelDia(dia);
+    return {
+      indice: i,
+      fecha: fechas[i],
+      dia,
+      lineas: lineasDeEsteDia,
+      subtotal: lineasDeEsteDia.reduce((suma, l) => suma + l.subtotal, 0),
+      completo: diaCompleto(dia),
+      empezado: diaEmpezado(dia),
+    };
   });
   const lineas = bloques.flatMap((bloque) => bloque.lineas);
   const { subtotal, iva, total } = desglosarIva(
@@ -526,6 +589,51 @@ export function CotizarEvento({
     // todos los días.
     lineas.reduce((suma, l) => suma + l.subtotal, 0),
   );
+  const diasListos = bloques.filter((b) => b.completo).length;
+  const diasEmpezados = bloques.filter((b) => !b.completo && b.empezado).length;
+  // El primer día que falta completar: con varios días, el botón de enviar avisa cuál es.
+  const primerDiaIncompleto = variosDias ? bloques.findIndex((b) => !b.completo) : -1;
+
+  // Los chips de una tarjeta cerrada: personas, salones, horario y cada servicio.
+  function resumenDelDia(dia: EstadoDeDia): string[] {
+    const chips: string[] = [];
+    const personasDelDia = Number(dia.personas) || 0;
+    if (personasDelDia > 0) chips.push(`${personasDelDia} personas`);
+    const nombres = salonesDe(dia).map((s) => s.nombre);
+    if (nombres.length > 0) chips.push(nombres.join(' + '));
+    if (tieneHorario(dia)) {
+      chips.push(
+        `${dia.horaDesde} – ${dia.horaHasta} · ${nombreDeJornada(jornadaDe(dia)).toLowerCase()}`,
+      );
+    }
+    for (const servicio of catalogo.filter((s) => dia.elegidos.has(s.id))) {
+      const aLas = dia.horas.get(servicio.id);
+      const modalidad = dia.modalidades.get(servicio.id) ?? 'Normal';
+      chips.push(
+        servicio.nombre +
+          (aLas ? ` ${aLas}` : '') +
+          (modalidad === 'Normal' ? '' : ` · ${textoModalidad(modalidad).toLowerCase()}`),
+      );
+    }
+    return chips;
+  }
+
+  // Los días que se pueden copiar en el día `indice`: los otros que ya están completos.
+  function opcionesDeCopia(indice: number): OpcionDeCopia[] {
+    return bloques
+      .filter((b) => b.indice !== indice && b.completo && b.fecha)
+      .map((b) => ({
+        indice: b.indice,
+        titulo: `Día ${b.indice + 1} · ${nombreDeDia(b.fecha!)}`,
+        detalle: [
+          `${Number(b.dia.personas)} personas`,
+          salonesDe(b.dia)
+            .map((s) => s.nombre)
+            .join(' + '),
+          `${b.dia.horaDesde} a ${b.dia.horaHasta}`,
+        ].join(' · '),
+      }));
+  }
 
   function alternarServicio(servicioId: number) {
     setElegidos((anteriores) => {
@@ -577,27 +685,38 @@ export function CotizarEvento({
     if (!tipo) nuevosErrores['tipo'] = 'Elegí si es un evento corporativo o social';
   }
 
-  // HU-50: cada día se valida con lo suyo (personas, salón, cantidad de cada servicio).
+  // HU-50: cada día se valida con lo suyo (personas, horario, salón, cantidad de cada servicio).
+  function validarDia(dia: EstadoDeDia): Record<string, string> {
+    const erroresDelDia: Record<string, string> = {};
+    const personasDelDia = Number(dia.personas) || 0;
+    if (personasDelDia < 1) erroresDelDia['personas'] = 'Ingresá la cantidad de personas';
+    if (tipo === 'Corporativo') {
+      if (!dia.horaDesde || !dia.horaHasta) erroresDelDia['horario'] = 'Indicá el horario del día';
+      else if (dia.horaDesde === dia.horaHasta)
+        erroresDelDia['horario'] = 'La hora de fin tiene que ser distinta de la de inicio';
+      // La capacidad no bloquea: un evento se puede repartir de muchas formas y el salón chico
+      // puede ser el correcto igual. La ficha de cada salón avisa, pero deja elegir.
+      if (dia.salonIds.length === 0) erroresDelDia['salon'] = 'Elegí al menos un salón';
+      for (const [id, cantidad] of dia.elegidos) {
+        if (cantidad !== null && (cantidad < 1 || cantidad > personasDelDia)) {
+          erroresDelDia['servicios'] =
+            'La cantidad de cada servicio tiene que estar entre 1 y el total de personas';
+          erroresDelDia[`servicio-${id}`] = 'Cantidad inválida';
+        }
+        if (horaFueraDelHorario(dia, id)) {
+          erroresDelDia['horasDeServicios'] =
+            'La hora de cada servicio tiene que estar dentro del horario del día';
+        }
+      }
+    }
+    return erroresDelDia;
+  }
+
   function validarDias(): Record<number, Record<string, string>> {
     const porDia: Record<number, Record<string, string>> = {};
     for (let i = 0; i < cantidadDeDias; i++) {
-      const dia = dias[i] ?? diaVacio();
-      const errores: Record<string, string> = {};
-      const personasDelDia = Number(dia.personas) || 0;
-      if (personasDelDia < 1) errores['personas'] = 'Ingresá la cantidad de personas';
-      if (tipo === 'Corporativo') {
-        // La capacidad no bloquea: un evento se puede repartir de muchas formas y el salón chico
-        // puede ser el correcto igual. La ficha de cada salón avisa, pero deja elegir.
-        if (dia.salonIds.length === 0) errores['salon'] = 'Elegí al menos un salón';
-        for (const [id, cantidad] of dia.elegidos) {
-          if (cantidad !== null && (cantidad < 1 || cantidad > personasDelDia)) {
-            errores['servicios'] =
-              'La cantidad de cada servicio tiene que estar entre 1 y el total de personas';
-            errores[`servicio-${id}`] = 'Cantidad inválida';
-          }
-        }
-      }
-      if (Object.keys(errores).length > 0) porDia[i] = errores;
+      const erroresDelDia = validarDia(dias[i] ?? diaVacio());
+      if (Object.keys(erroresDelDia).length > 0) porDia[i] = erroresDelDia;
     }
     return porDia;
   }
@@ -609,13 +728,40 @@ export function CotizarEvento({
     setErrores(nuevosErrores);
     setErroresDeDias(nuevosErroresDeDias);
     const diasConError = Object.keys(nuevosErroresDeDias).map(Number);
-    const hayErrores = Object.keys(nuevosErrores).length > 0 || diasConError.length > 0;
-    // Se salta al primer día con un problema, así el aviso está donde hay que corregir.
-    if (diasConError.length > 0 && !(activo in nuevosErroresDeDias)) {
-      setIndiceActivo(Math.min(...diasConError));
+    const hayErroresDelEvento = Object.keys(nuevosErrores).length > 0;
+    if (hayErroresDelEvento) {
+      // La fecha o el tipo: se abre el paso 1, que es donde se corrigen.
+      setPasoUnoAbierto(true);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (diasConError.length > 0) {
+      // Se abre la tarjeta del primer día con un problema, así el aviso está donde hay que corregir.
+      irAlDia(Math.min(...diasConError));
     }
-    if (hayErrores) window.scrollTo({ top: 0, behavior: 'smooth' });
-    return hayErrores;
+    return hayErroresDelEvento || diasConError.length > 0;
+  }
+
+  // «Listo» en una tarjeta: si al día le falta algo se marca; si no, se cierra y se abre el próximo
+  // día que falta completar.
+  function terminarDia(indice: number) {
+    const erroresDelDia = validarDia(dias[indice] ?? diaVacio());
+    if (Object.keys(erroresDelDia).length > 0) {
+      setErroresDeDias((anteriores) => ({ ...anteriores, [indice]: erroresDelDia }));
+      return;
+    }
+    setErroresDeDias((anteriores) => {
+      const siguientes = { ...anteriores };
+      delete siguientes[indice];
+      return siguientes;
+    });
+    const siguiente = siguienteIncompleto(indice);
+    if (siguiente === null) setDiaAbierto(null);
+    else irAlDia(siguiente);
+  }
+
+  // El próximo día sin completar después de `indice` (o antes, si después están todos).
+  function siguienteIncompleto(indice: number): number | null {
+    const pendientes = bloques.filter((b) => b.indice !== indice && !b.completo);
+    return (pendientes.find((b) => b.indice > indice) ?? pendientes[0])?.indice ?? null;
   }
 
   // ADR 0008: la consulta social no lleva salón, servicios ni presupuesto.
@@ -636,7 +782,7 @@ export function CotizarEvento({
     const cliente = { ...perfil.data, nombre: nombreCompleto(perfil.data) };
     const consulta = {
       fecha,
-      // HU-50: con un segundo clic en otro día, el evento dura hasta ese día.
+      // HU-50: con más de un día, el evento dura hasta el último.
       fechaFin: fechaFin && fechaFin !== fecha ? fechaFin : undefined,
       cantidadPersonas: personasSocial,
       // La API la sigue pidiendo: sale del horario. Sin precio de por medio no cambia nada más.
@@ -645,6 +791,7 @@ export function CotizarEvento({
       horaFinEstimada: horaFin || undefined,
       tipoSocial,
       tipoSocialDetalle: tipoSocial === 'Otro' ? detalleOtro.trim() : undefined,
+      comentarios: comentarios.trim() || undefined,
     };
     enviarSocial.mutate(
       {
@@ -661,18 +808,17 @@ export function CotizarEvento({
     const erroresPorDia = validarDias();
     if (mostrarErrores(nuevosErrores, erroresPorDia) || !perfil.data) return;
 
-    // Lo que se manda de cada día, con sus salones (solo los publicados), personas, jornada y
-    // servicios. Con un solo día es la misma franja de un día de siempre.
+    // Lo que se manda de cada día, con sus salones (solo los publicados), personas, jornada,
+    // horario (S-16) y servicios. Con un solo día es la misma franja de un día de siempre.
     const diasDelPedido = fechas.map((fechaDelDia, i) => {
       const dia = dias[i] ?? diaVacio();
-      const personasDelDia = Number(dia.personas) || 0;
       return {
         fecha: fechaDelDia,
-        cantidadPersonas: personasDelDia,
-        tipoJornada: dia.jornada,
-        salones: dia.salonIds
-          .map((id) => salonesVisibles.find((s) => s.id === id))
-          .filter((s): s is SalonConDistribuciones => s !== undefined),
+        cantidadPersonas: Number(dia.personas) || 0,
+        tipoJornada: jornadaDe(dia),
+        horaInicioEstimada: dia.horaDesde || undefined,
+        horaFinEstimada: dia.horaHasta || undefined,
+        salones: salonesDe(dia),
         servicios: catalogo
           .filter((s) => dia.elegidos.has(s.id))
           .map((s) => ({
@@ -695,14 +841,13 @@ export function CotizarEvento({
           fecha: dia.fecha,
           cantidadPersonas: dia.cantidadPersonas,
           tipoJornada: dia.tipoJornada,
+          horaInicioEstimada: dia.horaInicioEstimada,
+          horaFinEstimada: dia.horaFinEstimada,
           salonIds: dia.salones.map((s) => s.id),
           servicios: dia.servicios,
         })),
-        // Los servicios de cada día van dentro del día.
+        // Los servicios de cada día van dentro del día, y el horario también (S-16).
         servicios: [],
-        // La hora estimada de inicio es una sola para todos los días: el horario exacto de cada
-        // día lo fija el Responsable de Eventos al agendar.
-        horaInicioEstimada: hora || undefined,
       },
       {
         onSuccess: (presupuesto) =>
@@ -714,7 +859,12 @@ export function CotizarEvento({
             cliente,
             dias:
               diasDelPedido.length > 1
-                ? diasDelPedido.map(({ servicios: _servicios, ...dia }) => dia)
+                ? diasDelPedido.map((dia) => ({
+                    fecha: dia.fecha,
+                    cantidadPersonas: dia.cantidadPersonas,
+                    tipoJornada: dia.tipoJornada,
+                    salones: dia.salones,
+                  }))
                 : undefined,
           }),
       },
@@ -722,6 +872,340 @@ export function CotizarEvento({
   }
 
   const mesVigente = new Date().toLocaleDateString('es-AR', { month: 'long', year: 'numeric' });
+  const fechasDelEvento = fecha
+    ? fechas.length > 1
+      ? `del ${fechaLarga(fecha)} al ${fechaLarga(fechas[fechas.length - 1]!)} · ${textoDeDias(fecha, fechaFin)}`
+      : fechaLarga(fecha)
+    : '';
+  const pasoUnoResumido = corporativo && !!fecha && !pasoUnoAbierto;
+
+  // El editor del día que está abierto: personas, horario, salones y gastronomía. Con un solo día
+  // va suelto en el paso 2; con varios, dentro de la tarjeta del día.
+  const editorDelDia = (
+    <div className="flex flex-col gap-7">
+      <div className="grid items-start gap-4 sm:grid-cols-3 lg:grid-cols-[9rem_1fr_1fr_1.3fr]">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="personas" className="inline-flex items-center gap-1.5">
+            <Users className="size-4 text-dorado" /> Personas
+          </Label>
+          <InputEntero
+            id="personas"
+            max={MAXIMO_PERSONAS_EVENTO}
+            placeholder="Ej: 50"
+            value={personas}
+            onChangeValor={setPersonas}
+            className="h-11"
+            aria-invalid={!!errores['personas']}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="hora-desde" className="inline-flex items-center gap-1.5">
+            <Clock className="size-4 text-dorado" /> Desde
+          </Label>
+          <SelectorHora
+            id="hora-desde"
+            value={diaActual.horaDesde}
+            onChange={setHoraDesde}
+            horaSugerida="09:00"
+            placeholder="--:--"
+            className="h-11"
+            aria-invalid={!!errores['horario'] && !diaActual.horaDesde}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="hora-hasta" className="inline-flex items-center gap-1.5">
+            <Clock className="size-4 text-dorado" /> Hasta
+          </Label>
+          <SelectorHora
+            id="hora-hasta"
+            value={diaActual.horaHasta}
+            onChange={setHoraHasta}
+            horaSugerida={diaActual.horaDesde || '18:00'}
+            placeholder="--:--"
+            className="h-11"
+            aria-invalid={!!errores['horario'] && diaActual.horaDesde !== ''}
+          />
+        </div>
+        <div className="sm:col-span-3 lg:col-span-1 lg:self-end">
+          <CartelJornada dia={diaActual} />
+        </div>
+        {(errores['personas'] || errores['horario']) && (
+          <div className="space-y-1 sm:col-span-3 lg:col-span-4">
+            {errores['personas'] && (
+              <p className="text-xs text-destructive">{errores['personas']}</p>
+            )}
+            {errores['horario'] && <p className="text-xs text-destructive">{errores['horario']}</p>}
+          </div>
+        )}
+      </div>
+
+      <section className="flex flex-col gap-2.5" aria-label="Salones">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <span className="text-sm font-medium">Salones</span>
+          <span className="text-xs text-muted-foreground">
+            {salonesElegidos.length > 0 && (
+              <>
+                Capacidad elegida:{' '}
+                <strong className="text-foreground">{capacidadElegida} personas</strong> ·{' '}
+              </>
+            )}
+            precios por {nombreDeJornada(jornada).toLowerCase()}, sin IVA
+          </span>
+        </div>
+        {salones.isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
+        {cantidadPersonas > 0 && entran.length === 0 && masGrande && (
+          <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            Ningún salón cubre {cantidadPersonas} personas por sí solo: el más grande es{' '}
+            {masGrande.nombre}, hasta {masGrande.capacidadMaxima}. Podés combinar varios, o elegir
+            el que prefieras y lo resolvemos con vos.
+          </p>
+        )}
+        {errores['salon'] && <p className="text-sm text-destructive">{errores['salon']}</p>}
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+          {salonesVisibles.map((salon) => {
+            const superaCapacidad = cantidadPersonas > salon.capacidadMaxima;
+            const elegido = salonIds.includes(salon.id);
+            return (
+              <button
+                key={salon.id}
+                type="button"
+                aria-pressed={elegido}
+                onClick={() => alternarSalon(salon.id)}
+                className={cn(
+                  'group flex flex-col overflow-hidden rounded-xl border-2 text-left transition-all',
+                  elegido
+                    ? 'border-bordo bg-bordo/5 shadow-md'
+                    : 'border-border hover:border-dorado',
+                )}
+              >
+                {/* La foto del salón arriba, como en la landing, con la marca de elegido encima. */}
+                <span className="relative block h-24 overflow-hidden">
+                  <img
+                    src={fotoDeSalon(salon, 400)}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
+                  <span
+                    className={cn(
+                      'absolute top-2 right-2 flex size-5 items-center justify-center rounded-md border-2',
+                      elegido ? 'border-bordo bg-bordo text-crema' : 'border-white/90 bg-white/70',
+                    )}
+                  >
+                    {elegido && <Check className="size-3" />}
+                  </span>
+                  {recomendado?.id === salon.id && (
+                    <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-crema/95 px-2 py-0.5 text-[0.6rem] font-semibold tracking-wide text-bordo uppercase">
+                      <Sparkles className="size-3" /> Recomendado
+                    </span>
+                  )}
+                </span>
+                <span className="flex flex-1 flex-col gap-1 p-3">
+                  <span className="font-serif text-base leading-tight font-semibold text-bordo">
+                    {salon.nombre}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    Hasta {salon.capacidadMaxima} personas · {salon.superficie} m²
+                  </span>
+                  <strong className="mt-auto pt-1 text-sm tabular-nums">
+                    {formatearPesos(precioDeSalon(salon))}
+                  </strong>
+                  {superaCapacidad && salonIds.length <= 1 && (
+                    <span className="text-[0.7rem] leading-snug text-amber-700">
+                      Supera su capacidad: lo vemos con vos
+                    </span>
+                  )}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {/* Con varios salones lo que importa es la suma: la gente se reparte entre ellos.
+            Es un dato, no un tope: la capacidad no bloquea la elección. */}
+        {salonesElegidos.length > 1 && cantidadPersonas > capacidadElegida && (
+          <p className="text-xs text-amber-700">
+            {cantidadPersonas} personas superan la capacidad sumada: lo vemos con vos.
+          </p>
+        )}
+      </section>
+
+      <section className="flex flex-col gap-3" aria-label="Gastronomía">
+        <span className="text-sm font-medium">Gastronomía</span>
+        {servicios.isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
+        {errores['servicios'] && <p className="text-sm text-destructive">{errores['servicios']}</p>}
+        {errores['horasDeServicios'] && (
+          <p className="text-sm text-destructive">{errores['horasDeServicios']}</p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          {grupos.map(([nombre, items]) => {
+            const cuantos = items.filter((s) => elegidos.has(s.id)).length;
+            return (
+              <button
+                key={nombre}
+                type="button"
+                onClick={() => setCategoria(nombre)}
+                className={cn(
+                  'rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
+                  nombre === categoriaActiva
+                    ? 'border-bordo bg-bordo text-crema'
+                    : 'border-border hover:border-dorado',
+                )}
+              >
+                {nombre}
+                {cuantos > 0 && (
+                  <span className="ml-1.5 rounded-full bg-dorado px-1.5 text-bordo-oscuro">
+                    {cuantos}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Cada servicio es una tarjeta: nombre, descripción, precio y la marca de elegido. Las
+            opciones del servicio elegido van debajo, dentro de la tarjeta pero fuera del botón,
+            porque un botón no puede tener campos adentro. */}
+        <ul className="grid gap-3">
+          {(grupos.find(([nombre]) => nombre === categoriaActiva)?.[1] ?? []).map((servicio) => {
+            const marcado = elegidos.has(servicio.id);
+            const precio =
+              servicio.precio === null
+                ? 'A cotizar'
+                : formatearPesos(
+                    servicio.tercerizado ? servicio.precio : proyectar(servicio.precio),
+                  );
+            const unidad = servicio.porPersona ? 'por persona' : 'precio fijo';
+            return (
+              <li
+                key={servicio.id}
+                className={cn(
+                  'overflow-hidden rounded-xl border-2 transition-all',
+                  marcado ? 'border-bordo bg-bordo/5' : 'border-border hover:border-dorado',
+                )}
+              >
+                <button
+                  type="button"
+                  aria-pressed={marcado}
+                  onClick={() => alternarServicio(servicio.id)}
+                  className={cn(
+                    'flex w-full items-center gap-3 p-2 pr-4 text-left sm:gap-4',
+                    !servicio.fotoUrl && 'py-3 pl-4',
+                  )}
+                >
+                  {/* Sin foto propia no se deja el hueco: el texto ocupa todo el ancho, como en
+                      la carta de la landing. */}
+                  {servicio.fotoUrl && (
+                    <img
+                      src={fotoOptimizada(servicio.fotoUrl, 200)}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      className="size-16 shrink-0 rounded-lg object-cover sm:size-20"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <span className="block font-serif text-lg leading-snug font-semibold text-bordo">
+                      {servicio.nombre}
+                    </span>
+                    {/* Sin `block`: le ganaba al display de line-clamp y la descripción salía
+                        entera. */}
+                    <span className="line-clamp-2 text-xs text-muted-foreground">
+                      {servicio.descripcion}
+                    </span>
+                    {/* En pantallas angostas el precio va debajo del texto. */}
+                    <span className="mt-1 block font-serif font-semibold sm:hidden">
+                      {precio}{' '}
+                      <span className="font-sans text-[0.65rem] font-normal text-muted-foreground uppercase">
+                        {unidad}
+                      </span>
+                    </span>
+                  </div>
+                  <div className="hidden shrink-0 text-right sm:block">
+                    <p className="font-serif text-lg font-semibold">{precio}</p>
+                    <p className="text-[0.65rem] text-muted-foreground uppercase">{unidad}</p>
+                  </div>
+                  <span
+                    className={cn(
+                      'flex size-5 shrink-0 items-center justify-center rounded-md border-2',
+                      marcado ? 'border-bordo bg-bordo text-crema' : 'border-input',
+                    )}
+                  >
+                    {marcado && <Check className="size-3" />}
+                  </span>
+                </button>
+                {marcado && (
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-3 border-t border-dashed border-bordo/20 px-4 py-3 text-xs text-muted-foreground">
+                    {servicio.admiteModalidad && (
+                      <>
+                        <label htmlFor={`modalidad-${servicio.id}`}>Servicio</label>
+                        <SelectorModalidad
+                          id={`modalidad-${servicio.id}`}
+                          value={modalidadDe(servicio.id)}
+                          onChange={(modalidad) => cambiarModalidad(servicio.id, modalidad)}
+                        />
+                      </>
+                    )}
+                    {servicio.porPersona && (
+                      <>
+                        <span className={servicio.admiteModalidad ? 'ml-2' : undefined}>Para</span>
+                        <CantidadDeServicio
+                          aria-label={`Para cuántas personas es ${servicio.nombre}`}
+                          max={cantidadPersonas || undefined}
+                          valor={cantidadDe(servicio.id, true)}
+                          onCambio={(valor) => cambiarCantidad(servicio.id, valor)}
+                          className={cn(
+                            'h-8 w-20',
+                            errores[`servicio-${servicio.id}`] && 'border-destructive',
+                          )}
+                        />
+                        personas
+                      </>
+                    )}
+                    {/* Opcional: a qué hora del día se espera el servicio. Es la preferencia del
+                        cliente; el horario real lo carga el equipo al agendar. */}
+                    <label htmlFor={`hora-${servicio.id}`} className="ml-2">
+                      Hora
+                    </label>
+                    {/* La hora tiene que caer dentro del horario del día: el selector no deja
+                        aceptar una afuera, y si después cambia el horario del día se avisa. */}
+                    <SelectorHora
+                      id={`hora-${servicio.id}`}
+                      value={horas.get(servicio.id) ?? ''}
+                      onChange={(valor) => cambiarHora(servicio.id, valor)}
+                      horaSugerida={diaActual.horaDesde || undefined}
+                      horaMinima={tieneHorario(diaActual) ? diaActual.horaDesde : undefined}
+                      horaMaxima={tieneHorario(diaActual) ? diaActual.horaHasta : undefined}
+                      opcional
+                      placeholder="--:--"
+                      className="h-8 w-32"
+                      aria-invalid={horaFueraDelHorario(diaActual, servicio.id)}
+                    />
+                    <span>(opcional)</span>
+                    {cantidadPersonas > 0 && servicio.precio !== null && (
+                      <span className="ml-auto font-medium text-foreground tabular-nums">
+                        {formatearPesos(
+                          (precioDeServicio(servicio) ?? 0) *
+                            cantidadDe(servicio.id, servicio.porPersona),
+                        )}
+                      </span>
+                    )}
+                    {horaFueraDelHorario(diaActual, servicio.id) && (
+                      <p className="w-full text-destructive">
+                        La hora tiene que estar dentro del horario del día ({diaActual.horaDesde} a{' '}
+                        {diaActual.horaHasta}).
+                      </p>
+                    )}
+                  </div>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    </div>
+  );
 
   return (
     <main className="fondo-papel min-h-screen pb-24">
@@ -751,592 +1235,291 @@ export function CotizarEvento({
       )}
 
       <div className="mx-auto mt-10 grid max-w-6xl gap-8 px-4 sm:px-6 lg:grid-cols-[1fr_380px]">
-        <div className="flex flex-col gap-6">
-          <Paso
-            numero={1}
-            titulo="Tu evento"
-            bajada={
-              variosDias
-                ? 'Las fechas. La cantidad de personas, los salones y la gastronomía los cargás día por día.'
-                : 'Fecha e invitados.'
-            }
-          >
-            <div className="grid gap-5 sm:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="fecha" className="inline-flex items-center gap-1.5">
-                  <CalendarDays className="size-4 text-dorado" /> Fecha del evento
-                </Label>
-                {/* HU-50: un clic es el día de inicio; con un segundo clic el evento dura hasta ese
-                    día (hasta 32 días). Sin segundo clic, dura uno solo. */}
-                <SelectorRangoFechas
-                  id="fecha"
-                  diaMinimo={hoyISO()}
-                  inicio={fecha}
-                  fin={fechaFin}
-                  onChange={elegirFranja}
-                  placeholder="Elegí el día, o el primero y el último"
-                  className="h-11"
-                  aria-invalid={!!errores['fecha']}
-                />
-                {errores['fecha'] ? (
-                  <p className="text-xs text-destructive">{errores['fecha']}</p>
-                ) : (
-                  <p className="text-xs text-muted-foreground">
-                    Si dura varios días, tocá el primero y después el último.
-                  </p>
-                )}
+        <div className="flex min-w-0 flex-col gap-6">
+          {pasoUnoResumido ? (
+            <section className="flex flex-wrap items-center gap-4 rounded-2xl bg-card p-6 shadow-sm ring-1 ring-border sm:px-8">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-bordo font-serif text-sm text-crema">
+                1
+              </span>
+              <div className="min-w-0 flex-1">
+                <h2 className="text-xl font-semibold text-bordo">Tu evento</h2>
+                <p className="text-sm text-muted-foreground first-letter:uppercase">
+                  Corporativo · {fechasDelEvento}
+                </p>
               </div>
-              {!variosDias && (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="personas" className="inline-flex items-center gap-1.5">
-                    <Users className="size-4 text-dorado" /> Cantidad de personas
-                  </Label>
-                  <InputEntero
-                    id="personas"
-                    max={MAXIMO_PERSONAS_EVENTO}
-                    placeholder="Ej: 50"
-                    value={personas}
-                    onChangeValor={setPersonas}
-                    className="h-11"
-                  />
-                  {errores['personas'] ? (
-                    <p className="text-xs text-destructive">{errores['personas']}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      Hasta {MAXIMO_PERSONAS_EVENTO} personas. Para un evento más grande,
-                      consultanos.
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </Paso>
-
-          <Paso
-            numero={2}
-            titulo="¿Qué tipo de evento es?"
-            bajada="Los eventos sociales son muy personalizables: los armamos juntos."
-          >
-            {errores['tipo'] && <p className="mb-4 text-sm text-destructive">{errores['tipo']}</p>}
-            <div className="grid gap-4 sm:grid-cols-2">
-              {OPCIONES_TIPO.map(({ valor, titulo, detalle, foto, Icono }) => {
-                const elegido = tipo === valor;
-                return (
-                  <button
-                    key={valor}
-                    type="button"
-                    aria-pressed={elegido}
-                    onClick={() => setTipo(valor)}
-                    className={cn(
-                      'group overflow-hidden rounded-xl border-2 text-left transition-all',
-                      elegido
-                        ? 'border-bordo bg-bordo/5 shadow-md'
-                        : 'border-border hover:border-dorado',
-                    )}
-                  >
-                    <div className="relative h-36 overflow-hidden">
-                      <img
-                        src={foto}
-                        alt=""
-                        className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                      {/* AC2 de la auditoría de accesibilidad: mismo criterio que las tarjetas
-                          de salones de la landing. */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-bordo-oscuro/95 via-bordo-oscuro/30 to-transparent" />
-                      <span className="absolute bottom-3 left-4 inline-flex items-center gap-2 font-serif text-lg font-semibold text-crema">
-                        <Icono className="size-5 text-dorado" /> {titulo}
-                      </span>
-                      {elegido && (
-                        <span className="absolute top-3 right-3 flex size-6 items-center justify-center rounded-full bg-bordo text-crema">
-                          <Check className="size-3.5" />
-                        </span>
-                      )}
-                    </div>
-                    <p className="px-4 py-3 text-xs text-muted-foreground">{detalle}</p>
-                  </button>
-                );
-              })}
-            </div>
-
-            {tipo === 'Social' && (
-              <div className="mt-6 border-t border-dashed border-border pt-5">
-                <p className="text-sm font-medium">¿Qué celebrás?</p>
-                {errores['tipoSocial'] && (
-                  <p className="mt-1 text-xs text-destructive">{errores['tipoSocial']}</p>
-                )}
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {TIPOS_SOCIALES.map(([valor, etiqueta]) => (
-                    <button
-                      key={valor}
-                      type="button"
-                      aria-pressed={tipoSocial === valor}
-                      onClick={() => setTipoSocial(valor)}
-                      className={cn(
-                        'rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
-                        tipoSocial === valor
-                          ? 'border-bordo bg-bordo text-crema'
-                          : 'border-border hover:border-dorado',
-                      )}
-                    >
-                      {etiqueta}
-                    </button>
-                  ))}
-                </div>
-                {tipoSocial === 'Otro' && (
-                  <div className="mt-4 flex flex-col gap-1.5">
-                    <Label htmlFor="detalle-otro">Contanos qué evento es</Label>
-                    <Input
-                      id="detalle-otro"
-                      maxLength={120}
-                      placeholder="Ej: despedida de soltera, aniversario, egresados…"
-                      value={detalleOtro}
-                      onChange={(e) => setDetalleOtro(e.target.value)}
-                      className="h-11"
-                    />
-                    {errores['detalleOtro'] && (
-                      <p className="text-xs text-destructive">{errores['detalleOtro']}</p>
-                    )}
-                  </div>
-                )}
-
-                {/* Sin salón no hay precio que dependa de la duración: alcanza con el horario. */}
-                <div className="mt-6 grid gap-5 border-t border-dashed border-border pt-5 sm:grid-cols-2">
-                  <CampoHora
-                    id="hora"
-                    etiqueta="Hora de inicio estimada"
-                    value={hora}
-                    onChange={setHora}
-                    error={errores['hora']}
-                  />
-                  <CampoHora
-                    id="hora-fin"
-                    etiqueta="Hora de fin estimada"
-                    value={horaFin}
-                    onChange={setHoraFin}
-                    horaSugerida={hora || undefined}
-                    error={errores['horaFin']}
-                  />
-                  <p className="text-xs text-muted-foreground sm:col-span-2">
-                    Si termina después de la medianoche, elegí la hora de la madrugada: se toma como
-                    del día siguiente.
-                  </p>
-                </div>
-              </div>
-            )}
-          </Paso>
-
-          {variosDias && (
-            <Paso
-              numero={3}
-              titulo="Armá cada día"
-              bajada="Cada día tiene sus propias personas, salones y gastronomía. Pasá de un día a otro sin perder lo que cargaste."
-            >
-              <div
-                role="tablist"
-                aria-label="Días del evento"
-                className="flex gap-2 overflow-x-auto pb-2"
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full sm:w-auto"
+                onClick={() => setPasoUnoAbierto(true)}
               >
-                {fechas.map((fechaDelDia, i) => {
-                  const dia = dias[i] ?? diaVacio();
-                  const personasDelDia = Number(dia.personas) || 0;
-                  const completo = personasDelDia > 0 && dia.salonIds.length > 0;
-                  return (
-                    <button
-                      key={fechaDelDia}
-                      type="button"
-                      role="tab"
-                      aria-selected={i === activo}
-                      onClick={() => setIndiceActivo(i)}
-                      className={cn(
-                        'shrink-0 rounded-xl border-2 px-3 py-2 text-left text-xs transition-colors',
-                        i === activo
-                          ? 'border-bordo bg-bordo/5'
-                          : 'border-border hover:border-dorado',
-                        i in erroresDeDias && 'border-destructive',
-                      )}
-                    >
-                      <span className="flex items-center gap-1.5 font-semibold text-bordo">
-                        Día {i + 1} · <span className="capitalize">{nombreDeDia(fechaDelDia)}</span>
-                        {completo && <Check className="size-3.5 text-emerald-700" />}
-                      </span>
-                      <span className="block text-muted-foreground">
-                        {personasDelDia > 0 ? `${personasDelDia} personas` : 'sin personas'} ·{' '}
-                        {dia.salonIds.length} {dia.salonIds.length === 1 ? 'salón' : 'salones'} ·{' '}
-                        {dia.jornada === 'completa' ? 'completa' : 'media'}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="mt-4 flex flex-wrap items-end gap-4 border-t border-dashed border-border pt-4">
+                <CalendarDays /> Cambiar fechas
+              </Button>
+            </section>
+          ) : (
+            <Paso numero={1} titulo="Tu evento" bajada="Las fechas y qué tipo de evento es.">
+              <div className="grid gap-5 sm:grid-cols-2">
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="personas" className="inline-flex items-center gap-1.5">
-                    <Users className="size-4 text-dorado" /> Personas el día {activo + 1}
+                  <Label htmlFor="fecha" className="inline-flex items-center gap-1.5">
+                    <CalendarDays className="size-4 text-dorado" /> Fecha del evento
                   </Label>
-                  <InputEntero
-                    id="personas"
-                    max={MAXIMO_PERSONAS_EVENTO}
-                    placeholder="Ej: 50"
-                    value={personas}
-                    onChangeValor={setPersonas}
-                    className="h-11 w-40"
-                    aria-invalid={!!errores['personas']}
-                  />
-                  {errores['personas'] && (
-                    <p className="text-xs text-destructive">{errores['personas']}</p>
-                  )}
-                </div>
-                {activo > 0 && (
-                  <Button
-                    type="button"
-                    variant="outline"
+                  {/* HU-50: arriba del calendario se elige «1 día» o «Más de 1 día» (hasta 32). */}
+                  <SelectorRangoFechas
+                    id="fecha"
+                    conModo
+                    diaMinimo={hoyISO()}
+                    inicio={fecha}
+                    fin={fechaFin}
+                    onChange={elegirFranja}
+                    placeholder="Elegí el día o los días"
                     className="h-11"
-                    onClick={copiarDiaAnterior}
-                  >
-                    <Copy /> Copiar el día anterior
-                  </Button>
-                )}
-              </div>
-              {Object.keys(erroresDeDias).some((i) => Number(i) !== activo) && (
-                <p className="mt-4 flex items-start gap-2 rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  Falta completar{' '}
-                  {Object.keys(erroresDeDias)
-                    .map(Number)
-                    .filter((i) => i !== activo)
-                    .map((i) => `el día ${i + 1}`)
-                    .join(', ')}
-                  .
-                </p>
-              )}
-            </Paso>
-          )}
-
-          {tipo === 'Corporativo' && (
-            <Paso
-              numero={variosDias ? 4 : 3}
-              titulo="Elegí los salones"
-              bajada="Uno o varios, hasta los cinco: la gente se puede repartir entre salones. Precios por evento, sin IVA. Abajo elegís la duración y ves cómo cambia el total."
-            >
-              {variosDias && (
-                <p className="mb-4 text-sm font-medium text-bordo">
-                  Día {activo + 1} de {cantidadDeDias} ·{' '}
-                  <span className="capitalize">{nombreDeDia(fechas[activo]!)}</span>
-                </p>
-              )}
-              {salones.isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
-              {cantidadPersonas > 0 && entran.length === 0 && masGrande && (
-                <p className="mb-4 flex items-start gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  Ningún salón cubre {cantidadPersonas} personas por sí solo: el más grande es{' '}
-                  {masGrande.nombre}, hasta {masGrande.capacidadMaxima}. Podés combinar varios, o
-                  elegir el que prefieras y lo resolvemos con vos.
-                </p>
-              )}
-              {errores['salon'] && (
-                <p className="mb-4 text-sm text-destructive">{errores['salon']}</p>
-              )}
-              <div className="grid gap-3">
-                {salonesVisibles.map((salon) => {
-                  const superaCapacidad = cantidadPersonas > salon.capacidadMaxima;
-                  const elegido = salonIds.includes(salon.id);
-                  return (
-                    <button
-                      key={salon.id}
-                      type="button"
-                      aria-pressed={elegido}
-                      onClick={() => alternarSalon(salon.id)}
-                      className={cn(
-                        'flex items-center gap-4 overflow-hidden rounded-xl border-2 p-2 pr-4 text-left transition-all',
-                        elegido
-                          ? 'border-bordo bg-bordo/5 shadow-md'
-                          : 'border-border hover:border-dorado',
-                      )}
-                    >
-                      <img
-                        src={fotoDeSalon(salon, 200)}
-                        alt=""
-                        loading="lazy"
-                        decoding="async"
-                        className="size-20 shrink-0 rounded-lg object-cover"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-serif text-lg font-semibold text-bordo">
-                            {salon.nombre}
-                          </span>
-                          {recomendado?.id === salon.id && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-dorado/20 px-2 py-0.5 text-[0.65rem] font-semibold tracking-wide text-bordo uppercase">
-                              <Sparkles className="size-3" /> Recomendado
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Hasta {salon.capacidadMaxima} personas · {salon.superficie} m² ·{' '}
-                          {salon.distribuciones
-                            .filter((d) => d.activo)
-                            .map((d) => d.nombre)
-                            .join(', ')}
-                        </p>
-                        {superaCapacidad && salonIds.length <= 1 && (
-                          <p className="text-xs text-amber-700">
-                            {cantidadPersonas} personas superan su capacidad. Se puede elegir igual:
-                            lo vemos con vos.
-                          </p>
-                        )}
-                      </div>
-                      <div className="text-right">
-                        <p className="font-serif text-lg font-semibold">
-                          {formatearPesos(precioDeSalon(salon))}
-                        </p>
-                        <p className="text-[0.65rem] text-muted-foreground uppercase">+ IVA</p>
-                      </div>
-                      <span
-                        className={cn(
-                          'flex size-5 shrink-0 items-center justify-center rounded-md border-2',
-                          elegido ? 'border-bordo bg-bordo text-crema' : 'border-input',
-                        )}
-                      >
-                        {elegido && <Check className="size-3" />}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {/* Con varios salones lo que importa es la suma: la gente se reparte entre ellos.
-                  Es un dato, no un tope: la capacidad no bloquea la elección. */}
-              {salonesElegidos.length > 1 && (
-                <p className="mt-4 text-sm text-muted-foreground">
-                  {salonesElegidos.length} salones elegidos · capacidad sumada{' '}
-                  <span className="font-medium text-foreground">{capacidadElegida} personas</span>
-                  {cantidadPersonas > capacidadElegida && (
-                    <span className="text-amber-700">
-                      {' '}
-                      · {cantidadPersonas} personas la superan, lo vemos con vos
-                    </span>
+                    aria-invalid={!!errores['fecha']}
+                  />
+                  {errores['fecha'] && (
+                    <p className="text-xs text-destructive">{errores['fecha']}</p>
                   )}
-                </p>
-              )}
-
-              {/* La duración va después de los salones: al cambiarla se actualizan el precio de cada
-                  salón y el presupuesto. */}
-              <div className="mt-6 space-y-5 border-t border-dashed border-border pt-5">
-                <div>
-                  <p className="text-sm font-medium">¿Cuánto dura tu evento?</p>
-                  <p className="mb-3 text-xs text-muted-foreground">
-                    El precio de cada salón y tu presupuesto se ajustan a la duración que elijas.
-                  </p>
-                  <OpcionesJornada jornada={jornada} onChange={setJornada} />
                 </div>
-                <CampoHora
-                  id="hora-corporativo"
-                  etiqueta={
-                    variosDias
-                      ? 'Hora de inicio estimada (la misma para todos los días)'
-                      : 'Hora de inicio estimada'
-                  }
-                  value={hora}
-                  onChange={setHora}
-                  className="sm:max-w-[calc(50%-0.625rem)]"
-                />
-              </div>
-            </Paso>
-          )}
-
-          {tipo === 'Corporativo' && (
-            <Paso
-              numero={variosDias ? 5 : 4}
-              titulo="Sumá la gastronomía"
-              bajada={
-                variosDias
-                  ? 'Opcional. La gastronomía se carga día por día: la de un día no se suma a los demás. Podés contratar un servicio para menos personas que las de ese día.'
-                  : 'Opcional. Podés contratar un servicio para menos personas que el total.'
-              }
-            >
-              {variosDias && (
-                <p className="mb-4 text-sm font-medium text-bordo">
-                  Día {activo + 1} de {cantidadDeDias} ·{' '}
-                  <span className="capitalize">{nombreDeDia(fechas[activo]!)}</span>
-                </p>
-              )}
-              {servicios.isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
-              {errores['servicios'] && (
-                <p className="mb-4 text-sm text-destructive">{errores['servicios']}</p>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {grupos.map(([nombre, items]) => {
-                  const cuantos = items.filter((s) => elegidos.has(s.id)).length;
-                  return (
-                    <button
-                      key={nombre}
-                      type="button"
-                      onClick={() => setCategoria(nombre)}
-                      className={cn(
-                        'rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
-                        nombre === categoriaActiva
-                          ? 'border-bordo bg-bordo text-crema'
-                          : 'border-border hover:border-dorado',
-                      )}
-                    >
-                      {nombre}
-                      {cuantos > 0 && (
-                        <span className="ml-1.5 rounded-full bg-dorado px-1.5 text-bordo-oscuro">
-                          {cuantos}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
               </div>
 
-              {/* Cada servicio es una tarjeta con el mismo formato que los salones: foto, nombre y
-                  descripción, precio y la marca de elegido. Sin foto propia no se deja el hueco:
-                  el texto ocupa todo el ancho, como en la carta de la landing. Las opciones del
-                  servicio elegido van debajo, dentro de la tarjeta pero fuera del botón, porque un
-                  botón no puede tener campos adentro. */}
-              <ul className="mt-5 grid gap-3">
-                {(grupos.find(([nombre]) => nombre === categoriaActiva)?.[1] ?? []).map(
-                  (servicio) => {
-                    const marcado = elegidos.has(servicio.id);
-                    const precio =
-                      servicio.precio === null
-                        ? 'A cotizar'
-                        : formatearPesos(
-                            servicio.tercerizado ? servicio.precio : proyectar(servicio.precio),
-                          );
-                    const unidad = servicio.porPersona ? 'por persona' : 'precio fijo';
+              <div className="mt-6 border-t border-dashed border-border pt-5">
+                <p className="mb-3 text-sm font-medium">¿Qué tipo de evento es?</p>
+                {errores['tipo'] && (
+                  <p className="mb-3 text-sm text-destructive">{errores['tipo']}</p>
+                )}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  {OPCIONES_TIPO.map(({ valor, titulo, detalle, foto, Icono }) => {
+                    const elegido = tipo === valor;
                     return (
-                      <li
-                        key={servicio.id}
+                      <button
+                        key={valor}
+                        type="button"
+                        aria-pressed={elegido}
+                        onClick={() => setTipo(valor)}
                         className={cn(
-                          'overflow-hidden rounded-xl border-2 transition-all',
-                          marcado
+                          'group overflow-hidden rounded-xl border-2 text-left transition-all',
+                          elegido
                             ? 'border-bordo bg-bordo/5 shadow-md'
                             : 'border-border hover:border-dorado',
                         )}
                       >
-                        <button
-                          type="button"
-                          aria-pressed={marcado}
-                          onClick={() => alternarServicio(servicio.id)}
-                          className={cn(
-                            'flex w-full items-center gap-3 p-2 pr-4 text-left sm:gap-4',
-                            !servicio.fotoUrl && 'py-3 pl-4',
-                          )}
-                        >
-                          {servicio.fotoUrl && (
-                            <img
-                              src={fotoOptimizada(servicio.fotoUrl, 200)}
-                              alt=""
-                              loading="lazy"
-                              decoding="async"
-                              className="size-16 shrink-0 rounded-lg object-cover sm:size-20"
-                            />
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <span className="block font-serif text-lg leading-snug font-semibold text-bordo">
-                              {servicio.nombre}
-                            </span>
-                            {/* Sin `block`: le ganaba al display de line-clamp y la descripción
-                                salía entera. */}
-                            <span className="line-clamp-2 text-xs text-muted-foreground">
-                              {servicio.descripcion}
-                            </span>
-                            {/* En pantallas angostas el precio va debajo del texto: al costado le
-                                dejaba al nombre una palabra por renglón. */}
-                            <span className="mt-1 block font-serif font-semibold sm:hidden">
-                              {precio}{' '}
-                              <span className="font-sans text-[0.65rem] font-normal text-muted-foreground uppercase">
-                                {unidad}
-                              </span>
-                            </span>
-                          </div>
-                          <div className="hidden shrink-0 text-right sm:block">
-                            <p className="font-serif text-lg font-semibold">{precio}</p>
-                            <p className="text-[0.65rem] text-muted-foreground uppercase">
-                              {unidad}
-                            </p>
-                          </div>
-                          <span
-                            className={cn(
-                              'flex size-5 shrink-0 items-center justify-center rounded-md border-2',
-                              marcado ? 'border-bordo bg-bordo text-crema' : 'border-input',
-                            )}
-                          >
-                            {marcado && <Check className="size-3" />}
+                        <div className="relative h-32 overflow-hidden">
+                          <img
+                            src={foto}
+                            alt=""
+                            className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
+                          />
+                          {/* AC2 de la auditoría de accesibilidad: mismo criterio que las tarjetas
+                              de salones de la landing. */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-bordo-oscuro/95 via-bordo-oscuro/30 to-transparent" />
+                          <span className="absolute bottom-3 left-4 inline-flex items-center gap-2 font-serif text-lg font-semibold text-crema">
+                            <Icono className="size-5 text-dorado" /> {titulo}
                           </span>
-                        </button>
-                        {marcado && (
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-3 border-t border-dashed border-bordo/20 px-4 py-3 text-xs text-muted-foreground">
-                            {servicio.porPersona && (
-                              <>
-                                Para
-                                <CantidadDeServicio
-                                  aria-label={`Para cuántas personas es ${servicio.nombre}`}
-                                  max={cantidadPersonas || undefined}
-                                  valor={cantidadDe(servicio.id, true)}
-                                  onCambio={(valor) => cambiarCantidad(servicio.id, valor)}
-                                  className={cn(
-                                    'h-8 w-20',
-                                    errores[`servicio-${servicio.id}`] && 'border-destructive',
-                                  )}
-                                />
-                                personas
-                              </>
-                            )}
-                            {/* Opcional: a qué hora del evento se espera el servicio. El horario
-                                real lo carga el equipo al agendar, así que acá no hay contra qué
-                                validarla: es la preferencia del cliente. */}
-                            <label
-                              htmlFor={`hora-${servicio.id}`}
-                              className={servicio.porPersona ? 'ml-2' : undefined}
-                            >
-                              A las
-                            </label>
-                            <SelectorHora
-                              id={`hora-${servicio.id}`}
-                              value={horas.get(servicio.id) ?? ''}
-                              onChange={(valor) => cambiarHora(servicio.id, valor)}
-                              horaSugerida={hora || undefined}
-                              opcional
-                              placeholder="--:--"
-                              className="h-8 w-32"
-                            />
-                            <span>(opcional)</span>
-                            {servicio.admiteModalidad && (
-                              <>
-                                <label htmlFor={`modalidad-${servicio.id}`} className="ml-2">
-                                  Servicio
-                                </label>
-                                <SelectorModalidad
-                                  id={`modalidad-${servicio.id}`}
-                                  value={modalidadDe(servicio.id)}
-                                  onChange={(modalidad) => cambiarModalidad(servicio.id, modalidad)}
-                                />
-                              </>
-                            )}
-                            {cantidadPersonas > 0 && servicio.precio !== null && (
-                              <span className="ml-auto font-medium text-foreground">
-                                {formatearPesos(
-                                  (precioDeServicio(servicio) ?? 0) *
-                                    cantidadDe(servicio.id, servicio.porPersona),
-                                )}
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </li>
+                          {elegido && (
+                            <span className="absolute top-3 right-3 flex size-6 items-center justify-center rounded-full bg-bordo text-crema">
+                              <Check className="size-3.5" />
+                            </span>
+                          )}
+                        </div>
+                        <p className="px-4 py-3 text-xs text-muted-foreground">{detalle}</p>
+                      </button>
                     );
-                  },
-                )}
-              </ul>
+                  })}
+                </div>
+              </div>
+
+              {tipo === 'Social' && (
+                <div className="mt-6 border-t border-dashed border-border pt-5">
+                  <p className="text-sm font-medium">¿Qué celebrás?</p>
+                  {errores['tipoSocial'] && (
+                    <p className="mt-1 text-xs text-destructive">{errores['tipoSocial']}</p>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {TIPOS_SOCIALES.map(([valor, etiqueta]) => (
+                      <button
+                        key={valor}
+                        type="button"
+                        aria-pressed={tipoSocial === valor}
+                        onClick={() => setTipoSocial(valor)}
+                        className={cn(
+                          'rounded-full border px-3.5 py-1.5 text-xs font-medium transition-colors',
+                          tipoSocial === valor
+                            ? 'border-bordo bg-bordo text-crema'
+                            : 'border-border hover:border-dorado',
+                        )}
+                      >
+                        {etiqueta}
+                      </button>
+                    ))}
+                  </div>
+                  {tipoSocial === 'Otro' && (
+                    <div className="mt-4 flex flex-col gap-1.5">
+                      <Label htmlFor="detalle-otro">Contanos qué evento es</Label>
+                      <Input
+                        id="detalle-otro"
+                        maxLength={120}
+                        placeholder="Ej: despedida de soltera, aniversario, egresados…"
+                        value={detalleOtro}
+                        onChange={(e) => setDetalleOtro(e.target.value)}
+                        className="h-11"
+                      />
+                      {errores['detalleOtro'] && (
+                        <p className="text-xs text-destructive">{errores['detalleOtro']}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Sin salón no hay precio que dependa de la duración: alcanza con las personas
+                      y el horario. Un evento corporativo carga las personas en cada día. */}
+                  <div className="mt-6 grid gap-5 border-t border-dashed border-border pt-5 sm:grid-cols-2">
+                    <div className="flex flex-col gap-1.5 sm:col-span-2 sm:max-w-[calc(50%-0.625rem)]">
+                      <Label htmlFor="personas-social" className="inline-flex items-center gap-1.5">
+                        <Users className="size-4 text-dorado" /> Cantidad de personas
+                      </Label>
+                      <InputEntero
+                        id="personas-social"
+                        max={MAXIMO_PERSONAS_EVENTO}
+                        placeholder="Ej: 50"
+                        value={personas}
+                        onChangeValor={setPersonas}
+                        className="h-11"
+                        aria-invalid={!!errores['personas']}
+                      />
+                      {errores['personas'] && (
+                        <p className="text-xs text-destructive">{errores['personas']}</p>
+                      )}
+                    </div>
+                    <CampoHora
+                      id="hora"
+                      etiqueta="Hora de inicio estimada"
+                      value={hora}
+                      onChange={setHora}
+                      error={errores['hora']}
+                    />
+                    <CampoHora
+                      id="hora-fin"
+                      etiqueta="Hora de fin estimada"
+                      value={horaFin}
+                      onChange={setHoraFin}
+                      horaSugerida={hora || undefined}
+                      error={errores['horaFin']}
+                    />
+                    <p className="text-xs text-muted-foreground sm:col-span-2">
+                      Si termina después de la medianoche, elegí la hora de la madrugada: se toma
+                      como del día siguiente.
+                    </p>
+                  </div>
+
+                  {/* Con cualquier tipo de evento social: lo que el cliente quiera contar. */}
+                  <div className="mt-6 flex flex-col gap-1.5 border-t border-dashed border-border pt-5">
+                    <Label htmlFor="comentarios-social">
+                      Comentarios{' '}
+                      <span className="font-normal text-muted-foreground">(opcional)</span>
+                    </Label>
+                    <Textarea
+                      id="comentarios-social"
+                      maxLength={MAXIMO_COMENTARIOS_CLIENTE}
+                      rows={4}
+                      placeholder="Contanos lo que quieras de tu evento: ideas, pedidos especiales, dudas…"
+                      value={comentarios}
+                      onChange={(e) => setComentarios(e.target.value)}
+                      aria-invalid={!!errores['comentarios']}
+                    />
+                    {errores['comentarios'] && (
+                      <p className="text-xs text-destructive">{errores['comentarios']}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {corporativo && fecha && (
+                <div className="mt-6 flex justify-end border-t border-dashed border-border pt-5">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setPasoUnoAbierto(false);
+                      setPasoDosHabilitado(true);
+                    }}
+                  >
+                    Seguir con {variosDias ? 'cada día' : 'tu evento'}
+                  </Button>
+                </div>
+              )}
+            </Paso>
+          )}
+
+          {corporativo && pasoDosHabilitado && (
+            <Paso numero={2} titulo={variosDias ? 'Armá cada día' : 'Armá tu evento'}>
+              {!variosDias ? (
+                editorDelDia
+              ) : (
+                <div className="flex flex-col gap-4">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl bg-dorado/15 px-4 py-3 text-sm text-foreground/80">
+                    <span className="font-semibold">
+                      {diasListos} de {cantidadDeDias} días {diasListos === 1 ? 'listo' : 'listos'}
+                    </span>
+                    <span
+                      className="flex h-1.5 min-w-24 flex-1 overflow-hidden rounded-full bg-border"
+                      aria-hidden
+                    >
+                      <span
+                        className="bg-estado-confirmado"
+                        style={{ width: `${(diasListos / cantidadDeDias) * 100}%` }}
+                      />
+                      <span
+                        className="bg-dorado"
+                        style={{ width: `${(diasEmpezados / cantidadDeDias) * 100}%` }}
+                      />
+                    </span>
+                  </div>
+
+                  {bloques.map((bloque) => {
+                    const i = bloque.indice;
+                    const abierta = i === activo && diaAbierto !== null;
+                    const siguiente = siguienteIncompleto(i);
+                    return (
+                      <div key={bloque.fecha ?? i} id={`dia-${i}`} className="scroll-mt-24">
+                        <TarjetaDia
+                          numero={i + 1}
+                          fecha={bloque.fecha!}
+                          estado={
+                            abierta
+                              ? 'abierta'
+                              : bloque.completo
+                                ? 'completa'
+                                : bloque.empezado
+                                  ? 'incompleta'
+                                  : 'sinCargar'
+                          }
+                          resumen={resumenDelDia(bloque.dia)}
+                          subtotal={bloque.subtotal}
+                          error={mensajeDeErrores(erroresDeDias[i])}
+                          copiar={
+                            <CopiarDiaCargado
+                              opciones={opcionesDeCopia(i)}
+                              onCopiar={(desde) => copiarDia(desde, i)}
+                            />
+                          }
+                          textoListo={
+                            siguiente !== null
+                              ? `Listo · seguir con el día ${siguiente + 1}`
+                              : 'Listo'
+                          }
+                          onAbrir={() => irAlDia(i)}
+                          onListo={() => terminarDia(i)}
+                        >
+                          {abierta && editorDelDia}
+                        </TarjetaDia>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </Paso>
           )}
         </div>
 
         {/* Resumen en vivo */}
-        <aside className="lg:sticky lg:top-24 lg:self-start">
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-24 lg:self-start">
           {tipo === 'Social' ? (
             <ResumenConsultaSocial
               fecha={fecha}
@@ -1358,133 +1541,150 @@ export function CotizarEvento({
               onEnviar={enviarConsultaSocial}
             />
           ) : (
-            <div className="overflow-hidden rounded-2xl bg-card shadow-lg ring-1 ring-border">
-              <div className="bg-bordo px-6 py-5 text-crema">
-                <p className="text-xs font-semibold tracking-[0.25em] text-dorado-claro uppercase">
-                  Tu presupuesto
-                </p>
-                <p className="mt-1 text-sm text-crema/75">
-                  {!fecha
-                    ? 'Sin fecha'
-                    : variosDias
-                      ? `${fecha.split('-').reverse().join('/')} al ${fechas[fechas.length - 1]!.split('-').reverse().join('/')} · ${textoDeDias(fecha, fechaFin)}`
-                      : fecha.split('-').reverse().join('/')}{' '}
-                  ·{' '}
-                  {variosDias
-                    ? bloques.some((b) => Number(b.dia.personas) > 0)
-                      ? textoDePersonas(
-                          bloques.map((b) => Number(b.dia.personas) || 0).filter((n) => n > 0),
-                        )
-                      : 'sin personas'
-                    : cantidadPersonas > 0
-                      ? `${cantidadPersonas} personas`
-                      : 'sin personas'}
-                  {variosDias && (
-                    <>
-                      {' · '}
-                      {resumenDeJornada(bloques.map((b) => b.dia.jornada)).texto}
-                    </>
+            <>
+              <div className="overflow-hidden rounded-2xl bg-card shadow-lg ring-1 ring-border">
+                <div className="bg-bordo px-6 py-5 text-crema">
+                  <p className="text-xs font-semibold tracking-[0.25em] text-dorado-claro uppercase">
+                    Tu presupuesto
+                  </p>
+                  <p className="mt-1 text-sm text-crema/75">
+                    {!fecha
+                      ? 'Sin fecha'
+                      : variosDias
+                        ? `${fecha.split('-').reverse().join('/')} al ${fechas[fechas.length - 1]!.split('-').reverse().join('/')} · ${textoDeDias(fecha, fechaFin)}`
+                        : fecha.split('-').reverse().join('/')}{' '}
+                    ·{' '}
+                    {variosDias
+                      ? bloques.some((b) => Number(b.dia.personas) > 0)
+                        ? textoDePersonas(
+                            bloques.map((b) => Number(b.dia.personas) || 0).filter((n) => n > 0),
+                          )
+                        : 'sin personas'
+                      : cantidadPersonas > 0
+                        ? `${cantidadPersonas} personas`
+                        : 'sin personas'}
+                    {variosDias && bloques.some((b) => tieneHorario(b.dia)) && (
+                      <>
+                        {' · '}
+                        {
+                          resumenDeJornada(
+                            bloques.filter((b) => tieneHorario(b.dia)).map((b) => jornadaDe(b.dia)),
+                          ).texto
+                        }
+                      </>
+                    )}
+                  </p>
+                </div>
+                <div className="p-6">
+                  {lineas.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      {tipo
+                        ? 'Elegí un salón y los servicios para ver el total estimado.'
+                        : 'Contanos qué tipo de evento es para seguir.'}
+                    </p>
+                  ) : (
+                    <div className="space-y-5">
+                      {bloques.map((bloque) => (
+                        <div key={bloque.indice}>
+                          {/* HU-50: con varios días, el detalle va día por día y un único total abajo. */}
+                          {variosDias && bloque.fecha && (
+                            <p className="mb-2 text-xs font-semibold tracking-wide text-bordo uppercase">
+                              Día {bloque.indice + 1} ·{' '}
+                              <span className="capitalize">{nombreDeDia(bloque.fecha)}</span>
+                              <span className="ml-2 font-normal text-muted-foreground normal-case">
+                                {Number(bloque.dia.personas) > 0
+                                  ? `${bloque.dia.personas} personas`
+                                  : 'sin personas'}
+                                {tieneHorario(bloque.dia) &&
+                                  ` · ${bloque.dia.horaDesde} a ${bloque.dia.horaHasta}`}
+                              </span>
+                            </p>
+                          )}
+                          {bloque.lineas.length === 0 ? (
+                            <p className="text-xs text-muted-foreground">Todavía sin salón.</p>
+                          ) : (
+                            <ul className="space-y-3 text-sm">
+                              {bloque.lineas.map((linea) => (
+                                <li key={linea.clave} className="flex justify-between gap-3">
+                                  <span className="min-w-0">
+                                    <span className="block truncate font-medium">
+                                      {linea.descripcion}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {linea.detalle}
+                                    </span>
+                                  </span>
+                                  <span className="shrink-0 font-medium tabular-nums">
+                                    {linea.aCotizar ? 'A cotizar' : formatearPesos(linea.subtotal)}
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   )}
-                </p>
+
+                  {/* RN-05: subtotal sin IVA, IVA 21% y total, recalculados con cada selección. */}
+                  <dl className="mt-6 space-y-1.5 border-t border-dashed border-border pt-4 text-sm">
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">Subtotal sin IVA</dt>
+                      <dd className="font-medium tabular-nums">{formatearPesos(subtotal)}</dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-muted-foreground">IVA 21%</dt>
+                      <dd className="font-medium tabular-nums">{formatearPesos(iva)}</dd>
+                    </div>
+                    <div className="flex items-baseline justify-between border-t border-border pt-2">
+                      <dt className="font-medium">Total estimado</dt>
+                      <dd className="font-serif text-3xl font-semibold text-bordo tabular-nums">
+                        {formatearPesos(total)}
+                      </dd>
+                    </div>
+                  </dl>
+                  <p className="mt-1 text-right text-xs text-muted-foreground">
+                    {meses > 0 && Number(porcentajeMensual) > 0
+                      ? `Precios proyectados a la fecha del evento (+${porcentajeMensual}% por mes)`
+                      : `Precios de ${mesVigente}`}
+                  </p>
+                  {total > 0 && (
+                    <p className="mt-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
+                      Validez de {DIAS_VIGENCIA_PRESUPUESTO} días. Para reservar se abona
+                      {variosDias ? ' una sola seña' : ' una seña'} del {PORCENTAJE_SENA}% dentro de
+                      ese plazo, calculada sobre el total con IVA.
+                    </p>
+                  )}
+
+                  {solicitar.isError && (
+                    <p className="mt-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                      {solicitar.error instanceof ErrorApiCliente
+                        ? solicitar.error.message
+                        : 'No se pudo generar el presupuesto.'}
+                    </p>
+                  )}
+
+                  <Button
+                    size="lg"
+                    className="mt-6 h-12 w-full text-sm"
+                    disabled={
+                      solicitar.isPending ||
+                      !perfil.data ||
+                      (corporativo && !pasoDosHabilitado) ||
+                      primerDiaIncompleto >= 0
+                    }
+                    onClick={generar}
+                    hidden={!tipo}
+                  >
+                    {solicitar.isPending
+                      ? 'Generando…'
+                      : primerDiaIncompleto >= 0
+                        ? `Completá el día ${primerDiaIncompleto + 1} para enviar`
+                        : 'Generar presupuesto'}
+                  </Button>
+                </div>
               </div>
-              <div className="p-6">
-                {lineas.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    {tipo
-                      ? 'Elegí un salón y los servicios para ver el total estimado.'
-                      : 'Contanos qué tipo de evento es para seguir.'}
-                  </p>
-                ) : (
-                  <div className="space-y-5">
-                    {bloques.map((bloque) => (
-                      <div key={bloque.indice}>
-                        {/* HU-50: con varios días, el detalle va día por día y un único total abajo. */}
-                        {variosDias && bloque.fecha && (
-                          <p className="mb-2 text-xs font-semibold tracking-wide text-bordo uppercase">
-                            Día {bloque.indice + 1} ·{' '}
-                            <span className="capitalize">{nombreDeDia(bloque.fecha)}</span>
-                            <span className="ml-2 font-normal text-muted-foreground normal-case">
-                              {Number(bloque.dia.personas) > 0
-                                ? `${bloque.dia.personas} personas`
-                                : 'sin personas'}
-                            </span>
-                          </p>
-                        )}
-                        {bloque.lineas.length === 0 ? (
-                          <p className="text-xs text-muted-foreground">Todavía sin salón.</p>
-                        ) : (
-                          <ul className="space-y-3 text-sm">
-                            {bloque.lineas.map((linea) => (
-                              <li key={linea.clave} className="flex justify-between gap-3">
-                                <span className="min-w-0">
-                                  <span className="block truncate font-medium">
-                                    {linea.descripcion}
-                                  </span>
-                                  <span className="text-xs text-muted-foreground">
-                                    {linea.detalle}
-                                  </span>
-                                </span>
-                                <span className="shrink-0 font-medium">
-                                  {linea.aCotizar ? 'A cotizar' : formatearPesos(linea.subtotal)}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* RN-05: subtotal sin IVA, IVA 21% y total, recalculados con cada selección. */}
-                <dl className="mt-6 space-y-1.5 border-t border-dashed border-border pt-4 text-sm">
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Subtotal sin IVA</dt>
-                    <dd className="font-medium tabular-nums">{formatearPesos(subtotal)}</dd>
-                  </div>
-                  <div className="flex justify-between">
-                    <dt className="text-muted-foreground">IVA 21%</dt>
-                    <dd className="font-medium tabular-nums">{formatearPesos(iva)}</dd>
-                  </div>
-                  <div className="flex items-baseline justify-between border-t border-border pt-2">
-                    <dt className="font-medium">Total estimado</dt>
-                    <dd className="font-serif text-3xl font-semibold text-bordo tabular-nums">
-                      {formatearPesos(total)}
-                    </dd>
-                  </div>
-                </dl>
-                <p className="mt-1 text-right text-xs text-muted-foreground">
-                  {meses > 0 && Number(porcentajeMensual) > 0
-                    ? `Precios proyectados a la fecha del evento (+${porcentajeMensual}% por mes)`
-                    : `Precios de ${mesVigente}`}
-                </p>
-                {total > 0 && (
-                  <p className="mt-4 rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-                    Validez de {DIAS_VIGENCIA_PRESUPUESTO} días. Para reservar el salón se abona una
-                    seña del {PORCENTAJE_SENA}% dentro de ese plazo, calculada sobre el total con
-                    IVA.
-                  </p>
-                )}
-
-                {solicitar.isError && (
-                  <p className="mt-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
-                    {solicitar.error instanceof ErrorApiCliente
-                      ? solicitar.error.message
-                      : 'No se pudo generar el presupuesto.'}
-                  </p>
-                )}
-
-                <Button
-                  size="lg"
-                  className="mt-6 h-12 w-full text-sm"
-                  disabled={solicitar.isPending || !perfil.data}
-                  onClick={generar}
-                  hidden={!tipo}
-                >
-                  {solicitar.isPending ? 'Generando…' : 'Generar presupuesto'}
-                </Button>
-              </div>
-            </div>
+            </>
           )}
         </aside>
       </div>

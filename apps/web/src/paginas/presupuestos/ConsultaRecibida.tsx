@@ -34,6 +34,7 @@ export function ConsultaRecibida({
       'Horario estimado',
       textoHorarioEstimado(consulta.horaInicioEstimada, consulta.horaFinEstimada),
     ],
+    ...(consulta.comentarios ? [['Comentarios', consulta.comentarios]] : []),
   ];
 
   return (

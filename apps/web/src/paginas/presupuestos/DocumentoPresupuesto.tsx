@@ -25,6 +25,8 @@ export interface DiaDelDocumento {
   tipoJornada: TipoJornada;
   salones: { nombre: string }[];
   lineas: LineaPresupuesto[];
+  // S-16: el horario de ESTE día en sus líneas de salón. Sin él, va `horarioDeSalones`.
+  horario?: string;
 }
 
 // El presupuesto como documento: el que ve el cliente al cotizar (PresupuestoEstimado) y el que el
@@ -83,7 +85,7 @@ export function DocumentoPresupuesto({
       ]
     : salones;
 
-  const filasDe = (delDia: LineaPresupuesto[]) =>
+  const filasDe = (delDia: LineaPresupuesto[], horarioDelDia = horarioDeSalones) =>
     delDia.map((linea) => (
       <tr key={linea.id}>
         <td className="py-3 pr-3">
@@ -103,8 +105,8 @@ export function DocumentoPresupuesto({
           {salon?.idLinea === linea.id && (
             <span className="block text-xs text-muted-foreground">{salon.horario}</span>
           )}
-          {horarioDeSalones && linea.salonId !== null && (
-            <span className="block text-xs text-muted-foreground">{horarioDeSalones}</span>
+          {horarioDelDia && linea.salonId !== null && (
+            <span className="block text-xs text-muted-foreground">{horarioDelDia}</span>
           )}
         </td>
         <td className="py-3 text-right tabular-nums">{linea.cantidad}</td>
@@ -211,7 +213,7 @@ export function DocumentoPresupuesto({
                     </span>
                   </th>
                 </tr>
-                {filasDe(dia.lineas)}
+                {filasDe(dia.lineas, dia.horario ?? horarioDeSalones)}
                 <tr>
                   <td colSpan={3} className="py-2 text-right text-xs text-muted-foreground">
                     Subtotal del día {i + 1}

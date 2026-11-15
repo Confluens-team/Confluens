@@ -45,6 +45,7 @@ const NOMBRES_DE_CAMPO: Record<string, string> = {
   fechaEmision: 'Emisión',
   fin: 'Hasta',
   fotoUrl: 'Foto',
+  horaFinEstimada: 'Hora de fin estimada',
   horaInicioEstimada: 'Hora de inicio estimada',
   inicio: 'Desde',
   lineas: 'Líneas',

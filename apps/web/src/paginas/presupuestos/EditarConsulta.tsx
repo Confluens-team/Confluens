@@ -61,6 +61,7 @@ import { AvisoDeChoques } from './AvisoDeChoques';
 import { EditarConsultaPorDias } from './EditarConsultaPorDias';
 import { PresupuestoFormal } from './PresupuestoFormal';
 import { type CambioDePrecio, cambiosDePrecio, preciosParaFecha } from './recalculo-por-fecha';
+import { ComentariosDelCliente } from './ComentariosDelCliente';
 import { SeguimientoConsulta } from './SeguimientoConsulta';
 
 // Una línea del detalle mientras se edita. servicioId null = adicional escrito a mano. Un
@@ -762,6 +763,8 @@ function Formulario({
           <SeguimientoConsulta consulta={consulta} onDescargar={onDescargarPresupuesto} />
         </div>
       </section>
+
+      <ComentariosDelCliente comentarios={consulta.evento.comentariosCliente} />
 
       <fieldset disabled={!editable} className="space-y-6">
         <section className="rounded-xl bg-card p-5 ring-1 ring-border">

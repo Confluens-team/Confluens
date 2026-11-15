@@ -220,6 +220,14 @@ function exigirCantidadPosible(
   }
 }
 
+// S-16: el horario estimado de un día cotizado, como se guarda en EventoDia (null si no vino).
+function horarioEstimadoDe(dia: DiaCotizado) {
+  return {
+    horaInicioEstimada: dia.horaInicioEstimada ?? null,
+    horaFinEstimada: dia.horaFinEstimada ?? null,
+  };
+}
+
 /**
  * Genera un presupuesto estimado a partir de salón, fecha, cantidad de personas y servicios
  * seleccionados (HU-09). En una única operación: busca o crea el Cliente por correo, crea el
@@ -349,7 +357,11 @@ export async function generarPresupuesto(
         cantidadPersonas: primerDia!.cantidadPersonas,
         tipo: 'Corporativo',
         tipoJornada: primerDia!.tipoJornada,
-        horaInicioEstimada: datos.horaInicioEstimada ?? null,
+        // S-16: el horario de cada día va en su día. El del evento queda como el del primero, para
+        // lo que todavía lee la hora del evento (la agenda, el PDF de un solo día, el agendar).
+        horaInicioEstimada: datos.horaInicioEstimada ?? primerDia!.horaInicioEstimada ?? null,
+        horaFinEstimada: primerDia!.horaFinEstimada ?? null,
+        horarioDelDia: horarioEstimadoDe(primerDia!),
       },
       tx,
     );
@@ -367,6 +379,7 @@ export async function generarPresupuesto(
           fecha: new Date(dia.fecha),
           cantidadPersonas: dia.cantidadPersonas,
           tipoJornada: dia.tipoJornada,
+          ...horarioEstimadoDe(dia),
         })),
         tx,
       );
@@ -449,6 +462,8 @@ export async function registrarConsultaSocial(
         tipoJornada: datos.tipoJornada,
         horaInicioEstimada: datos.horaInicioEstimada ?? null,
         horaFinEstimada: datos.horaFinEstimada ?? null,
+        // Sin texto (o solo espacios, que el esquema ya recorta) no se guarda nada.
+        comentariosCliente: datos.comentarios || null,
       },
       tx,
     );
@@ -633,6 +648,7 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       tipoSocialDetalle: evento.tipoSocialDetalle,
       horaInicioEstimada: evento.horaInicioEstimada,
       horaFinEstimada: evento.horaFinEstimada,
+      comentariosCliente: evento.comentariosCliente,
       observacionesComanda: evento.observacionesComanda,
       inicio: evento.inicio?.toISOString() ?? null,
       fin: evento.fin?.toISOString() ?? null,
@@ -654,6 +670,8 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       tipoJornada: dia.tipoJornada,
       inicio: dia.inicio?.toISOString() ?? null,
       fin: dia.fin?.toISOString() ?? null,
+      horaInicioEstimada: dia.horaInicioEstimada,
+      horaFinEstimada: dia.horaFinEstimada,
       salones: dia.salones.map(({ salon, distribucion }) => ({
         id: salon.id,
         nombre: salon.nombre,
