@@ -132,6 +132,7 @@ const eventoFixture = {
   tipoJornada: null,
   horaInicioEstimada: null as string | null,
   horaFinEstimada: null as string | null,
+  comentariosCliente: null as string | null,
   modalidadSalonRestaurante: false,
   observacionesComanda: null as string | null,
   observaciones: null as string | null,
@@ -1093,6 +1094,7 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
         tipoJornada: 'completa',
         horaInicioEstimada: '21:00',
         horaFinEstimada: null,
+        comentariosCliente: null,
       },
       undefined,
     );
@@ -1114,6 +1116,37 @@ describe('POST /api/presupuestos/social (ADR 0008)', () => {
       expect.objectContaining({ horaInicioEstimada: '21:00', horaFinEstimada: '03:00' }),
       undefined,
     );
+  });
+
+  it('guarda los comentarios del cliente, sin los espacios de los extremos', async () => {
+    const respuesta = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodySocial, comentarios: '  Queremos pista de baile y menú sin TACC.  ' });
+
+    expect(respuesta.status).toBe(201);
+    expect(crearEventoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ comentariosCliente: 'Queremos pista de baile y menú sin TACC.' }),
+      undefined,
+    );
+  });
+
+  it('con comentarios en blanco no guarda nada y con más de 1000 caracteres responde 400', async () => {
+    const enBlanco = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodySocial, comentarios: '   ' });
+    expect(enBlanco.status).toBe(201);
+    expect(crearEventoMock).toHaveBeenCalledWith(
+      expect.objectContaining({ comentariosCliente: null }),
+      undefined,
+    );
+
+    const largo = await request(app)
+      .post('/api/presupuestos/social')
+      .set('Cookie', [cookieDe('CLIENTE')])
+      .send({ ...bodySocial, comentarios: 'a'.repeat(1001) });
+    expect(largo.status).toBe(400);
   });
 
   it('responde 400 si la hora de fin llega sin la de inicio o es igual a ella', async () => {

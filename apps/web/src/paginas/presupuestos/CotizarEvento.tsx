@@ -15,6 +15,7 @@ import {
   etiquetaTipoEvento,
   fechasDeLaFranja,
   hoyEnZonaEventos,
+  MAXIMO_COMENTARIOS_CLIENTE,
   MAXIMO_PERSONAS_EVENTO,
   mesesHastaEvento,
   PORCENTAJE_SENA,
@@ -38,6 +39,7 @@ import { SelectorModalidad } from '@/components/SelectorModalidad';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { useConfiguracionPrecios } from '@/hooks/use-configuracion-precios';
 import { useEnviarConsultaSocial, useSolicitarPresupuesto } from '@/hooks/use-presupuestos';
 import { useSalones } from '@/hooks/use-salones';
@@ -90,6 +92,8 @@ export interface ConsultaSocialEnviada {
     horaFinEstimada?: string;
     tipoSocial: TipoEventoSocial;
     tipoSocialDetalle?: string;
+    // Lo que el cliente quiso contar de su evento, con cualquier tipo de evento social.
+    comentarios?: string;
   };
   cliente: ContactoCliente;
 }
@@ -379,6 +383,7 @@ export function CotizarEvento({
   );
   const [tipoSocial, setTipoSocial] = useState<TipoEventoSocial | undefined>();
   const [detalleOtro, setDetalleOtro] = useState('');
+  const [comentarios, setComentarios] = useState('');
   const [categoria, setCategoria] = useState<string | null>(null);
   const [erroresGlobales, setErrores] = useState<Record<string, string>>({});
   // Los errores de cada día, por posición: al validar se marcan las tarjetas y se abre la primera.
@@ -786,6 +791,7 @@ export function CotizarEvento({
       horaFinEstimada: horaFin || undefined,
       tipoSocial,
       tipoSocialDetalle: tipoSocial === 'Otro' ? detalleOtro.trim() : undefined,
+      comentarios: comentarios.trim() || undefined,
     };
     enviarSocial.mutate(
       {
@@ -1401,6 +1407,26 @@ export function CotizarEvento({
                       Si termina después de la medianoche, elegí la hora de la madrugada: se toma
                       como del día siguiente.
                     </p>
+                  </div>
+
+                  {/* Con cualquier tipo de evento social: lo que el cliente quiera contar. */}
+                  <div className="mt-6 flex flex-col gap-1.5 border-t border-dashed border-border pt-5">
+                    <Label htmlFor="comentarios-social">
+                      Comentarios{' '}
+                      <span className="font-normal text-muted-foreground">(opcional)</span>
+                    </Label>
+                    <Textarea
+                      id="comentarios-social"
+                      maxLength={MAXIMO_COMENTARIOS_CLIENTE}
+                      rows={4}
+                      placeholder="Contanos lo que quieras de tu evento: ideas, pedidos especiales, dudas…"
+                      value={comentarios}
+                      onChange={(e) => setComentarios(e.target.value)}
+                      aria-invalid={!!errores['comentarios']}
+                    />
+                    {errores['comentarios'] && (
+                      <p className="text-xs text-destructive">{errores['comentarios']}</p>
+                    )}
                   </div>
                 </div>
               )}

@@ -55,6 +55,7 @@ import { textoDeDias } from '@/lib/rango-de-fechas';
 import { cn } from '@/lib/utils';
 import { AvisoDeChoques } from './AvisoDeChoques';
 import { type CambioDePrecio, cambiosDePrecio, preciosParaFecha } from './recalculo-por-fecha';
+import { ComentariosDelCliente } from './ComentariosDelCliente';
 import { SeguimientoConsulta } from './SeguimientoConsulta';
 
 // HU-50, parte 2: la consulta de un evento de varios días, editada día por día. El personal arma acá
@@ -652,6 +653,8 @@ export function EditarConsultaPorDias({
           <SeguimientoConsulta consulta={consulta} onDescargar={onDescargarPresupuesto} />
         </div>
       </section>
+
+      <ComentariosDelCliente comentarios={consulta.evento.comentariosCliente} />
 
       <fieldset disabled={!editable} className="space-y-6">
         <section className="rounded-xl bg-card p-5 ring-1 ring-border">

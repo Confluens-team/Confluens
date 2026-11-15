@@ -14,6 +14,7 @@ const evento = (cambios: Partial<ConsultaDetallada['evento']>): ConsultaDetallad
   tipoSocialDetalle: null,
   horaInicioEstimada: null,
   horaFinEstimada: null,
+  comentariosCliente: null,
   observacionesComanda: null,
   inicio: null,
   fin: null,

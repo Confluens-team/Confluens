@@ -199,6 +199,7 @@ export async function crearEvento(
     tipoJornada: TipoJornada;
     horaInicioEstimada?: string | null;
     horaFinEstimada?: string | null;
+    comentariosCliente?: string | null;
     // S-16: el horario estimado del primer día, que se guarda en el día y no en el evento.
     horarioDelDia?: { horaInicioEstimada: string | null; horaFinEstimada: string | null };
   },

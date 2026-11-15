@@ -11,6 +11,7 @@ import { esquemaEvento } from './evento.esquema.js';
 import { esquemaLineaPresupuesto, esquemaModalidadServicio } from './linea-presupuesto.esquema.js';
 import { esquemaPresupuesto } from './presupuesto.esquema.js';
 import {
+  esquemaComentariosCliente,
   esquemaHoraEstimada,
   esquemaTipoEventoSocial,
   esquemaTipoJornada,
@@ -186,6 +187,8 @@ export const esquemaCrearConsultaSocial = z
     horaFinEstimada: esquemaHoraEstimada.optional(),
     tipoSocial: esquemaTipoEventoSocial,
     tipoSocialDetalle: esquemaTipoSocialDetalle.optional(),
+    // Lo que el cliente quiera contar de su evento, con cualquier tipo de evento social.
+    comentarios: esquemaComentariosCliente.optional(),
     solicitudId: esquemaId.optional(),
   })
   .superRefine(exigirDetalleDeOtro)

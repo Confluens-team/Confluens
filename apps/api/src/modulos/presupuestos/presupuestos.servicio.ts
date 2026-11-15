@@ -462,6 +462,8 @@ export async function registrarConsultaSocial(
         tipoJornada: datos.tipoJornada,
         horaInicioEstimada: datos.horaInicioEstimada ?? null,
         horaFinEstimada: datos.horaFinEstimada ?? null,
+        // Sin texto (o solo espacios, que el esquema ya recorta) no se guarda nada.
+        comentariosCliente: datos.comentarios || null,
       },
       tx,
     );
@@ -646,6 +648,7 @@ function mapearConsulta(presupuesto: PresupuestoDetalladoRepo): ConsultaDetallad
       tipoSocialDetalle: evento.tipoSocialDetalle,
       horaInicioEstimada: evento.horaInicioEstimada,
       horaFinEstimada: evento.horaFinEstimada,
+      comentariosCliente: evento.comentariosCliente,
       observacionesComanda: evento.observacionesComanda,
       inicio: evento.inicio?.toISOString() ?? null,
       fin: evento.fin?.toISOString() ?? null,
