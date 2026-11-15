@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  correrDias,
   diaMaximoParaElegir,
   elegirDia,
+  elegirDiaEnModo,
   estadoInicialDeRango,
+  extenderFranja,
+  limitesParaExtender,
+  modoInicial,
+  quitarExtremo,
+  rangoPrevisualizado,
+  sumarDias,
   textoDeDias,
   type EstadoDeRango,
 } from './rango-de-fechas';
@@ -99,5 +107,118 @@ describe('textoDeDias', () => {
     expect(textoDeDias('2040-05-15', '2040-05-15')).toBe('1 día');
     expect(textoDeDias('2040-04-30', '2040-05-02')).toBe('3 días');
     expect(textoDeDias('2040-05-15', '')).toBe('1 día');
+  });
+});
+
+describe('selector con modo', () => {
+  it('abre en «Más de 1 día» solo si ya hay una franja', () => {
+    expect(modoInicial('', '')).toBe('uno');
+    expect(modoInicial('2040-05-10', '2040-05-10')).toBe('uno');
+    expect(modoInicial('2040-05-10', '2040-05-12')).toBe('varios');
+  });
+
+  it('en «1 día» un clic deja el evento en ese día y cierra', () => {
+    expect(elegirDiaEnModo(vacio, '2040-05-10', 'uno')).toEqual({
+      inicio: '2040-05-10',
+      fin: '2040-05-10',
+      esperandoFin: false,
+    });
+  });
+
+  it('en «Más de 1 día» el primer clic espera el fin y el segundo cierra la franja', () => {
+    const primero = elegirDiaEnModo(vacio, '2040-05-10', 'varios');
+    expect(primero.esperandoFin).toBe(true);
+    expect(elegirDiaEnModo(primero, '2040-05-13', 'varios')).toEqual({
+      inicio: '2040-05-10',
+      fin: '2040-05-13',
+      esperandoFin: false,
+    });
+  });
+
+  it('al pasar el mouse pinta del inicio al día del puntero, sin pasar el tope', () => {
+    const esperando = elegirDiaEnModo(vacio, '2040-05-10', 'varios');
+    expect(rangoPrevisualizado(esperando, '2040-05-14')).toEqual({
+      inicio: '2040-05-10',
+      fin: '2040-05-14',
+    });
+    expect(rangoPrevisualizado(esperando, '2040-05-09')).toBeNull();
+    expect(rangoPrevisualizado(esperando, '2040-05-10')).toBeNull();
+    expect(rangoPrevisualizado(esperando, '2040-06-11')).toBeNull(); // serían 33 días
+    expect(rangoPrevisualizado(vacio, '2040-05-14')).toBeNull();
+  });
+});
+
+describe('calendario del evento', () => {
+  it('suma días con el cambio de mes y de año', () => {
+    expect(sumarDias('2040-04-30', 1)).toBe('2040-05-01');
+    expect(sumarDias('2041-01-01', -1)).toBe('2040-12-31');
+  });
+
+  it('un día posterior al fin estira la franja hasta él', () => {
+    expect(extenderFranja('2040-05-10', '2040-05-12', '2040-05-15')).toEqual({
+      inicio: '2040-05-10',
+      fin: '2040-05-15',
+      corrimiento: 0,
+    });
+  });
+
+  it('un día anterior al inicio estira la franja hacia atrás y corre lo cargado', () => {
+    expect(extenderFranja('2040-05-10', '2040-05-12', '2040-05-08')).toEqual({
+      inicio: '2040-05-08',
+      fin: '2040-05-12',
+      corrimiento: 2,
+    });
+  });
+
+  it('no estira con un día de la franja ni más allá de 32 días', () => {
+    expect(extenderFranja('2040-05-10', '2040-05-12', '2040-05-11')).toBeNull();
+    expect(extenderFranja('2040-05-01', '2040-05-02', '2040-06-02')).toBeNull();
+  });
+
+  it('solo saca el primer o el último día, y nunca el único', () => {
+    expect(quitarExtremo('2040-05-10', '2040-05-12', '2040-05-10')).toEqual({
+      inicio: '2040-05-11',
+      fin: '2040-05-12',
+      corrimiento: -1,
+    });
+    expect(quitarExtremo('2040-05-10', '2040-05-12', '2040-05-12')).toEqual({
+      inicio: '2040-05-10',
+      fin: '2040-05-11',
+      corrimiento: 0,
+    });
+    expect(quitarExtremo('2040-05-10', '2040-05-12', '2040-05-11')).toBeNull();
+    expect(quitarExtremo('2040-05-10', '2040-05-10', '2040-05-10')).toBeNull();
+  });
+
+  it('los límites dejan la franja en 32 días y respetan el mínimo', () => {
+    expect(limitesParaExtender('2040-05-10', '2040-05-12')).toEqual({
+      desde: '2040-04-11',
+      hasta: '2040-06-10',
+    });
+    expect(limitesParaExtender('2040-05-10', '2040-05-12', '2040-05-05').desde).toBe('2040-05-05');
+  });
+
+  it('lo cargado de cada día sigue en su fecha al cambiar la franja', () => {
+    const vacioDia = () => 'vacío';
+    // Se suman dos días adelante: lo cargado se corre dos lugares.
+    expect(
+      correrDias(
+        ['a', 'b', 'c'],
+        { inicio: '2040-05-08', fin: '2040-05-12', corrimiento: 2 },
+        vacioDia,
+      ),
+    ).toEqual(['vacío', 'vacío', 'a', 'b', 'c']);
+    // Se saca el primero: se descarta su día.
+    expect(
+      correrDias(
+        ['a', 'b', 'c'],
+        { inicio: '2040-05-11', fin: '2040-05-12', corrimiento: -1 },
+        vacioDia,
+      ),
+    ).toEqual(['b', 'c']);
+    // Se suman días al final: entran vacíos.
+    expect(
+      correrDias(['a'], { inicio: '2040-05-10', fin: '2040-05-12', corrimiento: 0 }, vacioDia),
+    ).toEqual(['a', 'vacío', 'vacío']);
   });
 });
