@@ -23,7 +23,6 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
-  Copy,
   Plus,
   Printer,
   RefreshCw,
@@ -65,12 +64,14 @@ import {
   avisosDeLosDias,
   choquesPorFecha,
   estadoDeDiaDeConsulta,
+  diaDeSemanaCorto,
   resumenDelDia,
 } from '@/lib/cinta-de-dias';
 import { cn } from '@/lib/utils';
 import { ObservacionesDelEvento } from '@/paginas/eventos/ObservacionesDelEvento';
 import { type CambioDePrecio, cambiosDePrecio, preciosParaFecha } from './recalculo-por-fecha';
 import { ComentariosDelCliente } from './ComentariosDelCliente';
+import { CopiarDiaCargado, type OpcionDeCopia } from './cotizador/CopiarDiaCargado';
 import { EncabezadoDeConsulta, type PestaniaDeConsulta } from './EncabezadoDeConsulta';
 import { SeguimientoConsulta } from './SeguimientoConsulta';
 import { DisposicionConPagos } from '@/paginas/eventos/DisposicionConPagos';
@@ -392,12 +393,30 @@ export function EditarConsultaPorDias({
     setActivo((anterior) => Math.min(anterior, nuevas.length - 1));
   }
 
-  function copiarDiaAnterior() {
-    if (indice === 0) return;
+  // «Copiar día cargado», como en el cotizador del cliente: se elige cuál de los otros días cargados
+  // se copia en este (personas, horario, salones con su distribución y servicios).
+  function copiarDia(desde: number) {
     setDias((anteriores) =>
-      anteriores.map((d, i) => (i === indice ? copiaDeDia(anteriores[i - 1]!) : d)),
+      anteriores.map((d, i) => (i === indice ? copiaDeDia(anteriores[desde]!) : d)),
     );
   }
+  const opcionesDeCopia: OpcionDeCopia[] = fechas.flatMap((fecha, i) => {
+    const d = dias[i];
+    if (i === indice || !d || (d.salonesSel.length === 0 && d.lineas.length === 0)) return [];
+    return [
+      {
+        indice: i,
+        titulo: `Día ${i + 1} · ${diaDeSemanaCorto(fecha)} ${fecha.slice(8, 10)}/${fecha.slice(5, 7)}`,
+        detalle: [
+          esEntero(d.personas) ? `${d.personas} personas` : null,
+          d.salonesSel.map((s) => salonDe(s.salonId)?.nombre ?? '').join(' + ') || null,
+          d.inicio && d.fin ? `${d.inicio} a ${d.fin}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · '),
+      },
+    ];
+  });
 
   function alternarSalon(salonId: number) {
     cambiarDia((d) => {
@@ -732,7 +751,7 @@ export function EditarConsultaPorDias({
   const avisos = avisosDeLosDias(
     diasDeLaCinta,
     porFecha,
-    'No tiene salón ni servicios: cargalos o copiá el día anterior.',
+    'No tiene salón ni servicios: cargalos o copiá otro día.',
   );
   const diaGuardadoDelEvento = evento.data?.dias.find(
     (d) => d.fecha.slice(0, 10) === fechas[indice],
@@ -915,10 +934,12 @@ export function EditarConsultaPorDias({
                   indice={indice}
                   total={fechas.length}
                 >
-                  {indice > 0 && (
-                    <Button type="button" variant="outline" size="sm" onClick={copiarDiaAnterior}>
-                      <Copy /> Copiar el día anterior
-                    </Button>
+                  {fechas.length > 1 && (
+                    <CopiarDiaCargado
+                      opciones={opcionesDeCopia}
+                      onCopiar={copiarDia}
+                      tamanio="sm"
+                    />
                   )}
                 </EncabezadoDelDia>
 
