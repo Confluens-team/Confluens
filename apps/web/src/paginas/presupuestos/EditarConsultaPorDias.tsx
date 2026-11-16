@@ -23,6 +23,7 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
+  Pencil,
   Plus,
   Printer,
   RefreshCw,
@@ -215,6 +216,26 @@ function diaEditableDe(consulta: ConsultaDetallada, fecha: string): DiaEditable 
   };
 }
 
+// Lo que se puede cambiar en la pantalla, para saber si hay algo sin guardar. Las claves de las
+// líneas no cuentan: son internas y cambian al guardar.
+function firmaDeLaConsulta(
+  inicio: string,
+  fin: string,
+  tipo: string,
+  tipoSocial: string,
+  detalleOtro: string,
+  dias: DiaEditable[],
+): string {
+  return JSON.stringify([
+    inicio,
+    fin,
+    tipo,
+    tipoSocial,
+    detalleOtro,
+    dias.map((d) => ({ ...d, lineas: d.lineas.map(({ clave: _clave, ...linea }) => linea) })),
+  ]);
+}
+
 export function EditarConsultaPorDias({
   consulta,
   salones,
@@ -229,6 +250,7 @@ export function EditarConsultaPorDias({
   pestanias,
   incrustado = false,
   accionIzquierda,
+  onSinGuardar,
 }: {
   consulta: ConsultaDetallada;
   salones: SalonConDistribuciones[];
@@ -238,8 +260,8 @@ export function EditarConsultaPorDias({
   onGuardada?: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja?: (consulta: ConsultaDetallada) => void;
   onDescargarPresupuesto?: () => void;
-  // Comanda de cocina del evento confirmado. Sin esto el botón no aparece.
-  onImprimirComanda?: (presupuestoId: number) => void;
+  // Comanda de cocina del evento confirmado, de un día (su índice). Sin esto el botón no aparece.
+  onImprimirComanda?: (presupuestoId: number, dia?: number) => void;
   textoVolverAlGuardar?: string;
   // 15/11/2026: la pestaña elegida y las pestañas, que van arriba a la derecha del título.
   pestania?: PestaniaDeConsulta;
@@ -250,6 +272,8 @@ export function EditarConsultaPorDias({
   // Lo que va abajo a la izquierda, al nivel de «Guardar cambios» (en el evento, cancelarlo). Sin
   // esto va «Dar de baja» si corresponde.
   accionIzquierda?: React.ReactNode;
+  // Avisa si hay cambios sin guardar: la pantalla los descarta al salir de Detalle (15/11/2026).
+  onSinGuardar?: (hay: boolean) => void;
 }) {
   const modificar = useModificarConsulta(consulta.id);
   const darDeBaja = useDarDeBajaConsulta(consulta.id);
@@ -284,7 +308,28 @@ export function EditarConsultaPorDias({
   const [agregar, setAgregar] = useState('');
   const [otro, setOtro] = useState({ descripcion: '', cantidad: '1', precio: '' });
   const [confirmandoPrecios, setConfirmandoPrecios] = useState(false);
+  // Un evento confirmado o cobrado se muestra con los datos fijos: «Editar» los desbloquea.
+  const [desbloqueado, setDesbloqueado] = useState(false);
+  // Contra esto se compara para saber si hay algo sin guardar.
+  const [firmaGuardada, setFirmaGuardada] = useState(() =>
+    firmaDeLaConsulta(
+      consulta.evento.fecha,
+      consulta.evento.fechaFin,
+      consulta.evento.tipo,
+      consulta.evento.tipoSocial ?? '',
+      consulta.evento.tipoSocialDetalle ?? '',
+      fechasDeLaFranja(consulta.evento.fecha, consulta.evento.fechaFin).map((fecha) =>
+        diaEditableDe(consulta, fecha),
+      ),
+    ),
+  );
   const [guardadaConPreciosNuevos, setGuardadaConPreciosNuevos] = useState(false);
+
+  const sinGuardar =
+    firmaDeLaConsulta(inicio, fin, tipo, tipoSocial, detalleOtro, dias) !== firmaGuardada;
+  useEffect(() => {
+    onSinGuardar?.(sinGuardar);
+  }, [sinGuardar, onSinGuardar]);
 
   const enCurso =
     (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
@@ -295,7 +340,10 @@ export function EditarConsultaPorDias({
   const confirmado =
     consulta.estado === 'Confirmado' &&
     (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');
-  const editable = enCurso || confirmado;
+  // Lo que se puede editar: una consulta en curso siempre; un evento confirmado o cobrado, todo
+  // (RN-09), pero después de tocar «Editar».
+  const puedeEditar = enCurso || confirmado;
+  const editable = enCurso || (confirmado && desbloqueado);
   // Un presupuesto de más: el evento ya está confirmado con otro. Solo se puede dar de baja.
   const sobrante =
     (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
@@ -687,26 +735,68 @@ export function EditarConsultaPorDias({
           // guardado todavía no los trae, así que se conservan los que se cargaron. Si no, la
           // pantalla mostraba las distribuciones vacías después de guardar.
           const cargados = new Map(fechas.map((f, i) => [f, dias[i]!]));
-          setDias(
-            fechasDeLaFranja(resultado.evento.fecha, resultado.evento.fechaFin).map((f) => {
-              const nuevo = diaEditableDe(resultado, f);
-              const cargado = cargados.get(f);
-              return cargado
-                ? {
-                    ...nuevo,
-                    inicio: cargado.inicio,
-                    fin: cargado.fin,
-                    distribuciones: cargado.distribuciones,
-                  }
-                : nuevo;
-            }),
+          const diasGuardados = fechasDeLaFranja(
+            resultado.evento.fecha,
+            resultado.evento.fechaFin,
+          ).map((f) => {
+            const nuevo = diaEditableDe(resultado, f);
+            const cargado = cargados.get(f);
+            return cargado
+              ? {
+                  ...nuevo,
+                  inicio: cargado.inicio,
+                  fin: cargado.fin,
+                  distribuciones: cargado.distribuciones,
+                }
+              : nuevo;
+          });
+          setDias(diasGuardados);
+          setFirmaGuardada(
+            firmaDeLaConsulta(
+              resultado.evento.fecha,
+              resultado.evento.fechaFin,
+              tipo,
+              tipoSocial,
+              detalleOtro,
+              diasGuardados,
+            ),
           );
+          // Un evento confirmado vuelve a quedar con los datos fijos.
+          setDesbloqueado(false);
           setGuardadaConPreciosNuevos(conPreciosNuevos);
           setGuardada(resultado);
           if (pedido) agendar.mutate(pedido);
         },
       },
     );
+  }
+
+  // Descartar lo que no se guardó: vuelve a lo último guardado (la consulta que trae la pantalla,
+  // ya actualizada después de guardar y agendar) y, en un confirmado, a los datos fijos.
+  function descartar() {
+    const diasGuardados = fechasDeLaFranja(consulta.evento.fecha, consulta.evento.fechaFin).map(
+      (fecha) => diaEditableDe(consulta, fecha),
+    );
+    setGuardado(consulta);
+    setInicio(consulta.evento.fecha);
+    setFin(consulta.evento.fechaFin);
+    setDias(diasGuardados);
+    setTipo(consulta.evento.tipo);
+    setTipoSocial(consulta.evento.tipoSocial ?? '');
+    setDetalleOtro(consulta.evento.tipoSocialDetalle ?? '');
+    setAgregar('');
+    setOtro({ descripcion: '', cantidad: '1', precio: '' });
+    setFirmaGuardada(
+      firmaDeLaConsulta(
+        consulta.evento.fecha,
+        consulta.evento.fechaFin,
+        consulta.evento.tipo,
+        consulta.evento.tipoSocial ?? '',
+        consulta.evento.tipoSocialDetalle ?? '',
+        diasGuardados,
+      ),
+    );
+    setDesbloqueado(false);
   }
 
   const bajaDisponible = (enCurso || sobrante) && !!onDadaDeBaja;
@@ -794,18 +884,6 @@ export function EditarConsultaPorDias({
       nota="Los datos de contacto los mantiene el cliente desde su cuenta."
     >
       <SeguimientoConsulta consulta={consulta} onDescargar={() => onDescargarPresupuesto?.()} />
-      <div className="flex flex-wrap justify-end gap-2">
-        {confirmado && onImprimirComanda && (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => onImprimirComanda(consulta.id)}
-          >
-            <Printer /> Comanda de cocina
-          </Button>
-        )}
-      </div>
     </TarjetaCliente>
   );
   // HU-54: guardar precios que cambió la fecha se confirma viendo qué cambia.
@@ -856,7 +934,7 @@ export function EditarConsultaPorDias({
           darlo de baja sin tocar el evento.
         </p>
       )}
-      {!editable && !sobrante && (
+      {!puedeEditar && !sobrante && (
         <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
           {consulta.estado === 'Cancelado'
             ? 'Esta consulta se dio de baja'
@@ -866,6 +944,22 @@ export function EditarConsultaPorDias({
       )}
 
       <ComentariosDelCliente comentarios={consulta.evento.comentariosCliente} />
+
+      {/* Un evento confirmado o cobrado se ve con los datos fijos: «Editar» los desbloquea, y
+          «Descartar cambios» vuelve a lo guardado. */}
+      {confirmado && (
+        <div className="flex justify-end">
+          {desbloqueado ? (
+            <Button type="button" variant="outline" onClick={descartar}>
+              <X /> Descartar cambios
+            </Button>
+          ) : (
+            <Button type="button" onClick={() => setDesbloqueado(true)}>
+              <Pencil /> Editar
+            </Button>
+          )}
+        </div>
+      )}
 
       <fieldset disabled={!editable} className="space-y-6">
         <section className="rounded-xl bg-card p-5 ring-1 ring-border">
@@ -939,438 +1033,457 @@ export function EditarConsultaPorDias({
       )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)] lg:items-start">
-        <fieldset
-          disabled={!editable}
+        <section
           aria-label="Día elegido"
           className="min-w-0 rounded-xl bg-card p-5 ring-1 ring-border"
         >
           <EncabezadoDelDia fecha={fechas[indice] ?? inicio} indice={indice} total={fechas.length}>
-            {fechas.length > 1 && (
+            {/* La comanda de cocina de este día: solo con el evento confirmado. */}
+            {consulta.estado === 'Confirmado' && onImprimirComanda && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => onImprimirComanda(consulta.id, indice)}
+              >
+                <Printer /> Comanda del día
+              </Button>
+            )}
+            {editable && fechas.length > 1 && (
               <CopiarDiaCargado opciones={opcionesDeCopia} onCopiar={copiarDia} tamanio="sm" />
             )}
           </EncabezadoDelDia>
 
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <DatoDelDia
-              etiqueta={<Label htmlFor="dia-inicio">Hora de inicio</Label>}
-              ayuda={
-                !dia.inicio && pedidoDelDia.inicio
-                  ? `Pidió ${textoHorarioEstimado(pedidoDelDia.inicio, pedidoDelDia.fin).replace(/^D/, 'd')}`
-                  : undefined
-              }
-            >
-              <SelectorHora
-                id="dia-inicio"
-                className="bg-card font-normal"
-                value={dia.inicio}
-                onChange={(valor) => cambiarHorario('inicio', valor)}
-                opcional
-              />
-            </DatoDelDia>
-            <DatoDelDia
-              etiqueta={<Label htmlFor="dia-fin">Hora de fin</Label>}
-              ayuda={
-                dia.inicio && dia.fin && dia.fin < dia.inicio
-                  ? 'Termina al día siguiente.'
-                  : undefined
-              }
-            >
-              <SelectorHora
-                id="dia-fin"
-                className="bg-card font-normal"
-                value={dia.fin}
-                onChange={(valor) => cambiarHorario('fin', valor)}
-                horaSugerida={dia.inicio || undefined}
-                opcional
-                aria-invalid={!horarioValido(dia)}
-              />
-            </DatoDelDia>
-            <DatoDelDia etiqueta={<Label htmlFor="dia-personas">Personas</Label>}>
-              <InputEntero
-                id="dia-personas"
-                className="bg-card font-normal"
-                max={MAXIMO_PERSONAS_EVENTO}
-                value={dia.personas}
-                aria-invalid={!esEntero(dia.personas)}
-                onChangeValor={(personas) => cambiarDia({ personas })}
-              />
-            </DatoDelDia>
-            {/* La jornada no se elige: sale del horario, como en el cotizador del cliente. */}
-            <DatoDelDia
-              etiqueta="Jornada"
-              className={
-                dia.inicio && dia.fin ? 'bg-dorado/15 text-dorado-texto ring-dorado/30' : undefined
-              }
-              ayuda={
-                dia.inicio && dia.fin
-                  ? dia.jornada === 'media'
-                    ? 'Hasta 4 horas'
-                    : 'Más de 4 horas'
-                  : 'Se calcula con el horario'
-              }
-            >
-              <span aria-live="polite">{nombreDeJornada(dia.jornada)}</span>
-            </DatoDelDia>
-          </div>
-          {!horarioValido(dia) && (
-            <p className="mt-2 text-xs font-medium text-destructive">
-              {dia.inicio && dia.fin
-                ? 'La hora de fin tiene que ser distinta de la de inicio.'
-                : 'Completá la hora de inicio y la de fin, o dejá las dos vacías.'}
-            </p>
-          )}
-
-          <fieldset className="mt-4 space-y-2">
-            <legend className="font-semibold">Salones</legend>
-            <div className="flex flex-wrap gap-2">
-              {salones.map((s) => {
-                const elegido = dia.salonesSel.some((sel) => sel.salonId === s.id);
-                return (
-                  <button
-                    key={s.id}
-                    type="button"
-                    aria-pressed={elegido}
-                    onClick={() => alternarSalon(s.id)}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
-                      elegido
-                        ? 'border-bordo bg-bordo text-crema'
-                        : 'border-input hover:border-bordo/60',
-                    )}
-                  >
-                    {elegido && <Check className="size-3.5" />}
-                    {s.nombre}
-                    <span className={elegido ? 'text-crema/75' : 'text-muted-foreground'}>
-                      · hasta {s.capacidadMaxima}
-                    </span>
-                  </button>
-                );
-              })}
+          <fieldset disabled={!editable} className="min-w-0">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <DatoDelDia
+                etiqueta={<Label htmlFor="dia-inicio">Hora de inicio</Label>}
+                ayuda={
+                  !dia.inicio && pedidoDelDia.inicio
+                    ? `Pidió ${textoHorarioEstimado(pedidoDelDia.inicio, pedidoDelDia.fin).replace(/^D/, 'd')}`
+                    : undefined
+                }
+              >
+                <SelectorHora
+                  id="dia-inicio"
+                  className="bg-card font-normal"
+                  value={dia.inicio}
+                  onChange={(valor) => cambiarHorario('inicio', valor)}
+                  opcional
+                />
+              </DatoDelDia>
+              <DatoDelDia
+                etiqueta={<Label htmlFor="dia-fin">Hora de fin</Label>}
+                ayuda={
+                  dia.inicio && dia.fin && dia.fin < dia.inicio
+                    ? 'Termina al día siguiente.'
+                    : undefined
+                }
+              >
+                <SelectorHora
+                  id="dia-fin"
+                  className="bg-card font-normal"
+                  value={dia.fin}
+                  onChange={(valor) => cambiarHorario('fin', valor)}
+                  horaSugerida={dia.inicio || undefined}
+                  opcional
+                  aria-invalid={!horarioValido(dia)}
+                />
+              </DatoDelDia>
+              <DatoDelDia etiqueta={<Label htmlFor="dia-personas">Personas</Label>}>
+                <InputEntero
+                  id="dia-personas"
+                  className="bg-card font-normal"
+                  max={MAXIMO_PERSONAS_EVENTO}
+                  value={dia.personas}
+                  aria-invalid={!esEntero(dia.personas)}
+                  onChangeValor={(personas) => cambiarDia({ personas })}
+                />
+              </DatoDelDia>
+              {/* La jornada no se elige: sale del horario, como en el cotizador del cliente. */}
+              <DatoDelDia
+                etiqueta="Jornada"
+                className={
+                  dia.inicio && dia.fin
+                    ? 'bg-dorado/15 text-dorado-texto ring-dorado/30'
+                    : undefined
+                }
+                ayuda={
+                  dia.inicio && dia.fin
+                    ? dia.jornada === 'media'
+                      ? 'Hasta 4 horas'
+                      : 'Más de 4 horas'
+                    : 'Se calcula con el horario'
+                }
+              >
+                <span aria-live="polite">{nombreDeJornada(dia.jornada)}</span>
+              </DatoDelDia>
             </div>
-            {/* La distribución (el armado) de cada salón de este día: el mismo salón se puede
-                      armar distinto un día y otro (ADR 0011). */}
-            {dia.salonesSel.length > 0 && (
-              <div className="grid gap-3 pt-2 sm:grid-cols-2">
-                {dia.salonesSel.map(({ salonId }) => {
-                  const salon = salonDe(salonId);
-                  const elegida = dia.distribuciones[salonId] ?? '';
-                  // Las dadas de baja no se ofrecen, salvo la que el día ya tiene.
-                  const opciones = (salon?.distribuciones ?? []).filter(
-                    (opcion) => opcion.activo || String(opcion.id) === elegida,
-                  );
+            {!horarioValido(dia) && (
+              <p className="mt-2 text-xs font-medium text-destructive">
+                {dia.inicio && dia.fin
+                  ? 'La hora de fin tiene que ser distinta de la de inicio.'
+                  : 'Completá la hora de inicio y la de fin, o dejá las dos vacías.'}
+              </p>
+            )}
+
+            <fieldset className="mt-4 space-y-2">
+              <legend className="font-semibold">Salones</legend>
+              <div className="flex flex-wrap gap-2">
+                {salones.map((s) => {
+                  const elegido = dia.salonesSel.some((sel) => sel.salonId === s.id);
                   return (
-                    <div key={salonId} className="space-y-1.5">
-                      <Label htmlFor={`distribucion-${salonId}`}>
-                        Distribución
-                        {dia.salonesSel.length > 1 && ` de ${salon?.nombre ?? ''}`}
-                      </Label>
-                      <select
-                        id={`distribucion-${salonId}`}
-                        className={claseSelect}
-                        value={elegida}
-                        onChange={(e) => elegirDistribucion(salonId, e.target.value)}
-                      >
-                        <option value="">Elegir…</option>
-                        {opciones.map((opcion) => (
-                          <option key={opcion.id} value={opcion.id}>
-                            {opcion.nombre} · hasta {opcion.capacidad} personas
-                          </option>
-                        ))}
-                      </select>
-                    </div>
+                    <button
+                      key={s.id}
+                      type="button"
+                      aria-pressed={elegido}
+                      onClick={() => alternarSalon(s.id)}
+                      className={cn(
+                        'inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
+                        elegido
+                          ? 'border-bordo bg-bordo text-crema'
+                          : 'border-input hover:border-bordo/60',
+                      )}
+                    >
+                      {elegido && <Check className="size-3.5" />}
+                      {s.nombre}
+                      <span className={elegido ? 'text-crema/75' : 'text-muted-foreground'}>
+                        · hasta {s.capacidadMaxima}
+                      </span>
+                    </button>
                   );
                 })}
               </div>
-            )}
-            {superaCapacidad(paraAgendar(dia, fechas[indice] ?? inicio)) && (
-              <p className="flex items-center gap-1.5 text-xs font-medium text-amber-900">
-                <AlertTriangle className="size-3.5" /> {dia.personas} personas superan lo que admite
-                la distribución. Es un aviso: se puede guardar igual.
-              </p>
-            )}
-            {tipo === 'Corporativo' && dia.salonesSel.length === 0 && (
-              <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
-                <AlertTriangle className="size-3.5" /> Un evento corporativo necesita al menos un
-                salón cada día.
-              </p>
-            )}
-            {excedeCapacidad && (
-              <p className="flex items-center gap-1.5 text-xs font-medium text-amber-900">
-                <AlertTriangle className="size-3.5" /> {dia.personas} personas superan la capacidad
-                ({capacidadElegida}). Es un aviso: se puede guardar igual.
-              </p>
-            )}
-          </fieldset>
+              {/* La distribución (el armado) de cada salón de este día: el mismo salón se puede
+                      armar distinto un día y otro (ADR 0011). */}
+              {dia.salonesSel.length > 0 && (
+                <div className="grid gap-3 pt-2 sm:grid-cols-2">
+                  {dia.salonesSel.map(({ salonId }) => {
+                    const salon = salonDe(salonId);
+                    const elegida = dia.distribuciones[salonId] ?? '';
+                    // Las dadas de baja no se ofrecen, salvo la que el día ya tiene.
+                    const opciones = (salon?.distribuciones ?? []).filter(
+                      (opcion) => opcion.activo || String(opcion.id) === elegida,
+                    );
+                    return (
+                      <div key={salonId} className="space-y-1.5">
+                        <Label htmlFor={`distribucion-${salonId}`}>
+                          Distribución
+                          {dia.salonesSel.length > 1 && ` de ${salon?.nombre ?? ''}`}
+                        </Label>
+                        <select
+                          id={`distribucion-${salonId}`}
+                          className={claseSelect}
+                          value={elegida}
+                          onChange={(e) => elegirDistribucion(salonId, e.target.value)}
+                        >
+                          <option value="">Elegir…</option>
+                          {opciones.map((opcion) => (
+                            <option key={opcion.id} value={opcion.id}>
+                              {opcion.nombre} · hasta {opcion.capacidad} personas
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {superaCapacidad(paraAgendar(dia, fechas[indice] ?? inicio)) && (
+                <p className="flex items-center gap-1.5 text-xs font-medium text-amber-900">
+                  <AlertTriangle className="size-3.5" /> {dia.personas} personas superan lo que
+                  admite la distribución. Es un aviso: se puede guardar igual.
+                </p>
+              )}
+              {tipo === 'Corporativo' && dia.salonesSel.length === 0 && (
+                <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
+                  <AlertTriangle className="size-3.5" /> Un evento corporativo necesita al menos un
+                  salón cada día.
+                </p>
+              )}
+              {excedeCapacidad && (
+                <p className="flex items-center gap-1.5 text-xs font-medium text-amber-900">
+                  <AlertTriangle className="size-3.5" /> {dia.personas} personas superan la
+                  capacidad ({capacidadElegida}). Es un aviso: se puede guardar igual.
+                </p>
+              )}
+            </fieldset>
 
-          {cambiosPorFecha.length > 0 && (
-            <div
-              role="status"
-              className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-950 ring-2 ring-amber-300"
-            >
-              <p className="flex items-center gap-2 font-semibold">
-                <RefreshCw className="size-4 shrink-0" />
-                Precios recalculados: el último día pasó del{' '}
-                {formatearFechaNumerica(guardado.evento.fechaFin)} al{' '}
-                {formatearFechaNumerica(referencia)}
-              </p>
-              <p className="mt-1">
-                Todo el presupuesto se proyectó con el incremento del {Number(porcentajeMensual)}%
-                mensual a esa fecha, también los días que ya estaban.
-              </p>
-              <ResumenCambios cambios={cambiosPorFecha} />
-              <p className="mt-2 text-xs">
-                Total antes {formatearPesos(totalGuardado)} · ahora {formatearPesos(importes.total)}
-              </p>
-            </div>
-          )}
+            {cambiosPorFecha.length > 0 && (
+              <div
+                role="status"
+                className="mt-4 rounded-xl bg-amber-50 p-4 text-sm text-amber-950 ring-2 ring-amber-300"
+              >
+                <p className="flex items-center gap-2 font-semibold">
+                  <RefreshCw className="size-4 shrink-0" />
+                  Precios recalculados: el último día pasó del{' '}
+                  {formatearFechaNumerica(guardado.evento.fechaFin)} al{' '}
+                  {formatearFechaNumerica(referencia)}
+                </p>
+                <p className="mt-1">
+                  Todo el presupuesto se proyectó con el incremento del {Number(porcentajeMensual)}%
+                  mensual a esa fecha, también los días que ya estaban.
+                </p>
+                <ResumenCambios cambios={cambiosPorFecha} />
+                <p className="mt-2 text-xs">
+                  Total antes {formatearPesos(totalGuardado)} · ahora{' '}
+                  {formatearPesos(importes.total)}
+                </p>
+              </div>
+            )}
 
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[36rem] text-sm">
-              <thead className="text-left text-xs text-muted-foreground">
-                <tr>
-                  <th className="pb-2 font-medium">Concepto</th>
-                  <th className="w-24 pb-2 font-medium">Cantidad</th>
-                  <th className="w-28 pb-2 font-medium">Hora</th>
-                  <th className="w-36 pb-2 font-medium">Precio unitario</th>
-                  <th className="w-32 pb-2 text-right font-medium">Subtotal</th>
-                  <th className="w-10 pb-2" />
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {dia.salonesSel.length === 0 && dia.lineas.length === 0 && (
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[36rem] text-sm">
+                <thead className="text-left text-xs text-muted-foreground">
                   <tr>
-                    <td colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
-                      Este día entra vacío: elegí el salón y agregá los servicios, o copiá el día
-                      anterior.
-                    </td>
+                    <th className="pb-2 font-medium">Concepto</th>
+                    <th className="w-24 pb-2 font-medium">Cantidad</th>
+                    <th className="w-28 pb-2 font-medium">Hora</th>
+                    <th className="w-36 pb-2 font-medium">Precio unitario</th>
+                    <th className="w-32 pb-2 text-right font-medium">Subtotal</th>
+                    <th className="w-10 pb-2" />
                   </tr>
-                )}
-                {dia.salonesSel.map((sel) => {
-                  const nombre = salonDe(sel.salonId)?.nombre ?? '';
-                  return (
-                    <tr key={`salon-${sel.salonId}`}>
-                      <td className="py-2 pr-3">
-                        Salón {nombre} (
-                        {dia.jornada === 'completa' ? 'jornada completa' : 'media jornada'})
+                </thead>
+                <tbody className="divide-y">
+                  {dia.salonesSel.length === 0 && dia.lineas.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="py-6 text-center text-sm text-muted-foreground">
+                        Este día entra vacío: elegí el salón y agregá los servicios, o copiá el día
+                        anterior.
                       </td>
-                      <td className="py-2 pr-3 text-muted-foreground">1</td>
-                      <td className="py-2 pr-3 text-muted-foreground">—</td>
+                    </tr>
+                  )}
+                  {dia.salonesSel.map((sel) => {
+                    const nombre = salonDe(sel.salonId)?.nombre ?? '';
+                    return (
+                      <tr key={`salon-${sel.salonId}`}>
+                        <td className="py-2 pr-3">
+                          Salón {nombre} (
+                          {dia.jornada === 'completa' ? 'jornada completa' : 'media jornada'})
+                        </td>
+                        <td className="py-2 pr-3 text-muted-foreground">1</td>
+                        <td className="py-2 pr-3 text-muted-foreground">—</td>
+                        <td className="py-2 pr-3">
+                          <InputImporte
+                            aria-label={`Precio del salón ${nombre}`}
+                            value={sel.precio}
+                            aria-invalid={!esImporte(sel.precio)}
+                            onChange={(e) =>
+                              cambiarDia((d) => ({
+                                salonesSel: d.salonesSel.map((s) =>
+                                  s.salonId === sel.salonId ? { ...s, precio: e.target.value } : s,
+                                ),
+                              }))
+                            }
+                          />
+                        </td>
+                        <td className="py-2 text-right whitespace-nowrap">
+                          {esImporte(sel.precio) ? formatearPesos(sel.precio) : '—'}
+                        </td>
+                        <td />
+                      </tr>
+                    );
+                  })}
+                  {dia.lineas.map((linea) => (
+                    <tr key={linea.clave}>
+                      <td className="py-2 pr-3">
+                        {linea.servicioId === null ? (
+                          <Input
+                            aria-label="Descripción del adicional"
+                            value={linea.descripcion}
+                            aria-invalid={!linea.descripcion.trim()}
+                            onChange={(e) =>
+                              actualizarLinea(linea.clave, { descripcion: e.target.value })
+                            }
+                          />
+                        ) : (
+                          <>
+                            {linea.descripcion}
+                            {linea.tercerizado && (
+                              <span className="ml-1 text-xs text-muted-foreground">
+                                (tercerizado)
+                              </span>
+                            )}
+                            {(linea.admiteModalidad || linea.modalidad !== 'Normal') && (
+                              <SelectorModalidad
+                                id={`modalidad-${linea.clave}`}
+                                className="mt-1 block w-full"
+                                value={linea.modalidad}
+                                onChange={(modalidad) =>
+                                  actualizarLinea(linea.clave, { modalidad })
+                                }
+                              />
+                            )}
+                            {repetida(dia, linea) && (
+                              <span className="mt-1 block text-xs text-destructive">
+                                Ya está con esta modalidad: elegí otra o quitá una de las dos.
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <InputEntero
+                          aria-label={`Cantidad de ${linea.descripcion}`}
+                          max={topeDeLinea(dia, linea.servicioId)}
+                          value={linea.cantidad}
+                          aria-invalid={!esEntero(linea.cantidad) || !cantidadPosible(dia, linea)}
+                          onChangeValor={(cantidad) => actualizarLinea(linea.clave, { cantidad })}
+                        />
+                      </td>
+                      <td className="py-2 pr-3">
+                        <SelectorHora
+                          aria-label={`Hora de ${linea.descripcion} (opcional)`}
+                          value={linea.hora}
+                          onChange={(hora) => actualizarLinea(linea.clave, { hora })}
+                          opcional
+                          placeholder="--:--"
+                          horaSugerida={dia.inicio || undefined}
+                        />
+                      </td>
                       <td className="py-2 pr-3">
                         <InputImporte
-                          aria-label={`Precio del salón ${nombre}`}
-                          value={sel.precio}
-                          aria-invalid={!esImporte(sel.precio)}
-                          onChange={(e) =>
-                            cambiarDia((d) => ({
-                              salonesSel: d.salonesSel.map((s) =>
-                                s.salonId === sel.salonId ? { ...s, precio: e.target.value } : s,
-                              ),
-                            }))
-                          }
+                          aria-label={`Precio unitario de ${linea.descripcion}`}
+                          sinSigno={aCotizar(linea)}
+                          value={linea.precio}
+                          placeholder={linea.tercerizado ? 'A cotizar' : undefined}
+                          aria-invalid={!precioValido(linea)}
+                          onChange={(e) => actualizarLinea(linea.clave, { precio: e.target.value })}
                         />
+                        {linea.modalidad !== 'Normal' && esImporte(linea.precio) && (
+                          <span className="mt-1 block text-xs text-muted-foreground">
+                            Con recargo: {formatearPesos(precioConRecargo(linea))}
+                          </span>
+                        )}
                       </td>
                       <td className="py-2 text-right whitespace-nowrap">
-                        {esImporte(sel.precio) ? formatearPesos(sel.precio) : '—'}
+                        {aCotizar(linea) ? (
+                          <span className="text-xs font-medium text-amber-900">A cotizar</span>
+                        ) : esEntero(linea.cantidad) && esImporte(linea.precio) ? (
+                          formatearPesos(subtotalDeLinea(linea))
+                        ) : (
+                          '—'
+                        )}
                       </td>
-                      <td />
-                    </tr>
-                  );
-                })}
-                {dia.lineas.map((linea) => (
-                  <tr key={linea.clave}>
-                    <td className="py-2 pr-3">
-                      {linea.servicioId === null ? (
-                        <Input
-                          aria-label="Descripción del adicional"
-                          value={linea.descripcion}
-                          aria-invalid={!linea.descripcion.trim()}
-                          onChange={(e) =>
-                            actualizarLinea(linea.clave, { descripcion: e.target.value })
+                      <td className="py-2 text-right">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label={`Quitar ${linea.descripcion}`}
+                          onClick={() =>
+                            cambiarDia((d) => ({
+                              lineas: d.lineas.filter((l) => l.clave !== linea.clave),
+                            }))
                           }
-                        />
-                      ) : (
-                        <>
-                          {linea.descripcion}
-                          {linea.tercerizado && (
-                            <span className="ml-1 text-xs text-muted-foreground">
-                              (tercerizado)
-                            </span>
-                          )}
-                          {(linea.admiteModalidad || linea.modalidad !== 'Normal') && (
-                            <SelectorModalidad
-                              id={`modalidad-${linea.clave}`}
-                              className="mt-1 block w-full"
-                              value={linea.modalidad}
-                              onChange={(modalidad) => actualizarLinea(linea.clave, { modalidad })}
-                            />
-                          )}
-                          {repetida(dia, linea) && (
-                            <span className="mt-1 block text-xs text-destructive">
-                              Ya está con esta modalidad: elegí otra o quitá una de las dos.
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </td>
-                    <td className="py-2 pr-3">
-                      <InputEntero
-                        aria-label={`Cantidad de ${linea.descripcion}`}
-                        max={topeDeLinea(dia, linea.servicioId)}
-                        value={linea.cantidad}
-                        aria-invalid={!esEntero(linea.cantidad) || !cantidadPosible(dia, linea)}
-                        onChangeValor={(cantidad) => actualizarLinea(linea.clave, { cantidad })}
-                      />
-                    </td>
-                    <td className="py-2 pr-3">
-                      <SelectorHora
-                        aria-label={`Hora de ${linea.descripcion} (opcional)`}
-                        value={linea.hora}
-                        onChange={(hora) => actualizarLinea(linea.clave, { hora })}
-                        opcional
-                        placeholder="--:--"
-                        horaSugerida={dia.inicio || undefined}
-                      />
-                    </td>
-                    <td className="py-2 pr-3">
-                      <InputImporte
-                        aria-label={`Precio unitario de ${linea.descripcion}`}
-                        sinSigno={aCotizar(linea)}
-                        value={linea.precio}
-                        placeholder={linea.tercerizado ? 'A cotizar' : undefined}
-                        aria-invalid={!precioValido(linea)}
-                        onChange={(e) => actualizarLinea(linea.clave, { precio: e.target.value })}
-                      />
-                      {linea.modalidad !== 'Normal' && esImporte(linea.precio) && (
-                        <span className="mt-1 block text-xs text-muted-foreground">
-                          Con recargo: {formatearPesos(precioConRecargo(linea))}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2 text-right whitespace-nowrap">
-                      {aCotizar(linea) ? (
-                        <span className="text-xs font-medium text-amber-900">A cotizar</span>
-                      ) : esEntero(linea.cantidad) && esImporte(linea.precio) ? (
-                        formatearPesos(subtotalDeLinea(linea))
-                      ) : (
-                        '—'
-                      )}
-                    </td>
-                    <td className="py-2 text-right">
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        aria-label={`Quitar ${linea.descripcion}`}
-                        onClick={() =>
-                          cambiarDia((d) => ({
-                            lineas: d.lineas.filter((l) => l.clave !== linea.clave),
-                          }))
-                        }
-                      >
-                        <X />
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  <td colSpan={4} className="pt-3 text-right text-xs text-muted-foreground">
-                    Subtotal del día {indice + 1}
-                  </td>
-                  <td className="pt-3 text-right font-medium">
-                    {formatearPesos(subtotalDelDia(dia))}
-                  </td>
-                  <td />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-
-          <div className="mt-4 space-y-3 rounded-lg bg-muted/50 p-3">
-            <div className="flex flex-wrap items-end gap-2">
-              <div className="min-w-0 flex-1 space-y-1.5">
-                <Label htmlFor="consulta-agregar">Agregar servicio al día {indice + 1}</Label>
-                <select
-                  id="consulta-agregar"
-                  className={cn(claseSelect, 'bg-card')}
-                  value={agregar}
-                  onChange={(e) => setAgregar(e.target.value)}
-                >
-                  <option value="">Elegí un servicio…</option>
-                  {agruparPorCategoria(disponibles).map(([categoria, delTipo]) => (
-                    <optgroup key={categoria} label={categoria}>
-                      {delTipo.map((s) => (
-                        <option key={s.id} value={s.id}>
-                          {s.nombre} · {s.precio === null ? 'a cotizar' : formatearPesos(s.precio)}
-                          {s.porPersona ? ' por persona' : ''}
-                          {s.tercerizado ? ' (tercerizado)' : ''}
-                        </option>
-                      ))}
-                    </optgroup>
+                        >
+                          <X />
+                        </Button>
+                      </td>
+                    </tr>
                   ))}
-                  <optgroup label="Otro">
-                    <option value={OTRO}>Otro servicio (escribirlo a mano)</option>
-                  </optgroup>
-                </select>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={4} className="pt-3 text-right text-xs text-muted-foreground">
+                      Subtotal del día {indice + 1}
+                    </td>
+                    <td className="pt-3 text-right font-medium">
+                      {formatearPesos(subtotalDelDia(dia))}
+                    </td>
+                    <td />
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <div className="mt-4 space-y-3 rounded-lg bg-muted/50 p-3">
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <Label htmlFor="consulta-agregar">Agregar servicio al día {indice + 1}</Label>
+                  <select
+                    id="consulta-agregar"
+                    className={cn(claseSelect, 'bg-card')}
+                    value={agregar}
+                    onChange={(e) => setAgregar(e.target.value)}
+                  >
+                    <option value="">Elegí un servicio…</option>
+                    {agruparPorCategoria(disponibles).map(([categoria, delTipo]) => (
+                      <optgroup key={categoria} label={categoria}>
+                        {delTipo.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.nombre} ·{' '}
+                            {s.precio === null ? 'a cotizar' : formatearPesos(s.precio)}
+                            {s.porPersona ? ' por persona' : ''}
+                            {s.tercerizado ? ' (tercerizado)' : ''}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                    <optgroup label="Otro">
+                      <option value={OTRO}>Otro servicio (escribirlo a mano)</option>
+                    </optgroup>
+                  </select>
+                </div>
+                {agregar !== OTRO && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!puedeAgregar}
+                    onClick={agregarLinea}
+                  >
+                    <Plus /> Agregar
+                  </Button>
+                )}
               </div>
-              {agregar !== OTRO && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!puedeAgregar}
-                  onClick={agregarLinea}
-                >
-                  <Plus /> Agregar
-                </Button>
+              {agregar === OTRO && (
+                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_9rem_auto] sm:items-end">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="otro-descripcion">¿Qué servicio?</Label>
+                    <Input
+                      id="otro-descripcion"
+                      className="bg-card"
+                      placeholder="Por ejemplo: decoración con globos"
+                      maxLength={120}
+                      value={otro.descripcion}
+                      onChange={(e) => setOtro({ ...otro, descripcion: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="otro-cantidad">Cantidad</Label>
+                    <InputEntero
+                      id="otro-cantidad"
+                      className="bg-card"
+                      value={otro.cantidad}
+                      aria-invalid={!esEntero(otro.cantidad)}
+                      onChangeValor={(cantidad) => setOtro({ ...otro, cantidad })}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="otro-precio">Precio sin IVA</Label>
+                    <InputImporte
+                      id="otro-precio"
+                      className="bg-card"
+                      placeholder="0.00"
+                      value={otro.precio}
+                      onChange={(e) => setOtro({ ...otro, precio: e.target.value })}
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={!puedeAgregar}
+                    onClick={agregarLinea}
+                  >
+                    <Plus /> Agregar
+                  </Button>
+                </div>
               )}
             </div>
-            {agregar === OTRO && (
-              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_9rem_auto] sm:items-end">
-                <div className="space-y-1.5">
-                  <Label htmlFor="otro-descripcion">¿Qué servicio?</Label>
-                  <Input
-                    id="otro-descripcion"
-                    className="bg-card"
-                    placeholder="Por ejemplo: decoración con globos"
-                    maxLength={120}
-                    value={otro.descripcion}
-                    onChange={(e) => setOtro({ ...otro, descripcion: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="otro-cantidad">Cantidad</Label>
-                  <InputEntero
-                    id="otro-cantidad"
-                    className="bg-card"
-                    value={otro.cantidad}
-                    aria-invalid={!esEntero(otro.cantidad)}
-                    onChangeValor={(cantidad) => setOtro({ ...otro, cantidad })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="otro-precio">Precio sin IVA</Label>
-                  <InputImporte
-                    id="otro-precio"
-                    className="bg-card"
-                    placeholder="0.00"
-                    value={otro.precio}
-                    onChange={(e) => setOtro({ ...otro, precio: e.target.value })}
-                  />
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  disabled={!puedeAgregar}
-                  onClick={agregarLinea}
-                >
-                  <Plus /> Agregar
-                </Button>
-              </div>
-            )}
-          </div>
+          </fieldset>
 
-          {/* Las observaciones internas son del día (HU-50): las de un día nuevo se cargan
+          {/* Las observaciones internas son del día (HU-50) y se guardan aparte, en cualquier
+              momento: no dependen de «Editar». Las de un día nuevo se cargan
                     después de guardarlo. */}
           {diaGuardadoDelEvento && (
             <div className="mt-5 border-t pt-4 [--card-spacing:0px] [&>[data-slot]]:gap-2">
@@ -1382,7 +1495,7 @@ export function EditarConsultaPorDias({
               />
             </div>
           )}
-        </fieldset>
+        </section>
 
         <aside className="min-w-0 space-y-4">
           <section

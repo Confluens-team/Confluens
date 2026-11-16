@@ -38,7 +38,7 @@ export function EditarConsulta({
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   // Comanda de cocina del evento confirmado. Sin esto el botón no aparece: desde Consultas no se
   // llega a un presupuesto Confirmado, solo desde la agenda.
-  onImprimirComanda?: (presupuestoId: number) => void;
+  onImprimirComanda?: (presupuestoId: number, dia?: number) => void;
   // Se abre desde Consultas o desde un evento de la agenda (HU-15).
   textoVolver?: string;
   // El botón del aviso de guardado; arma también la pregunta («¿Querés volver al inicio?»).
@@ -59,13 +59,29 @@ export function EditarConsulta({
   // evento (antes, «Registrar pagos» llevaba al evento). El Historial (diseño D) lo ven solo los
   // roles que ven la auditoría.
   const [pestania, setPestania] = useState<PestaniaDeConsulta>('detalle');
+  // Lo que se cambió en Detalle y no se guardó se descarta al ir a otra pestaña (16/11/2026):
+  // descartar es volver a montar el editor, que arranca con lo guardado.
+  const [detalleSinGuardar, setDetalleSinGuardar] = useState(false);
+  const [versionDelDetalle, setVersionDelDetalle] = useState(0);
+  function cambiarPestania(nueva: PestaniaDeConsulta) {
+    if (pestania === 'detalle' && nueva !== 'detalle' && detalleSinGuardar) {
+      if (
+        !window.confirm('Hay cambios sin guardar en Detalle. Si cambiás de pestaña se descartan.')
+      ) {
+        return;
+      }
+      setVersionDelDetalle((version) => version + 1);
+      setDetalleSinGuardar(false);
+    }
+    setPestania(nueva);
+  }
   const { data: sesion } = useSesion();
   const veHistorial = !!sesion && veAuditoria(sesion.rol);
   const pestanias = (
     <Pestanias<PestaniaDeConsulta>
       etiqueta="Secciones de la consulta"
       valor={pestania}
-      onCambiar={setPestania}
+      onCambiar={cambiarPestania}
       pestanias={[
         { valor: 'detalle', texto: 'Detalle', icono: FileText },
         { valor: 'pagos', texto: 'Pagos', icono: Wallet },
@@ -102,6 +118,8 @@ export function EditarConsulta({
         )}
         {consulta.data && salones.data && servicios.data && configuracion.data && (
           <EditarConsultaPorDias
+            key={versionDelDetalle}
+            onSinGuardar={setDetalleSinGuardar}
             consulta={consulta.data}
             salones={salones.data}
             catalogo={servicios.data}

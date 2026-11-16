@@ -1,5 +1,5 @@
 import { type EstadoEvento, veAuditoria } from '@confluens/shared';
-import { Check, FileText, History, Printer, Repeat2, Wallet, XCircle } from 'lucide-react';
+import { Check, FileText, History, Repeat2, Wallet, XCircle } from 'lucide-react';
 import { useState } from 'react';
 
 import { formatearFechaNumerica } from '@/lib/formato';
@@ -71,7 +71,7 @@ interface DetalleEventoProps {
   // HU-11: abre el detalle completo del presupuesto (líneas, IVA, vigencia y los demás del evento).
   onVerPresupuesto?: (presupuestoId: number) => void;
   // Comanda de cocina del evento confirmado: la hoja sin precios que se imprime y se cuelga.
-  onImprimirComanda?: (presupuestoId: number) => void;
+  onImprimirComanda?: (presupuestoId: number, dia?: number) => void;
   // HU-24: abre la consulta nueva creada con «Repetir evento». Sin esto, el botón no aparece.
   onAbrirConsulta?: (presupuestoId: number, eventoId: number) => void;
 }
@@ -95,6 +95,23 @@ export function DetalleEvento({
   const [repitiendo, setRepitiendo] = useState(false);
   // Detalle, Pagos o Historial. El Historial (diseño D) lo ven solo los roles que ven la auditoría.
   const [pestania, setPestania] = useState<PestaniaDeEvento>('detalle');
+  // Lo que se cambió en Detalle y no se guardó se descarta al ir a otra pestaña: si no, Pagos
+  // mostraba lo guardado y Detalle lo editado, a medias (16/11/2026). Descartar es volver a montar
+  // el editor.
+  const [detalleSinGuardar, setDetalleSinGuardar] = useState(false);
+  const [versionDelDetalle, setVersionDelDetalle] = useState(0);
+  function cambiarPestania(nueva: PestaniaDeEvento) {
+    if (pestania === 'detalle' && nueva !== 'detalle' && detalleSinGuardar) {
+      if (
+        !window.confirm('Hay cambios sin guardar en Detalle. Si cambiás de pestaña se descartan.')
+      ) {
+        return;
+      }
+      setVersionDelDetalle((version) => version + 1);
+      setDetalleSinGuardar(false);
+    }
+    setPestania(nueva);
+  }
   // El presupuesto en PDF para mandárselo al cliente. El resto queda montado (oculto) para no
   // perder lo que se estaba editando.
   const [documentoAbierto, setDocumentoAbierto] = useState(false);
@@ -213,25 +230,6 @@ export function DetalleEvento({
           mensaje={mensajeWhatsApp(evento.cliente.nombre, evento.estado)}
         />
       )}
-      <div className="flex flex-wrap justify-end gap-2">
-        {/* HU-24: solo se repite un evento Cobrado (decisión de Franco, 17/10/2026). */}
-        {onAbrirConsulta && evento.estado === 'Cobrado' && (
-          <Button variant="outline" size="sm" onClick={() => setRepitiendo(true)}>
-            <Repeat2 /> Repetir evento
-          </Button>
-        )}
-        {/* Solo con el presupuesto confirmado: antes de la seña el evento todavía se puede caer y
-            la cocina no tiene nada que preparar. */}
-        {onImprimirComanda && presupuestoVigente?.estado === 'Confirmado' && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => onImprimirComanda(presupuestoVigente.id)}
-          >
-            <Printer /> Comanda de cocina
-          </Button>
-        )}
-      </div>
     </TarjetaCliente>
   );
 
@@ -269,6 +267,13 @@ export function DetalleEvento({
                 {estado.etiqueta}
               </span>
               <BadgeTipoEvento evento={evento} />
+              {/* HU-24: solo se repite un evento Cobrado (decisión de Franco, 17/10/2026). Va al
+                  lado de los estados, en el título (16/11/2026). */}
+              {onAbrirConsulta && evento.estado === 'Cobrado' && (
+                <Button variant="outline" size="sm" onClick={() => setRepitiendo(true)}>
+                  <Repeat2 /> Repetir evento
+                </Button>
+              )}
             </div>
             <p className="text-sm text-muted-foreground">{fechaDelEvento}</p>
             <PasosDelEvento estado={evento.estado} />
@@ -276,7 +281,7 @@ export function DetalleEvento({
           <Pestanias<PestaniaDeEvento>
             etiqueta="Secciones del evento"
             valor={pestaniaVisible}
-            onCambiar={setPestania}
+            onCambiar={cambiarPestania}
             pestanias={[
               { valor: 'detalle', texto: 'Detalle', icono: FileText },
               { valor: 'pagos', texto: 'Pagos', icono: Wallet },
@@ -310,6 +315,9 @@ export function DetalleEvento({
             {/* El evento se edita acá mismo, como una consulta más, también confirmado o cobrado. */}
             {presupuestoVigente ? (
               <EditorDelEvento
+                key={versionDelDetalle}
+                onImprimirComanda={onImprimirComanda}
+                onSinGuardar={setDetalleSinGuardar}
                 presupuestoId={presupuestoVigente.id}
                 accionIzquierda={cancelar || undefined}
               />

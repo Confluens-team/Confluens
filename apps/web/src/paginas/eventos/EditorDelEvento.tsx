@@ -12,10 +12,15 @@ import { EditarConsultaPorDias } from '@/paginas/presupuestos/EditarConsultaPorD
 export function EditorDelEvento({
   presupuestoId,
   accionIzquierda,
+  onImprimirComanda,
+  onSinGuardar,
 }: {
   presupuestoId: number;
   // Abajo a la izquierda, al nivel de «Guardar cambios»: cancelar el evento.
   accionIzquierda?: React.ReactNode;
+  // La comanda de cocina de un día, desde ese día.
+  onImprimirComanda?: (presupuestoId: number, dia?: number) => void;
+  onSinGuardar?: (hay: boolean) => void;
 }) {
   const consulta = useConsulta(presupuestoId);
   const salones = useSalones();
@@ -36,6 +41,8 @@ export function EditorDelEvento({
       porcentajeMensual={configuracion.data.porcentajeMensual}
       incrustado
       accionIzquierda={accionIzquierda}
+      onImprimirComanda={onImprimirComanda}
+      onSinGuardar={onSinGuardar}
     />
   );
 }
