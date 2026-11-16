@@ -311,7 +311,6 @@ export function Agenda({
         onVolver={volverAlEvento}
         onGuardada={volverAlEvento}
         onDadaDeBaja={volverAlEvento}
-        onAbrirEvento={volverAlEvento}
         onImprimirComanda={setComandaAbierta}
       />
     );

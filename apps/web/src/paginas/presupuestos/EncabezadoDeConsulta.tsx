@@ -5,8 +5,9 @@ import { IconoEstado } from '@/components/IconoEstado';
 import { formatearFechaNumerica } from '@/lib/formato';
 import { cn } from '@/lib/utils';
 
-// Las pestañas del detalle de una consulta (15/11/2026). Historial solo para el GG y el ADM.
-export type PestaniaDeConsulta = 'detalle' | 'historial';
+// Las pestañas del detalle de una consulta (15/11/2026). Pagos reemplaza al botón «Registrar
+// pagos»; Historial solo para el GG y el ADM.
+export type PestaniaDeConsulta = 'detalle' | 'pagos' | 'historial';
 
 const ESTADOS: Record<string, string> = {
   Estimado: 'bg-estado-consulta-fondo text-estado-consulta-texto',
