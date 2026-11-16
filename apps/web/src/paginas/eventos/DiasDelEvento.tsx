@@ -14,9 +14,8 @@ import {
 } from '@/lib/cinta-de-dias';
 import { nombreDeJornada } from '@/lib/dias-del-evento';
 import { textoModalidad } from '@/lib/formato';
-import { textoHorarioEstimado } from '@/lib/jornada';
+import { jornadaDeHoras, textoHorarioEstimado } from '@/lib/jornada';
 import { cn } from '@/lib/utils';
-import { EditorDeHorario } from './EditorDeHorario';
 import { ObservacionesDelEvento } from './ObservacionesDelEvento';
 import { presupuestoVigenteDe } from './presupuesto-vigente';
 
@@ -38,8 +37,8 @@ const diaDeLinea = (linea: Linea) => (linea as { diaId?: number }).diaId;
  * total del presupuesto y los avisos accionables de los días (conflictos y días sin cargar). Un
  * evento de un solo día muestra el mismo panel, sin la cinta.
  *
- * Los servicios de cada día se cambian en la consulta («Editar en la consulta»); acá se cargan el
- * horario y la distribución (RN-09) y las observaciones, que son del día.
+ * El horario, la distribución, las personas y los servicios de cada día se cambian en la consulta
+ * («Editar en la consulta»); acá se cargan las observaciones, que son del día.
  */
 export function DiasDelEvento({
   evento,
@@ -90,6 +89,10 @@ export function DiasDelEvento({
   const subtotal = delDia.reduce((suma, linea) => suma + Number(linea.subtotal), 0);
   const hayACotizar = delDia.some((linea) => linea.aCotizar);
   const agendado = !!dia.inicio && !!dia.fin;
+  const jornadaCotizada = dia.tipoJornada ?? 'completa';
+  const jornadaDelDia = agendado
+    ? jornadaDeHoras(horaDelEvento(dia.inicio!), horaDelEvento(dia.fin!))
+    : jornadaCotizada;
   const pedido =
     dia.horaInicioEstimada || dia.horaFinEstimada
       ? textoHorarioEstimado(dia.horaInicioEstimada, dia.horaFinEstimada)
@@ -114,21 +117,8 @@ export function DiasDelEvento({
 
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <DatoDelDia
-              etiqueta={
-                <span className="flex items-center justify-between gap-2">
-                  Horario
-                  {/* El lápiz carga el horario y la distribución de cada día (RN-09). */}
-                  {!cancelado && <EditorDeHorario evento={evento} />}
-                </span>
-              }
-              ayuda={
-                <>
-                  {dia.tipoJornada && nombreDeJornada(dia.tipoJornada)}
-                  {!agendado && pedido && (
-                    <span className="block">Pidió {pedido.replace(/^D/, 'd')}</span>
-                  )}
-                </>
-              }
+              etiqueta="Horario"
+              ayuda={!agendado && pedido ? `Pidió ${pedido.replace(/^D/, 'd')}` : undefined}
             >
               {agendado ? (
                 `${horaDelEvento(dia.inicio!)} – ${horaDelEvento(dia.fin!)}`
@@ -137,7 +127,22 @@ export function DiasDelEvento({
               )}
             </DatoDelDia>
             <DatoDelDia etiqueta="Personas">{dia.cantidadPersonas}</DatoDelDia>
-            <DatoDelDia etiqueta="Salones" className="sm:col-span-2">
+            {/* La jornada sale del horario del día, como en la consulta. Si el presupuesto quedó
+                cotizado con otra, se avisa: es lo que se cobra. */}
+            <DatoDelDia
+              etiqueta="Jornada"
+              className="bg-dorado/15 text-dorado-texto ring-dorado/30"
+              ayuda={
+                jornadaCotizada !== jornadaDelDia
+                  ? `Cotizada como ${nombreDeJornada(jornadaCotizada).toLowerCase()}`
+                  : jornadaDelDia === 'media'
+                    ? 'Hasta 4 horas'
+                    : 'Más de 4 horas'
+              }
+            >
+              {nombreDeJornada(jornadaDelDia)}
+            </DatoDelDia>
+            <DatoDelDia etiqueta="Salones" className="sm:col-span-2 xl:col-span-4">
               {dia.salones.length > 0 ? (
                 dia.salones.map((salon, i) => (
                   <span key={salon.id}>

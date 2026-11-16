@@ -4,7 +4,6 @@ import {
   esquemaCrearPago,
   type EventoDetallado,
   hoyEnZonaEventos,
-  PORCENTAJE_SENA,
 } from '@confluens/shared';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { CheckCircle2 } from 'lucide-react';
@@ -17,13 +16,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { useAgendarEvento } from '@/hooks/use-eventos';
 import { useMediosPago, usePagosDeEvento, useRegistrarPago } from '@/hooks/use-pagos';
 import { ErrorApiCliente } from '@/lib/api';
 import { nombreCompleto } from '@/lib/formato';
 import { CLASES_SELECT } from './clases-select';
 import { rutaDelDiaEnLaAgenda } from './dia-en-la-agenda';
-import { useHorarioDelEvento } from './use-horario-del-evento';
 
 // Los pagos sí llevan centavos: el importe es plata que entró y tiene que cuadrar hasta el centavo.
 const formateadorMoneda = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' });
@@ -36,20 +33,17 @@ const formateadorHorario = new Intl.DateTimeFormat('es-AR', {
 /**
  * HU-14: el formulario de cobro, a la izquierda de la pestaña Pagos (15/11/2026). Antes se abría en
  * un diálogo desde «Registrar pago»; ahora la pestaña es ese botón y el formulario queda a la vista,
- * con la cuenta a la derecha. Se monta al entrar a la pestaña: cada vez arranca con el horario
- * guardado, como el diálogo al abrirse.
+ * con la cuenta a la derecha. Pide solo el cobro: monto, fecha, medio de pago y una observación. El
+ * horario y la distribución de cada día se cargan en Detalle (15/11/2026).
  *
  * Registrar un pago puede cambiarle el estado al evento: al cruzar el 20% de la base de cobro se
- * confirma el presupuesto y se reserva el salón (HU-13), y al 100% el evento pasa a Cobrado. Con el
- * evento en consulta, agendar va en el mismo formulario (ADR 0007: sin distribución y horario no se
- * puede reservar el salón).
+ * confirma el presupuesto y se reserva el salón (HU-13), y al 100% el evento pasa a Cobrado. Sin
+ * horario y distribución el salón no se puede reservar (ADR 0007): la API rechaza ese pago.
  */
 export function FormularioDePago({ evento }: { evento: EventoDetallado }) {
   const cuenta = usePagosDeEvento(evento.id);
   const mediosPago = useMediosPago();
   const registrarPago = useRegistrarPago(evento.id);
-  const agendarEvento = useAgendarEvento(evento.id);
-  const horario = useHorarioDelEvento(evento);
 
   const {
     register,
@@ -66,16 +60,7 @@ export function FormularioDePago({ evento }: { evento: EventoDetallado }) {
   const fechaPago = useWatch({ control, name: 'fecha' });
   const enConsulta = evento.estado === 'EnConsulta';
 
-  async function registrar(datos: CrearPago) {
-    // Primero se agenda (si hay algo nuevo que agendar) y después se cobra: el pago que cruza la
-    // seña necesita el horario ya guardado para evaluar RN-12. Si agendar falla, no se cobra.
-    if (enConsulta && horario.completo && horario.cambio) {
-      try {
-        await agendarEvento.mutateAsync(horario.datos());
-      } catch {
-        return;
-      }
-    }
+  function registrar(datos: CrearPago) {
     registrarPago.mutate(datos, {
       // El medio de pago queda elegido: lo habitual es cargar varias entregas por el mismo medio.
       // El resto se nombra de a uno (incluida la observación, que vale ''): reset() solo limpia lo
@@ -105,51 +90,31 @@ export function FormularioDePago({ evento }: { evento: EventoDetallado }) {
     : Number((montoSena - Number(saldo.pagado)).toFixed(2));
   const saldoPendiente = Number(saldo.saldo);
   const resultado = registrarPago.data;
-  const errorAgendar =
-    agendarEvento.isError &&
-    (agendarEvento.error instanceof ErrorApiCliente
-      ? agendarEvento.error.message
-      : 'No se pudo guardar el horario del evento.');
+  // Sin horario o sin distribución en algún día, el pago que llega a la seña no puede reservar.
+  const sinAgendar =
+    enConsulta &&
+    evento.dias.some(
+      (dia) => !dia.inicio || !dia.fin || dia.salones.some((salon) => !salon.distribucion),
+    );
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{enConsulta ? 'Agendar y registrar pago' : 'Registrar pago'}</CardTitle>
-        <CardDescription>
-          {enConsulta
-            ? `Si el pago llega a la seña (${formateadorMoneda.format(montoSena)}), el presupuesto se confirma y el salón queda reservado.`
-            : `Saldo pendiente: ${formateadorMoneda.format(saldoPendiente)}.`}
-        </CardDescription>
+        <CardTitle>Registrar pago</CardTitle>
+        {!enConsulta && (
+          <CardDescription>
+            Saldo pendiente: {formateadorMoneda.format(saldoPendiente)}.
+          </CardDescription>
+        )}
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit(registrar)} className="space-y-5">
-          {enConsulta && evento.salones.length === 0 && (
+          {sinAgendar && faltaParaLaSena > 0 && (
             <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-              Para reservar el salón con la seña, primero elegí el salón en el detalle de la
-              consulta y guardá los cambios.
+              Falta el horario o la distribución de algún día: cargalos en Detalle y guardá.
             </p>
           )}
-          {enConsulta && evento.salones.length > 0 && (
-            <fieldset className="space-y-4">
-              <legend className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                Horario
-              </legend>
-              {horario.campos}
-              {!horario.completo && faltaParaLaSena > 0 && (
-                <p className="text-xs text-muted-foreground">
-                  Para que el pago que llega al {PORCENTAJE_SENA}% reserve el salón, completá
-                  distribución, hora de inicio y hora de fin.
-                </p>
-              )}
-            </fieldset>
-          )}
-
           <fieldset className="space-y-4">
-            {enConsulta && (
-              <legend className="mb-3 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-                Pago
-              </legend>
-            )}
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="monto">Monto</Label>
@@ -230,9 +195,6 @@ export function FormularioDePago({ evento }: { evento: EventoDetallado }) {
             </div>
           </fieldset>
 
-          {enConsulta && errorAgendar && (
-            <p className="text-sm whitespace-pre-line text-destructive">{errorAgendar}</p>
-          )}
           {registrarPago.isError && (
             <p className="text-sm whitespace-pre-line text-destructive">
               {registrarPago.error instanceof ErrorApiCliente
@@ -242,10 +204,8 @@ export function FormularioDePago({ evento }: { evento: EventoDetallado }) {
           )}
 
           <div className="flex justify-end border-t pt-4">
-            <Button type="submit" disabled={registrarPago.isPending || agendarEvento.isPending}>
-              {registrarPago.isPending || agendarEvento.isPending
-                ? 'Registrando…'
-                : 'Registrar pago'}
+            <Button type="submit" disabled={registrarPago.isPending}>
+              {registrarPago.isPending ? 'Registrando…' : 'Registrar pago'}
             </Button>
           </div>
         </form>

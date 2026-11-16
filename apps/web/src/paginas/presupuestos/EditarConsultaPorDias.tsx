@@ -25,6 +25,7 @@ import {
   CheckCircle2,
   Copy,
   Plus,
+  Printer,
   RefreshCw,
   Trash2,
   X,
@@ -42,7 +43,7 @@ import { SelectorModalidad } from '@/components/SelectorModalidad';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useEvento } from '@/hooks/use-eventos';
+import { useAgendarEvento, useEvento } from '@/hooks/use-eventos';
 import {
   useChoquesDeConsulta,
   useDarDeBajaConsulta,
@@ -50,10 +51,16 @@ import {
 } from '@/hooks/use-presupuestos';
 import { ErrorApiCliente } from '@/lib/api';
 import { agruparPorCategoria } from '@/lib/catalogo';
-import { resumenDeJornada, textoDePersonas } from '@/lib/dias-del-evento';
+import { nombreDeJornada } from '@/lib/dias-del-evento';
 import { formatearFechaNumerica, formatearPesos, nombreCompleto } from '@/lib/formato';
-import { textoHorarioEstimado } from '@/lib/jornada';
-import { textoDeDias } from '@/lib/rango-de-fechas';
+import {
+  type DiaParaAgendar,
+  diaListoParaAgendar,
+  horaGuardada,
+  pedidoDeAgenda,
+  superaCapacidad,
+} from '@/lib/horario-del-dia';
+import { jornadaDeHoras, textoHorarioEstimado } from '@/lib/jornada';
 import {
   avisosDeLosDias,
   choquesPorFecha,
@@ -74,9 +81,9 @@ import { HistorialDelRegistro } from '@/paginas/auditoria/HistorialDelRegistro';
 // social, es donde se completa lo que el cliente dejó vacío. Cada día se identifica por su fecha:
 // cambiar la franja extiende o achica sus extremos, y un día nuevo entra vacío o copiando el anterior.
 //
-// Es el hermano de `EditarConsulta` para un solo día, que no cambia. Se usa cuando el evento ya dura
-// varios días o cuando el personal estira la franja de uno de un día. Un evento de varios días solo
-// se puede modificar mientras es una consulta: reservarlo y cobrarlo llegan en la próxima etapa.
+// Desde el 15/11/2026 es la pantalla de toda consulta, también la de un solo día (con un día no se
+// ve la cinta). Cada día lleva además su horario y la distribución de cada salón: la jornada sale del
+// horario, como en el cotizador del cliente, y al guardar con todo completo se agenda el evento.
 
 interface LineaEditable {
   clave: string;
@@ -99,8 +106,15 @@ interface SalonEditable {
 // Lo de un día mientras se edita. La fecha no está acá: es la de su posición en la franja.
 interface DiaEditable {
   personas: string;
+  // Sale del horario cuando están las dos horas; sin horario queda la guardada (pone el precio del
+  // salón).
   jornada: TipoJornada;
+  // "HH:mm" o '': lo agendado o, si no, lo que pidió el cliente para ese día (S-16).
+  inicio: string;
+  fin: string;
   salonesSel: SalonEditable[];
+  // La distribución de cada salón del día: id del salón → id de la distribución ('' sin elegir).
+  distribuciones: Record<number, string>;
   lineas: LineaEditable[];
 }
 
@@ -125,16 +139,46 @@ const TIPOS_SOCIALES = Object.entries(ETIQUETAS_TIPO_EVENTO_SOCIAL) as [TipoEven
 const diaVacio = (): DiaEditable => ({
   personas: '',
   jornada: 'completa',
+  inicio: '',
+  fin: '',
   salonesSel: [],
+  distribuciones: {},
   lineas: [],
 });
 
 const copiaDeDia = (dia: DiaEditable): DiaEditable => ({
   ...dia,
   salonesSel: dia.salonesSel.map((s) => ({ ...s })),
+  distribuciones: { ...dia.distribuciones },
   // Cada línea copiada es una nueva: su clave no puede repetir la del día de origen.
   lineas: dia.lineas.map((l, i) => ({ ...l, clave: `copia-${Date.now()}-${i}` })),
 });
+
+// El horario de un día al abrir la consulta: lo agendado o, si no, lo que pidió el cliente (el del día,
+// S-16, o el de todo el evento). Solo se precarga si pidió las dos horas: con una sola el horario
+// quedaría a medias y no se podría guardar; esa se muestra aparte (`horarioPedido`).
+function horasIniciales(
+  consulta: ConsultaDetallada,
+  dia: ConsultaDetallada['dias'][number],
+): { inicio: string; fin: string } {
+  if (dia.inicio && dia.fin)
+    return { inicio: horaGuardada(dia.inicio), fin: horaGuardada(dia.fin) };
+  const pedido = horarioPedido(consulta, dia);
+  return pedido.inicio && pedido.fin ? pedido : { inicio: '', fin: '' };
+}
+
+function horarioPedido(
+  consulta: ConsultaDetallada,
+  dia: ConsultaDetallada['dias'][number] | undefined,
+): { inicio: string; fin: string } {
+  if (dia?.horaInicioEstimada) {
+    return { inicio: dia.horaInicioEstimada, fin: dia.horaFinEstimada ?? '' };
+  }
+  return {
+    inicio: consulta.evento.horaInicioEstimada ?? '',
+    fin: consulta.evento.horaFinEstimada ?? '',
+  };
+}
 
 // El día de la consulta guardada con esa fecha, armado para editar. Sin día guardado (un día nuevo
 // de la franja), entra vacío.
@@ -145,6 +189,12 @@ function diaEditableDe(consulta: ConsultaDetallada, fecha: string): DiaEditable 
   return {
     personas: String(dia.cantidadPersonas),
     jornada: dia.tipoJornada ?? consulta.tipoJornada,
+    ...horasIniciales(consulta, dia),
+    distribuciones: Object.fromEntries(
+      dia.salones.flatMap((salon) =>
+        salon.distribucion ? [[salon.id, String(salon.distribucion.id)]] : [],
+      ),
+    ),
     salonesSel: delDia
       .filter((l) => l.tipo === 'salon' && l.salonId !== null)
       .map((l) => ({ salonId: l.salonId!, precio: l.precioUnitario })),
@@ -169,10 +219,10 @@ export function EditarConsultaPorDias({
   salones,
   catalogo,
   porcentajeMensual,
-  franjaNueva,
   onGuardada,
   onDadaDeBaja,
   onDescargarPresupuesto,
+  onImprimirComanda,
   textoVolverAlGuardar,
   pestania,
   pestanias,
@@ -181,11 +231,11 @@ export function EditarConsultaPorDias({
   salones: SalonConDistribuciones[];
   catalogo: Servicio[];
   porcentajeMensual: string;
-  // Cuando el personal estira la franja de un evento de un solo día: arranca con esta franja.
-  franjaNueva?: { inicio: string; fin: string };
   onGuardada: (consulta: ConsultaDetallada) => void;
   onDadaDeBaja: (consulta: ConsultaDetallada) => void;
   onDescargarPresupuesto: () => void;
+  // Comanda de cocina del evento confirmado. Sin esto el botón no aparece.
+  onImprimirComanda?: (presupuestoId: number) => void;
   textoVolverAlGuardar: string;
   // 15/11/2026: la pestaña elegida y las pestañas, que van arriba a la derecha del título.
   pestania: PestaniaDeConsulta;
@@ -193,6 +243,8 @@ export function EditarConsultaPorDias({
 }) {
   const modificar = useModificarConsulta(consulta.id);
   const darDeBaja = useDarDeBajaConsulta(consulta.id);
+  // Al guardar con el horario y la distribución de todos los días, se agenda el evento.
+  const agendar = useAgendarEvento(consulta.evento.id);
   // El evento, para las observaciones de cada día (son del evento, no del presupuesto).
   const evento = useEvento(consulta.evento.id);
   const choques = useChoquesDeConsulta(
@@ -207,8 +259,8 @@ export function EditarConsultaPorDias({
 
   // La consulta como está guardada: contra ella se comparan la franja y los precios (HU-54).
   const [guardado, setGuardado] = useState(consulta);
-  const [inicio, setInicio] = useState(franjaNueva?.inicio ?? consulta.evento.fecha);
-  const [fin, setFin] = useState(franjaNueva?.fin ?? consulta.evento.fechaFin);
+  const [inicio, setInicio] = useState(consulta.evento.fecha);
+  const [fin, setFin] = useState(consulta.evento.fechaFin);
   const fechas = fechasDeLaFranja(inicio, fin);
   const [dias, setDias] = useState<DiaEditable[]>(() =>
     fechasDeLaFranja(inicio, fin).map((fecha) => diaEditableDe(consulta, fecha)),
@@ -219,8 +271,6 @@ export function EditarConsultaPorDias({
     consulta.evento.tipoSocial ?? '',
   );
   const [detalleOtro, setDetalleOtro] = useState(consulta.evento.tipoSocialDetalle ?? '');
-  const [horaEstimada, setHoraEstimada] = useState(consulta.evento.horaInicioEstimada ?? '');
-  const [horaFinEstimada, setHoraFinEstimada] = useState(consulta.evento.horaFinEstimada ?? '');
   const [agregar, setAgregar] = useState('');
   const [otro, setOtro] = useState({ descripcion: '', cantidad: '1', precio: '' });
   const [confirmandoPrecios, setConfirmandoPrecios] = useState(false);
@@ -236,20 +286,19 @@ export function EditarConsultaPorDias({
     consulta.estado === 'Confirmado' &&
     (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');
   const editable = enCurso || confirmado;
+  // Un presupuesto de más: el evento ya está confirmado con otro. Solo se puede dar de baja.
+  const sobrante =
+    (consulta.estado === 'Estimado' || consulta.estado === 'Expirado') &&
+    (consulta.evento.estado === 'Reservado' || consulta.evento.estado === 'Cobrado');
   const salonDe = (salonId: number) => salones.find((s) => s.id === salonId);
 
   const indice = Math.min(activo, Math.max(dias.length - 1, 0));
   const dia = dias[indice] ?? diaVacio();
-  // S-16: el horario que pidió el cliente para este día en el cotizador. Solo se muestra: el horario
-  // real se carga al agendar.
-  const guardadoDelDiaActivo = consulta.dias.find((d) => d.fecha === fechas[indice]);
-  const horarioPedido =
-    guardadoDelDiaActivo?.horaInicioEstimada || guardadoDelDiaActivo?.horaFinEstimada
-      ? textoHorarioEstimado(
-          guardadoDelDiaActivo.horaInicioEstimada,
-          guardadoDelDiaActivo.horaFinEstimada,
-        )
-      : null;
+  // Lo que pidió el cliente para el día elegido, para mostrarlo si no se precargó.
+  const pedidoDelDia = horarioPedido(
+    consulta,
+    consulta.dias.find((d) => d.fecha === fechas[indice]),
+  );
 
   function cambiarDia(
     cambio: Partial<DiaEditable> | ((anterior: DiaEditable) => Partial<DiaEditable>),
@@ -355,24 +404,61 @@ export function EditarConsultaPorDias({
       const salon = salonDe(salonId);
       const yaEsta = d.salonesSel.some((s) => s.salonId === salonId);
       const precio = salon ? proyectarA(precioDeSalon(salon, d.jornada), referencia) : '0.00';
+      // Un salón con una sola distribución activa ya entra con ella.
+      const activas = salon?.distribuciones.filter((distribucion) => distribucion.activo) ?? [];
+      const distribuciones = { ...d.distribuciones };
+      if (yaEsta) delete distribuciones[salonId];
+      else if (activas.length === 1) distribuciones[salonId] = String(activas[0]!.id);
       return {
         salonesSel: yaEsta
           ? d.salonesSel.filter((s) => s.salonId !== salonId)
           : [...d.salonesSel, { salonId, precio }],
+        distribuciones,
       };
     });
   }
 
-  // Cambiar la jornada cambia el precio de todos los salones de ese día.
-  function cambiarJornada(jornada: TipoJornada) {
-    cambiarDia((d) => ({
-      jornada,
-      salonesSel: d.salonesSel.map((s) => {
-        const salon = salonDe(s.salonId);
-        return salon ? { ...s, precio: proyectarA(precioDeSalon(salon, jornada), referencia) } : s;
-      }),
-    }));
+  // La jornada sale del horario, como en el cotizador del cliente: hasta 4 horas es media jornada y
+  // más es completa. Si cambia, cambia el precio de todos los salones de ese día.
+  function cambiarHorario(campo: 'inicio' | 'fin', valor: string) {
+    cambiarDia((d) => {
+      const siguiente = { ...d, [campo]: valor };
+      const jornada =
+        siguiente.inicio && siguiente.fin
+          ? jornadaDeHoras(siguiente.inicio, siguiente.fin)
+          : d.jornada;
+      if (jornada === d.jornada) return { [campo]: valor };
+      return {
+        [campo]: valor,
+        jornada,
+        salonesSel: d.salonesSel.map((s) => {
+          const salon = salonDe(s.salonId);
+          return salon
+            ? { ...s, precio: proyectarA(precioDeSalon(salon, jornada), referencia) }
+            : s;
+        }),
+      };
+    });
   }
+
+  function elegirDistribucion(salonId: number, distribucionId: string) {
+    cambiarDia((d) => ({ distribuciones: { ...d.distribuciones, [salonId]: distribucionId } }));
+  }
+
+  // El día como lo pide agendar: cada salón con su distribución y la capacidad de esa distribución.
+  const paraAgendar = (d: DiaEditable, fecha: string): DiaParaAgendar => ({
+    fecha,
+    inicio: d.inicio,
+    fin: d.fin,
+    personas: Number(d.personas) || 0,
+    salones: d.salonesSel.map(({ salonId }) => {
+      const distribucionId = d.distribuciones[salonId] ?? '';
+      const distribucion = salonDe(salonId)?.distribuciones.find(
+        (opcion) => String(opcion.id) === distribucionId,
+      );
+      return { salonId, distribucionId, capacidad: distribucion?.capacidad ?? null };
+    }),
+  });
 
   function actualizarLinea(clave: string, cambios: Partial<LineaEditable>) {
     cambiarDia((d) => ({
@@ -457,11 +543,13 @@ export function EditarConsultaPorDias({
 
   const tipoValido =
     tipo === 'Corporativo' || (!!tipoSocial && (tipoSocial !== 'Otro' || !!detalleOtro.trim()));
-  const horarioEstimadoValido =
-    tipo !== 'Social' || !horaFinEstimada || (!!horaEstimada && horaFinEstimada !== horaEstimada);
+  // El horario es opcional mientras es una consulta, pero va completo: las dos horas, distintas.
+  const horarioValido = (d: DiaEditable) =>
+    !d.inicio === !d.fin && (!d.inicio || d.inicio !== d.fin);
   // Un día está completo cuando se puede guardar: personas, salón (en un corporativo) y líneas válidas.
   const diaValido = (d: DiaEditable) =>
     esEntero(d.personas) &&
+    horarioValido(d) &&
     (tipo !== 'Corporativo' || d.salonesSel.length > 0) &&
     d.salonesSel.every((s) => esImporte(s.precio)) &&
     d.lineas.every(
@@ -472,7 +560,7 @@ export function EditarConsultaPorDias({
         precioValido(l) &&
         l.descripcion.trim(),
     );
-  const valido = fechas.length > 0 && tipoValido && horarioEstimadoValido && dias.every(diaValido);
+  const valido = fechas.length > 0 && tipoValido && dias.every(diaValido);
 
   const subtotalDelDia = (d: DiaEditable) =>
     d.salonesSel.reduce((suma, s) => suma + (esImporte(s.precio) ? Number(s.precio) : 0), 0) +
@@ -517,6 +605,26 @@ export function EditarConsultaPorDias({
     setGuardada(null);
     const conPreciosNuevos = cambiosPorFecha.length > 0;
     const aImporte = (valor: string) => Number(valor).toFixed(2);
+    // Con el horario y la distribución de todos los días, se agenda después de guardar (agendar mira
+    // los salones ya guardados). Solo si cambió algo respecto de lo agendado.
+    agendar.reset();
+    const pedido = pedidoDeAgenda(
+      dias.map((d, i) => paraAgendar(d, fechas[i]!)),
+      evento.data?.modalidadSalonRestaurante ?? false,
+    );
+    const horarioCambio = dias.some((d, i) => {
+      const anterior = guardado.dias.find((g) => g.fecha === fechas[i]);
+      if (!anterior) return true;
+      return (
+        d.inicio !== horaGuardada(anterior.inicio) ||
+        d.fin !== horaGuardada(anterior.fin) ||
+        d.salonesSel.some(
+          ({ salonId }) =>
+            (d.distribuciones[salonId] ?? '') !==
+            String(anterior.salones.find((s) => s.id === salonId)?.distribucion?.id ?? ''),
+        )
+      );
+    });
     modificar.mutate(
       {
         dias: dias.map((d, i) => ({
@@ -551,8 +659,6 @@ export function EditarConsultaPorDias({
         tipo,
         tipoSocial: tipo === 'Social' && tipoSocial ? tipoSocial : null,
         tipoSocialDetalle: tipo === 'Social' && tipoSocial === 'Otro' ? detalleOtro.trim() : null,
-        horaInicioEstimada: horaEstimada || null,
-        horaFinEstimada: tipo === 'Social' ? horaFinEstimada || null : null,
       },
       {
         onSuccess: (resultado) => {
@@ -568,15 +674,18 @@ export function EditarConsultaPorDias({
           );
           setGuardadaConPreciosNuevos(conPreciosNuevos);
           setGuardada(resultado);
+          if (pedido && horarioCambio) agendar.mutate(pedido);
         },
       },
     );
   }
 
   function confirmarBaja() {
-    const mensaje =
-      `¿Dar de baja la consulta ${consulta.id}? El presupuesto y su evento van a quedar como ` +
-      'Cancelado y no se van a poder modificar.';
+    const mensaje = sobrante
+      ? `¿Dar de baja la consulta ${consulta.id}? Este presupuesto va a quedar como Cancelado. El ` +
+        'evento sigue con su presupuesto confirmado y no cambia.'
+      : `¿Dar de baja la consulta ${consulta.id}? El presupuesto y su evento van a quedar como ` +
+        'Cancelado y no se van a poder modificar.';
     if (!window.confirm(mensaje)) return;
     darDeBaja.mutate(undefined, { onSuccess: onDadaDeBaja });
   }
@@ -593,20 +702,31 @@ export function EditarConsultaPorDias({
   const porFecha = choquesPorFecha(choques.data?.choques ?? []);
   const diasDeLaCinta: DiaDeLaCinta[] = fechas.map((fecha, i) => {
     const d = dias[i] ?? diaVacio();
-    const estado = estadoDeDiaDeConsulta({
+    const estadoDelEditor = estadoDeDiaDeConsulta({
       salones: d.salonesSel.length,
       lineas: d.lineas.length,
       valido: diaValido(d),
       conflicto: porFecha.has(fecha),
     });
+    // Un día que se puede guardar pero no agendar todavía: le falta el horario o una distribución.
+    const faltaAgendar =
+      estadoDelEditor === 'completo' &&
+      d.salonesSel.length > 0 &&
+      !diaListoParaAgendar(paraAgendar(d, fecha));
     return {
       fecha,
       resumen: resumenDelDia(
         d.salonesSel.map((s) => salonDe(s.salonId)?.nombre ?? ''),
         esEntero(d.personas) ? Number(d.personas) : null,
       ),
-      estado,
-      textoEstado: estado === 'pendiente' ? 'Falta completar' : undefined,
+      estado: faltaAgendar ? 'pendiente' : estadoDelEditor,
+      textoEstado: faltaAgendar
+        ? !d.inicio
+          ? 'Sin horario'
+          : 'Sin distribución'
+        : estadoDelEditor === 'pendiente'
+          ? 'Falta completar'
+          : undefined,
     };
   });
   const avisos = avisosDeLosDias(
@@ -625,10 +745,22 @@ export function EditarConsultaPorDias({
       correo={consulta.cliente.correo}
       telefono={consulta.cliente.telefono}
       etiqueta={consulta.cliente.etiqueta}
+      nota="Los datos de contacto los mantiene el cliente desde su cuenta."
     >
       <SeguimientoConsulta consulta={consulta} onDescargar={onDescargarPresupuesto} />
-      {enCurso && (
-        <div className="flex flex-wrap justify-end gap-2">
+      <div className="flex flex-wrap justify-end gap-2">
+        {confirmado && onImprimirComanda && (
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => onImprimirComanda(consulta.id)}
+          >
+            <Printer /> Comanda de cocina
+          </Button>
+        )}
+        {/* Un evento confirmado no se da de baja desde acá: se cancela desde el evento (RN-07). */}
+        {(enCurso || sobrante) && (
           <Button
             type="button"
             size="sm"
@@ -639,8 +771,8 @@ export function EditarConsultaPorDias({
           >
             <Trash2 /> Dar de baja
           </Button>
-        </div>
-      )}
+        )}
+      </div>
     </TarjetaCliente>
   );
   return (
@@ -649,9 +781,11 @@ export function EditarConsultaPorDias({
         consulta={consulta}
         derecha={pestanias}
         extra={
-          <span className="inline-flex items-center rounded-full bg-muted px-3 py-1 text-xs font-semibold">
-            {fechas.length} {fechas.length === 1 ? 'día' : 'días'}
-          </span>
+          fechas.length > 1 && (
+            <span className="inline-flex items-center rounded-full bg-muted px-3 py-1 text-xs font-semibold">
+              {fechas.length} días
+            </span>
+          )
         }
       />
 
@@ -682,7 +816,13 @@ export function EditarConsultaPorDias({
                 cobrar.
               </p>
             )}
-            {!editable && (
+            {sobrante && (
+              <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
+                Este presupuesto quedó de más: el evento ya está confirmado con otro presupuesto.
+                Podés darlo de baja sin tocar el evento.
+              </p>
+            )}
+            {!editable && !sobrante && (
               <p className="rounded-xl bg-muted px-4 py-3 text-sm text-muted-foreground">
                 {consulta.estado === 'Cancelado'
                   ? 'Esta consulta se dio de baja'
@@ -708,9 +848,6 @@ export function EditarConsultaPorDias({
                       onChange={cambiarFranja}
                       className={referenciaCambiada ? claseCambiado : undefined}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      {textoDeDias(inicio, fin)} · hasta 32. Los precios se calculan al último día.
-                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <Label htmlFor="consulta-tipo">Tipo de evento</Label>
@@ -757,42 +894,15 @@ export function EditarConsultaPorDias({
                       />
                     </div>
                   )}
-                  <div className="space-y-1.5">
-                    <Label htmlFor="consulta-hora">Hora de inicio estimada</Label>
-                    <SelectorHora
-                      id="consulta-hora"
-                      value={horaEstimada}
-                      onChange={setHoraEstimada}
-                      opcional
-                    />
-                    <p className="text-xs text-muted-foreground">La misma para todos los días.</p>
-                  </div>
-                  {tipo === 'Social' && (
-                    <div className="space-y-1.5">
-                      <Label htmlFor="consulta-hora-fin">Hora de fin estimada</Label>
-                      <SelectorHora
-                        id="consulta-hora-fin"
-                        value={horaFinEstimada}
-                        onChange={setHoraFinEstimada}
-                        horaSugerida={horaEstimada || undefined}
-                        opcional
-                        aria-invalid={!horarioEstimadoValido}
-                      />
-                    </div>
-                  )}
                 </div>
-                <p className="mt-4 text-sm text-muted-foreground">
-                  Resumen:{' '}
-                  {textoDePersonas(dias.map((d) => Number(d.personas) || 0).filter((n) => n > 0)) ||
-                    'sin personas'}{' '}
-                  · {resumenDeJornada(dias.map((d) => d.jornada)).texto}
-                </p>
               </section>
             </fieldset>
 
             {/* HU-50: la cinta con todos los días y su estado (docs/diseno/panel-evento-cinta-de-dias.md).
                 Se elige un día y el panel de abajo, que queda fijo, muestra lo de ese día. */}
-            <CintaDeDias dias={diasDeLaCinta} indice={indice} onElegir={setActivo} />
+            {fechas.length > 1 && (
+              <CintaDeDias dias={diasDeLaCinta} indice={indice} onElegir={setActivo} />
+            )}
 
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(16rem,20rem)] lg:items-start">
               <fieldset
@@ -812,15 +922,40 @@ export function EditarConsultaPorDias({
                   )}
                 </EncabezadoDelDia>
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                  {/* S-16: el horario que pidió el cliente para este día. El horario real se carga al
-                      agendar, en Pagos. */}
-                  <DatoDelDia etiqueta="Horario que pidió">
-                    <span
-                      className={horarioPedido ? undefined : 'font-normal text-muted-foreground'}
-                    >
-                      {horarioPedido ?? 'A definir'}
-                    </span>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <DatoDelDia
+                    etiqueta={<Label htmlFor="dia-inicio">Hora de inicio</Label>}
+                    ayuda={
+                      !dia.inicio && pedidoDelDia.inicio
+                        ? `Pidió ${textoHorarioEstimado(pedidoDelDia.inicio, pedidoDelDia.fin).replace(/^D/, 'd')}`
+                        : undefined
+                    }
+                  >
+                    <SelectorHora
+                      id="dia-inicio"
+                      className="bg-card font-normal"
+                      value={dia.inicio}
+                      onChange={(valor) => cambiarHorario('inicio', valor)}
+                      opcional
+                    />
+                  </DatoDelDia>
+                  <DatoDelDia
+                    etiqueta={<Label htmlFor="dia-fin">Hora de fin</Label>}
+                    ayuda={
+                      dia.inicio && dia.fin && dia.fin < dia.inicio
+                        ? 'Termina al día siguiente.'
+                        : undefined
+                    }
+                  >
+                    <SelectorHora
+                      id="dia-fin"
+                      className="bg-card font-normal"
+                      value={dia.fin}
+                      onChange={(valor) => cambiarHorario('fin', valor)}
+                      horaSugerida={dia.inicio || undefined}
+                      opcional
+                      aria-invalid={!horarioValido(dia)}
+                    />
                   </DatoDelDia>
                   <DatoDelDia etiqueta={<Label htmlFor="dia-personas">Personas</Label>}>
                     <InputEntero
@@ -832,18 +967,32 @@ export function EditarConsultaPorDias({
                       onChangeValor={(personas) => cambiarDia({ personas })}
                     />
                   </DatoDelDia>
-                  <DatoDelDia etiqueta={<Label htmlFor="dia-jornada">Jornada</Label>}>
-                    <select
-                      id="dia-jornada"
-                      className={cn(claseSelect, 'bg-card font-normal')}
-                      value={dia.jornada}
-                      onChange={(e) => cambiarJornada(e.target.value as TipoJornada)}
-                    >
-                      <option value="completa">Jornada completa</option>
-                      <option value="media">Media jornada (hasta 4 h)</option>
-                    </select>
+                  {/* La jornada no se elige: sale del horario, como en el cotizador del cliente. */}
+                  <DatoDelDia
+                    etiqueta="Jornada"
+                    className={
+                      dia.inicio && dia.fin
+                        ? 'bg-dorado/15 text-dorado-texto ring-dorado/30'
+                        : undefined
+                    }
+                    ayuda={
+                      dia.inicio && dia.fin
+                        ? dia.jornada === 'media'
+                          ? 'Hasta 4 horas'
+                          : 'Más de 4 horas'
+                        : 'Se calcula con el horario'
+                    }
+                  >
+                    <span aria-live="polite">{nombreDeJornada(dia.jornada)}</span>
                   </DatoDelDia>
                 </div>
+                {!horarioValido(dia) && (
+                  <p className="mt-2 text-xs font-medium text-destructive">
+                    {dia.inicio && dia.fin
+                      ? 'La hora de fin tiene que ser distinta de la de inicio.'
+                      : 'Completá la hora de inicio y la de fin, o dejá las dos vacías.'}
+                  </p>
+                )}
 
                 <fieldset className="mt-4 space-y-2">
                   <legend className="font-semibold">Salones</legend>
@@ -872,6 +1021,47 @@ export function EditarConsultaPorDias({
                       );
                     })}
                   </div>
+                  {/* La distribución (el armado) de cada salón de este día: el mismo salón se puede
+                      armar distinto un día y otro (ADR 0011). */}
+                  {dia.salonesSel.length > 0 && (
+                    <div className="grid gap-3 pt-2 sm:grid-cols-2">
+                      {dia.salonesSel.map(({ salonId }) => {
+                        const salon = salonDe(salonId);
+                        const elegida = dia.distribuciones[salonId] ?? '';
+                        // Las dadas de baja no se ofrecen, salvo la que el día ya tiene.
+                        const opciones = (salon?.distribuciones ?? []).filter(
+                          (opcion) => opcion.activo || String(opcion.id) === elegida,
+                        );
+                        return (
+                          <div key={salonId} className="space-y-1.5">
+                            <Label htmlFor={`distribucion-${salonId}`}>
+                              Distribución
+                              {dia.salonesSel.length > 1 && ` de ${salon?.nombre ?? ''}`}
+                            </Label>
+                            <select
+                              id={`distribucion-${salonId}`}
+                              className={claseSelect}
+                              value={elegida}
+                              onChange={(e) => elegirDistribucion(salonId, e.target.value)}
+                            >
+                              <option value="">Elegir…</option>
+                              {opciones.map((opcion) => (
+                                <option key={opcion.id} value={opcion.id}>
+                                  {opcion.nombre} · hasta {opcion.capacidad} personas
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {superaCapacidad(paraAgendar(dia, fechas[indice] ?? inicio)) && (
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-amber-900">
+                      <AlertTriangle className="size-3.5" /> {dia.personas} personas superan lo que
+                      admite la distribución. Es un aviso: se puede guardar igual.
+                    </p>
+                  )}
                   {tipo === 'Corporativo' && dia.salonesSel.length === 0 && (
                     <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
                       <AlertTriangle className="size-3.5" /> Un evento corporativo necesita al menos
@@ -1025,7 +1215,7 @@ export function EditarConsultaPorDias({
                               onChange={(hora) => actualizarLinea(linea.clave, { hora })}
                               opcional
                               placeholder="--:--"
-                              horaSugerida={horaEstimada || undefined}
+                              horaSugerida={dia.inicio || undefined}
                             />
                           </td>
                           <td className="py-2 pr-3">
@@ -1190,10 +1380,6 @@ export function EditarConsultaPorDias({
                   className="rounded-xl bg-card p-5 ring-1 ring-border"
                 >
                   <h3 className="font-heading text-base font-medium">Total del evento</h3>
-                  <p className="text-xs text-muted-foreground">
-                    Un solo presupuesto y una sola seña para todos los días, que se calcula sobre
-                    este total.
-                  </p>
                   <dl className="mt-3 space-y-1.5 text-sm">
                     <div className="flex justify-between gap-4">
                       <dt className="text-muted-foreground">Subtotal sin IVA</dt>
@@ -1271,6 +1457,12 @@ export function EditarConsultaPorDias({
                   </Button>
                 </div>
               </div>
+            )}
+            {agendar.isError && (
+              <p className="text-right text-sm whitespace-pre-line text-destructive">
+                Se guardó el presupuesto, pero no el horario:{' '}
+                {mensajeDeError(agendar.error, 'no se pudo agendar el evento.')}
+              </p>
             )}
             {modificar.isError && (
               <p className="text-right text-sm whitespace-pre-line text-destructive">

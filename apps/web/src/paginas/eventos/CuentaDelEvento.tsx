@@ -214,10 +214,7 @@ export function CuentaDelEvento({ evento }: { evento: EventoDetallado }) {
         <div className="border-t pt-3">
           <p className="mb-1 text-xs font-medium text-muted-foreground">Pagos</p>
           {pagos.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              Todavía no hay pagos.
-              {enConsulta && ' El que llegue a la seña confirma el evento.'}
-            </p>
+            <p className="text-xs text-muted-foreground">Todavía no hay pagos.</p>
           ) : (
             <ul className="divide-y">
               {pagos.map((pago) => {
