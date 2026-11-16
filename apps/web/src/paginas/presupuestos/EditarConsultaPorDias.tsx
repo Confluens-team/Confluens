@@ -66,6 +66,7 @@ import { jornadaDeHoras, textoHorarioEstimado } from '@/lib/jornada';
 import {
   avisosDeLosDias,
   choquesPorFecha,
+  clasificarChoques,
   estadoDeDiaDeConsulta,
   diaDeSemanaCorto,
   resumenDelDia,
@@ -859,16 +860,24 @@ export function EditarConsultaPorDias({
   const excedeCapacidad =
     dia.salonesSel.length > 0 && esEntero(dia.personas) && Number(dia.personas) > capacidadElegida;
 
-  // La cinta de días: el estado de cada uno mientras se edita, con los choques de salón guardados
-  // (RN-12; el aviso preventivo solo tiene sentido con la consulta en curso).
-  const porFecha = choquesPorFecha(choques.data?.choques ?? []);
+  // La cinta de días: el estado de cada uno mientras se edita, con los choques de salón (RN-12; el
+  // aviso preventivo solo tiene sentido con la consulta en curso). La API los marca por día y salón;
+  // acá se ajustan al horario y a los salones que se están cargando: solo es conflicto si se pisan.
+  const porFecha = choquesPorFecha(
+    clasificarChoques(choques.data?.choques ?? [], (fecha) => {
+      const d = dias[fechas.indexOf(fecha)];
+      return d
+        ? { inicio: d.inicio, fin: d.fin, salonIds: d.salonesSel.map((s) => s.salonId) }
+        : undefined;
+    }),
+  );
   const diasDeLaCinta: DiaDeLaCinta[] = fechas.map((fecha, i) => {
     const d = dias[i] ?? diaVacio();
     const estadoDelEditor = estadoDeDiaDeConsulta({
       salones: d.salonesSel.length,
       lineas: d.lineas.length,
       valido: diaValido(d),
-      conflicto: porFecha.has(fecha),
+      conflicto: (porFecha.get(fecha) ?? []).some((choque) => choque.relacion === 'pisa'),
     });
     // Un día que se puede guardar pero no agendar todavía: le falta el horario o una distribución.
     const faltaAgendar =
