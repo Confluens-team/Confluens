@@ -738,8 +738,8 @@ function esConfirmadoVigente(presupuesto: PresupuestoDetalladoRepo): boolean {
 }
 
 /**
- * Un evento confirmado ya tiene horario (inicio y fin). Si cambia la fecha, el horario se corre
- * los mismos días y conserva las horas. Que la franja nueva esté libre lo controla la restricción
+ * Un evento confirmado, o una consulta ya agendada, tiene horario (inicio y fin). Si cambia la fecha,
+ * el horario se corre los mismos días y conserva las horas. Que la franja nueva esté libre lo controla la restricción
  * EXCLUDE al guardar (RN-12). La distribución de cada salón no se toca acá: ver
  * \`armadosHeredados\`.
  */
@@ -1025,11 +1025,13 @@ export async function modificarPresupuesto(
     cambioFecha,
   });
   const total = sumarLineas(lineas);
-  const horario = confirmado ? reubicarHorario(presupuesto.evento, datos) : {};
+  // También en una consulta ya agendada: si la fecha cambia y el horario no, la seña reservaría el
+  // salón en la fecha vieja (16/11/2026). Sin horario no hay nada que correr.
+  const horario = reubicarHorario(presupuesto.evento, datos);
   const heredados = await armadosHeredados(presupuesto.evento, salonIds, repo);
   const fechaEmision = new Date();
-  // Contra el horario que va a quedar: si cambió la fecha de un evento confirmado, reubicarHorario
-  // ya corrió inicio y fin los mismos días.
+  // Contra el horario que va a quedar: si cambió la fecha, reubicarHorario ya corrió inicio y fin
+  // los mismos días.
   exigirHorasDentroDelEvento(
     lineas,
     horario.inicio instanceof Date ? horario.inicio : presupuesto.evento.inicio,
