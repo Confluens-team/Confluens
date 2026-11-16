@@ -16,7 +16,7 @@ import { useSesion } from '@/hooks/use-sesion';
 import { ErrorApiCliente } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { mensajeWhatsApp } from '@/lib/whatsapp';
-import { DiasDelEvento } from './DiasDelEvento';
+import { EditorDelEvento } from './EditorDelEvento';
 import { DisposicionConPagos } from './DisposicionConPagos';
 import { ESTADOS } from './estado-evento';
 import { presupuestoVigenteDe } from './presupuesto-vigente';
@@ -173,6 +173,29 @@ export function DetalleEvento({
     </>
   );
 
+  // Cancelar va abajo a la izquierda del detalle, al nivel de «Guardar cambios» (15/11/2026).
+  const cancelar = sePuedeCancelar && (
+    <div className="space-y-1">
+      <Button
+        type="button"
+        variant="ghost"
+        className="text-destructive"
+        disabled={cancelarEvento.isPending}
+        onClick={manejarCancelacion}
+      >
+        <XCircle /> {evento.estado === 'Reservado' ? 'Cancelar evento' : 'Cancelar consulta'}
+      </Button>
+      {/* El rechazo de la API (por ejemplo, RN-07 con menos de 48 horas). */}
+      {cancelarEvento.isError && (
+        <p role="alert" className="text-sm text-destructive">
+          {cancelarEvento.error instanceof ErrorApiCliente
+            ? cancelarEvento.error.message
+            : 'No se pudo cancelar el evento.'}
+        </p>
+      )}
+    </div>
+  );
+
   const tarjetaCliente = (
     <TarjetaCliente
       nombre={evento.cliente.nombre}
@@ -208,26 +231,7 @@ export function DetalleEvento({
             <Printer /> Comanda de cocina
           </Button>
         )}
-        {sePuedeCancelar && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="text-destructive"
-            disabled={cancelarEvento.isPending}
-            onClick={manejarCancelacion}
-          >
-            <XCircle /> {evento.estado === 'Reservado' ? 'Cancelar evento' : 'Cancelar consulta'}
-          </Button>
-        )}
       </div>
-      {/* El rechazo de la API (por ejemplo, RN-07 con menos de 48 horas). */}
-      {cancelarEvento.isError && (
-        <p role="alert" className="text-sm text-destructive">
-          {cancelarEvento.error instanceof ErrorApiCliente
-            ? cancelarEvento.error.message
-            : 'No se pudo cancelar el evento.'}
-        </p>
-      )}
     </TarjetaCliente>
   );
 
@@ -303,7 +307,19 @@ export function DetalleEvento({
             cliente={tarjetaCliente}
             accionSinPresupuesto={accionSinPresupuesto}
           >
-            <DiasDelEvento evento={evento} onVerPresupuesto={onVerPresupuesto} />
+            {/* El evento se edita acá mismo, como una consulta más, también confirmado o cobrado. */}
+            {presupuestoVigente ? (
+              <EditorDelEvento
+                presupuestoId={presupuestoVigente.id}
+                accionIzquierda={cancelar || undefined}
+              />
+            ) : (
+              <div className="space-y-3 rounded-xl bg-card p-5 text-sm text-muted-foreground ring-1 ring-border">
+                <p>El evento no tiene presupuesto.</p>
+                {accionSinPresupuesto}
+                {cancelar}
+              </div>
+            )}
           </DisposicionConPagos>
         </div>
       </div>
