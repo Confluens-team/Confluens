@@ -56,6 +56,7 @@ import { formatearFechaNumerica, formatearPesos, nombreCompleto } from '@/lib/fo
 import {
   type DiaParaAgendar,
   diaListoParaAgendar,
+  horaFueraDelHorario,
   horaGuardada,
   motivosSinAgendar,
   pedidoDeAgenda,
@@ -627,6 +628,10 @@ export function EditarConsultaPorDias({
   const horarioValido = (d: DiaEditable) =>
     !d.inicio === !d.fin && (!d.inicio || d.inicio !== d.fin);
   // Un día está completo cuando se puede guardar: personas, salón (en un corporativo) y líneas válidas.
+  // La hora de un servicio tiene que caer dentro del horario del día que se está cargando: se compara
+  // con lo del formulario, no con lo guardado (la API solo conoce el horario ya agendado).
+  const horaFuera = (d: DiaEditable, l: LineaEditable) =>
+    horaFueraDelHorario(l.hora, d.inicio, d.fin);
   const diaValido = (d: DiaEditable) =>
     esEntero(d.personas) &&
     horarioValido(d) &&
@@ -638,6 +643,7 @@ export function EditarConsultaPorDias({
         cantidadPosible(d, l) &&
         !repetida(d, l) &&
         precioValido(l) &&
+        !horaFuera(d, l) &&
         l.descripcion.trim(),
     );
   const valido = fechas.length > 0 && tipoValido && dias.every(diaValido);
@@ -1359,7 +1365,13 @@ export function EditarConsultaPorDias({
                           opcional
                           placeholder="--:--"
                           horaSugerida={dia.inicio || undefined}
+                          aria-invalid={horaFuera(dia, linea)}
                         />
+                        {horaFuera(dia, linea) && (
+                          <span className="mt-1 block text-xs text-destructive">
+                            Fuera del horario del día ({dia.inicio} a {dia.fin}).
+                          </span>
+                        )}
                       </td>
                       <td className="py-2 pr-3">
                         <InputImporte

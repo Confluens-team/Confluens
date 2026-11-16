@@ -1,5 +1,7 @@
 import { type AgendarEvento, horaDelEvento } from '@confluens/shared';
 
+import { horaDentroDelHorario } from './jornada';
+
 // El horario y la distribución de cada día, cargados en el detalle de la consulta (15/11/2026): antes
 // se pedían en el formulario del pago. Al guardar la consulta, si todos los días tienen horario y
 // cada salón su distribución, se agenda el evento (POST /eventos/:id/agendar). Agendar no reserva:
@@ -71,6 +73,15 @@ export function motivosSinAgendar(dias: DiaParaAgendar[]): string[] {
     if (!falta) return [];
     return [dias.length > 1 ? `Día ${indice + 1}: ${falta}` : falta];
   });
+}
+
+/**
+ * Si la hora de un servicio queda fuera del horario del día, extremos incluidos y con la noche que
+ * cruza la medianoche. Sin las dos horas del día (o con las dos iguales) no hay contra qué comparar.
+ */
+export function horaFueraDelHorario(hora: string, inicio: string, fin: string): boolean {
+  if (!hora || !inicio || !fin || inicio === fin) return false;
+  return !horaDentroDelHorario(hora, inicio, fin);
 }
 
 /** Si las personas del día superan lo que admiten sus distribuciones juntas (aviso, no tope). */

@@ -4,6 +4,7 @@ import {
   type DiaParaAgendar,
   diaListoParaAgendar,
   faltaParaAgendar,
+  horaFueraDelHorario,
   horaGuardada,
   instanteDelDia,
   motivosSinAgendar,
@@ -141,5 +142,31 @@ describe('motivosSinAgendar', () => {
 
   it('es vacío si todos están listos', () => {
     expect(motivosSinAgendar([dia(), dia()])).toEqual([]);
+  });
+});
+
+describe('horaFueraDelHorario', () => {
+  it('una hora dentro del horario del día no está fuera, extremos incluidos', () => {
+    expect(horaFueraDelHorario('12:00', '09:00', '18:00')).toBe(false);
+    expect(horaFueraDelHorario('09:00', '09:00', '18:00')).toBe(false);
+    expect(horaFueraDelHorario('18:00', '09:00', '18:00')).toBe(false);
+  });
+
+  it('una hora antes del inicio o después del fin está fuera', () => {
+    expect(horaFueraDelHorario('08:59', '09:00', '18:00')).toBe(true);
+    expect(horaFueraDelHorario('20:00', '14:00', '18:00')).toBe(true);
+  });
+
+  it('un horario que cruza la medianoche acepta la noche y la madrugada', () => {
+    expect(horaFueraDelHorario('23:30', '20:00', '02:00')).toBe(false);
+    expect(horaFueraDelHorario('01:00', '20:00', '02:00')).toBe(false);
+    expect(horaFueraDelHorario('10:00', '20:00', '02:00')).toBe(true);
+  });
+
+  it('sin hora, sin las dos horas del día o con las dos iguales no hay nada que comparar', () => {
+    expect(horaFueraDelHorario('', '09:00', '18:00')).toBe(false);
+    expect(horaFueraDelHorario('20:00', '', '')).toBe(false);
+    expect(horaFueraDelHorario('20:00', '09:00', '')).toBe(false);
+    expect(horaFueraDelHorario('20:00', '09:00', '09:00')).toBe(false);
   });
 });
