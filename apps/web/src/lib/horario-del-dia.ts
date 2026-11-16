@@ -48,6 +48,31 @@ export function diaListoParaAgendar(dia: DiaParaAgendar): boolean {
   );
 }
 
+/**
+ * Lo que le falta a un día para agendarse, en palabras («las dos horas», «la distribución»), o null
+ * si está listo. Un día sin salón no se puede agendar: la distribución es del salón.
+ */
+export function faltaParaAgendar(dia: DiaParaAgendar): string | null {
+  const faltas: string[] = [];
+  if (!dia.inicio || !dia.fin) faltas.push('las dos horas');
+  else if (dia.inicio === dia.fin) faltas.push('una hora de fin distinta de la de inicio');
+  if (dia.salones.length === 0) faltas.push('el salón');
+  else if (dia.salones.some((salon) => salon.distribucionId === '')) faltas.push('la distribución');
+  return faltas.length > 0 ? faltas.join(' y ') : null;
+}
+
+/**
+ * Lo que le falta a cada día que no se puede agendar («Día 2: la distribución»). Con un solo
+ * día no se numera. Vacío si todos están listos.
+ */
+export function motivosSinAgendar(dias: DiaParaAgendar[]): string[] {
+  return dias.flatMap((dia, indice) => {
+    const falta = faltaParaAgendar(dia);
+    if (!falta) return [];
+    return [dias.length > 1 ? `Día ${indice + 1}: ${falta}` : falta];
+  });
+}
+
 /** Si las personas del día superan lo que admiten sus distribuciones juntas (aviso, no tope). */
 export function superaCapacidad(dia: DiaParaAgendar): boolean {
   if (!dia.salones.every((salon) => salon.capacidad !== null)) return false;

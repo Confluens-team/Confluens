@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   type DiaParaAgendar,
   diaListoParaAgendar,
+  faltaParaAgendar,
   horaGuardada,
   instanteDelDia,
+  motivosSinAgendar,
   pedidoDeAgenda,
   superaCapacidad,
 } from './horario-del-dia';
@@ -94,5 +96,50 @@ describe('pedidoDeAgenda', () => {
   it('si a un día le falta algo no se agenda nada', () => {
     expect(pedidoDeAgenda([dia(), dia({ inicio: '' })], false)).toBeNull();
     expect(pedidoDeAgenda([], false)).toBeNull();
+  });
+});
+
+describe('faltaParaAgendar', () => {
+  it('es null cuando el día está listo', () => {
+    expect(faltaParaAgendar(dia())).toBeNull();
+  });
+
+  it('nombra lo que falta: horas, salón o distribución', () => {
+    expect(faltaParaAgendar(dia({ inicio: '', fin: '' }))).toBe('las dos horas');
+    expect(faltaParaAgendar(dia({ fin: '' }))).toBe('las dos horas');
+    expect(faltaParaAgendar(dia({ fin: '09:00' }))).toBe(
+      'una hora de fin distinta de la de inicio',
+    );
+    expect(
+      faltaParaAgendar(dia({ salones: [{ salonId: 1, distribucionId: '', capacidad: null }] })),
+    ).toBe('la distribución');
+    expect(faltaParaAgendar(dia({ salones: [] }))).toBe('el salón');
+  });
+
+  it('junta varias faltas', () => {
+    expect(
+      faltaParaAgendar(
+        dia({ inicio: '', salones: [{ salonId: 1, distribucionId: '', capacidad: null }] }),
+      ),
+    ).toBe('las dos horas y la distribución');
+  });
+});
+
+describe('motivosSinAgendar', () => {
+  const sinDistribucion = dia({ salones: [{ salonId: 1, distribucionId: '', capacidad: null }] });
+
+  it('un solo día no se numera', () => {
+    expect(motivosSinAgendar([sinDistribucion])).toEqual(['la distribución']);
+  });
+
+  it('con varios días numera solo los que faltan', () => {
+    expect(motivosSinAgendar([dia(), sinDistribucion, dia({ fin: '' })])).toEqual([
+      'Día 2: la distribución',
+      'Día 3: las dos horas',
+    ]);
+  });
+
+  it('es vacío si todos están listos', () => {
+    expect(motivosSinAgendar([dia(), dia()])).toEqual([]);
   });
 });
