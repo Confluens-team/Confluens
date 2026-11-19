@@ -34,6 +34,7 @@ import {
 import { Dialog } from 'radix-ui';
 import { useEffect, useRef, useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { SelectorFecha, SelectorHora, SelectorRangoFechas } from '@/components/SelectorFechaHora';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
@@ -247,9 +248,7 @@ export function EditarConsulta({
         {(consulta.isLoading ||
           salones.isLoading ||
           servicios.isLoading ||
-          configuracion.isLoading) && (
-          <p className="text-sm text-muted-foreground">Cargando la consulta…</p>
-        )}
+          configuracion.isLoading) && <Cargando texto="Cargando la consulta…" />}
         {(consulta.isError || salones.isError || servicios.isError || configuracion.isError) && (
           <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
             No se pudo cargar la consulta.

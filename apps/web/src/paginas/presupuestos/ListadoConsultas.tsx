@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { type MouseEvent, useEffect, useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { SelectorFecha } from '@/components/SelectorFechaHora';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
@@ -262,9 +263,7 @@ export function ListadoConsultas({ reinicio }: { reinicio?: string }) {
         )}
       </div>
 
-      {presupuestos.isLoading && (
-        <p className="text-sm text-muted-foreground">Cargando las consultas…</p>
-      )}
+      {presupuestos.isLoading && <Cargando texto="Cargando las consultas…" />}
       {presupuestos.isError && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           No se pudieron cargar las consultas.

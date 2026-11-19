@@ -2,6 +2,7 @@ import type { EstadoEvento } from '@confluens/shared';
 import { Check, ChevronDown, ChevronUp, Printer, Repeat2 } from 'lucide-react';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { horarioDeLosDias, resumenDelEvento } from '@/lib/dias-del-evento';
 import { armadoDelEvento, nombresDeSalones, textoModalidad } from '@/lib/formato';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
@@ -119,7 +120,7 @@ export function DetalleEvento({
   // HU-50: el día que se está mirando de un evento de varios días (observaciones y presupuesto).
   const [diaVisible, setDiaVisible] = useState(0);
 
-  if (isLoading) return <p className="py-6 text-sm text-muted-foreground">Cargando…</p>;
+  if (isLoading) return <Cargando className="py-6" />;
   if (isError || !evento) {
     return <p className="py-6 text-sm text-destructive">No se pudo cargar el evento.</p>;
   }

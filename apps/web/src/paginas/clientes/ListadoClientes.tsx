@@ -1,6 +1,7 @@
 import { Mail, Phone, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Input } from '@/components/ui/input';
 import { useClientes } from '@/hooks/use-clientes';
 import { useEtiquetas } from '@/hooks/use-etiquetas';
@@ -63,7 +64,7 @@ export function ListadoClientes({ reinicio }: { reinicio?: string }) {
         />
       </div>
 
-      {clientes.isLoading && <p className="text-sm text-muted-foreground">Cargando clientes…</p>}
+      {clientes.isLoading && <Cargando texto="Cargando clientes…" />}
       {clientes.isError && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           No se pudieron cargar los clientes.

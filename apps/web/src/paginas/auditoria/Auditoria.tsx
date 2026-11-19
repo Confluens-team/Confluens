@@ -6,6 +6,7 @@ import {
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -143,7 +144,7 @@ export function Auditoria() {
         </div>
       </div>
 
-      {isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
+      {isLoading && <Cargando texto="Cargando…" />}
       {isError && <p className="text-sm text-destructive">No se pudo cargar la auditoría.</p>}
       {respuesta && registros.length === 0 && (
         <p className="text-sm text-muted-foreground">No hay cambios con esos filtros.</p>

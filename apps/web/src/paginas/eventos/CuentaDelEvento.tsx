@@ -14,6 +14,7 @@ import { useForm, useWatch } from 'react-hook-form';
 import { Link } from 'react-router';
 
 import { InputImporte } from '@/components/InputImporte';
+import { Cargando } from '@/components/PantallaDeCarga';
 import { SelectorFecha } from '@/components/SelectorFechaHora';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -137,7 +138,7 @@ export function CuentaDelEvento({ evento, admitePagos }: CuentaDelEventoProps) {
   }
 
   if (cuenta.isLoading) {
-    return <p className="text-sm text-muted-foreground">Cargando la cuenta…</p>;
+    return <Cargando texto="Cargando la cuenta…" />;
   }
   if (cuenta.isError || !cuenta.data) {
     return <p className="text-sm text-destructive">No se pudo cargar la cuenta del evento.</p>;

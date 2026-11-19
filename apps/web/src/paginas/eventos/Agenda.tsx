@@ -10,6 +10,7 @@ import { type ReactNode, useState } from 'react';
 
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Button } from '@/components/ui/button';
 import { IconoEstado } from '@/components/IconoEstado';
 import { useAgenda } from '@/hooks/use-eventos';
@@ -418,7 +419,7 @@ export function Agenda({
           onPosicion={(fecha, vista) => setPosicion({ fecha, vista })}
         />
       ) : agenda.isLoading ? (
-        <p className="text-sm text-muted-foreground">Cargando la agenda…</p>
+        <Cargando texto="Cargando la agenda…" />
       ) : eventos.length === 0 ? (
         <div className="rounded-xl border border-dashed bg-card px-6 py-12 text-center">
           <CalendarDays className="mx-auto size-8 text-dorado" />

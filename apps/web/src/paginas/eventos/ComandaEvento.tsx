@@ -2,6 +2,7 @@ import { horaDelEvento, NOMBRE_MODALIDAD, type ConsultaDetallada } from '@conflu
 import { ArrowLeft, Printer, Save } from 'lucide-react';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useGuardarObservacionesComanda } from '@/hooks/use-eventos';
@@ -397,7 +398,7 @@ export function ComandaEvento({
         )}
       </div>
 
-      {consulta.isLoading && <p className="text-sm text-muted-foreground">Cargando la comanda…</p>}
+      {consulta.isLoading && <Cargando texto="Cargando la comanda…" />}
       {consulta.isError && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           No se pudo cargar la comanda.
