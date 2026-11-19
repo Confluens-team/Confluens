@@ -34,7 +34,12 @@ import { Dialog } from 'radix-ui';
 import { useEffect, useRef, useState } from 'react';
 
 import { CintaDeDias, type DiaDeLaCinta } from '@/components/CintaDeDias';
-import { AvisosDeLosDias, DatoDelDia, EncabezadoDelDia } from '@/components/PanelDelDia';
+import {
+  AvisoDeConflictoDelDia,
+  AvisosDeLosDias,
+  DatoDelDia,
+  EncabezadoDelDia,
+} from '@/components/PanelDelDia';
 import { TarjetaCliente } from '@/components/TarjetaCliente';
 import { InputEntero } from '@/components/InputEntero';
 import { InputImporte } from '@/components/InputImporte';
@@ -58,6 +63,7 @@ import {
   diaListoParaAgendar,
   horaFueraDelHorario,
   horaGuardada,
+  instanteDelDia,
   motivosSinAgendar,
   pedidoDeAgenda,
   superaCapacidad,
@@ -330,6 +336,9 @@ export function EditarConsultaPorDias({
   // Por qué el horario cargado no se pudo agendar al guardar (faltan horas, salón o distribución).
   // Vacío si se agendó o si no se había cargado horario.
   const [horarioSinAgendar, setHorarioSinAgendar] = useState<string[]>([]);
+  // El horario cargado quedó guardado con el presupuesto (19/11/2026): pasa en los días que ya tenían
+  // horario. Entonces, si no se pudo agendar, lo que falta es la distribución, no el horario.
+  const [horarioConElPresupuesto, setHorarioConElPresupuesto] = useState(false);
 
   const sinGuardar =
     firmaDeLaConsulta(inicio, fin, tipo, tipoSocial, detalleOtro, dias) !== firmaGuardada;
@@ -705,6 +714,14 @@ export function EditarConsultaPorDias({
           fecha: fechas[i]!,
           cantidadPersonas: Number(d.personas),
           tipoJornada: d.jornada,
+          // El horario que se está editando (19/11/2026): la API controla la hora de cada servicio
+          // contra este y no contra el guardado, y lo guarda en un día que ya lo tenía.
+          ...(d.inicio &&
+            d.fin &&
+            d.inicio !== d.fin && {
+              inicio: instanteDelDia(fechas[i]!, d.inicio, d.inicio),
+              fin: instanteDelDia(fechas[i]!, d.fin, d.inicio),
+            }),
           salones: d.salonesSel.map((s) => ({
             salonId: s.salonId,
             precioUnitario: aImporte(s.precio),
@@ -781,6 +798,19 @@ export function EditarConsultaPorDias({
               ? motivosSinAgendar(diasParaAgendar)
               : [];
           setHorarioSinAgendar(motivos);
+          setHorarioConElPresupuesto(
+            dias.some((d) => d.inicio && d.fin) &&
+              dias.every((d, i) => {
+                if (!d.inicio || !d.fin) return true;
+                const delResultado = resultado.dias.find((x) => x.fecha === fechas[i]);
+                return (
+                  !!delResultado?.inicio &&
+                  !!delResultado.fin &&
+                  horaGuardada(delResultado.inicio) === d.inicio &&
+                  horaGuardada(delResultado.fin) === d.fin
+                );
+              }),
+          );
           setFirmaGuardada(firmaDe(motivos.length > 0 ? persistidos : diasGuardados));
           // Un evento confirmado vuelve a quedar con los datos fijos.
           setDesbloqueado(false);
@@ -905,6 +935,12 @@ export function EditarConsultaPorDias({
     porFecha,
     'No tiene salón ni servicios: cargalos o copiá otro día.',
   );
+  // El choque del día elegido va en rojo dentro del día (19/11/2026); la columna derecha queda con los
+  // avisos de los otros días.
+  const conflictoDelDia = avisos.find(
+    (aviso) => aviso.tono === 'conflicto' && aviso.indice === indice,
+  );
+  const avisosDeOtrosDias = avisos.filter((aviso) => aviso !== conflictoDelDia);
   const diaGuardadoDelEvento = evento.data?.dias.find(
     (d) => d.fecha.slice(0, 10) === fechas[indice],
   );
@@ -1088,6 +1124,7 @@ export function EditarConsultaPorDias({
               <CopiarDiaCargado opciones={opcionesDeCopia} onCopiar={copiarDia} tamanio="sm" />
             )}
           </EncabezadoDelDia>
+          {conflictoDelDia && <AvisoDeConflictoDelDia aviso={conflictoDelDia} />}
 
           <fieldset disabled={!editable} className="min-w-0">
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
@@ -1571,7 +1608,7 @@ export function EditarConsultaPorDias({
                 : `Este presupuesto tiene una validez de ${DIAS_VIGENCIA_PRESUPUESTO} días.`}
             </p>
           </section>
-          <AvisosDeLosDias avisos={avisos} onVerDia={setActivo} />
+          <AvisosDeLosDias avisos={avisosDeOtrosDias} onVerDia={setActivo} />
         </aside>
       </div>
 
@@ -1637,7 +1674,11 @@ export function EditarConsultaPorDias({
               ) : (
                 <CheckCircle2 className="size-4 shrink-0" />
               )}{' '}
-              {horarioNoGuardado ? 'Presupuesto guardado, pero el horario no' : 'Cambios guardados'}
+              {horarioNoGuardado
+                ? horarioConElPresupuesto
+                  ? 'Presupuesto y horario guardados, pero falta agendar'
+                  : 'Presupuesto guardado, pero el horario no'
+                : 'Cambios guardados'}
               {guardadaConPreciosNuevos && ', con los precios actualizados al último día'}.
               {onGuardada && textoVolverAlGuardar && (
                 <>
@@ -1649,8 +1690,10 @@ export function EditarConsultaPorDias({
             </p>
             {horarioSinAgendar.length > 0 && (
               <p className="text-xs">
-                Falta: {horarioSinAgendar.join('; ')}. El horario y la distribución se guardan
-                cuando están en todos los días: completalos y guardá de nuevo.
+                Falta: {horarioSinAgendar.join('; ')}.{' '}
+                {horarioConElPresupuesto
+                  ? 'La distribución se guarda cuando todos los días tienen horario y distribución: completalos y guardá de nuevo.'
+                  : 'El horario y la distribución se guardan cuando están en todos los días: completalos y guardá de nuevo.'}
               </p>
             )}
           </div>
@@ -1674,7 +1717,9 @@ export function EditarConsultaPorDias({
       )}
       {agendar.isError && (
         <p className="text-right text-sm whitespace-pre-line text-destructive">
-          Se guardó el presupuesto, pero no el horario:{' '}
+          {horarioConElPresupuesto
+            ? 'Se guardaron el presupuesto y el horario, pero no se pudo agendar:'
+            : 'Se guardó el presupuesto, pero no el horario:'}{' '}
           {mensajeDeError(agendar.error, 'no se pudo agendar el evento.')}
         </p>
       )}

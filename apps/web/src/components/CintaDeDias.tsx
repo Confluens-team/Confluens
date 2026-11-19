@@ -28,11 +28,12 @@ const ESTADOS: Record<
     color: 'text-estado-confirmado-texto',
     borde: 'border-border',
   },
+  // Rojo (19/11/2026): el salmón de «Expirado» se confundía con los avisos que no son choques.
   conflicto: {
     texto: 'En conflicto',
-    punto: 'bg-estado-expirado',
-    color: 'text-estado-expirado-texto',
-    borde: 'border-estado-expirado',
+    punto: 'bg-destructive',
+    color: 'text-destructive',
+    borde: 'border-destructive',
   },
   sinCargar: {
     texto: 'Sin cargar',

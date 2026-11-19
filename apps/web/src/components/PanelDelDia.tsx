@@ -1,3 +1,5 @@
+import { AlertTriangle } from 'lucide-react';
+
 import { type AvisoDelDia, textoDelDia } from '@/lib/cinta-de-dias';
 import { cn } from '@/lib/utils';
 
@@ -56,10 +58,29 @@ export function DatoDelDia({
 }
 
 const TONOS: Record<AvisoDelDia['tono'], string> = {
-  conflicto: 'bg-estado-expirado-fondo text-estado-expirado-texto',
+  conflicto: 'bg-destructive/10 text-destructive ring-1 ring-destructive/30',
   sinCargar: 'bg-estado-consulta-fondo text-estado-consulta-texto',
   pendiente: 'bg-estado-consulta-fondo text-estado-consulta-texto',
 };
+
+/**
+ * El choque del día que se está editando (19/11/2026), en rojo y dentro del día, arriba de sus
+ * datos: en la columna derecha se perdía entre los avisos que no son choques.
+ */
+export function AvisoDeConflictoDelDia({ aviso }: { aviso: AvisoDelDia }) {
+  return (
+    <div
+      role="alert"
+      className="mt-4 flex gap-2.5 rounded-lg bg-destructive/10 p-3 text-sm text-destructive ring-1 ring-destructive/30"
+    >
+      <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+      <div>
+        <strong className="block">{aviso.titulo}</strong>
+        <span>{aviso.texto}</span>
+      </div>
+    </div>
+  );
+}
 
 /**
  * Los avisos accionables de los días, debajo de la cuenta: un conflicto (con qué evento y horario) o

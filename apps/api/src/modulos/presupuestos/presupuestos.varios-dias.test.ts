@@ -447,6 +447,93 @@ describe('modificarPresupuesto con varios días (HU-50)', () => {
     expect(repo.reemplazarDiasYLineas).not.toHaveBeenCalled();
   });
 
+  // 19/11/2026: el pedido trae el horario que se está editando en cada día.
+  describe('con el horario de cada día en el pedido', () => {
+    // 12:00Z a 21:00Z son las 09:00 a 18:00 en Córdoba; 12:00Z a 00:00Z del día siguiente, 09 a 21.
+    const ampliado = (fecha: string, siguiente: string) => ({
+      inicio: `${fecha}T12:00:00.000Z`,
+      fin: `${siguiente}T00:00:00.000Z`,
+    });
+    const barra = { descripcion: 'Barra de tragos', cantidad: 1, precioUnitario: '1000' };
+    function agendada(fechas: string[]) {
+      const presupuesto = presupuestoConDias(fechas) as unknown as {
+        evento: { dias: { fecha: Date; inicio: Date | null; fin: Date | null }[] };
+      };
+      for (const d of presupuesto.evento.dias) {
+        const fecha = iso(d.fecha);
+        d.inicio = new Date(`${fecha}T12:00:00.000Z`);
+        d.fin = new Date(`${fecha}T21:00:00.000Z`);
+      }
+      return presupuesto;
+    }
+    const diasGuardados = (repo: ReturnType<typeof repoParaModificar>) =>
+      (
+        repo.reemplazarDiasYLineas.mock.calls[0] as unknown as [number, Record<string, unknown>[]]
+      )[1];
+
+    it('controla la hora de cada servicio contra el horario de SU día, no contra el del evento', async () => {
+      const repo = repoParaModificar(agendada(['2040-04-30', '2040-05-01']));
+
+      // El 01/05 va de 09 a 18: una barra a las 20 queda afuera.
+      const error = await modificarPresupuesto(
+        77,
+        {
+          dias: [
+            dia('2040-04-30'),
+            dia('2040-05-01', { adicionales: [{ ...barra, horaEstimada: '20:00' }] }),
+          ],
+        } as never,
+        comoRepo(repo),
+      ).catch((e: unknown) => e);
+
+      expect(error).toMatchObject({ status: 422 });
+      expect((error as Error).message).toContain('del martes 01/05/2040');
+      expect(repo.reemplazarDiasYLineas).not.toHaveBeenCalled();
+    });
+
+    it('con el horario ampliado en el pedido acepta el servicio en la hora nueva y guarda el horario', async () => {
+      const repo = repoParaModificar(agendada(['2040-04-30', '2040-05-01']));
+
+      await modificarPresupuesto(
+        77,
+        {
+          dias: [
+            dia('2040-04-30'),
+            dia('2040-05-01', {
+              adicionales: [{ ...barra, horaEstimada: '20:00' }],
+              ...ampliado('2040-05-01', '2040-05-02'),
+            }),
+          ],
+        } as never,
+        comoRepo(repo),
+      );
+
+      const [primero, segundo] = diasGuardados(repo);
+      expect(primero).not.toHaveProperty('inicio');
+      expect(segundo).toMatchObject({
+        inicio: new Date('2040-05-01T12:00:00.000Z'),
+        fin: new Date('2040-05-02T00:00:00.000Z'),
+      });
+    });
+
+    it('a un día sin horario guardado no le pone el del pedido: eso lo hace el agendar', async () => {
+      const repo = repoParaModificar(presupuestoConDias(['2040-04-30', '2040-05-01']));
+
+      await modificarPresupuesto(
+        77,
+        {
+          dias: [
+            dia('2040-04-30', ampliado('2040-04-30', '2040-05-01')),
+            dia('2040-05-01', ampliado('2040-05-01', '2040-05-02')),
+          ],
+        } as never,
+        comoRepo(repo),
+      );
+
+      expect(diasGuardados(repo).every((d) => !('inicio' in d))).toBe(true);
+    });
+  });
+
   it('un evento de un solo día que sigue siendo de uno no usa el camino por días', async () => {
     const repo = {
       ...repoParaModificar(presupuestoConDias(['2040-04-30'])),
@@ -866,6 +953,34 @@ describe('modificarPresupuesto de un evento ya reservado, día por día (HU-50, 
       ['2040-05-02', '2040-05-02T12:00'],
       ['2040-05-03', '2040-05-03T12:00'],
     ]);
+  });
+
+  // 19/11/2026: el horario que se está editando manda sobre el guardado.
+  it('con el horario del día en el pedido lo guarda y controla los choques con ese horario', async () => {
+    const r = repoReservado(['2040-04-30', '2040-05-01']);
+    await modificarPresupuesto(
+      77,
+      {
+        dias: [
+          dia('2040-04-30'),
+          dia('2040-05-01', {
+            inicio: '2040-05-01T23:00:00.000Z',
+            fin: '2040-05-02T03:00:00.000Z',
+          }),
+        ],
+      } as never,
+      comoRepo(r),
+    ).catch(() => undefined);
+
+    const [, dias] = guardado(r);
+    expect(dias.map((d) => [iso(d.fecha), hora(d.inicio), hora(d.fin)])).toEqual([
+      ['2040-04-30', '2040-04-30T12:00', '2040-04-30T21:00'],
+      ['2040-05-01', '2040-05-01T23:00', '2040-05-02T03:00'],
+    ]);
+    const { franjas } = (
+      r.buscarChoquesPorDia.mock.calls[0] as unknown as [{ franjas: { inicio: Date }[] }]
+    )[0];
+    expect(franjas.map((f) => hora(f.inicio))).toEqual(['2040-04-30T12:00', '2040-05-01T23:00']);
   });
 
   it('si algún día choca con otro evento no escribe nada y avisa de todos los choques', async () => {
