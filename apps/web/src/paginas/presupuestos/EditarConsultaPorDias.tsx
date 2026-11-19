@@ -56,7 +56,9 @@ import { formatearFechaNumerica, formatearPesos, nombreCompleto } from '@/lib/fo
 import {
   type DiaParaAgendar,
   diaListoParaAgendar,
+  horaFueraDelHorario,
   horaGuardada,
+  motivosSinAgendar,
   pedidoDeAgenda,
   superaCapacidad,
 } from '@/lib/horario-del-dia';
@@ -64,6 +66,7 @@ import { jornadaDeHoras, textoHorarioEstimado } from '@/lib/jornada';
 import {
   avisosDeLosDias,
   choquesPorFecha,
+  clasificarChoques,
   estadoDeDiaDeConsulta,
   diaDeSemanaCorto,
   resumenDelDia,
@@ -324,6 +327,9 @@ export function EditarConsultaPorDias({
     ),
   );
   const [guardadaConPreciosNuevos, setGuardadaConPreciosNuevos] = useState(false);
+  // Por qué el horario cargado no se pudo agendar al guardar (faltan horas, salón o distribución).
+  // Vacío si se agendó o si no se había cargado horario.
+  const [horarioSinAgendar, setHorarioSinAgendar] = useState<string[]>([]);
 
   const sinGuardar =
     firmaDeLaConsulta(inicio, fin, tipo, tipoSocial, detalleOtro, dias) !== firmaGuardada;
@@ -623,6 +629,10 @@ export function EditarConsultaPorDias({
   const horarioValido = (d: DiaEditable) =>
     !d.inicio === !d.fin && (!d.inicio || d.inicio !== d.fin);
   // Un día está completo cuando se puede guardar: personas, salón (en un corporativo) y líneas válidas.
+  // La hora de un servicio tiene que caer dentro del horario del día que se está cargando: se compara
+  // con lo del formulario, no con lo guardado (la API solo conoce el horario ya agendado).
+  const horaFuera = (d: DiaEditable, l: LineaEditable) =>
+    horaFueraDelHorario(l.hora, d.inicio, d.fin);
   const diaValido = (d: DiaEditable) =>
     esEntero(d.personas) &&
     horarioValido(d) &&
@@ -634,6 +644,7 @@ export function EditarConsultaPorDias({
         cantidadPosible(d, l) &&
         !repetida(d, l) &&
         precioValido(l) &&
+        !horaFuera(d, l) &&
         l.descripcion.trim(),
     );
   const valido = fechas.length > 0 && tipoValido && dias.every(diaValido);
@@ -685,10 +696,9 @@ export function EditarConsultaPorDias({
     // los salones ya guardados). Siempre que estén completos: comparar contra lo guardado fallaba,
     // porque el presupuesto recién guardado todavía no trae lo que agenda el paso siguiente.
     agendar.reset();
-    const pedido = pedidoDeAgenda(
-      dias.map((d, i) => paraAgendar(d, fechas[i]!)),
-      evento.data?.modalidadSalonRestaurante ?? false,
-    );
+    setHorarioSinAgendar([]);
+    const diasParaAgendar = dias.map((d, i) => paraAgendar(d, fechas[i]!));
+    const pedido = pedidoDeAgenda(diasParaAgendar, evento.data?.modalidadSalonRestaurante ?? false);
     modificar.mutate(
       {
         dias: dias.map((d, i) => ({
@@ -751,21 +761,34 @@ export function EditarConsultaPorDias({
               : nuevo;
           });
           setDias(diasGuardados);
-          setFirmaGuardada(
+          // Lo que quedó en la base: el horario y la distribución solo se guardan si se agenda. Si no
+          // se pudo, lo cargado sigue a la vista pero cuenta como sin guardar (al recargar no está).
+          const firmaDe = (diasDeLaFirma: DiaEditable[]) =>
             firmaDeLaConsulta(
               resultado.evento.fecha,
               resultado.evento.fechaFin,
               tipo,
               tipoSocial,
               detalleOtro,
-              diasGuardados,
-            ),
-          );
+              diasDeLaFirma,
+            );
+          const persistidos = fechasDeLaFranja(
+            resultado.evento.fecha,
+            resultado.evento.fechaFin,
+          ).map((f) => diaEditableDe(resultado, f));
+          const motivos =
+            !pedido && dias.some((d) => d.inicio || d.fin)
+              ? motivosSinAgendar(diasParaAgendar)
+              : [];
+          setHorarioSinAgendar(motivos);
+          setFirmaGuardada(firmaDe(motivos.length > 0 ? persistidos : diasGuardados));
           // Un evento confirmado vuelve a quedar con los datos fijos.
           setDesbloqueado(false);
           setGuardadaConPreciosNuevos(conPreciosNuevos);
           setGuardada(resultado);
-          if (pedido) agendar.mutate(pedido);
+          if (pedido) {
+            agendar.mutate(pedido, { onError: () => setFirmaGuardada(firmaDe(persistidos)) });
+          }
         },
       },
     );
@@ -798,6 +821,10 @@ export function EditarConsultaPorDias({
     );
     setDesbloqueado(false);
   }
+
+  // El presupuesto se guardó pero el horario no: faltaba algo para agendar, o agendar falló (por
+  // ejemplo, el salón ya está ocupado). El aviso de guardado lo dice en vez de dar todo por hecho.
+  const horarioNoGuardado = horarioSinAgendar.length > 0 || agendar.isError;
 
   const bajaDisponible = (enCurso || sobrante) && !!onDadaDeBaja;
   // Agendar es todo o nada: si algún día ya tiene horario o distribución pero a otro le falta, se
@@ -833,16 +860,24 @@ export function EditarConsultaPorDias({
   const excedeCapacidad =
     dia.salonesSel.length > 0 && esEntero(dia.personas) && Number(dia.personas) > capacidadElegida;
 
-  // La cinta de días: el estado de cada uno mientras se edita, con los choques de salón guardados
-  // (RN-12; el aviso preventivo solo tiene sentido con la consulta en curso).
-  const porFecha = choquesPorFecha(choques.data?.choques ?? []);
+  // La cinta de días: el estado de cada uno mientras se edita, con los choques de salón (RN-12; el
+  // aviso preventivo solo tiene sentido con la consulta en curso). La API los marca por día y salón;
+  // acá se ajustan al horario y a los salones que se están cargando: solo es conflicto si se pisan.
+  const porFecha = choquesPorFecha(
+    clasificarChoques(choques.data?.choques ?? [], (fecha) => {
+      const d = dias[fechas.indexOf(fecha)];
+      return d
+        ? { inicio: d.inicio, fin: d.fin, salonIds: d.salonesSel.map((s) => s.salonId) }
+        : undefined;
+    }),
+  );
   const diasDeLaCinta: DiaDeLaCinta[] = fechas.map((fecha, i) => {
     const d = dias[i] ?? diaVacio();
     const estadoDelEditor = estadoDeDiaDeConsulta({
       salones: d.salonesSel.length,
       lineas: d.lineas.length,
       valido: diaValido(d),
-      conflicto: porFecha.has(fecha),
+      conflicto: (porFecha.get(fecha) ?? []).some((choque) => choque.relacion === 'pisa'),
     });
     // Un día que se puede guardar pero no agendar todavía: le falta el horario o una distribución.
     const faltaAgendar =
@@ -1339,7 +1374,13 @@ export function EditarConsultaPorDias({
                           opcional
                           placeholder="--:--"
                           horaSugerida={dia.inicio || undefined}
+                          aria-invalid={horaFuera(dia, linea)}
                         />
+                        {horaFuera(dia, linea) && (
+                          <span className="mt-1 block text-xs text-destructive">
+                            Fuera del horario del día ({dia.inicio} a {dia.fin}).
+                          </span>
+                        )}
                       </td>
                       <td className="py-2 pr-3">
                         <InputImporte
@@ -1582,19 +1623,37 @@ export function EditarConsultaPorDias({
         <div
           ref={refAviso}
           role="status"
-          className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 ring-1 ring-emerald-200"
+          className={cn(
+            'flex flex-wrap items-center justify-between gap-3 rounded-xl px-4 py-3 text-sm ring-1',
+            horarioNoGuardado
+              ? 'bg-amber-50 text-amber-900 ring-amber-200'
+              : 'bg-emerald-50 text-emerald-900 ring-emerald-200',
+          )}
         >
-          <p className="flex items-center gap-2 font-medium">
-            <CheckCircle2 className="size-4 shrink-0" /> Cambios guardados
-            {guardadaConPreciosNuevos && ', con los precios actualizados al último día'}.
-            {onGuardada && textoVolverAlGuardar && (
-              <>
-                {' '}
-                ¿Querés{' '}
-                {textoVolverAlGuardar.charAt(0).toLowerCase() + textoVolverAlGuardar.slice(1)}?
-              </>
+          <div className="space-y-1">
+            <p className="flex items-center gap-2 font-medium">
+              {horarioNoGuardado ? (
+                <AlertTriangle className="size-4 shrink-0" />
+              ) : (
+                <CheckCircle2 className="size-4 shrink-0" />
+              )}{' '}
+              {horarioNoGuardado ? 'Presupuesto guardado, pero el horario no' : 'Cambios guardados'}
+              {guardadaConPreciosNuevos && ', con los precios actualizados al último día'}.
+              {onGuardada && textoVolverAlGuardar && (
+                <>
+                  {' '}
+                  ¿Querés{' '}
+                  {textoVolverAlGuardar.charAt(0).toLowerCase() + textoVolverAlGuardar.slice(1)}?
+                </>
+              )}
+            </p>
+            {horarioSinAgendar.length > 0 && (
+              <p className="text-xs">
+                Falta: {horarioSinAgendar.join('; ')}. El horario y la distribución se guardan
+                cuando están en todos los días: completalos y guardá de nuevo.
+              </p>
             )}
-          </p>
+          </div>
           <div className="flex items-center gap-2">
             {onGuardada && textoVolverAlGuardar && (
               <Button type="button" size="sm" onClick={() => onGuardada(guardada)}>

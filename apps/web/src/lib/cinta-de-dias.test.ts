@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   avisosDeLosDias,
   choquesPorFecha,
+  clasificarChoques,
   diaDeSemanaCorto,
   esLunes,
   estadoDeDiaDeConsulta,
@@ -101,6 +102,7 @@ describe('avisosDeLosDias', () => {
       choquesPorFecha([
         {
           ...choque('2026-12-10', 1),
+          relacion: 'pisa' as const,
           evento: {
             id: 131,
             estado: 'Reservado',
@@ -119,5 +121,96 @@ describe('avisosDeLosDias', () => {
     expect(avisos[0]!.titulo).toBe('Jueves 10 en conflicto');
     expect(avisos[0]!.texto).toBe('El Salón 1 lo tiene el evento #131 (Ana) de 14:00 a 18:00.');
     expect(avisos[1]!.titulo).toBe('Viernes 11 sin cargar');
+  });
+});
+
+// El otro evento tiene el salón 1 el 10/12 de 09:00 a 18:00 (hora de Córdoba, UTC−3).
+const ocupado = (
+  inicio: string | null = '2026-12-10T12:00:00.000Z',
+  fin: string | null = '2026-12-10T21:00:00.000Z',
+) => ({
+  ...choque('2026-12-10', 1),
+  evento: { id: 96, estado: 'Reservado' as const, cliente: 'Ana', inicio, fin },
+});
+const dia =
+  (inicio: string, fin: string, salonIds = [1]) =>
+  () => ({ inicio, fin, salonIds });
+const relaciones = (
+  choques = [ocupado()],
+  delDia: Parameters<typeof clasificarChoques>[1] = dia('', ''),
+) => clasificarChoques(choques, delDia).map((c) => c.relacion);
+
+describe('clasificarChoques', () => {
+  it('es conflicto solo si los horarios se superponen', () => {
+    expect(relaciones(undefined, dia('10:00', '12:00'))).toEqual(['pisa']);
+    expect(relaciones(undefined, dia('08:00', '09:30'))).toEqual(['pisa']);
+  });
+
+  it('el mismo salón y día a otra hora no se pisa', () => {
+    expect(relaciones(undefined, dia('18:55', '23:00'))).toEqual(['distinto']);
+    expect(relaciones(undefined, dia('06:00', '08:00'))).toEqual(['distinto']);
+  });
+
+  it('los extremos que se tocan no se pisan', () => {
+    expect(relaciones(undefined, dia('18:00', '22:00'))).toEqual(['distinto']);
+    expect(relaciones(undefined, dia('07:00', '09:00'))).toEqual(['distinto']);
+  });
+
+  it('sin las dos horas del día no se sabe', () => {
+    expect(relaciones(undefined, dia('', ''))).toEqual(['sinHorario']);
+    expect(relaciones(undefined, dia('18:00', ''))).toEqual(['sinHorario']);
+    expect(relaciones(undefined, dia('18:00', '18:00'))).toEqual(['sinHorario']);
+    expect(relaciones(undefined, () => undefined)).toEqual(['sinHorario']);
+  });
+
+  it('un día que cruza la medianoche se compara con su fin del día siguiente', () => {
+    expect(relaciones(undefined, dia('22:00', '03:00'))).toEqual(['distinto']);
+    // El otro evento de 20:00 a 02:00 (23:00Z a 05:00Z del día siguiente) sí se pisa con 22:00 a 03:00.
+    const nocturno = ocupado('2026-12-10T23:00:00.000Z', '2026-12-11T05:00:00.000Z');
+    expect(relaciones([nocturno], dia('22:00', '03:00'))).toEqual(['pisa']);
+  });
+
+  it('si el otro evento no tiene horario no se puede descartar: se toma como choque', () => {
+    expect(relaciones([ocupado(null, null)], dia('18:55', '23:00'))).toEqual(['pisa']);
+  });
+
+  it('descarta el salón que ya no está elegido en el formulario', () => {
+    expect(relaciones(undefined, dia('10:00', '12:00', [2]))).toEqual([]);
+  });
+});
+
+describe('avisosDeLosDias con el horario del día', () => {
+  const avisosDe = (delDia: ReturnType<typeof dia>) =>
+    avisosDeLosDias(
+      [{ fecha: '2026-12-10', estado: 'completo' }],
+      choquesPorFecha(clasificarChoques([ocupado()], delDia)),
+    );
+
+  it('si no se pisa, es un aviso suave que lo dice', () => {
+    const [aviso] = avisosDe(dia('18:55', '23:00'));
+    expect(aviso!.tono).toBe('pendiente');
+    expect(aviso!.titulo).toBe('Jueves 10: salón ocupado a otra hora');
+    expect(aviso!.texto).toBe(
+      'El Salón 1 lo tiene el evento #96 (Ana) de 09:00 a 18:00: con tu horario no se pisan.',
+    );
+  });
+
+  it('si todavía no hay horario, pide cargarlo para saber', () => {
+    const [aviso] = avisosDe(dia('', ''));
+    expect(aviso!.tono).toBe('pendiente');
+    expect(aviso!.titulo).toBe('Jueves 10: salón con otro evento');
+    expect(aviso!.texto).toBe(
+      'El Salón 1 lo tiene el evento #96 (Ana) de 09:00 a 18:00. Cargá el horario del día para saber si se pisan.',
+    );
+  });
+
+  it('si se pisa, es conflicto', () => {
+    const [aviso] = avisosDe(dia('10:00', '12:00'));
+    expect(aviso!.tono).toBe('conflicto');
+    expect(aviso!.titulo).toBe('Jueves 10 en conflicto');
+  });
+
+  it('un salón que ya no está elegido no genera aviso', () => {
+    expect(avisosDe(dia('10:00', '12:00', [2]))).toEqual([]);
   });
 });

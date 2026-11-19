@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import {
   type DiaParaAgendar,
   diaListoParaAgendar,
+  faltaParaAgendar,
+  horaFueraDelHorario,
   horaGuardada,
   instanteDelDia,
+  motivosSinAgendar,
   pedidoDeAgenda,
   superaCapacidad,
 } from './horario-del-dia';
@@ -94,5 +97,76 @@ describe('pedidoDeAgenda', () => {
   it('si a un día le falta algo no se agenda nada', () => {
     expect(pedidoDeAgenda([dia(), dia({ inicio: '' })], false)).toBeNull();
     expect(pedidoDeAgenda([], false)).toBeNull();
+  });
+});
+
+describe('faltaParaAgendar', () => {
+  it('es null cuando el día está listo', () => {
+    expect(faltaParaAgendar(dia())).toBeNull();
+  });
+
+  it('nombra lo que falta: horas, salón o distribución', () => {
+    expect(faltaParaAgendar(dia({ inicio: '', fin: '' }))).toBe('las dos horas');
+    expect(faltaParaAgendar(dia({ fin: '' }))).toBe('las dos horas');
+    expect(faltaParaAgendar(dia({ fin: '09:00' }))).toBe(
+      'una hora de fin distinta de la de inicio',
+    );
+    expect(
+      faltaParaAgendar(dia({ salones: [{ salonId: 1, distribucionId: '', capacidad: null }] })),
+    ).toBe('la distribución');
+    expect(faltaParaAgendar(dia({ salones: [] }))).toBe('el salón');
+  });
+
+  it('junta varias faltas', () => {
+    expect(
+      faltaParaAgendar(
+        dia({ inicio: '', salones: [{ salonId: 1, distribucionId: '', capacidad: null }] }),
+      ),
+    ).toBe('las dos horas y la distribución');
+  });
+});
+
+describe('motivosSinAgendar', () => {
+  const sinDistribucion = dia({ salones: [{ salonId: 1, distribucionId: '', capacidad: null }] });
+
+  it('un solo día no se numera', () => {
+    expect(motivosSinAgendar([sinDistribucion])).toEqual(['la distribución']);
+  });
+
+  it('con varios días numera solo los que faltan', () => {
+    expect(motivosSinAgendar([dia(), sinDistribucion, dia({ fin: '' })])).toEqual([
+      'Día 2: la distribución',
+      'Día 3: las dos horas',
+    ]);
+  });
+
+  it('es vacío si todos están listos', () => {
+    expect(motivosSinAgendar([dia(), dia()])).toEqual([]);
+  });
+});
+
+describe('horaFueraDelHorario', () => {
+  it('una hora dentro del horario del día no está fuera, extremos incluidos', () => {
+    expect(horaFueraDelHorario('12:00', '09:00', '18:00')).toBe(false);
+    expect(horaFueraDelHorario('09:00', '09:00', '18:00')).toBe(false);
+    expect(horaFueraDelHorario('18:00', '09:00', '18:00')).toBe(false);
+  });
+
+  it('una hora antes del inicio o después del fin está fuera', () => {
+    expect(horaFueraDelHorario('08:59', '09:00', '18:00')).toBe(true);
+    expect(horaFueraDelHorario('20:00', '14:00', '18:00')).toBe(true);
+  });
+
+  it('un horario que cruza la medianoche acepta la noche y la madrugada', () => {
+    expect(horaFueraDelHorario('23:30', '20:00', '02:00')).toBe(false);
+    expect(horaFueraDelHorario('01:00', '20:00', '02:00')).toBe(false);
+    expect(horaFueraDelHorario('10:00', '20:00', '02:00')).toBe(true);
+  });
+
+  it('sin hora, sin las dos horas del día o con las dos iguales no hay nada que comparar', () => {
+    expect(horaFueraDelHorario('', '09:00', '18:00')).toBe(false);
+    expect(horaFueraDelHorario('20:00', '', '')).toBe(false);
+    expect(horaFueraDelHorario('20:00', '09:00', '')).toBe(false);
+    expect(horaFueraDelHorario('20:00', '09:00', '09:00')).toBe(false);
   });
 });

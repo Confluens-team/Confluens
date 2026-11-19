@@ -1,5 +1,7 @@
 import { type AgendarEvento, horaDelEvento } from '@confluens/shared';
 
+import { horaDentroDelHorario } from './jornada';
+
 // El horario y la distribución de cada día, cargados en el detalle de la consulta (15/11/2026): antes
 // se pedían en el formulario del pago. Al guardar la consulta, si todos los días tienen horario y
 // cada salón su distribución, se agenda el evento (POST /eventos/:id/agendar). Agendar no reserva:
@@ -46,6 +48,40 @@ export function diaListoParaAgendar(dia: DiaParaAgendar): boolean {
     dia.salones.length > 0 &&
     dia.salones.every((salon) => salon.distribucionId !== '')
   );
+}
+
+/**
+ * Lo que le falta a un día para agendarse, en palabras («las dos horas», «la distribución»), o null
+ * si está listo. Un día sin salón no se puede agendar: la distribución es del salón.
+ */
+export function faltaParaAgendar(dia: DiaParaAgendar): string | null {
+  const faltas: string[] = [];
+  if (!dia.inicio || !dia.fin) faltas.push('las dos horas');
+  else if (dia.inicio === dia.fin) faltas.push('una hora de fin distinta de la de inicio');
+  if (dia.salones.length === 0) faltas.push('el salón');
+  else if (dia.salones.some((salon) => salon.distribucionId === '')) faltas.push('la distribución');
+  return faltas.length > 0 ? faltas.join(' y ') : null;
+}
+
+/**
+ * Lo que le falta a cada día que no se puede agendar («Día 2: la distribución»). Con un solo
+ * día no se numera. Vacío si todos están listos.
+ */
+export function motivosSinAgendar(dias: DiaParaAgendar[]): string[] {
+  return dias.flatMap((dia, indice) => {
+    const falta = faltaParaAgendar(dia);
+    if (!falta) return [];
+    return [dias.length > 1 ? `Día ${indice + 1}: ${falta}` : falta];
+  });
+}
+
+/**
+ * Si la hora de un servicio queda fuera del horario del día, extremos incluidos y con la noche que
+ * cruza la medianoche. Sin las dos horas del día (o con las dos iguales) no hay contra qué comparar.
+ */
+export function horaFueraDelHorario(hora: string, inicio: string, fin: string): boolean {
+  if (!hora || !inicio || !fin || inicio === fin) return false;
+  return !horaDentroDelHorario(hora, inicio, fin);
 }
 
 /** Si las personas del día superan lo que admiten sus distribuciones juntas (aviso, no tope). */
