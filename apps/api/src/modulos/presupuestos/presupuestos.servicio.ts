@@ -29,7 +29,7 @@ import {
 } from '@confluens/shared';
 
 import { Prisma } from '../../generated/prisma/client.js';
-import { avisoDeChoques } from '../../lib/aviso-de-choques.js';
+import { avisoDeChoques, textoDelDia } from '../../lib/aviso-de-choques.js';
 import { alcanza, calcularBaseDeCobro, PORCENTAJE_TOTAL } from '../../lib/base-de-cobro.js';
 import { correspondenciaDeDias } from '../../lib/correspondencia-de-dias.js';
 import { type Correo, enviarCorreo } from '../../lib/correo.js';
@@ -156,6 +156,8 @@ function exigirHorasDentroDelEvento(
   lineas: LineaCalculada[],
   inicio: Date | null,
   fin: Date | null,
+  // «del evento» en uno de un día; «del jueves 14/05/2027» en uno de varios.
+  delHorario = 'del evento',
 ): void {
   if (!inicio || !fin) return;
   const desde = minutosDeHora(horaDelEvento(inicio));
@@ -166,10 +168,18 @@ function exigirHorasDentroDelEvento(
     const minutos = minutosDeHora(linea.horaEstimada);
     if (minutos < desde || minutos > hasta) {
       throw ErrorApi.reglaNegocio(
-        `La hora de "${linea.descripcion}" (${linea.horaEstimada}) queda fuera del horario del evento, que va de ${horaDelEvento(inicio)} a ${horaDelEvento(fin)}`,
+        `La hora de "${linea.descripcion}" (${linea.horaEstimada}) queda fuera del horario ${delHorario}, que va de ${horaDelEvento(inicio)} a ${horaDelEvento(fin)}`,
       );
     }
   }
+}
+
+// El horario del día que trae el pedido (19/11/2026), si lo trae: el que se está editando.
+function horarioDelPedido(dia: {
+  inicio?: string;
+  fin?: string;
+}): { inicio: Date; fin: Date } | null {
+  return dia.inicio && dia.fin ? { inicio: new Date(dia.inicio), fin: new Date(dia.fin) } : null;
 }
 
 function descripcionSalon(nombre: string, jornada: TipoJornada): string {
@@ -1025,17 +1035,21 @@ export async function modificarPresupuesto(
     cambioFecha,
   });
   const total = sumarLineas(lineas);
-  // También en una consulta ya agendada: si la fecha cambia y el horario no, la seña reservaría el
-  // salón en la fecha vieja (16/11/2026). Sin horario no hay nada que correr.
-  const horario = reubicarHorario(presupuesto.evento, datos);
+  // El horario que se está editando, si viene, manda (19/11/2026): se guarda si el evento ya tenía
+  // horario y la hora de cada servicio se controla contra él. Si no viene, el guardado se corre con la
+  // fecha, también en una consulta ya agendada: si no, la seña reservaría el salón en la fecha vieja
+  // (16/11/2026). Sin horario no hay nada que correr.
+  const delPedido = horarioDelPedido(datos);
+  const horario =
+    delPedido && presupuesto.evento.inicio ? delPedido : reubicarHorario(presupuesto.evento, datos);
   const heredados = await armadosHeredados(presupuesto.evento, salonIds, repo);
   const fechaEmision = new Date();
   // Contra el horario que va a quedar: si cambió la fecha, reubicarHorario ya corrió inicio y fin
   // los mismos días.
   exigirHorasDentroDelEvento(
     lineas,
-    horario.inicio instanceof Date ? horario.inicio : presupuesto.evento.inicio,
-    horario.fin instanceof Date ? horario.fin : presupuesto.evento.fin,
+    delPedido?.inicio ?? horario.inicio ?? presupuesto.evento.inicio,
+    delPedido?.fin ?? horario.fin ?? presupuesto.evento.fin,
   );
 
   try {
@@ -1137,6 +1151,9 @@ async function guardarEventoReservadoPorDias(
   // El horario de cada día: el del día del que sale, o el del día más cercano si entra uno nuevo,
   // corrido hasta su fecha. Argentina no tiene horario de verano: correr días es sumar milisegundos.
   const horarios = dias.map((dia, i) => {
+    // El que se está editando, si viene (19/11/2026): los choques se controlan contra ese.
+    const delPedido = horarioDelPedido(dia);
+    if (delPedido) return delPedido;
     const origen = correspondencia.origen[i];
     const referencia =
       origen !== null && origen !== undefined
@@ -1323,6 +1340,26 @@ async function modificarPorDias(
   const total = sumarLineas(lineas);
   const fechaEmision = new Date();
 
+  // El horario de cada día (19/11/2026): el que se está editando, si viene, o el que ya tenía el día
+  // del que sale. Contra él se controla la hora de cada servicio, día por día.
+  const correspondencia = correspondenciaDeDias(
+    presupuesto.evento.dias.map((dia) => dia.fecha.getTime()),
+    dias.map((dia) => new Date(dia.fecha).getTime()),
+  );
+  const diaDeOrigen = (i: number) => {
+    const origen = correspondencia.origen[i];
+    return origen === null || origen === undefined ? undefined : presupuesto.evento.dias[origen];
+  };
+  dias.forEach((dia, i) => {
+    const control = horarioDelPedido(dia) ?? diaDeOrigen(i);
+    exigirHorasDentroDelEvento(
+      lineas.filter((linea) => linea.fechaDia === dia.fecha),
+      control?.inicio ?? null,
+      control?.fin ?? null,
+      `del ${textoDelDia(dia.fecha)}`,
+    );
+  });
+
   if (confirmado) {
     await guardarEventoReservadoPorDias(
       { id, presupuesto, pedido, dias, lineas, total, tipo, fechaEmision },
@@ -1336,11 +1373,17 @@ async function modificarPorDias(
     // después los salones de cada día y por último los datos del evento y del presupuesto.
     const diaIds = await repo.reemplazarDiasYLineas(
       id,
-      dias.map((dia) => ({
-        fecha: new Date(dia.fecha),
-        cantidadPersonas: dia.cantidadPersonas,
-        tipoJornada: dia.tipoJornada,
-      })),
+      dias.map((dia, i) => {
+        // El horario editado se guarda en un día que ya lo tenía (una consulta agendada); a uno sin
+        // horario se lo da el agendar, junto con la distribución.
+        const delPedido = horarioDelPedido(dia);
+        return {
+          fecha: new Date(dia.fecha),
+          cantidadPersonas: dia.cantidadPersonas,
+          tipoJornada: dia.tipoJornada,
+          ...(delPedido && diaDeOrigen(i)?.inicio ? delPedido : {}),
+        };
+      }),
       lineas,
       tx,
     );

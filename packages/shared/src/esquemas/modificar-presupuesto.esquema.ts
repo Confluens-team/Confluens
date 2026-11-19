@@ -183,6 +183,12 @@ export const esquemaDiaModificado = z.object({
     .default([])
     .refine(sinServiciosRepetidos, MENSAJE_SERVICIO_REPETIDO),
   adicionales: z.array(esquemaAdicional).default([]),
+  // El horario que se está editando para el día (19/11/2026): opcional, y los dos juntos. La hora de
+  // cada servicio se controla contra este y no contra el guardado, así que se puede ampliar el horario
+  // y agregar un servicio en la hora nueva en el mismo guardado. Se guarda en un día que ya tenía
+  // horario (o en un evento reservado); a uno sin horario se lo da el agendar.
+  inicio: esquemaFechaHora.optional(),
+  fin: esquemaFechaHora.optional(),
 });
 export type DiaModificado = z.infer<typeof esquemaDiaModificado>;
 
@@ -247,6 +253,21 @@ export const esquemaModificarPresupuesto = z
         }
       }
       exigirDiasSeguidos(datos.dias, ctx);
+      datos.dias.forEach((dia, i) => {
+        if ((dia.inicio === undefined) !== (dia.fin === undefined)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['dias', i, dia.inicio === undefined ? 'inicio' : 'fin'],
+            message: 'El horario del día va con el inicio y el fin',
+          });
+        } else if (dia.inicio && dia.fin && new Date(dia.fin) <= new Date(dia.inicio)) {
+          ctx.addIssue({
+            code: 'custom',
+            path: ['dias', i, 'fin'],
+            message: 'El fin del día tiene que ser después del inicio',
+          });
+        }
+      });
       if (datos.tipo === 'Corporativo') {
         datos.dias.forEach((dia, i) => {
           if (dia.salones.length === 0) {
@@ -296,7 +317,7 @@ export type ModificarPresupuestoDeUnDia = Omit<
   ModificarPresupuesto,
   'dias' | 'fecha' | 'cantidadPersonas' | 'tipoJornada'
 > &
-  Pick<DiaModificado, 'fecha' | 'cantidadPersonas' | 'tipoJornada'>;
+  Pick<DiaModificado, 'fecha' | 'cantidadPersonas' | 'tipoJornada' | 'inicio' | 'fin'>;
 
 /**
  * Los días de un pedido de modificación, en una sola forma: `dias` tal cual, o el único día que
