@@ -653,18 +653,26 @@ export async function reemplazarDiasYLineas(
       // cae sobre la fecha de otra que todavía no se movió (la fecha es única por evento).
       const orden = actuales.map((_, i) => i);
       if (mapa.corrimientoEnDias > 0) orden.reverse();
+      // Un día que se corre sin horario nuevo lleva el suyo con él: si no, una consulta ya agendada
+      // quedaría con la fecha nueva y el horario de la vieja, y la seña reservaría el salón el día que
+      // ya no es (16/11/2026). Argentina no tiene horario de verano: correr es sumar milisegundos.
+      const corrimientoEnMs = mapa.corrimientoEnDias * 86_400_000;
+      const corrido = (instante: Date) => new Date(instante.getTime() + corrimientoEnMs);
       for (const i of orden) {
         const dia = dias[i]!;
+        const actual = actuales[i]!;
         await t.eventoDia.update({
-          where: { id: actuales[i]!.id },
+          where: { id: actual.id },
           data: {
             fecha: dia.fecha,
             cantidadPersonas: dia.cantidadPersonas,
             tipoJornada: dia.tipoJornada,
+            ...(dia.inicio === undefined && actual.inicio && { inicio: corrido(actual.inicio) }),
+            ...(dia.fin === undefined && actual.fin && { fin: corrido(actual.fin) }),
             ...horario(dia),
           },
         });
-        diaIds.set(iso(dia.fecha), actuales[i]!.id);
+        diaIds.set(iso(dia.fecha), actual.id);
       }
     } else {
       const usados = new Set(mapa.origen.filter((origen) => origen !== null));

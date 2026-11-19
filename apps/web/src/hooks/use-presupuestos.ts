@@ -114,9 +114,11 @@ export function usePresupuestos(filtros: FiltrosPresupuestos) {
 }
 
 // HU-12: una consulta con todo lo necesario para mostrarla y editarla.
-export function useConsulta(id: number) {
+// Sin id (un evento sin presupuesto) no se pide nada.
+export function useConsulta(id: number | undefined) {
   return useQuery({
     queryKey: ['presupuestos', 'consulta', id],
+    enabled: id !== undefined,
     queryFn: async () => {
       const respuesta = await apiFetch<RespuestaExito<ConsultaDetallada>>(`/presupuestos/${id}`);
       return respuesta.data;
@@ -125,9 +127,11 @@ export function useConsulta(id: number) {
 }
 
 // HU-50: el aviso preventivo de solapamientos de una consulta (día, salón, evento y horario).
-export function useChoquesDeConsulta(id: number) {
+// Sin id (un evento sin presupuesto, o uno que ya no está en consulta) no se pide nada.
+export function useChoquesDeConsulta(id: number | undefined) {
   return useQuery({
     queryKey: ['presupuestos', 'consulta', id, 'choques'],
+    enabled: id !== undefined,
     queryFn: async () => {
       const respuesta = await apiFetch<RespuestaExito<ChoquesDeConsulta>>(
         `/presupuestos/${id}/choques`,

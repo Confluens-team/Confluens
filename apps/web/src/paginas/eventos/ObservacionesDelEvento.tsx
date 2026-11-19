@@ -73,7 +73,6 @@ export function ObservacionesDelEvento({
           placeholder="Pedidos del cliente, acuerdos, avisos para el equipo…"
           className="min-h-24 border-dashed"
         />
-        <p className="text-xs text-muted-foreground">Solo lo ve el personal.</p>
       </CardContent>
     </>
   );

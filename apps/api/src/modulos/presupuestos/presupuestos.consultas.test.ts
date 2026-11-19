@@ -745,6 +745,32 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
   });
+
+  // 16/11/2026: una consulta ya agendada (con horario, todavía sin seña) que cambia de fecha. Si el
+  // horario se quedara en la fecha vieja, la seña reservaría el salón el día que ya no es.
+  it('si cambia la fecha de una consulta agendada, el horario se corre con ella', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta(
+        {},
+        {
+          inicio: new Date('2026-11-15T20:00:00.000Z'),
+          fin: new Date('2026-11-16T00:00:00.000Z'),
+        },
+      ),
+    );
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, fecha: '2026-11-17' });
+
+    expect(respuesta.status).toBe(200);
+    expect(actualizarEventoMock.mock.calls[0]![1]).toMatchObject({
+      fecha: new Date('2026-11-17'),
+      inicio: new Date('2026-11-17T20:00:00.000Z'),
+      fin: new Date('2026-11-18T00:00:00.000Z'),
+    });
+  });
 });
 
 // RN-09: el Responsable de Eventos modifica en todo momento, también un evento ya confirmado

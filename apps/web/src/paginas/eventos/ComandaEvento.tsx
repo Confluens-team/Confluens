@@ -342,7 +342,7 @@ function Hoja({
 // Las hojas de la comanda: una por día. Las notas se escriben una sola vez para todo el evento: el
 // borrador vive acá mientras se escribe y se manda con «Guardar», porque guardar en cada tecla
 // pegaría a la API en cada letra.
-function Comanda({ consulta }: { consulta: ConsultaDetallada }) {
+function Comanda({ consulta, soloDia }: { consulta: ConsultaDetallada; soloDia?: number }) {
   const { evento } = consulta;
   const [texto, setTexto] = useState(evento.observacionesComanda ?? '');
   const guardar = useGuardarObservacionesComanda(evento.id);
@@ -356,6 +356,18 @@ function Comanda({ consulta }: { consulta: ConsultaDetallada }) {
   };
   if (consulta.dias.length <= 1) {
     return <Hoja consulta={consulta} notas={notas} ultima />;
+  }
+  // La comanda de un solo día, la que se pide desde ese día del evento.
+  const delDia = soloDia !== undefined ? consulta.dias[soloDia] : undefined;
+  if (delDia) {
+    return (
+      <Hoja
+        consulta={consulta}
+        dia={{ indice: soloDia!, total: consulta.dias.length, datos: delDia }}
+        notas={notas}
+        ultima
+      />
+    );
   }
   return (
     <div className="space-y-6 print:space-y-0">
@@ -374,9 +386,12 @@ function Comanda({ consulta }: { consulta: ConsultaDetallada }) {
 
 export function ComandaEvento({
   presupuestoId,
+  dia,
   onVolver,
 }: {
   presupuestoId: number;
+  // El índice del día: sin él salen las comandas de todos los días.
+  dia?: number;
   onVolver: () => void;
 }) {
   const consulta = useConsulta(presupuestoId);
@@ -390,7 +405,7 @@ export function ComandaEvento({
         {consulta.data && (
           <Button size="sm" onClick={() => window.print()}>
             <Printer />{' '}
-            {consulta.data.dias.length > 1
+            {consulta.data.dias.length > 1 && dia === undefined
               ? `Imprimir las ${consulta.data.dias.length} comandas`
               : 'Imprimir comanda'}
           </Button>
@@ -409,7 +424,7 @@ export function ComandaEvento({
           que lo que ves acá todavía puede cambiar.
         </p>
       )}
-      {consulta.data && <Comanda consulta={consulta.data} />}
+      {consulta.data && <Comanda consulta={consulta.data} soloDia={dia} />}
     </div>
   );
 }
