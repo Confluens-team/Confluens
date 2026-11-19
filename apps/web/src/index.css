@@ -329,6 +329,32 @@
   outline-offset: 1px;
 }
 
+/* Pantalla de carga: el isotipo a color se revela de abajo hacia arriba (clip-path), se queda
+   lleno un instante y vuelve a vaciarse. Con movimiento reducido queda fijo y entero. */
+@keyframes carga-relleno {
+  0% {
+    clip-path: inset(100% 0 0 0);
+  }
+  70%,
+  85% {
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 0;
+  }
+}
+
+.carga-relleno {
+  animation: carga-relleno 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carga-relleno {
+    animation: none;
+  }
+}
+
 @media print {
   body {
     background: white;

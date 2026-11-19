@@ -2,6 +2,7 @@ import { type ConsultaDetallada, veAuditoria } from '@confluens/shared';
 import { ArrowLeft, FileText, History, Wallet } from 'lucide-react';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Pestanias } from '@/components/Pestanias';
 import { Button } from '@/components/ui/button';
 import { useConfiguracionPrecios } from '@/hooks/use-configuracion-precios';
@@ -108,9 +109,7 @@ export function EditarConsulta({
         {(consulta.isLoading ||
           salones.isLoading ||
           servicios.isLoading ||
-          configuracion.isLoading) && (
-          <p className="text-sm text-muted-foreground">Cargando la consulta…</p>
-        )}
+          configuracion.isLoading) && <Cargando texto="Cargando la consulta…" />}
         {(consulta.isError || salones.isError || servicios.isError || configuracion.isError) && (
           <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
             No se pudo cargar la consulta.

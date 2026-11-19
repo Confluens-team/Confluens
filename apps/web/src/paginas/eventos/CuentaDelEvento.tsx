@@ -3,6 +3,7 @@ import { Ban, CalendarDays } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAnularPago, usePagosDeEvento } from '@/hooks/use-pagos';
@@ -34,7 +35,7 @@ export function CuentaDelEvento({ evento }: { evento: EventoDetallado }) {
   const [volvioAConfirmado, setVolvioAConfirmado] = useState(false);
 
   if (cuenta.isLoading) {
-    return <p className="text-sm text-muted-foreground">Cargando la cuenta…</p>;
+    return <Cargando texto="Cargando la cuenta…" />;
   }
   if (cuenta.isError || !cuenta.data) {
     return <p className="text-sm text-destructive">No se pudo cargar la cuenta del evento.</p>;

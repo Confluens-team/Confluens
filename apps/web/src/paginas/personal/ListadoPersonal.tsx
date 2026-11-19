@@ -11,6 +11,7 @@ import {
 import { ArchiveRestore, Ban, KeyRound, Pencil } from 'lucide-react';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useCambiarEstadoUsuario, useUsuarios } from '@/hooks/use-usuarios';
@@ -94,7 +95,7 @@ export function ListadoPersonal({
           </select>
         </div>
       </div>
-      {isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
+      {isLoading && <Cargando texto="Cargando…" />}
       {isError && (
         <p className="text-sm text-destructive">No se pudo cargar el listado del personal.</p>
       )}

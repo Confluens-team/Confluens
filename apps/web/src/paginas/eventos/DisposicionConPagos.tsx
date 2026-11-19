@@ -1,3 +1,4 @@
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useEvento } from '@/hooks/use-eventos';
 import { CuentaDelEvento } from './CuentaDelEvento';
@@ -43,7 +44,7 @@ export function DisposicionConPagos({
     formulario = isError ? (
       <p className="text-sm text-destructive">No se pudo cargar la cuenta del evento.</p>
     ) : (
-      <p className="text-sm text-muted-foreground">Cargando la cuenta…</p>
+      <Cargando texto="Cargando la cuenta…" />
     );
   } else if (!presupuesto || sinArmar) {
     formulario = (

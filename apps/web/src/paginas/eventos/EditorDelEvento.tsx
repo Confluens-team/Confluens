@@ -1,3 +1,4 @@
+import { Cargando } from '@/components/PantallaDeCarga';
 import { useConfiguracionPrecios } from '@/hooks/use-configuracion-precios';
 import { useConsulta } from '@/hooks/use-presupuestos';
 import { useSalones } from '@/hooks/use-salones';
@@ -31,7 +32,7 @@ export function EditorDelEvento({
     return <p className="text-sm text-destructive">No se pudo cargar el detalle del evento.</p>;
   }
   if (!consulta.data || !salones.data || !servicios.data || !configuracion.data) {
-    return <p className="text-sm text-muted-foreground">Cargando el detalle…</p>;
+    return <Cargando texto="Cargando el detalle…" />;
   }
   return (
     <EditarConsultaPorDias

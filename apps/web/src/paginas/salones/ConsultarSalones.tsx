@@ -7,6 +7,7 @@ import {
 import { ArchiveRestore, Ban, CheckCircle2, Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -180,7 +181,7 @@ export function ConsultarSalones() {
   }
 
   if (isLoading) {
-    return <p className="p-6 text-muted-foreground">Cargando salones…</p>;
+    return <Cargando texto="Cargando salones…" className="p-6" />;
   }
 
   if (isError) {

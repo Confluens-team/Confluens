@@ -12,6 +12,7 @@ import {
 } from 'react-router';
 
 import { EncabezadoSitio } from '@/components/EncabezadoSitio';
+import { PantallaDeCarga } from '@/components/PantallaDeCarga';
 import { useCerrarSesion, useSesion } from '@/hooks/use-sesion';
 import { AccesoCliente } from '@/paginas/auth/AccesoCliente';
 import { IniciarSesion } from '@/paginas/auth/IniciarSesion';
@@ -230,13 +231,7 @@ export default function App() {
 
   // Mientras se resuelve GET /auth/yo no se sabe todavía si hay sesión: decidir la ruta antes
   // causaría un parpadeo (login → panel) en cada recarga para quien sí tiene sesión vigente.
-  if (isLoading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
-        <p className="text-sm text-muted-foreground">Cargando…</p>
-      </main>
-    );
-  }
+  if (isLoading) return <PantallaDeCarga />;
 
   return (
     <>

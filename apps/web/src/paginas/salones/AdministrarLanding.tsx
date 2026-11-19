@@ -3,6 +3,7 @@ import { ImageOff, ImagePlus, Maximize2, Trash2, X } from 'lucide-react';
 import { Dialog } from 'radix-ui';
 import { useRef, useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
@@ -216,7 +217,7 @@ export function AdministrarLanding({ puedePublicar }: { puedePublicar: boolean }
       <section className="space-y-3">
         <h2 className="text-lg font-medium">Salones</h2>
 
-        {cargandoSalones && <p className="text-sm text-muted-foreground">Cargando salones…</p>}
+        {cargandoSalones && <Cargando texto="Cargando salones…" />}
         {errorSalones && (
           <p className="text-sm text-destructive">No se pudieron cargar los salones.</p>
         )}
@@ -281,7 +282,7 @@ export function AdministrarLanding({ puedePublicar }: { puedePublicar: boolean }
           la foto.
         </p>
 
-        {cargandoServicios && <p className="text-sm text-muted-foreground">Cargando servicios…</p>}
+        {cargandoServicios && <Cargando texto="Cargando servicios…" />}
         {errorServicios && (
           <p className="text-sm text-destructive">No se pudieron cargar los servicios.</p>
         )}

@@ -1,6 +1,7 @@
 import { desglosarIva, type EstadoEvento, type FiltrosHistorialCliente } from '@confluens/shared';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { SelectorFecha } from '@/components/SelectorFechaHora';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { Button } from '@/components/ui/button';
@@ -102,7 +103,7 @@ export function HistorialCliente({
         </p>
       )}
 
-      {historial.isLoading && <p className="text-sm text-muted-foreground">Cargando historial…</p>}
+      {historial.isLoading && <Cargando texto="Cargando historial…" />}
       {historial.isError && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           No se pudo cargar el historial del cliente.

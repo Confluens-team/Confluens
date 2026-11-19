@@ -8,6 +8,7 @@ import {
 import { ChevronLeft, ChevronRight, Download, History, ShieldAlert, X } from 'lucide-react';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Pestanias } from '@/components/Pestanias';
 import { SelectorFecha } from '@/components/SelectorFechaHora';
 import { Button, buttonVariants } from '@/components/ui/button';
@@ -361,7 +362,7 @@ export function AuditoriaRegistro({ soloPendientes = false }: { soloPendientes?:
         </div>
       </div>
 
-      {isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
+      {isLoading && <Cargando texto="Cargando…" />}
       {isError && <p className="text-sm text-destructive">No se pudo cargar la auditoría.</p>}
 
       {meta && (

@@ -2,6 +2,7 @@ import { type EstadoEvento, veAuditoria } from '@confluens/shared';
 import { Check, FileText, History, Repeat2, Wallet, XCircle } from 'lucide-react';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { formatearFechaNumerica } from '@/lib/formato';
 import { textoDeDias } from '@/lib/rango-de-fechas';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
@@ -123,7 +124,7 @@ export function DetalleEvento({
   // La consulta del presupuesto vigente: el seguimiento (aviso y envío) y el PDF salen de ahí.
   const consulta = useConsulta(presupuestoVigente?.id);
 
-  if (isLoading) return <p className="py-6 text-sm text-muted-foreground">Cargando…</p>;
+  if (isLoading) return <Cargando className="py-6" />;
   if (isError || !evento) {
     return <p className="py-6 text-sm text-destructive">No se pudo cargar el evento.</p>;
   }

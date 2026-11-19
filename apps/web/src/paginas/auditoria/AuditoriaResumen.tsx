@@ -1,5 +1,6 @@
 import type { EntidadAuditada, RegistroAuditoria } from '@confluens/shared';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { useResumenAuditoria } from '@/hooks/use-auditoria';
 import {
   etiquetaDeRegistro,
@@ -99,7 +100,7 @@ function CambioParaRevisar({ registro }: { registro: RegistroAuditoria }) {
 export function AuditoriaResumen({ onVerPendientes }: { onVerPendientes: () => void }) {
   const { data: resumen, isLoading, isError } = useResumenAuditoria(7);
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Cargando…</p>;
+  if (isLoading) return <Cargando texto="Cargando…" />;
   if (isError || !resumen) {
     return <p className="text-sm text-destructive">No se pudo cargar el resumen.</p>;
   }

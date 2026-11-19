@@ -34,6 +34,7 @@ import {
 import { useState } from 'react';
 
 import { InputEntero } from '@/components/InputEntero';
+import { Cargando } from '@/components/PantallaDeCarga';
 import { SelectorHora, SelectorRangoFechas } from '@/components/SelectorFechaHora';
 import { SelectorModalidad } from '@/components/SelectorModalidad';
 import { Button } from '@/components/ui/button';
@@ -952,7 +953,7 @@ export function CotizarEvento({
             precios por {nombreDeJornada(jornada).toLowerCase()}, sin IVA
           </span>
         </div>
-        {salones.isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
+        {salones.isLoading && <Cargando texto="Cargando…" />}
         {cantidadPersonas > 0 && entran.length === 0 && masGrande && (
           <p className="flex items-start gap-2 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
             <AlertTriangle className="mt-0.5 size-4 shrink-0" />
@@ -1033,7 +1034,7 @@ export function CotizarEvento({
 
       <section className="flex flex-col gap-3" aria-label="Gastronomía">
         <span className="text-sm font-medium">Gastronomía</span>
-        {servicios.isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
+        {servicios.isLoading && <Cargando texto="Cargando…" />}
         {errores['servicios'] && <p className="text-sm text-destructive">{errores['servicios']}</p>}
         {errores['horasDeServicios'] && (
           <p className="text-sm text-destructive">{errores['horasDeServicios']}</p>

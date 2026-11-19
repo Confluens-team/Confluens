@@ -2,6 +2,7 @@ import type { RegistroAuditoria } from '@confluens/shared';
 import { ArrowRight } from 'lucide-react';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { useHistorialDeEvento } from '@/hooks/use-auditoria';
 import {
   cantidadDeCampos,
@@ -107,7 +108,7 @@ export function HistorialDelRegistro({ eventoId }: { eventoId: number }) {
   const { data: historial, isLoading, isError } = useHistorialDeEvento(eventoId);
   const [elegido, setElegido] = useState<number | null>(null);
 
-  if (isLoading) return <p className="text-sm text-muted-foreground">Cargando el historial…</p>;
+  if (isLoading) return <Cargando texto="Cargando el historial…" />;
   if (isError || !historial) {
     return <p className="text-sm text-destructive">No se pudo cargar el historial.</p>;
   }
