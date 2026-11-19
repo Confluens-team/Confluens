@@ -8,6 +8,7 @@ const findFirst = vi.fn();
 
 vi.mock('../../lib/prisma.js', () => ({ prisma: { evento: { findMany, findFirst } } }));
 
+const { conActor } = await import('../../lib/auditoria.js');
 const { buscarSolapamiento, cancelar, listarAgenda } = await import('./eventos.repositorio.js');
 
 // RN-12: dos eventos no pueden ocupar el mismo salón al mismo tiempo. El borde es la clave: la base
@@ -24,15 +25,18 @@ describe('eventos.repositorio: buscarSolapamiento (RN-12)', () => {
   });
 
   const whereDeLaBusqueda = () => findFirst.mock.calls[0]![0].where;
+  // HU-50: la comparación es contra el horario de CADA DÍA del otro evento (su renglón del salón), no
+  // contra el resumen del evento: así un evento de varios días no ocupa las noches entre un día y otro.
+  const renglonDelSalon = () => whereDeLaBusqueda().salones.some;
 
   it('compara con desigualdades estrictas: tocarse en el borde no es solaparse', async () => {
     await buscarSolapamiento({ salonIds: [5], inicio, fin, excluirEventoId: 20 });
 
     // Existente.inicio < nuevo.fin  Y  existente.fin > nuevo.inicio.
-    expect(whereDeLaBusqueda().inicio).toEqual({ lt: fin });
-    expect(whereDeLaBusqueda().fin).toEqual({ gt: inicio });
-    expect(whereDeLaBusqueda().inicio).not.toHaveProperty('lte');
-    expect(whereDeLaBusqueda().fin).not.toHaveProperty('gte');
+    expect(renglonDelSalon().inicio).toEqual({ lt: fin });
+    expect(renglonDelSalon().fin).toEqual({ gt: inicio });
+    expect(renglonDelSalon().inicio).not.toHaveProperty('lte');
+    expect(renglonDelSalon().fin).not.toHaveProperty('gte');
   });
 
   it('solo cuentan los eventos que ocupan el salón: Reservado y Cobrado, no EnConsulta ni Cancelado', async () => {
@@ -50,7 +54,8 @@ describe('eventos.repositorio: buscarSolapamiento (RN-12)', () => {
   it('choca si comparte cualquiera de los salones del evento', async () => {
     await buscarSolapamiento({ salonIds: [5, 9], inicio, fin, excluirEventoId: 20 });
 
-    expect(whereDeLaBusqueda().salones).toEqual({ some: { salonId: { in: [5, 9] } } });
+    // El salón y el horario se piden sobre el MISMO renglón: no vale un salón de un día y un horario de otro.
+    expect(renglonDelSalon()).toMatchObject({ salonId: { in: [5, 9] } });
   });
 
   it('devuelve el evento en conflicto, o null si el salón está libre', async () => {
@@ -114,13 +119,13 @@ describe('eventos.repositorio: listarAgenda', () => {
     expect(whereDeLaConsulta().salones).toBeUndefined();
   });
 
-  it('acota la fecha del evento con desde y hasta, ambos inclusive', async () => {
+  // HU-50: un evento de varios días entra si alguno de sus días cae en el rango, no solo el primero:
+  // empieza antes del final del rango y termina después de su comienzo.
+  it('acota por rango superpuesto, con desde y hasta inclusive', async () => {
     await listarAgenda({ desde: '2026-11-01', hasta: '2026-11-30' });
 
-    expect(whereDeLaConsulta().fecha).toEqual({
-      gte: new Date('2026-11-01'),
-      lte: new Date('2026-11-30'),
-    });
+    expect(whereDeLaConsulta().fecha).toEqual({ lte: new Date('2026-11-30') });
+    expect(whereDeLaConsulta().fechaFin).toEqual({ gte: new Date('2026-11-01') });
   });
 });
 
@@ -129,19 +134,28 @@ describe('eventos.repositorio: listarAgenda', () => {
 // trigger de EventoSalon libera el salón al propagar el estado (ADR 0011).
 describe('eventos.repositorio: cancelar', () => {
   const presupuestoUpdateMany = vi.fn();
+  const presupuestoFindMany = vi.fn();
   const eventoUpdate = vi.fn();
+  const eventoFindUniqueOrThrow = vi.fn();
+  const auditLogCreateMany = vi.fn();
   const tx = {
-    presupuesto: { updateMany: presupuestoUpdateMany },
-    evento: { update: eventoUpdate },
+    presupuesto: { updateMany: presupuestoUpdateMany, findMany: presupuestoFindMany },
+    evento: { update: eventoUpdate, findUniqueOrThrow: eventoFindUniqueOrThrow },
+    auditLog: { createMany: auditLogCreateMany },
   };
+  // Cancela el personal: la auditoría toma el usuario de la sesión (HU-25 del backlog).
+  const cancelarComo = (usuarioId: number) =>
+    conActor({ usuarioId, rol: 'RESPONSABLE_EVENTOS' }, () => cancelar(20, tx as never));
 
   beforeEach(() => {
-    presupuestoUpdateMany.mockReset();
-    eventoUpdate.mockReset();
+    vi.clearAllMocks();
+    presupuestoFindMany.mockResolvedValue([{ id: 7, estado: 'Confirmado' }]);
+    eventoFindUniqueOrThrow.mockResolvedValue({ id: 20, estado: 'Reservado' });
+    eventoUpdate.mockResolvedValue({ id: 20, estado: 'Cancelado' });
   });
 
   it('pasa el evento y sus presupuestos Estimado y Confirmado a Cancelado', async () => {
-    await cancelar(20, tx as never);
+    await cancelarComo(1);
 
     expect(presupuestoUpdateMany).toHaveBeenCalledWith({
       where: { eventoId: 20, estado: { in: ['Estimado', 'Confirmado'] } },
@@ -154,8 +168,28 @@ describe('eventos.repositorio: cancelar', () => {
   });
 
   it('no toca los pagos del evento', async () => {
-    await cancelar(20, tx as never);
+    await cancelarComo(1);
 
-    expect(Object.keys(tx).sort()).toEqual(['evento', 'presupuesto']);
+    expect(Object.keys(tx).sort()).toEqual(['auditLog', 'evento', 'presupuesto']);
+  });
+
+  it('audita el estado del evento y el de cada presupuesto cancelado', async () => {
+    await cancelarComo(4);
+
+    expect(auditLogCreateMany.mock.calls[0]![0].data).toEqual([
+      expect.objectContaining({
+        usuarioId: 4,
+        entidad: 'Evento',
+        entidadId: '20',
+        valorAnterior: { estado: 'Reservado' },
+        valorNuevo: { estado: 'Cancelado' },
+      }),
+      expect.objectContaining({
+        entidad: 'Presupuesto',
+        entidadId: '7',
+        valorAnterior: { estado: 'Confirmado' },
+        valorNuevo: { estado: 'Cancelado' },
+      }),
+    ]);
   });
 });

@@ -1,6 +1,7 @@
 import type { MedioPago } from '@confluens/shared';
 import { Pencil } from 'lucide-react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Button } from '@/components/ui/button';
 import { useListadoMediosPago } from '@/hooks/use-pagos';
 import { cn } from '@/lib/utils';
@@ -13,7 +14,7 @@ export function ListadoMediosPago({ onModificar }: { onModificar: (medio: MedioP
   return (
     <div className="space-y-2">
       <h2 className="text-lg font-medium">Catálogo actual</h2>
-      {isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
+      {isLoading && <Cargando texto="Cargando…" />}
       {isError && (
         <p className="text-sm text-destructive">No se pudo cargar el catálogo de medios de pago.</p>
       )}

@@ -1,4 +1,5 @@
 import type {
+  CambiarMiContrasena,
   Credenciales,
   PerfilCliente,
   RegistroCliente,
@@ -129,5 +130,24 @@ export function usePerfilCliente(habilitado: boolean) {
       return respuesta.data;
     },
     enabled: habilitado,
+  });
+}
+
+// HU-30 del backlog: cambiar la contraseña desde Mi cuenta. La API renueva la cookie con la versión
+// de sesión nueva (las otras sesiones se cierran); la sesión de esta pestaña sigue igual.
+export function useCambiarMiContrasena() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (datos: CambiarMiContrasena) => {
+      const respuesta = await apiFetch<RespuestaExito<Sesion>>('/auth/contrasena', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datos),
+      });
+      return respuesta.data;
+    },
+    onSuccess: (sesion) => {
+      queryClient.setQueryData(CLAVE_SESION, sesion);
+    },
   });
 }

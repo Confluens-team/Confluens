@@ -1,6 +1,7 @@
 import { Mail, Phone, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Input } from '@/components/ui/input';
 import { useClientes } from '@/hooks/use-clientes';
 import { useEtiquetas } from '@/hooks/use-etiquetas';
@@ -13,10 +14,19 @@ import { FichaCliente } from './FichaCliente';
 // eventos y solicitudes lleva y su etiqueta interna, en orden alfabético por apellido y nombre.
 // Lo único editable es la etiqueta: los datos de contacto los mantiene el cliente desde su cuenta.
 // Cada nombre abre la ficha del cliente.
-export function ListadoClientes() {
+export function ListadoClientes({ reinicio }: { reinicio?: string }) {
   const [texto, setTexto] = useState('');
   const [busqueda, setBusqueda] = useState('');
   const [abierto, setAbierto] = useState<number | null>(null);
+
+  // Tocar la pestaña activa (o el logo) estando adentro de un detalle vuelve al listado: el panel manda
+  // una señal nueva en cada navegación y acá se cierra lo que estaba abierto. Se compara en el render
+  // y no con un efecto para no pintar un cuadro con el detalle viejo.
+  const [reinicioVisto, setReinicioVisto] = useState(reinicio);
+  if (reinicioVisto !== reinicio) {
+    setReinicioVisto(reinicio);
+    setAbierto(null);
+  }
   const clientes = useClientes({ busqueda });
   const etiquetas = useEtiquetas();
 
@@ -54,7 +64,7 @@ export function ListadoClientes() {
         />
       </div>
 
-      {clientes.isLoading && <p className="text-sm text-muted-foreground">Cargando clientes…</p>}
+      {clientes.isLoading && <Cargando texto="Cargando clientes…" />}
       {clientes.isError && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           No se pudieron cargar los clientes.

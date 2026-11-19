@@ -1,5 +1,6 @@
 import type { FiltrosHistorialCliente, ModificarCliente } from '@confluens/shared';
 
+import { registrarAuditoria } from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
 
 // Capa de acceso a datos del módulo. Separada del servicio para poder mockearla en
@@ -50,15 +51,15 @@ export async function listarEventosDeCliente(
     where: {
       clienteId,
       estado: estado ? { in: estado } : undefined,
-      fecha: {
-        gte: desde ? new Date(desde) : undefined,
-        lte: hasta ? new Date(hasta) : undefined,
-      },
+      // HU-50: un evento de varios días entra si alguno de sus días cae en el rango.
+      fecha: { lte: hasta ? new Date(hasta) : undefined },
+      fechaFin: { gte: desde ? new Date(desde) : undefined },
     },
     orderBy: [{ fecha: 'desc' }, { id: 'desc' }],
     select: {
       id: true,
       fecha: true,
+      fechaFin: true,
       inicio: true,
       fin: true,
       estado: true,
@@ -66,8 +67,10 @@ export async function listarEventosDeCliente(
       tipoSocial: true,
       tipoSocialDetalle: true,
       cantidadPersonas: true,
+      // HU-50: el salón se reserva por día, así que uno que se usa varios días tiene varias filas.
       salones: {
         select: { salon: { select: { id: true, nombre: true } } },
+        distinct: ['salonId'],
         orderBy: { salonId: 'asc' },
       },
       presupuestos: { orderBy: { creadoEn: 'desc' }, take: 1, select: { id: true, total: true } },
@@ -90,10 +93,20 @@ export async function existeEtiqueta(id: number) {
 
 // Devuelve el cliente con el mismo shape que el listado, para que la web lo reemplace en su lugar.
 export async function asignarEtiqueta(clienteId: number, etiquetaId: number | null) {
-  return prisma.cliente.update({
-    where: { id: clienteId },
-    data: { etiquetaId },
-    include: CON_RESUMEN,
+  return prisma.$transaction(async (tx) => {
+    const anterior = await tx.cliente.findUniqueOrThrow({ where: { id: clienteId } });
+    const cliente = await tx.cliente.update({
+      where: { id: clienteId },
+      data: { etiquetaId },
+      include: CON_RESUMEN,
+    });
+    await registrarAuditoria(tx, {
+      entidad: 'Cliente',
+      entidadId: clienteId,
+      anterior,
+      nuevo: cliente,
+    });
+    return cliente;
   });
 }
 
@@ -110,15 +123,25 @@ export async function existeOtroClienteConCorreo(correo: string, excluirId: numb
 // HU-17: actualiza solo los datos de contacto. Los eventos, presupuestos y pagos cuelgan del id de
 // la ficha, así que el historial no se toca. Devuelve el mismo shape que el listado.
 export async function modificarDatos(clienteId: number, datos: ModificarCliente) {
-  return prisma.cliente.update({
-    where: { id: clienteId },
-    data: {
-      nombre: datos.nombre,
-      apellido: datos.apellido ?? null,
-      telefono: datos.telefono,
-      correo: datos.correo,
-    },
-    include: CON_RESUMEN,
+  return prisma.$transaction(async (tx) => {
+    const anterior = await tx.cliente.findUniqueOrThrow({ where: { id: clienteId } });
+    const cliente = await tx.cliente.update({
+      where: { id: clienteId },
+      data: {
+        nombre: datos.nombre,
+        apellido: datos.apellido ?? null,
+        telefono: datos.telefono,
+        correo: datos.correo,
+      },
+      include: CON_RESUMEN,
+    });
+    await registrarAuditoria(tx, {
+      entidad: 'Cliente',
+      entidadId: clienteId,
+      anterior,
+      nuevo: cliente,
+    });
+    return cliente;
   });
 }
 

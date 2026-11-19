@@ -1,7 +1,6 @@
 import { desglosarIva, type EstadoConsulta, type FiltrosPresupuestos } from '@confluens/shared';
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   FileCheck,
   FileText,
@@ -12,6 +11,7 @@ import {
 } from 'lucide-react';
 import { type MouseEvent, useEffect, useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { SelectorFecha } from '@/components/SelectorFechaHora';
 import { BadgeTipoEvento } from '@/components/BadgeTipoEvento';
 import { EtiquetaCliente } from '@/components/EtiquetaCliente';
@@ -22,9 +22,9 @@ import { IconoEstado } from '@/components/IconoEstado';
 import { useOcultarConsulta, usePresupuestos } from '@/hooks/use-presupuestos';
 import { ErrorApiCliente } from '@/lib/api';
 import { fechaLocal, formatearPesos, nombreCompleto, nombresDeSalones } from '@/lib/formato';
+import { textoDeDias } from '@/lib/rango-de-fechas';
 import { COLORES_TIPO_EVENTO } from '@/lib/tipo-evento';
 import { cn } from '@/lib/utils';
-import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
 
 import { EditarConsulta } from './EditarConsulta';
 
@@ -71,7 +71,7 @@ const fechaCompacta = (fecha: Date) =>
 // IVA: el desglose completo que pide RN-05 (subtotal, IVA 21% y total) va en el presupuesto, que es
 // la consulta y el documento imprimible, no en un índice de muchos. Tres columnas de importes era
 // lo que no dejaba entrar la tabla sin scroll horizontal. Cada fila abre la consulta (HU-12).
-export function ListadoConsultas() {
+export function ListadoConsultas({ reinicio }: { reinicio?: string }) {
   const [estado, setEstado] = useState<EstadoConsulta | undefined>();
   const [textoCliente, setTextoCliente] = useState('');
   const [cliente, setCliente] = useState('');
@@ -80,7 +80,15 @@ export function ListadoConsultas() {
   const [abierta, setAbierta] = useState<number | null>(null);
   // Lo que pasó con la última consulta que se cerró (guardada o dada de baja).
   const [aviso, setAviso] = useState<string | null>(null);
-  const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
+
+  // Tocar la pestaña activa (o el logo) estando adentro de un detalle vuelve al listado: el panel manda
+  // una señal nueva en cada navegación y acá se cierra lo que estaba abierto. Se compara en el render
+  // y no con un efecto para no pintar un cuadro con el detalle viejo.
+  const [reinicioVisto, setReinicioVisto] = useState(reinicio);
+  if (reinicioVisto !== reinicio) {
+    setReinicioVisto(reinicio);
+    setAbierta(null);
+  }
 
   // La búsqueda por cliente espera a que se deje de escribir para no pedir una vez por tecla.
   useEffect(() => {
@@ -122,28 +130,8 @@ export function ListadoConsultas() {
   // al listado, arriba de todo, con el aviso de lo que pasó.
   function cerrar(mensaje: string | null) {
     setAbierta(null);
-    setEventoAbierto(null);
     setAviso(mensaje);
     window.scrollTo({ top: 0 });
-  }
-
-  // Agendar y cobrar viven en el detalle del evento (HU-13 y HU-14): se abre desde la consulta y
-  // se vuelve a ella.
-  if (abierta !== null && eventoAbierto !== null) {
-    return (
-      <div className="space-y-2">
-        <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
-          <ArrowLeft /> Volver a la consulta {abierta}
-        </Button>
-        <DetalleEvento
-          eventoId={eventoAbierto}
-          onVerPresupuesto={(id) => {
-            setEventoAbierto(null);
-            setAbierta(id);
-          }}
-        />
-      </div>
-    );
   }
 
   if (abierta !== null) {
@@ -160,7 +148,6 @@ export function ListadoConsultas() {
           )
         }
         onDadaDeBaja={(consulta) => cerrar(`Consulta ${consulta.id} dada de baja.`)}
-        onAbrirEvento={setEventoAbierto}
       />
     );
   }
@@ -251,9 +238,7 @@ export function ListadoConsultas() {
         )}
       </div>
 
-      {presupuestos.isLoading && (
-        <p className="text-sm text-muted-foreground">Cargando las consultas…</p>
-      )}
+      {presupuestos.isLoading && <Cargando texto="Cargando las consultas…" />}
       {presupuestos.isError && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           No se pudieron cargar las consultas.
@@ -376,6 +361,13 @@ export function ListadoConsultas() {
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         {fechaCorta(fechaLocal(presupuesto.fechaEvento))}
+                        {/* HU-50: un evento de varios días muestra hasta cuándo dura. */}
+                        {presupuesto.fechaFinEvento !== presupuesto.fechaEvento && (
+                          <span className="block text-xs text-muted-foreground">
+                            al {fechaCorta(fechaLocal(presupuesto.fechaFinEvento))} ·{' '}
+                            {textoDeDias(presupuesto.fechaEvento, presupuesto.fechaFinEvento)}
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         <p>
@@ -418,7 +410,7 @@ export function ListadoConsultas() {
                         {expirado && (
                           <p className="mt-1 flex items-start gap-1 text-xs font-medium text-estado-expirado-texto">
                             <AlertTriangle className="mt-px size-3 shrink-0" />
-                            Presupuesto vencido, recalcular
+                            Presupuesto vencido
                           </p>
                         )}
                         <p className="mt-1.5 flex items-center gap-2">

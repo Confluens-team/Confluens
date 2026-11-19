@@ -28,7 +28,24 @@ export function puedeAsignarRol(quien: Rol, rol: RolPersonal): boolean {
   return ROLES_QUE_ASIGNA[quien].includes(rol);
 }
 
+/**
+ * Si quien tiene el rol `quien` puede modificar, cambiarle el rol o dar de baja a un usuario con el
+ * rol `rolDelOtro`: el GG no toca a un ADM; el ADM, a cualquiera (dominio.md, «Personal»). Que
+ * quede al menos un GG y un ADM activos y que nadie se toque a sí mismo lo controla la API.
+ */
+export function puedeAdministrarA(quien: Rol, rolDelOtro: Rol): boolean {
+  if (!administraPersonal(quien)) return false;
+  return quien === 'ADMINISTRADOR_SISTEMA' || rolDelOtro !== 'ADMINISTRADOR_SISTEMA';
+}
+
 /** Si el rol administra al personal desde la sección Personal: solo el GG y el ADM. */
 export function administraPersonal(rol: Rol): boolean {
   return ROLES_QUE_ASIGNA[rol].length > 0;
+}
+
+/** HU-25 del backlog: la auditoría la ven solo el GG y el ADM (dominio.md, «Roles»). */
+export const ROLES_QUE_VEN_AUDITORIA = ['GERENTE_GENERAL', 'ADMINISTRADOR_SISTEMA'] as const;
+
+export function veAuditoria(rol: Rol): boolean {
+  return (ROLES_QUE_VEN_AUDITORIA as readonly Rol[]).includes(rol);
 }

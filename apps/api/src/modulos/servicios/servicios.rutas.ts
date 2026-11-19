@@ -4,6 +4,7 @@ import {
   esquemaModificarServicio,
   esquemaServicio,
   esquemaServicioPublico,
+  ROLES_QUE_CAMBIAN_FOTOS,
 } from '@confluens/shared';
 import { Router } from 'express';
 import { z } from 'zod';
@@ -86,7 +87,7 @@ registroOpenApi.registerPath({
       content: { 'application/json': { schema: z.object({ data: esquemaServicio }) } },
     },
     401: { description: 'Sin sesión activa' },
-    403: { description: 'La sesión no es del personal' },
+    403: { description: 'Solo el Gerente General y el Administrador del Sistema' },
     404: { description: 'No existe el servicio indicado' },
   },
 });
@@ -129,12 +130,12 @@ rutasServicios.post(
   validar({ body: esquemaCrearServicio }),
   asincrono(crear),
 );
-// Provisorio (decisión del PO, 06/10/2026): todo el personal ve y hace todo hasta que se dividan
-// las funciones por rol.
+// HU-56: lo único que trae es la foto, que cambian el GG y el ADM. El resto de los servicios y
+// precios lo administran los cuatro roles del personal.
 rutasServicios.patch(
   '/:id/landing',
   autenticar,
-  autorizar(...ROLES_PERSONAL),
+  autorizar(...ROLES_QUE_CAMBIAN_FOTOS),
   validar({ params: esquemaParamsId, body: esquemaActualizarLandingServicio }),
   asincrono(actualizarLanding),
 );

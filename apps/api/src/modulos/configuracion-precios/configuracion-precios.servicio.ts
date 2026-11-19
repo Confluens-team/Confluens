@@ -1,5 +1,6 @@
 import type { ActualizarConfiguracionPrecios, ConfiguracionPrecios } from '@confluens/shared';
 
+import { recalcularEstimadosEnConsulta } from '../presupuestos/presupuestos.servicio.js';
 import * as repositorioReal from './configuracion-precios.repositorio.js';
 import type { ConfiguracionPreciosRepositorio } from './configuracion-precios.repositorio.js';
 
@@ -22,11 +23,18 @@ export async function obtenerConfiguracion(
     : { porcentajeMensual: '0.00', actualizadoEn: new Date(0).toISOString() };
 }
 
-// RN-10: el Responsable de Eventos cambia el porcentaje en cualquier momento. Los presupuestos ya
-// emitidos no cambian: tienen sus precios congelados (RN-03).
+// RN-10: el Responsable de Eventos cambia el porcentaje en cualquier momento. HU-54: en la misma
+// transacción se recalculan los presupuestos Estimado de eventos EnConsulta con el porcentaje
+// nuevo, sin reiniciar su vigencia. Los Confirmado quedan congelados y los Expirado esperan a que
+// se les cambie la fecha (dominio.md, «Recálculo automático»).
 export async function guardarConfiguracion(
   datos: ActualizarConfiguracionPrecios,
   repo: ConfiguracionPreciosRepositorio = repositorioReal,
+  recalcular: typeof recalcularEstimadosEnConsulta = recalcularEstimadosEnConsulta,
 ): Promise<ConfiguracionPrecios> {
-  return mapear(await repo.guardar(datos.porcentajeMensual));
+  return repo.enTransaccion(async (tx) => {
+    const fila = await repo.guardar(datos.porcentajeMensual, tx);
+    await recalcular(datos.porcentajeMensual, tx);
+    return mapear(fila);
+  });
 }

@@ -1,3 +1,4 @@
+import { registrarAuditoria } from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
 
 // Capa de acceso a datos del módulo. Separada del servicio para poder mockearla en
@@ -19,7 +20,16 @@ export async function buscarPorNombre(nombre: string) {
 }
 
 export async function crear(nombre: string) {
-  return prisma.etiqueta.create({ data: { nombre }, select: SELECCION });
+  return prisma.$transaction(async (tx) => {
+    const etiqueta = await tx.etiqueta.create({ data: { nombre }, select: SELECCION });
+    await registrarAuditoria(tx, {
+      entidad: 'Etiqueta',
+      entidadId: etiqueta.id,
+      anterior: null,
+      nuevo: { nombre },
+    });
+    return etiqueta;
+  });
 }
 
 export type EtiquetasRepositorio = {

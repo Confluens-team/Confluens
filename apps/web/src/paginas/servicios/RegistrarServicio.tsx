@@ -2,6 +2,7 @@ import { esquemaCrearServicio, esquemaModificarServicio, type Servicio } from '@
 import { Pencil, Plus } from 'lucide-react';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { ErrorApiCliente } from '@/lib/api';
 import { InputImporte } from '@/components/InputImporte';
 import { Button } from '@/components/ui/button';
@@ -311,7 +312,7 @@ export function RegistrarServicio() {
 
       <div className="space-y-2">
         <h2 className="text-lg font-medium">Catálogo actual</h2>
-        {isLoading && <p className="text-sm text-muted-foreground">Cargando…</p>}
+        {isLoading && <Cargando texto="Cargando…" />}
         {isError && <p className="text-sm text-destructive">No se pudo cargar el catálogo.</p>}
         {servicios && servicios.length === 0 && (
           <p className="text-sm text-muted-foreground">Todavía no hay servicios registrados.</p>

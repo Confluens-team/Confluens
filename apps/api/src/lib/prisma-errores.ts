@@ -57,9 +57,12 @@ export function mensajeDeSolapamiento(
   solapado: { id: number; salones: { salonId: number; salon: { nombre: string } }[] },
   salonIds: number[],
 ): string {
-  const enComun = solapado.salones
-    .filter((s) => salonIds.includes(s.salonId))
-    .map((s) => s.salon.nombre);
+  // Un evento de varios días tiene un renglón por día: un salón que usa varios días cuenta una vez.
+  const enComun = [
+    ...new Set(
+      solapado.salones.filter((s) => salonIds.includes(s.salonId)).map((s) => s.salon.nombre),
+    ),
+  ];
   if (enComun.length === 1) {
     return `El salón ${enComun[0]} ya está reservado en ese horario por el evento #${solapado.id}`;
   }

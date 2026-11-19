@@ -46,6 +46,8 @@ export const esquemaPresupuestoListado = z.object({
   venceEn: esquemaFechaHora.nullable(),
   total: esquemaImporte,
   fechaEvento: esquemaFecha,
+  // HU-50: el último día del evento. Igual a `fechaEvento` si dura un solo día.
+  fechaFinEvento: esquemaFecha,
   tipo: esquemaTipoEvento,
   tipoSocial: esquemaTipoEventoSocial.nullable(),
   tipoSocialDetalle: z.string().nullable(),

@@ -14,8 +14,8 @@ import { ErrorApiCliente } from '@/lib/api';
 
 // RN-10 / RN-13: el porcentaje de incremento mensual. Con él se proyectan a la fecha del evento
 // los precios del salón y de los servicios propios en el cotizador y en los presupuestos; los
-// tercerizados no. Lo demás de RN-10 (aplicar el aumento al tarifario y los aumentos puntuales)
-// es HU-34.
+// tercerizados no. Al cambiarlo se recalculan los presupuestos Estimado de eventos EnConsulta, sin
+// reiniciar su vigencia (HU-54). Lo demás de RN-10 (tramos y porcentaje por servicio) es HU-34.
 export function IncrementoMensual() {
   const configuracion = useConfiguracionPrecios();
   const [abierto, setAbierto] = useState(false);
@@ -37,7 +37,7 @@ export function IncrementoMensual() {
         abierto={abierto}
         onCambiarAbierto={setAbierto}
         titulo="Incremento mensual de precios"
-        descripcion="Los precios del salón y de los servicios propios se proyectan a la fecha del evento, sumando este porcentaje por cada mes. Los tercerizados no se proyectan y los presupuestos ya emitidos no cambian."
+        descripcion="Los precios del salón y de los servicios propios se proyectan a la fecha del evento, sumando este porcentaje por cada mes. Los tercerizados no se proyectan. Al guardar, se recalculan los presupuestos en consulta todavía sin seña; los confirmados y los vencidos no cambian."
       >
         {/* La key reinicia el campo con el valor guardado cada vez que se abre la ventana. */}
         <Formulario

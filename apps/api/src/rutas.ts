@@ -1,5 +1,6 @@
 import { Router } from 'express';
 
+import { rutasAuditoria } from './modulos/auditoria/auditoria.rutas.js';
 import { rutasAuth } from './modulos/auth/auth.rutas.js';
 import { rutasClientes } from './modulos/clientes/clientes.rutas.js';
 import { rutasConfiguracionPrecios } from './modulos/configuracion-precios/configuracion-precios.rutas.js';
@@ -17,6 +18,7 @@ import { rutasUsuarios } from './modulos/usuarios/usuarios.rutas.js';
 // Router raíz de la API: cada módulo se monta acá bajo su prefijo.
 export const rutasApi = Router();
 
+rutasApi.use('/auditoria', rutasAuditoria);
 rutasApi.use('/clientes', rutasClientes);
 rutasApi.use('/configuracion-precios', rutasConfiguracionPrecios);
 rutasApi.use('/etiquetas', rutasEtiquetas);

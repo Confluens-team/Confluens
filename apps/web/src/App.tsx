@@ -12,6 +12,7 @@ import {
 } from 'react-router';
 
 import { EncabezadoSitio } from '@/components/EncabezadoSitio';
+import { PantallaDeCarga } from '@/components/PantallaDeCarga';
 import { useCerrarSesion, useSesion } from '@/hooks/use-sesion';
 import { AccesoCliente } from '@/paginas/auth/AccesoCliente';
 import { IniciarSesion } from '@/paginas/auth/IniciarSesion';
@@ -82,6 +83,29 @@ function SitioPublico({ sesionCliente }: { sesionCliente: Sesion | null }) {
     else setAcceso({ abierto: true, salonId });
   }
 
+  // «Salir» (reunión con el cliente, 05/11/2026). Primero se va a la landing y recién con la landing
+  // en pantalla se cierra la sesión (el efecto de abajo): si la sesión se vaciaba con /cotizar todavía
+  // montado, esa ruta redirigía con el pedido de acceso y abría el registro, como si no hubiera
+  // salido. En el cotizador la consulta a medio armar se pierde, así que se pide confirmarlo.
+  const saliendo = (location.state as { salir?: boolean } | null)?.salir === true;
+  const { mutate: cerrar } = cerrarSesion;
+  useEffect(() => {
+    if (!saliendo) return;
+    cerrar();
+    navigate('/', { replace: true, state: null });
+  }, [saliendo, cerrar, navigate]);
+
+  function salir() {
+    const enCotizador = location.pathname === '/cotizar';
+    if (
+      enCotizador &&
+      !window.confirm('¿Seguro que querés salir? Tu consulta todavía no se completó.')
+    ) {
+      return;
+    }
+    navigate('/', { replace: true, state: { salir: true } });
+  }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <EncabezadoSitio
@@ -89,7 +113,7 @@ function SitioPublico({ sesionCliente }: { sesionCliente: Sesion | null }) {
         sesionCliente={sesionCliente}
         onInicio={() => navigate('/')}
         onCotizar={() => cotizar()}
-        onCerrarSesion={() => cerrarSesion.mutate(undefined, { onSuccess: () => navigate('/') })}
+        onCerrarSesion={salir}
       />
       <Outlet context={{ cotizar }} />
       <AccesoCliente
@@ -207,13 +231,7 @@ export default function App() {
 
   // Mientras se resuelve GET /auth/yo no se sabe todavía si hay sesión: decidir la ruta antes
   // causaría un parpadeo (login → panel) en cada recarga para quien sí tiene sesión vigente.
-  if (isLoading) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-background text-foreground">
-        <p className="text-sm text-muted-foreground">Cargando…</p>
-      </main>
-    );
-  }
+  if (isLoading) return <PantallaDeCarga />;
 
   return (
     <>

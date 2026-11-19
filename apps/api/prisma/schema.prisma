@@ -72,18 +72,26 @@ enum Rol {
 
 // Credenciales. Separada de Cliente (ver modelo-datos.md).
 model Usuario {
-  id             Int        @id @default(autoincrement())
-  email          String     @unique
-  hashContrasena String
-  rol            Rol
+  id                  Int                 @id @default(autoincrement())
+  email               String              @unique
+  hashContrasena      String
+  rol                 Rol
   // Versión de las sesiones (M2 de la auditoría de seguridad). Viaja en el JWT; cerrar sesión o
   // restablecer la contraseña la incrementa y todos los tokens emitidos antes dejan de servir.
-  versionSesion  Int        @default(0)
-  cliente        Cliente?
-  auditorias     AuditLog[]
-  pagosAnulados  Pago[]     @relation("PagoAnuladoPor")
-  creadoEn       DateTime   @default(now())
-  actualizadoEn  DateTime   @updatedAt
+  versionSesion       Int                 @default(0)
+  // Baja lógica del personal (HU-31 del backlog, Sprint 5): inactivo no inicia sesión y sus sesiones
+  // se cierran, pero se sigue viendo en la auditoría y en lo que registró. Se puede reactivar.
+  activo              Boolean             @default(true)
+  // Última vez que el usuario del personal hizo algo en el panel (estado de conexión de Personal). La
+  // anota la API en cada pedido, a lo sumo una vez por minuto, y se borra al cerrar sesión o dar de
+  // baja. Se escribe sin pasar por @updatedAt: anotar actividad no es modificar al usuario.
+  ultimaActividad     DateTime?
+  cliente             Cliente?
+  auditorias          AuditLog[]
+  revisionesAuditoria RevisionAuditoria[]
+  pagosAnulados       Pago[]              @relation("PagoAnuladoPor")
+  creadoEn            DateTime            @default(now())
+  actualizadoEn       DateTime            @updatedAt
 }
 
 // Datos comerciales. Relación 1-1 opcional con Usuario: el usuario se crea recién cuando el
@@ -208,7 +216,11 @@ model Evento {
   id                        Int               @id @default(autoincrement())
   clienteId                 Int
   cliente                   Cliente           @relation(fields: [clienteId], references: [id])
+  // fecha, fechaFin, inicio, fin, cantidadPersonas y tipoJornada son el RESUMEN de los días (HU-50,
+  // ADR 0014): primer día, último día, inicio del primero, fin del último, máximo de personas y
+  // jornada del primero. Los escribe un trigger a partir de EventoDia; la aplicación escribe los días.
   fecha                     DateTime          @db.Date
+  fechaFin                  DateTime          @default(dbgenerated("CURRENT_DATE")) @db.Date // el trigger la iguala a fecha al crear
   inicio                    DateTime? // horario desde
   fin                       DateTime? // horario hasta
   cantidadPersonas          Int
@@ -224,6 +236,9 @@ model Evento {
   // "HH:mm", solo de referencia, igual que horaInicioEstimada. La carga el cliente en la consulta de
   // un evento social, que no tiene salón ni precio; menor que la de inicio es el día siguiente.
   horaFinEstimada           String?
+  // Lo que el cliente quiso contar en la consulta de un evento social (pedidos, ideas, dudas). Lo
+  // escribe el cliente; las observaciones del personal van aparte, en cada día.
+  comentariosCliente        String?
   // Columna del Sprint 1 que quedó sin escribirse: la vigencia de los 10 días es del presupuesto y
   // no del evento (RN-06, RN-08).
   senaVenceEn               DateTime?
@@ -234,15 +249,48 @@ model Evento {
   // Los salones que ocupa el evento, cada uno con su distribución: varios a la vez, en el mismo
   // horario (ADR 0011). Un evento Reservado o Cobrado tiene al menos uno (constraint trigger
   // evento_reservado_con_salon). Una consulta social puede no tener ninguno todavía (ADR 0008).
+  dias                      EventoDia[]
   salones                   EventoSalon[]
   // Notas al pie de la comanda de cocina: menús especiales, alergias, a quién buscar en el salón.
   // Las escribe el personal y solo salen en esa hoja; el cliente nunca las ve.
   observacionesComanda      String?
+  // Observaciones generales del evento. Las escribe el personal; no salen en el presupuesto ni en
+  // la comanda, y el cliente nunca las ve.
+  observaciones             String?
   solicitud                 Solicitud?
   presupuestos              Presupuesto[]
   pagos                     Pago[]
   creadoEn                  DateTime          @default(now())
   actualizadoEn             DateTime          @updatedAt
+}
+
+// Un día de un evento (HU-50, ADR 0014). Un evento tiene de 1 a 32 días consecutivos y cada día su
+// propio horario, jornada, personas, salones y servicios. Todos los eventos de hoy tienen un solo día.
+// Que los días sean consecutivos y no pasen de 32, y que un evento Reservado o Cobrado tenga horario y
+// salón en cada día, lo garantizan constraint triggers de la base (SQL crudo en la migración).
+model EventoDia {
+  id                 Int                @id @default(autoincrement())
+  eventoId           Int
+  evento             Evento             @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  fecha              DateTime           @db.Date
+  inicio             DateTime? // horario desde; obligatorio fuera de EnConsulta y Cancelado
+  fin                DateTime? // horario hasta
+  tipoJornada        TipoJornada?
+  cantidadPersonas   Int
+  // "HH:mm", solo de referencia (S-16): el horario que pidió el cliente para ESTE día en el
+  // cotizador. El horario real sigue en inicio/fin, que se cargan al agendar.
+  horaInicioEstimada String?
+  horaFinEstimada    String?
+  // Observaciones internas del día: cada día puede tener las suyas (HU-50). Reemplazan a
+  // Evento.observaciones, que queda sin uso desde esta migración.
+  observaciones      String?
+  salones            EventoSalon[]
+  lineas             LineaPresupuesto[]
+  creadoEn           DateTime           @default(now())
+  actualizadoEn      DateTime           @updatedAt
+
+  @@unique([eventoId, fecha])
+  @@index([eventoId])
 }
 
 // Un evento puede ocupar varios salones a la vez, todos en el mismo horario: la cantidad de
@@ -256,8 +304,11 @@ model Evento {
 // uno de esos caminos tuviera que acordarse de sincronizar sería romper la garantía en silencio el
 // día que se agregue uno nuevo. **No escribir estas tres columnas a mano.**
 model EventoSalon {
+  // Lo deriva el trigger del día (diaId): nunca puede discrepar con él.
   eventoId       Int
   evento         Evento        @relation(fields: [eventoId], references: [id], onDelete: Cascade)
+  diaId          Int
+  dia            EventoDia     @relation(fields: [diaId], references: [id], onDelete: Cascade)
   salonId        Int
   salon          Salon         @relation(fields: [salonId], references: [id], onDelete: Restrict)
   distribucionId Int?
@@ -267,8 +318,9 @@ model EventoSalon {
   estado         EstadoEvento  @default(EnConsulta) // copia de Evento, la escribe el trigger
   creadoEn       DateTime      @default(now())
 
-  @@id([eventoId, salonId])
+  @@id([diaId, salonId])
   @@index([salonId])
+  @@index([eventoId])
 }
 
 // Cada evento tiene un solo presupuesto (decisión del PO, 06/10/2026): lo garantiza la aplicación,
@@ -332,6 +384,10 @@ model LineaPresupuesto {
   // formato que Evento.horaInicioEstimada. Si el evento ya está agendado, el servicio valida que
   // caiga entre inicio y fin; mientras está EnConsulta sin horario no hay contra qué validar.
   horaEstimada   String?
+  // El día del evento al que pertenece la línea (HU-50): el salón de ese día, o un servicio o
+  // adicional de ese día. En un evento de un solo día es siempre el mismo.
+  diaId          Int
+  dia            EventoDia         @relation(fields: [diaId], references: [id], onDelete: Restrict)
 }
 
 // RN-10 / RN-13: fila única (id 1, CHECK en la migración) con el porcentaje de incremento mensual
@@ -382,16 +438,36 @@ model Pago {
   @@index([eventoId])
 }
 
-// Registro inmutable: nadie lo edita ni lo borra. usuarioId es null cuando actúa el Sistema (SYS).
+// Registro inmutable: nadie lo edita ni lo borra (un trigger de la migración `auditoria` rechaza
+// UPDATE y DELETE). usuarioId es null cuando actúa el Sistema (SYS). campos son las claves que
+// cambiaron, las mismas de valorAnterior y valorNuevo, para filtrar por campo (HU-25 del backlog,
+// ADR 0013).
 model AuditLog {
-  id            Int      @id @default(autoincrement())
+  id            Int                @id @default(autoincrement())
   usuarioId     Int?
-  usuario       Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-  fecha         DateTime @default(now())
+  usuario       Usuario?           @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  fecha         DateTime           @default(now())
   entidad       String
   entidadId     String
+  campos        String[]           @default([])
   valorAnterior Json?
   valorNuevo    Json?
+  revision      RevisionAuditoria?
 
+  @@index([fecha])
+  @@index([campos], type: Gin)
   @@map("audit_log")
+}
+
+// Auditoría para Gerencia (15/11/2026): el Gerente General marca como revisado un cambio sensible
+// que hizo otro usuario. Va en una tabla aparte porque audit_log no se puede modificar (trigger
+// audit_log_inmutable). Una revisión por cambio; no se deshace.
+model RevisionAuditoria {
+  auditLogId    Int      @id
+  auditLog      AuditLog @relation(fields: [auditLogId], references: [id], onDelete: Restrict)
+  revisadoPorId Int
+  revisadoPor   Usuario  @relation(fields: [revisadoPorId], references: [id], onDelete: Restrict)
+  revisadoEn    DateTime @default(now())
+
+  @@index([revisadoPorId])
 }

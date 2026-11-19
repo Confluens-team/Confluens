@@ -7,7 +7,7 @@ import type * as ModuloSesionVigente from './sesion-vigente.js';
 const { sesionVigente } = await vi.importActual<typeof ModuloSesionVigente>('./sesion-vigente.js');
 
 const sesion: Sesion = { id: 7, email: 're@confluens.test', rol: 'RESPONSABLE_EVENTOS' };
-const usuario = { ...sesion, versionSesion: 3 };
+const usuario = { ...sesion, versionSesion: 3, activo: true };
 
 describe('sesionVigente (M2 de la auditoría)', () => {
   it('con la versión de sesión actual devuelve la sesión de la base', async () => {
@@ -28,6 +28,11 @@ describe('sesionVigente (M2 de la auditoría)', () => {
 
   it('un token de antes del logout o del cambio de contraseña (versión vieja) devuelve null', async () => {
     expect(await sesionVigente(sesion, 2, async () => usuario)).toBeNull();
+  });
+
+  // HU-31 del backlog: la baja ya sube la versión; esto lo sostiene aunque no lo hiciera.
+  it('un usuario dado de baja devuelve null aunque la versión coincida', async () => {
+    expect(await sesionVigente(sesion, 3, async () => ({ ...usuario, activo: false }))).toBeNull();
   });
 
   it('un token sin versión (anterior a M2) devuelve null sin consultar la base', async () => {

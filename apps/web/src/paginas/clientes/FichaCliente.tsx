@@ -1,6 +1,7 @@
 import { ArrowLeft, CalendarDays, Mail, Phone } from 'lucide-react';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { Button } from '@/components/ui/button';
 import { useCliente } from '@/hooks/use-clientes';
 import { useEtiquetas } from '@/hooks/use-etiquetas';
@@ -42,7 +43,6 @@ export function FichaCliente({ clienteId, onVolver }: { clienteId: number; onVol
         onVolver={volverAlEvento}
         onGuardada={volverAlEvento}
         onDadaDeBaja={volverAlEvento}
-        onAbrirEvento={volverAlEvento}
       />
     );
   }
@@ -68,7 +68,7 @@ export function FichaCliente({ clienteId, onVolver }: { clienteId: number; onVol
         <ArrowLeft /> Volver a los clientes
       </Button>
 
-      {cliente.isLoading && <p className="text-sm text-muted-foreground">Cargando el cliente…</p>}
+      {cliente.isLoading && <Cargando texto="Cargando el cliente…" />}
       {cliente.isError && (
         <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
           No se pudo cargar el cliente.

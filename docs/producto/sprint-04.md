@@ -113,7 +113,8 @@ la controla el servicio, como en medios de pago.
 
 La baja es la columna `Distribucion.activo` (migración `20261106220000_baja_logica_distribucion`,
 confirmada por el PO el 06/11/2026) y `PATCH /api/salones/:id/distribuciones/:distribucionId/estado`
-con `{ activo }`, que también la reactiva. Agendar rechaza con `422` una dada de baja, salvo la que el
+con `{ activo }`, que también la reactiva; ninguna de las dos pide confirmación, porque se puede
+deshacer (PO, 06/11/2026). Agendar rechaza con `422` una dada de baja, salvo la que el
 evento ya tiene en ese salón; al cambiar de salón un presupuesto o al reutilizar la configuración de
 un evento solo se heredan las activas, y la
 landing no publica las dadas de baja. En la web, cada distribución de Salones tiene su botón para dar
@@ -171,7 +172,7 @@ Criterios propuestos:
 - Al recalcular un presupuesto, la fecha de emisión pasa a ser la del recálculo y la vigencia vuelve
   a contar 10 días desde ahí, como en toda modificación (RN-08; Franco, 03/11/2026). Vale también
   para un evento `Reservado` o `Cobrado`: su presupuesto sigue `Confirmado`, porque el control de
-  vigencia solo vence los `Estimado`. **Cambia con HU-54 del backlog** (reunión 05/11/2026): se saca
+  vigencia solo vence los `Estimado`. **Cambió con HU-54 del backlog** (Sprint 5): se sacó
   el botón y el sistema recalcula solo. Un presupuesto `Confirmado` ya no se recalcula por un
   cambio de porcentaje; solo por un cambio de fecha del evento, que reinicia la vigencia.
 - Solo el personal interno modifica eventos; el rol Cliente no.
@@ -479,7 +480,7 @@ ellas no se frenan. Cerrarlo pide un índice sobre `lower(nombre)`, que es un ca
 confirma antes (`AGENTS.md` §6).
 
 **Dos arreglos más de la misma ronda** (08/11/2026). La respuesta de `/usuarios` devuelve solo los
-campos públicos (id, correo, rol y fechas), aunque el repositorio trajera de más. Y los errores
+campos públicos (id, correo, rol, estado y fechas), aunque el repositorio trajera de más. Y los errores
 por HTML en un campo nombran la posición de las listas con puntos (`adicionales.0.descripcion`), igual
 que los de Zod; la web no lee ese nombre, así que no cambia nada visible.
 

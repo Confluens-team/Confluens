@@ -6,6 +6,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 
+import { resumenDelEvento } from '@/lib/dias-del-evento';
 import { fechaISO, fechaLocal, nombreCompleto, nombresDeSalones } from '@/lib/formato';
 import { ESTADOS } from './estado-evento';
 
@@ -33,7 +34,8 @@ function comoEventoDelCalendario(evento: EventoAgenda): EventInput {
       cliente: evento.cliente.etiqueta
         ? `${evento.cliente.etiqueta.nombre} · ${nombreCompleto(evento.cliente)}`
         : nombreCompleto(evento.cliente),
-      personas: evento.cantidadPersonas,
+      // HU-50: con varios días, el rango de personas.
+      personas: resumenDelEvento(evento).personas,
     },
   };
 }
@@ -44,7 +46,7 @@ function ContenidoEvento(arg: EventContentArg) {
   const { salon, cliente, personas } = arg.event.extendedProps as {
     salon: string;
     cliente: string;
-    personas: number;
+    personas: string;
   };
   return (
     <div className="overflow-hidden px-0.5 leading-tight">
@@ -53,7 +55,7 @@ function ContenidoEvento(arg: EventContentArg) {
         {salon}
       </p>
       <p className="truncate text-[0.65rem] opacity-90">
-        {cliente} · {personas} personas
+        {cliente} · {personas}
       </p>
     </div>
   );

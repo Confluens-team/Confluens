@@ -28,6 +28,17 @@ export function jornadaDeHoras(inicio: string, fin: string): TipoJornada {
   return duracionEnMinutos(inicio, fin) <= MINUTOS_MEDIA_JORNADA ? 'media' : 'completa';
 }
 
+/**
+ * Si la hora de un servicio cae dentro del horario del día, extremos incluidos. Un horario que
+ * cruza la medianoche (de 20:00 a 02:00) acepta las horas de la noche y las de la madrugada. Sin
+ * horario completo no hay contra qué comparar y cualquier hora vale.
+ */
+export function horaDentroDelHorario(hora: string, desde: string, hasta: string): boolean {
+  if (!hora || !desde || !hasta) return true;
+  const [h, d, a] = [aMinutos(hora), aMinutos(desde), aMinutos(hasta)];
+  return d <= a ? h >= d && h <= a : h >= d || h <= a;
+}
+
 /** El horario que dejó el cliente en la consulta de un evento social, como se muestra. */
 export function textoHorarioEstimado(inicio?: string | null, fin?: string | null): string {
   if (inicio && fin) return `${inicio} a ${fin} h`;

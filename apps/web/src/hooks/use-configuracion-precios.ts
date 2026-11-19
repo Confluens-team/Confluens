@@ -36,6 +36,9 @@ export function useGuardarConfiguracionPrecios() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['configuracion-precios'] });
+      // HU-54: el porcentaje nuevo recalcula los presupuestos en consulta (listado y detalle).
+      void queryClient.invalidateQueries({ queryKey: ['presupuestos'] });
+      void queryClient.invalidateQueries({ queryKey: ['eventos'] });
     },
   });
 }

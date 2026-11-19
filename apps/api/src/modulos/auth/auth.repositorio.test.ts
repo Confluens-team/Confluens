@@ -79,6 +79,7 @@ describe('auth.repositorio: crearUsuarioCliente', () => {
 describe('auth.repositorio: invalidarSesiones', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    usuarioUpdateMany.mockResolvedValue({ count: 1 });
   });
 
   // La condición por versión es la que deja sin efecto un token ya invalidado: con la versión
@@ -88,7 +89,15 @@ describe('auth.repositorio: invalidarSesiones', () => {
 
     expect(usuarioUpdateMany).toHaveBeenCalledWith({
       where: { id: 9, versionSesion: 2 },
-      data: { versionSesion: { increment: 1 } },
+      data: { versionSesion: { increment: 1 }, ultimaActividad: null },
     });
+  });
+
+  // Estado de conexión de Personal: sin sesión no hay «última actividad», así que pasa a «sin
+  // sesión» de inmediato y no recién cuando vence la ventana de 2 horas.
+  it('al cerrar sesión borra la marca de última actividad', async () => {
+    await invalidarSesiones(9, 2);
+
+    expect(usuarioUpdateMany.mock.calls[0]![0].data.ultimaActividad).toBeNull();
   });
 });

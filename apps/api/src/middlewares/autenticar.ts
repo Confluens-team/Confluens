@@ -1,5 +1,7 @@
 import type { RequestHandler } from 'express';
 
+import { anotarActividad } from '../lib/actividad.js';
+import { conActor } from '../lib/auditoria.js';
 import { ErrorApi } from '../lib/errores.js';
 import {
   firmarToken,
@@ -19,6 +21,9 @@ import { sesionVigente } from '../lib/sesion-vigente.js';
  * Antes de renovar, contrasta la sesión con la base (M2 de la auditoría, ver
  * lib/sesion-vigente.ts): el rol que rige es el actual, y un usuario borrado o con
  * una sesión ya cerrada (logout o contraseña restablecida) queda afuera.
+ *
+ * El resto de la petición corre con el usuario de la sesión como actor de la auditoría
+ * (HU-25 del backlog, lib/auditoria.ts).
  */
 export const autenticar: RequestHandler = (req, res, next) => {
   const token = req.cookies?.[NOMBRE_COOKIE_SESION] as string | undefined;
@@ -42,7 +47,9 @@ export const autenticar: RequestHandler = (req, res, next) => {
         opcionesCookieSesion(),
       );
       req.usuario = sesion;
-      next();
+      // Estado de conexión de Personal: solo el personal, y sin esperar ni fallar por esto.
+      if (sesion.rol !== 'CLIENTE') anotarActividad(sesion.id);
+      conActor({ usuarioId: sesion.id, rol: sesion.rol }, () => next());
     })
     .catch(next);
 };

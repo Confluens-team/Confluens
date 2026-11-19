@@ -1,4 +1,5 @@
 import {
+  esquemaChoquesDeConsulta,
   esquemaConsultaDetallada,
   esquemaCrearConsultaSocial,
   esquemaCrearPresupuesto,
@@ -25,6 +26,7 @@ import {
   listar,
   modificar,
   obtener,
+  obtenerChoques,
   ocultar,
   seguimiento,
 } from './presupuestos.controlador.js';
@@ -134,6 +136,24 @@ registroOpenApi.registerPath({
 });
 
 registroOpenApi.registerPath({
+  method: 'get',
+  path: '/presupuestos/{id}/choques',
+  tags: ['Presupuestos'],
+  summary:
+    'Aviso preventivo: los salones que otros eventos ya ocupan en los días de la consulta (HU-50)',
+  request: { params: esquemaIdParam },
+  responses: {
+    200: {
+      description:
+        'Cada día y salón con el evento reservado que lo ocupa y su horario; lista vacía si no hay',
+      content: { 'application/json': { schema: z.object({ data: esquemaChoquesDeConsulta }) } },
+    },
+    404: { description: 'No existe el presupuesto' },
+    ...erroresDeSesion,
+  },
+});
+
+registroOpenApi.registerPath({
   method: 'patch',
   path: '/presupuestos/{id}',
   tags: ['Presupuestos'],
@@ -234,8 +254,8 @@ rutasPresupuestos.post(
   asincrono(crearSocial),
 );
 // Las consultas (HU-10 y HU-12) las gestiona el personal.
-// Provisorio (decisión del PO, 06/10/2026): todo el personal ve y hace todo hasta que se dividan
-// las funciones por rol.
+// Fuera de Configuración de negocio los cuatro roles del personal ven y hacen todo (HU-56,
+// dominio.md «Roles»).
 const personalDeConsultas = [autenticar, autorizar(...ROLES_PERSONAL)] as const;
 
 rutasPresupuestos.post(
@@ -256,6 +276,12 @@ rutasPresupuestos.get(
   ...personalDeConsultas,
   validar({ params: esquemaIdParam }),
   asincrono(obtener),
+);
+rutasPresupuestos.get(
+  '/:id/choques',
+  ...personalDeConsultas,
+  validar({ params: esquemaIdParam }),
+  asincrono(obtenerChoques),
 );
 rutasPresupuestos.patch(
   '/:id',

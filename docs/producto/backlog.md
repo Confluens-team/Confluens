@@ -80,7 +80,7 @@ RG-03. Gestionar los presupuestos.  ·  13 historias  ·  37 pts + HU-49 y HU-51
 | HU-52 | Registrar lo pagado de más como no reintegrable | — | a estimar | a definir | Responsable de Eventos |
 | HU-53 | Calcular todo presupuesto nuevo con IVA | — | a estimar | 4 | Sistema |
 | HU-54 | Recalcular el presupuesto automáticamente | — | a estimar | a definir | Sistema |
-| HU-55 | Cobrar la seña de un presupuesto vencido | — | a estimar | a definir | Responsable de Finanzas |
+| HU-55 | Cobrar la seña de un presupuesto vencido | — | a estimar | 5 | Responsable de Finanzas |
 
 **HU-51.** Desde el detalle del presupuesto, el personal agrega servicios que no están en el
 catálogo, propios de ese evento: cada uno es una línea con precio, cantidad y su propia
@@ -151,7 +151,201 @@ RG-04. Gestionar eventos.  ·  9 historias  ·  62 pts + HU-50 sin estimar  ·  
 **HU-50.** Un evento abarca varios días consecutivos, cada uno con su horario, jornada, salones,
 servicios y cantidad de personas; el salón se cobra según la jornada de cada día. El solapamiento
 (RN-12) se controla por día y por salón, sale una comanda por día, y todo va en un solo presupuesto
-con una sola seña. Cambia el modelo del evento. Es grande: hay que pulirla antes de estimarla.
+con una sola seña. Cambia el modelo del evento. Es grande: hay que estimarla en la Planning.
+
+**Definición del PO (12/11/2026).** Reglas en `dominio.md`, «Evento de varios días».
+
+Como Responsable de Eventos y como Cliente, quiero reservar un evento que dure varios días
+consecutivos, para cotizarlo, señarlo y organizarlo como un solo evento.
+
+Criterios (decisiones del PO, 12/11/2026, salvo lo marcado como propuesto):
+
+- **Días consecutivos, hasta 32.** El evento tiene de 1 a 32 días corridos seguidos, **contando el
+  de inicio y el de fin**, sin días libres en el medio. El tope se mide **en cantidad de días, no
+  en meses del calendario**: una franja puede empezar a fin de un mes y terminar a fin del
+  siguiente. El PO estima que lo habitual son una o dos semanas y pone el tope en un mes, fijado en
+  **32 días** para que entre una franja de fin de mes a fin del mes siguiente (del 30/04 al 31/05):
+  «mejor que sobre y no que falte».
+- **Cada día se configura por separado.** Cada día tiene su fecha, su horario de inicio y fin, su
+  jornada (media o completa), sus salones con su distribución, su cantidad de personas y sus
+  servicios, y los de un día pueden ser distintos de los de otro. **Los servicios y los adicionales
+  escritos a mano pertenecen a un día**: no se cargan una vez para toda la franja. Uno que se repite
+  todos los días se carga en cada día.
+- **Explorar entre los días.** Al cargar una franja de varios días, el cliente y el personal pueden
+  **moverse entre los días** (una pestaña o un paso por día, con un resumen de lo cargado en cada
+  uno) sin salir de la pantalla y sin perder lo ya cargado, para que cargar varios días no sea
+  tosco (PO, 12/11/2026). Un botón **«copiar el día anterior»** le pasa al día que se está
+  mirando los salones, el horario, la jornada, las personas y los servicios del día anterior, y
+  después se puede cambiar lo que haga falta.
+- **Precio por día.** El salón de cada día se cobra con el precio de media jornada o de jornada
+  completa según la jornada de ese día. Los servicios de un día se cotizan con la cantidad de
+  personas de ese día.
+- **Un solo presupuesto, un solo total, una sola seña.** El total suma todos los días. La seña es el
+  20% de la base de cobro de ese total (RN-01), no de cada día; el evento pasa a `Reservado` al
+  llegar a ese 20% y a `Cobrado` al llegar al 100%, como hoy.
+- **Solapamiento por día y por salón (RN-12).** Un salón puede estar reservado un día por un evento
+  y el día siguiente por otro. Cada día se controla por separado, con el mismo borde de siempre: un
+  evento que termina a las 18:00 y otro que empieza a las 18:00 no chocan.
+- **Aviso de solapamientos: todos, por día y por salón** (PO, 12/11/2026). Una franja puede tener
+  días con choque y días libres. El sistema **no avisa solo del primer choque: lista cada uno**,
+  diciendo **qué día, qué salón y con qué evento choca**, para que el Responsable de Eventos pueda
+  hablar con el cliente y cambiar el día, el horario o el salón hasta que no haya ninguno. Tiene que
+  avisarse «muy bien y muy claro»:
+  - Cada choque dice la **fecha**, el **salón**, el **evento** con el que choca (número, cliente y
+    estado) y **su horario**. Los días sin choque se indican como libres.
+  - Hoy el aviso nombra un solo salón y el número del evento, sin día ni horario, y se detiene en
+    el primer choque. Con varios días eso no alcanza.
+  - **Dónde aparece:** (1) como **rechazo**, con la lista completa, al agendar, al cobrar la seña
+    que reserva el evento y al modificar, mover o extender la franja de un evento confirmado;
+    (2) como **aviso preventivo** al armar o revisar la consulta en el panel, día por día, antes
+    de intentar reservar. La consulta en estado `EnConsulta` nunca bloquea el salón (RN-12): el
+    aviso la marca como «en conflicto».
+  - **Un choque en cualquier día impide reservar el evento entero**, aunque los demás días estén
+    libres, porque el evento es uno y la seña es una. El evento no queda reservado «a medias»
+    (confirmado por el PO, 12/11/2026).
+  - El cliente en el canal público **no ve** estos avisos: siempre puede pedir su consulta y no se
+    entera de los solapamientos con otros eventos. Los ve solo el personal, en el panel, para que el
+    Responsable de Eventos tome medidas (confirmado por el PO, 12/11/2026).
+
+  Ejemplo del rechazo al intentar reservar una franja de cinco días:
+
+  > No se puede reservar el evento: 2 de sus 5 días tienen un salón ocupado.
+  > - viernes 14/05/2027 · Salón Pucará: reservado por el evento #52 (Constructora Medina SRL),
+  >   de 09:00 a 18:00.
+  > - sábado 15/05/2027 · Salón Iguazú: reservado por el evento #61 (Agustina Herrera),
+  >   de 08:00 a 12:00.
+  >
+  > Los otros 3 días están libres. Hablá con el cliente para mover el día, el horario o el salón.
+
+- **Resumen del evento en pantalla** (PO, 12/11/2026). Donde hoy se muestra una sola cantidad de
+  personas y una sola jornada para todo el evento (agenda, tarjetas, listados):
+  - **Personas:** el **rango** de la franja, de la cantidad mínima a la máxima («50 a 120 personas»);
+    si todos los días tienen la misma, un solo número.
+  - **Jornada:** si todos los días tienen la misma, se muestra cuál es (media jornada o jornada
+    completa); si varían entre un día y otro, se muestra **«Varía»** y se aclara cuáles («media y
+    completa»).
+  - El detalle día por día se ve al entrar al evento.
+- **Agenda.** El evento se muestra como **una sola barra larga**, del inicio del primer día al fin
+  del último, igual que hoy un evento que termina después de la medianoche.
+- **Comanda.** Sale **una por día**, con los salones, el horario, las personas y los servicios de
+  gastronomía de ese día.
+- **Cancelación (RN-07).** Se cancela **el evento entero**, no un día suelto. Las 48
+  horas se cuentan desde el inicio del **primer** día, igual que los 7 días del cliente
+  (confirmado por el PO, 12/11/2026).
+- **Selección de la franja: día de inicio y día de fin** (PO, 12/11/2026). Es la misma pantalla
+  para el cotizador, la consulta social y el panel:
+  - **Un clic** elige el día de inicio. Si no hay un segundo clic, el evento dura **un solo día**.
+  - **Un segundo clic** elige el día de fin: el calendario **conecta** los dos días y resalta la
+    franja entera. El segundo clic en el mismo día también deja un solo día.
+  - Mientras se elige, el calendario permite **cambiar de mes** entre los dos clics sin perder el
+    día de inicio, porque la franja puede cruzar el fin de un mes.
+  - Con el día de inicio elegido, los días que harían pasar el evento de los 32 días **quedan
+    deshabilitados** y se avisa por qué («El evento puede durar hasta 32 días»). No hace falta
+    llegar a equivocarse para enterarse del tope.
+  - Un segundo clic en un día **anterior** al de inicio lo toma como nuevo inicio, y un tercer
+    clic empieza una elección nueva (confirmado por el PO, 12/11/2026).
+  - La API vuelve a validar el tope y rechaza una franja de más de 32 días, sin depender de la
+    pantalla.
+- **Cambiar la franja.** No se suma ni se corta un día suelto: se **cambia la fecha** con el mismo
+  selector y la franja se extiende o se achica. Cada día se identifica por su fecha: mover la
+  franja entera los corre a todos; cambiar solo el día de inicio o el de fin suma o saca días en
+  ese extremo. No se puede sacar un día del medio, porque la franja tiene que seguir siendo
+  consecutiva. Un día nuevo entra **vacío** y se llena de dos maneras: copiando el día anterior, o cargando
+  salones, horario, jornada, personas y servicios de forma personalizada (confirmado por el PO,
+  12/11/2026).
+- **Cuándo se puede cambiar la franja.** Con las mismas políticas de estado que hoy rigen el cambio
+  de fecha de un evento (RN-09 y `modificarPresupuesto`); ver la tabla de abajo.
+- **Repetir evento.** Repetir un evento de varios días copia la misma franja: la misma cantidad de
+  días consecutivos y la configuración de cada día. El cliente elige la fecha de inicio.
+- **Recálculo por cambio de fecha (HU-54).** Al cambiar la fecha o la franja, el incremento de
+  RN-13 es el que corresponde al **último día** de la franja, y se aplica a todo el presupuesto.
+  **El último día es siempre la referencia** (PO, 12/11/2026): si al extender la franja el nuevo
+  último día cae en un mes con un incremento de precios, los precios de **todo** el presupuesto se
+  muestran para esa fecha, también los de los días que ya estaban. Vale con el presupuesto
+  `Confirmado`, como hoy un cambio de fecha.
+- **Eventos existentes.** Los que ya están cargados son de un solo día y siguen igual. Solo los
+  eventos nuevos pueden durar varios días.
+- **Cotizador (evento corporativo).** El cliente elige la franja de fechas y después **recorre los
+  días uno por uno** (por ejemplo, los 5 días de un evento de cinco días): para cada uno elige sus
+  salones, su horario, su jornada (media o completa), su cantidad de personas y sus servicios. El
+  presupuesto estimado y el PDF muestran el detalle por día y un único total.
+- **Consulta social.** También se define con una franja de fechas (inicio y fin), porque el cliente
+  elige las fechas. Sigue sin salón ni servicios (ADR 0008): el Responsable de Eventos arma el
+  detalle de cada día al armar el presupuesto. El cliente carga **una hora estimada de inicio y una
+  de fin, y valen para todos los días** (PO, 12/11/2026): es solo una referencia, porque el
+  Responsable de Eventos define después el horario de cada día.
+
+**Casos de prueba de la validación del tope.** Los días se cuentan como fechas del calendario
+(`AAAA-MM-DD`, sin horas ni zona), contando el de inicio y el de fin, así que el cambio de mes, el
+año bisiesto y el cambio de año no pueden correr la cuenta:
+
+| Inicio | Fin | Días | Resultado |
+|---|---|---|---|
+| 15/05 | 15/05 | 1 | Permitido: un solo día (sin segundo clic o con el mismo día). |
+| 28/04 | 28/05 | 31 | **Permitido**: cruza de abril a mayo. |
+| 30/04 | 30/05 | 31 | **Permitido**: empieza a fin de abril y termina a fin de mayo. |
+| 30/04 | 31/05 | 32 | **Permitido**: de fin de abril a fin de mayo, justo en el tope. |
+| 30/04 | 01/06 | 33 | Rechazado: un día más que el tope. |
+| 01/05 | 31/05 | 31 | Permitido: un mes completo. |
+| 01/03 | 31/03 | 31 | Permitido. |
+| 01/02 | 29/02 (año bisiesto) | 29 | Permitido: no se corta en el fin de febrero. |
+| 20/12 | 19/01 (año siguiente) | 31 | Permitido: cruza el año. |
+| 20/12 | 20/01 (año siguiente) | 32 | Permitido: cruza el año, justo en el tope. |
+| 20/12 | 21/01 (año siguiente) | 33 | Rechazado. |
+| 10/05 | 09/05 | — | Un día de fin anterior al de inicio no es una franja: se toma como nuevo inicio (confirmado por el PO). |
+
+El caso que el PO pidió cuidar es el de las filas 2, 3 y 4: **el tope no puede bloquear una franja
+que empieza a fin de mes y termina a fin del mes siguiente**. Por eso el tope es de 32 días y no de
+31: del 30/04 al 31/05 son 32 días.
+
+**Cambio de fecha o de franja según el estado, contrastado con las políticas de hoy.** Hoy se puede
+modificar una consulta (también la fecha) con el presupuesto `Estimado` o `Expirado` y el evento
+`EnConsulta`, o con el presupuesto `Confirmado` y el evento `Reservado` o `Cobrado`; cualquier otro
+caso es un 409 (RN-09, `modificarPresupuesto`). Con varios días rige lo mismo:
+
+| Evento / presupuesto | Hoy, cambio de fecha | Con varios días, cambio de franja |
+|---|---|---|
+| `EnConsulta`, presupuesto `Estimado` o `Expirado` | Permitido. Recalcula, reinicia la vigencia y un `Expirado` vuelve a `Estimado`. | Igual: se puede mover, extender o achicar la franja. |
+| `Reservado`, presupuesto `Confirmado` | Permitido, con el salón libre en la fecha nueva (RN-12). Recalcula, reinicia la vigencia y corre el horario. | Igual, y cada día que se suma necesita su salón libre. Todo día de un evento `Reservado` necesita al menos un salón, como hoy el evento (confirmado por el PO, 12/11/2026). |
+| `Cobrado` | Permitido. El evento vuelve a `Reservado` si lo pagado ya no cubre el total nuevo. | Igual: extender la franja sube el total y puede devolverlo a `Reservado`. Achicarla lo baja y, si lo pagado supera el total, queda saldo negativo (decisión de Franco, 08/10/2026). |
+| `Cancelado` | Bloqueado (409): liberó el salón y no vuelve atrás. | Igual. |
+| El cliente, en el canal público | Hasta 7 días antes de la fecha del evento (RN-09); el personal, sin límite. | Hasta 7 días antes del **primer** día (confirmado por el PO, 12/11/2026). El personal, sin límite. |
+
+**Decisiones confirmadas por el PO el 12/11/2026**, que cierran las preguntas de fondo de la
+historia:
+
+1. El **último día** manda el incremento de precios al extender (también con el presupuesto
+   `Confirmado`).
+2. En la consulta social, la **hora estimada** de inicio y de fin vale para todos los días.
+3. El **plazo de 7 días del cliente** (RN-09) se cuenta desde el **primer** día.
+4. Un **día nuevo entra vacío**; se puede copiar el día anterior o cargarlo de forma
+   personalizada, y se puede explorar entre los días sin que la carga sea tosca.
+5. Las **48 horas de la cancelación** (RN-07) se cuentan desde el inicio del primer día, igual que
+   los 7 días del cliente.
+6. **Todo día de un evento necesita al menos un salón**, como un evento de un solo día: el sistema
+   pide todos los datos de cada día.
+
+**Impacto técnico (para estimar).** Hoy `Evento` tiene una sola fecha, un horario y una jornada, y
+sus salones comparten ese horario (ADR 0011); el no solapamiento lo garantiza una restricción de la
+base sobre un rango horario por salón, mantenida por triggers. HU-50 pide una entidad nueva, por
+ejemplo un «día del evento», que lleve horario, jornada, salones y personas, y que el horario y el
+rango de la agenda del evento se deriven de sus días. Toca:
+
+- el modelo y la restricción de no solapamiento (cambio de `schema.prisma` y migración de los
+  eventos existentes, que pasan a tener un único día);
+- el cotizador, el presupuesto (cada línea pertenece a un día), el cálculo de la seña y los recargos;
+- la agenda y el detalle del evento, la comanda y el PDF del presupuesto;
+- un **selector de rango de fechas** (clic de inicio y clic de fin) sobre el calendario propio de
+  `SelectorFechaHora.tsx`, sin dependencia nueva, para reemplazar el selector de un solo día en el
+  cotizador, la consulta social y el panel;
+- la validación del tope de 32 días como regla compartida en `packages/shared` (la usan la pantalla
+  y la API), con los casos de la tabla de arriba como tests;
+- Repetir evento y el recálculo por cambio de fecha (HU-54);
+- los esquemas de `packages/shared`, la auditoría y los tests.
+
+Para la Planning se propone **partirla en historias** que se puedan entregar por separado: (a) modelo
+y solapamiento por día, (b) cotizador y presupuesto por día, (c) agenda y comanda por día, (d)
+Repetir evento y recálculo. Sin puntos hasta la Planning Poker.
 
 ## EPIC-06 — Gestión de Pagos de Clientes de los Eventos
 
@@ -253,9 +447,9 @@ provisoria del PO del 06/10/2026.
 | 2 | HU-04 · HU-10 · HU-11 · HU-12 · HU-13 · HU-17 · HU-40 | 48 |
 | 3 | HU-05 · HU-06 · HU-07 · HU-45 · HU-19 · HU-44 · HU-36 · HU-37 · HU-41 | 36 |
 | 4 | HU-02 · HU-03 · HU-16 · HU-18 · HU-20 · HU-22 · HU-28 · HU-29 · HU-33 · HU-38 · HU-53 | 41 + HU-53 |
-| 5 | HU-43 · HU-24 · HU-25 · HU-30 · HU-31 · HU-34 | 34 |
+| 5 | HU-43 · HU-24 · HU-25 · HU-30 · HU-31 · HU-34 · HU-55 | 34 + HU-55 |
 | 6 | HU-21 · HU-23 · HU-35 · HU-39 | 20 |
-| a definir | HU-48 · HU-49 · HU-50 · HU-51 · HU-52 · HU-54 · HU-55 · HU-56 | sin estimar |
+| a definir | HU-48 · HU-49 · HU-50 · HU-51 · HU-52 · HU-54 · HU-56 | sin estimar |
 
 Los puntos son los del backlog general (con HU-46 y HU-47 marcadas \*, ver nota de EPIC-10). Cada Sprint Planning re-estima según el alcance real: el Sprint 1 se cerró en 8 historias y 31 puntos tras re-estimar HU-27, HU-32, HU-01 y HU-09 a la baja (ver el documento de Sprint 1, que usa numeración local HU-01 a HU-08 para este subconjunto).
 

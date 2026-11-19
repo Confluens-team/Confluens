@@ -1,6 +1,7 @@
 import type { ServicioPublico } from '@confluens/shared';
 import { useState } from 'react';
 
+import { Cargando } from '@/components/PantallaDeCarga';
 import { useServiciosPublicos } from '@/hooks/use-servicios';
 import { agruparPorCategoria } from '@/lib/catalogo';
 import { fotoOptimizada } from '@/lib/fotos';
@@ -15,7 +16,7 @@ export function ServiciosPublicos() {
   const [categoriaElegida, setCategoriaElegida] = useState<string | null>(null);
 
   if (isLoading) {
-    return <p className="mt-8 text-sm text-crema/70">Cargando la carta…</p>;
+    return <Cargando texto="Cargando la carta…" className="mt-8 text-crema/70" />;
   }
 
   if (isError) {

@@ -18,6 +18,14 @@ export const esquemaTipoSocialDetalle = z
   .min(1, 'Contanos qué evento es')
   .max(120, 'Usá hasta 120 caracteres');
 
+// Comentarios del cliente en la consulta de un evento social: lo que quiera contar de su evento
+// (pedidos, ideas, dudas), con cualquier tipo de evento social. Opcionales.
+export const MAXIMO_COMENTARIOS_CLIENTE = 1000;
+export const esquemaComentariosCliente = z
+  .string()
+  .trim()
+  .max(MAXIMO_COMENTARIOS_CLIENTE, `Usá hasta ${MAXIMO_COMENTARIOS_CLIENTE} caracteres`);
+
 // Media jornada: hasta 4 horas inclusive; completa: más de 4 horas. No se puede derivar de
 // Evento.inicio/fin (quedan null mientras el evento está en EnConsulta): la elige el cliente y
 // se guarda en Evento.tipoJornada. Definición formal en docs/negocio/tarifario-2026.md.

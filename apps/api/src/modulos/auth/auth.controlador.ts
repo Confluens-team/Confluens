@@ -7,6 +7,7 @@ import {
   opcionesLimpiarCookieSesion,
 } from '../../lib/jwt.js';
 import {
+  cambiarMiContrasena,
   cerrarSesion,
   iniciarSesion,
   obtenerPerfilCliente,
@@ -66,6 +67,15 @@ export function olvidoContrasena(req: Request, res: Response): void {
 }
 
 // Mismo manejo de cookie que login: con la contraseña nueva queda la sesión iniciada.
+// HU-30 del backlog: cambiar la contraseña desde Mi cuenta. Como restablecer, renueva la cookie con
+// la versión de sesión nueva: es la única sesión que queda abierta.
+export async function cambiarContrasena(req: Request, res: Response): Promise<void> {
+  const { sesion, token } = await cambiarMiContrasena(req.usuario!.id, req.body);
+  res.cookie(NOMBRE_COOKIE_SESION, token, opcionesCookieSesion());
+  const cuerpo: RespuestaExito<Sesion> = { data: sesion };
+  res.json(cuerpo);
+}
+
 export async function restablecer(req: Request, res: Response): Promise<void> {
   const { sesion, token } = await restablecerContrasena(req.body);
   res.cookie(NOMBRE_COOKIE_SESION, token, opcionesCookieSesion());

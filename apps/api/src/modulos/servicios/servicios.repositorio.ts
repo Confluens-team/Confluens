@@ -1,5 +1,6 @@
 import type { CrearServicio, ModificarServicio } from '@confluens/shared';
 
+import { registrarAuditoria } from '../../lib/auditoria.js';
 import { prisma } from '../../lib/prisma.js';
 
 // Capa de acceso a datos del módulo. Separada del servicio para poder inyectar un fake en
@@ -45,8 +46,15 @@ export async function buscarPorNombre(nombre: string) {
 // "activo" se fija en true acá, no lo decide quien llama: HU-32 no tiene alta de servicio inactivo
 // (ver comentario en packages/shared/src/esquemas/servicio.esquema.ts).
 export async function crear(datos: CrearServicio) {
-  return prisma.servicio.create({
-    data: { ...datos, activo: true },
+  return prisma.$transaction(async (tx) => {
+    const servicio = await tx.servicio.create({ data: { ...datos, activo: true } });
+    await registrarAuditoria(tx, {
+      entidad: 'Servicio',
+      entidadId: servicio.id,
+      anterior: null,
+      nuevo: servicio,
+    });
+    return servicio;
   });
 }
 
@@ -64,14 +72,12 @@ export async function actualizarLanding(
 ) {
   return prisma.$transaction(async (tx) => {
     const servicio = await tx.servicio.update({ where: { id }, data: { fotoUrl } });
-    await tx.auditLog.create({
-      data: {
-        usuarioId,
-        entidad: 'Servicio',
-        entidadId: String(id),
-        valorAnterior: { fotoUrl: anterior },
-        valorNuevo: { fotoUrl },
-      },
+    await registrarAuditoria(tx, {
+      usuarioId,
+      entidad: 'Servicio',
+      entidadId: id,
+      anterior: { fotoUrl: anterior },
+      nuevo: { fotoUrl },
     });
     return servicio;
   });
@@ -81,7 +87,17 @@ export async function actualizarLanding(
 // se tocan: guardan su propio precio congelado (RN-03), así que el precio nuevo solo lo toman los
 // presupuestos que se arman o se recalculan después.
 export async function modificar(id: number, datos: ModificarServicio) {
-  return prisma.servicio.update({ where: { id }, data: datos });
+  return prisma.$transaction(async (tx) => {
+    const anterior = await tx.servicio.findUniqueOrThrow({ where: { id } });
+    const servicio = await tx.servicio.update({ where: { id }, data: datos });
+    await registrarAuditoria(tx, {
+      entidad: 'Servicio',
+      entidadId: id,
+      anterior,
+      nuevo: servicio,
+    });
+    return servicio;
+  });
 }
 
 export type ServiciosRepositorio = {

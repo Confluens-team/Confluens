@@ -1,4 +1,5 @@
 import type {
+  ChoquesDeConsulta,
   ConsultaDetallada,
   CrearConsultaSocial,
   CrearPresupuesto,
@@ -11,6 +12,7 @@ import type {
   SeguimientoConsulta,
   Solicitud,
 } from '@confluens/shared';
+import { diasDeCotizacion } from '@confluens/shared';
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api';
@@ -22,13 +24,15 @@ export function useSolicitarPresupuesto() {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (datos: Omit<CrearPresupuesto, 'solicitudId'>) => {
+      // HU-50: la solicitud describe el evento por su primer día, con la mayor cantidad de personas.
+      const dias = diasDeCotizacion(datos);
       const solicitud: CrearSolicitud = {
         nombre: datos.nombre,
         telefono: datos.telefono,
         correo: datos.correo,
-        fechaDeseada: datos.fecha,
-        cantidadPersonas: datos.cantidadPersonas,
-        salonId: datos.salonIds[0] ?? null,
+        fechaDeseada: dias[0]!.fecha,
+        cantidadPersonas: Math.max(...dias.map((dia) => dia.cantidadPersonas)),
+        salonId: dias[0]!.salonIds[0] ?? null,
       };
       const creada = await apiFetch<RespuestaExito<Solicitud>>('/solicitudes', {
         method: 'POST',
@@ -110,11 +114,28 @@ export function usePresupuestos(filtros: FiltrosPresupuestos) {
 }
 
 // HU-12: una consulta con todo lo necesario para mostrarla y editarla.
-export function useConsulta(id: number) {
+// Sin id (un evento sin presupuesto) no se pide nada.
+export function useConsulta(id: number | undefined) {
   return useQuery({
     queryKey: ['presupuestos', 'consulta', id],
+    enabled: id !== undefined,
     queryFn: async () => {
       const respuesta = await apiFetch<RespuestaExito<ConsultaDetallada>>(`/presupuestos/${id}`);
+      return respuesta.data;
+    },
+  });
+}
+
+// HU-50: el aviso preventivo de solapamientos de una consulta (día, salón, evento y horario).
+// Sin id (un evento sin presupuesto, o uno que ya no está en consulta) no se pide nada.
+export function useChoquesDeConsulta(id: number | undefined) {
+  return useQuery({
+    queryKey: ['presupuestos', 'consulta', id, 'choques'],
+    enabled: id !== undefined,
+    queryFn: async () => {
+      const respuesta = await apiFetch<RespuestaExito<ChoquesDeConsulta>>(
+        `/presupuestos/${id}/choques`,
+      );
       return respuesta.data;
     },
   });

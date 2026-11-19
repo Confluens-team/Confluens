@@ -236,6 +236,14 @@
     @apply font-sans;
     scroll-behavior: smooth;
   }
+  /* En el panel interno cada actualización de datos cambia el alto de la página y el navegador
+     reacomoda el scroll: con scroll suave eso se ve como un salto de unos píxeles que después se
+     asienta. Sin suavizado el reacomodo es instantáneo, y el lugar de la barra se reserva para que
+     el contenido no se corra de costado cuando aparece o desaparece. */
+  html.panel-interno {
+    scroll-behavior: auto;
+    scrollbar-gutter: stable;
+  }
   h1,
   h2,
   h3 {
@@ -319,6 +327,32 @@
 .calendario-agenda .fc .fc-event.evento-seleccionado {
   outline: 2px solid var(--color-dorado);
   outline-offset: 1px;
+}
+
+/* Pantalla de carga: el isotipo a color se revela de abajo hacia arriba (clip-path), se queda
+   lleno un instante y vuelve a vaciarse. Con movimiento reducido queda fijo y entero. */
+@keyframes carga-relleno {
+  0% {
+    clip-path: inset(100% 0 0 0);
+  }
+  70%,
+  85% {
+    clip-path: inset(0 0 0 0);
+  }
+  100% {
+    clip-path: inset(0 0 0 0);
+    opacity: 0;
+  }
+}
+
+.carga-relleno {
+  animation: carga-relleno 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carga-relleno {
+    animation: none;
+  }
 }
 
 @media print {

@@ -9,7 +9,7 @@ export const NOMBRE_COOKIE_SESION = 'confluens_sesion';
 // ajustarla sin tocar código; default 120 minutos = las "2 horas" acordadas con el
 // usuario. autenticar.ts renueva la cookie en cada request exitoso, así que esto es
 // en realidad una ventana deslizante, no una duración fija desde el login.
-const JWT_EXPIRA_MINUTOS = Number(process.env['JWT_EXPIRA_MINUTOS'] ?? 120);
+export const JWT_EXPIRA_MINUTOS = Number(process.env['JWT_EXPIRA_MINUTOS'] ?? 120);
 
 // Por qué esto NO usa config/entorno.ts: cargarEntorno() exige DATABASE_URL y hace
 // process.exit(1) si falta, y el pipeline de CI corre los tests sin ninguna env var

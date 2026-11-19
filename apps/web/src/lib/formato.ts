@@ -73,10 +73,32 @@ export function armadoDeSalones(
   return armados.map((s) => `${s.nombre}: ${s.distribucion!.nombre}`).join(' · ');
 }
 
+// HU-50: el armado de un evento de varios días. Cada día puede armar distinto el mismo salón, así que el
+// de un solo día no representa al evento: si todos los días coinciden se dice cuál, y si no, «Varía».
+// Un evento de un solo día se resume como siempre (armadoDeSalones).
+export function armadoDelEvento(evento: {
+  salones: { nombre: string; distribucion: { nombre: string } | null }[];
+  dias: { salones: { nombre: string; distribucion: { nombre: string } | null }[] }[];
+}): string | null {
+  if (evento.dias.length <= 1) return armadoDeSalones(evento.salones);
+  const porDia = evento.dias.map((dia) => armadoDeSalones(dia.salones));
+  if (porDia.every((armado) => armado === null)) return null;
+  return porDia.every((armado) => armado === porDia[0]) ? porDia[0]! : 'Varía según el día';
+}
+
 // RN-11: «Continuo en salón (+20%)». Normal va sin recargo.
 export function textoModalidad(modalidad: ModalidadServicio): string {
   const recargo = RECARGO_MODALIDAD[modalidad];
   return recargo > 0
     ? `${NOMBRE_MODALIDAD[modalidad]} (+${recargo}%)`
     : NOMBRE_MODALIDAD[modalidad];
+}
+
+// Cuánto hace que pasó algo, para la luz de conexión de Personal: «hace un momento», «hace 3 min»,
+// «hace 2 h». Un instante en el futuro (reloj desfasado) cuenta como «hace un momento».
+export function haceCuanto(fecha: Date, ahora: Date = new Date()): string {
+  const minutos = Math.floor((ahora.getTime() - fecha.getTime()) / 60_000);
+  if (minutos < 1) return 'hace un momento';
+  if (minutos < 60) return `hace ${minutos} min`;
+  return `hace ${Math.floor(minutos / 60)} h`;
 }
