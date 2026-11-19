@@ -13,11 +13,17 @@ import { SelectorFecha } from '@/components/SelectorFechaHora';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { type FiltrosAuditoriaWeb, urlDeExportacion, useAuditoria } from '@/hooks/use-auditoria';
+import {
+  type FiltrosAuditoriaWeb,
+  urlDeExportacion,
+  useAuditoria,
+  useCamposAuditados,
+} from '@/hooks/use-auditoria';
 import { useUsuarios } from '@/hooks/use-usuarios';
 import {
   etiquetaDeRegistro,
   formatearFechaHora,
+  nombreDeCampo,
   NOMBRES_DE_ENTIDAD,
   resumenDelCambio,
 } from '@/lib/auditoria';
@@ -152,6 +158,12 @@ export function AuditoriaRegistro({ soloPendientes = false }: { soloPendientes?:
   const [elegido, setElegido] = useState<number | null>(null);
   const { data: respuesta, isLoading, isError, isFetching } = useAuditoria(filtros);
   const { data: usuarios } = useUsuarios();
+  // HU-25 pide filtrar por el campo auditado (sprint-05.md): el desplegable lo muestra con su nombre
+  // legible, ordenado por ese nombre.
+  const { data: campos } = useCamposAuditados();
+  const camposOrdenados = (campos ?? [])
+    .map((campo) => ({ campo, nombre: nombreDeCampo(campo) }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 
   // Cambiar un filtro vuelve a la primera página.
   function filtrar(cambios: Partial<FiltrosAuditoriaWeb>) {
@@ -189,7 +201,7 @@ export function AuditoriaRegistro({ soloPendientes = false }: { soloPendientes?:
           <Input
             id="auditoria-buscar"
             type="search"
-            placeholder="Usuario, número de registro o campo…"
+            placeholder="Usuario o número de registro…"
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
             onBlur={() => filtrar({ buscar: busqueda.trim() || undefined })}
@@ -236,6 +248,22 @@ export function AuditoriaRegistro({ soloPendientes = false }: { soloPendientes?:
             {ENTIDADES_AUDITADAS.map((entidad) => (
               <option key={entidad} value={entidad}>
                 {NOMBRES_DE_ENTIDAD[entidad]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="min-w-0 flex-[1_1_11rem] space-y-1.5">
+          <Label htmlFor="auditoria-campo">Campo</Label>
+          <select
+            id="auditoria-campo"
+            className={CLASES_SELECT}
+            value={filtros.campo ?? ''}
+            onChange={(e) => filtrar({ campo: e.target.value || undefined })}
+          >
+            <option value="">Todos</option>
+            {camposOrdenados.map(({ campo, nombre }) => (
+              <option key={campo} value={campo}>
+                {nombre}
               </option>
             ))}
           </select>
