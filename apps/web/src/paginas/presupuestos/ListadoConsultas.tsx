@@ -1,7 +1,6 @@
 import { desglosarIva, type EstadoConsulta, type FiltrosPresupuestos } from '@confluens/shared';
 import {
   AlertTriangle,
-  ArrowLeft,
   CheckCircle2,
   FileCheck,
   FileText,
@@ -26,7 +25,6 @@ import { fechaLocal, formatearPesos, nombreCompleto, nombresDeSalones } from '@/
 import { textoDeDias } from '@/lib/rango-de-fechas';
 import { COLORES_TIPO_EVENTO } from '@/lib/tipo-evento';
 import { cn } from '@/lib/utils';
-import { DetalleEvento } from '@/paginas/eventos/DetalleEvento';
 
 import { EditarConsulta } from './EditarConsulta';
 
@@ -82,7 +80,6 @@ export function ListadoConsultas({ reinicio }: { reinicio?: string }) {
   const [abierta, setAbierta] = useState<number | null>(null);
   // Lo que pasó con la última consulta que se cerró (guardada o dada de baja).
   const [aviso, setAviso] = useState<string | null>(null);
-  const [eventoAbierto, setEventoAbierto] = useState<number | null>(null);
 
   // Tocar la pestaña activa (o el logo) estando adentro de un detalle vuelve al listado: el panel manda
   // una señal nueva en cada navegación y acá se cierra lo que estaba abierto. Se compara en el render
@@ -91,7 +88,6 @@ export function ListadoConsultas({ reinicio }: { reinicio?: string }) {
   if (reinicioVisto !== reinicio) {
     setReinicioVisto(reinicio);
     setAbierta(null);
-    setEventoAbierto(null);
   }
 
   // La búsqueda por cliente espera a que se deje de escribir para no pedir una vez por tecla.
@@ -134,28 +130,8 @@ export function ListadoConsultas({ reinicio }: { reinicio?: string }) {
   // al listado, arriba de todo, con el aviso de lo que pasó.
   function cerrar(mensaje: string | null) {
     setAbierta(null);
-    setEventoAbierto(null);
     setAviso(mensaje);
     window.scrollTo({ top: 0 });
-  }
-
-  // Agendar y cobrar viven en el detalle del evento (HU-13 y HU-14): se abre desde la consulta y
-  // se vuelve a ella.
-  if (abierta !== null && eventoAbierto !== null) {
-    return (
-      <div className="space-y-2">
-        <Button variant="ghost" size="sm" onClick={() => setEventoAbierto(null)}>
-          <ArrowLeft /> Volver a la consulta {abierta}
-        </Button>
-        <DetalleEvento
-          eventoId={eventoAbierto}
-          onVerPresupuesto={(id) => {
-            setEventoAbierto(null);
-            setAbierta(id);
-          }}
-        />
-      </div>
-    );
   }
 
   if (abierta !== null) {
@@ -172,7 +148,6 @@ export function ListadoConsultas({ reinicio }: { reinicio?: string }) {
           )
         }
         onDadaDeBaja={(consulta) => cerrar(`Consulta ${consulta.id} dada de baja.`)}
-        onAbrirEvento={setEventoAbierto}
       />
     );
   }

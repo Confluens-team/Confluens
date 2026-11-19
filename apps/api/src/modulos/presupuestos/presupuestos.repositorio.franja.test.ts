@@ -113,6 +113,61 @@ describe('presupuestos.repositorio: reemplazarDiasYLineas (HU-50)', () => {
     expect(tx.eventoDia.deleteMany).not.toHaveBeenCalled();
   });
 
+  it('una consulta agendada que se corre lleva el horario de cada día a su fecha nueva', async () => {
+    // 18/11 de 17 a 21 (hora de Córdoba) pasa al 20/11: el horario no puede quedarse en el 18, porque
+    // la seña reservaría el salón en la fecha vieja.
+    const agendado = {
+      ...dia(1, '2040-11-18'),
+      inicio: new Date('2040-11-18T20:00:00.000Z'),
+      fin: new Date('2040-11-19T00:00:00.000Z'),
+    };
+    const tx = txConDias([agendado]);
+
+    await comoPersonal(() =>
+      reemplazarDiasYLineas(77, [nuevoDia('2040-11-20')], [linea('2040-11-20')], tx as never),
+    );
+
+    expect(tx.filas[0]).toMatchObject({
+      fecha: new Date('2040-11-20'),
+      inicio: new Date('2040-11-20T20:00:00.000Z'),
+      fin: new Date('2040-11-21T00:00:00.000Z'),
+    });
+  });
+
+  it('un horario que viene en el pedido manda sobre el corrido', async () => {
+    const agendado = {
+      ...dia(1, '2040-11-18'),
+      inicio: new Date('2040-11-18T20:00:00.000Z'),
+      fin: new Date('2040-11-19T00:00:00.000Z'),
+    };
+    const tx = txConDias([agendado]);
+    const conHorario = {
+      ...nuevoDia('2040-11-20'),
+      inicio: new Date('2040-11-20T12:00:00.000Z'),
+      fin: new Date('2040-11-20T21:00:00.000Z'),
+    };
+
+    await comoPersonal(() =>
+      reemplazarDiasYLineas(77, [conHorario], [linea('2040-11-20')], tx as never),
+    );
+
+    expect(tx.filas[0]).toMatchObject({
+      inicio: new Date('2040-11-20T12:00:00.000Z'),
+      fin: new Date('2040-11-20T21:00:00.000Z'),
+    });
+  });
+
+  it('un día corrido sin horario sigue sin horario', async () => {
+    const tx = txConDias([dia(1, '2040-11-18')]);
+
+    await comoPersonal(() =>
+      reemplazarDiasYLineas(77, [nuevoDia('2040-11-20')], [linea('2040-11-20')], tx as never),
+    );
+
+    expect(tx.eventoDia.update.mock.calls[0]![0].data).not.toHaveProperty('inicio');
+    expect(tx.eventoDia.update.mock.calls[0]![0].data).not.toHaveProperty('fin');
+  });
+
   it('corre la franja entera hacia atrás sin chocar', async () => {
     const tx = txConDias([dia(1, '2040-05-01'), dia(2, '2040-05-02'), dia(3, '2040-05-03')]);
     const nuevas = ['2040-04-30', '2040-05-01', '2040-05-02'];

@@ -43,7 +43,6 @@ export function FichaCliente({ clienteId, onVolver }: { clienteId: number; onVol
         onVolver={volverAlEvento}
         onGuardada={volverAlEvento}
         onDadaDeBaja={volverAlEvento}
-        onAbrirEvento={volverAlEvento}
       />
     );
   }

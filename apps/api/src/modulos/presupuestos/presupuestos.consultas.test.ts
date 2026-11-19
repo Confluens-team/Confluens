@@ -745,6 +745,105 @@ describe('PATCH /api/presupuestos/:id (HU-12)', () => {
     expect(respuesta.status).toBe(400);
     expect(respuesta.body.error.code).toBe('VALIDATION_ERROR');
   });
+
+  // 16/11/2026: una consulta ya agendada (con horario, todavía sin seña) que cambia de fecha. Si el
+  // horario se quedara en la fecha vieja, la seña reservaría el salón el día que ya no es.
+  it('si cambia la fecha de una consulta agendada, el horario se corre con ella', async () => {
+    buscarPresupuestoDetalladoMock.mockResolvedValue(
+      consulta(
+        {},
+        {
+          inicio: new Date('2026-11-15T20:00:00.000Z'),
+          fin: new Date('2026-11-16T00:00:00.000Z'),
+        },
+      ),
+    );
+
+    const respuesta = await request(app)
+      .patch('/api/presupuestos/31')
+      .set('Cookie', [cookieRE])
+      .send({ ...bodyBase, fecha: '2026-11-17' });
+
+    expect(respuesta.status).toBe(200);
+    expect(actualizarEventoMock.mock.calls[0]![1]).toMatchObject({
+      fecha: new Date('2026-11-17'),
+      inicio: new Date('2026-11-17T20:00:00.000Z'),
+      fin: new Date('2026-11-18T00:00:00.000Z'),
+    });
+  });
+
+  // 19/11/2026: ampliar el horario y agregar un servicio en la hora nueva en el mismo guardado. La hora
+  // del servicio se controla contra el horario que viene en el pedido, no contra el guardado.
+  describe('con el horario del día en el pedido', () => {
+    // Agendada de 10 a 12 en Córdoba.
+    beforeEach(() => {
+      buscarPresupuestoDetalladoMock.mockResolvedValue(
+        consulta(
+          {},
+          {
+            inicio: new Date('2026-11-15T13:00:00.000Z'),
+            fin: new Date('2026-11-15T15:00:00.000Z'),
+          },
+        ),
+      );
+    });
+    const conBarra = (horario: Record<string, string> = {}) => ({
+      dias: [
+        {
+          fecha: '2026-11-15',
+          salones: [{ salonId: 5 }],
+          cantidadPersonas: 12,
+          tipoJornada: 'completa',
+          adicionales: [
+            {
+              descripcion: 'Barra de tragos',
+              cantidad: 1,
+              precioUnitario: '40000',
+              horaEstimada: '17:00',
+            },
+          ],
+          ...horario,
+        },
+      ],
+    });
+
+    it('sin horario en el pedido, un servicio fuera del guardado se rechaza', async () => {
+      const respuesta = await request(app)
+        .patch('/api/presupuestos/31')
+        .set('Cookie', [cookieRE])
+        .send(conBarra());
+
+      expect(respuesta.status).toBe(422);
+      expect(respuesta.body.error.message).toContain('de 10:00 a 12:00');
+    });
+
+    it('con el horario ampliado acepta el servicio y guarda el horario nuevo', async () => {
+      const respuesta = await request(app)
+        .patch('/api/presupuestos/31')
+        .set('Cookie', [cookieRE])
+        .send(conBarra({ inicio: '2026-11-15T13:00:00.000Z', fin: '2026-11-15T23:00:00.000Z' }));
+
+      expect(respuesta.status).toBe(200);
+      expect(actualizarEventoMock.mock.calls[0]![1]).toMatchObject({
+        inicio: new Date('2026-11-15T13:00:00.000Z'),
+        fin: new Date('2026-11-15T23:00:00.000Z'),
+      });
+    });
+
+    it('el horario va con el inicio y el fin, y el fin después del inicio', async () => {
+      const soloInicio = await request(app)
+        .patch('/api/presupuestos/31')
+        .set('Cookie', [cookieRE])
+        .send(conBarra({ inicio: '2026-11-15T13:00:00.000Z' }));
+      const alReves = await request(app)
+        .patch('/api/presupuestos/31')
+        .set('Cookie', [cookieRE])
+        .send(conBarra({ inicio: '2026-11-15T23:00:00.000Z', fin: '2026-11-15T13:00:00.000Z' }));
+
+      expect(soloInicio.status).toBe(400);
+      expect(alReves.status).toBe(400);
+    });
+  });
 });
 
 // RN-09: el Responsable de Eventos modifica en todo momento, también un evento ya confirmado

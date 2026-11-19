@@ -13,18 +13,21 @@ export interface OpcionDeCopia {
 }
 
 /**
- * «Copiar día cargado» (HU-50): abre la lista de los otros días ya completos y copia el elegido en
- * este. Se copia todo lo del día (personas, horario, salones y gastronomía), y después se cambia
+ * «Copiar día cargado» (HU-50): abre la lista de los otros días ya cargados y copia el elegido en
+ * este. Lo usan el cotizador del cliente y la consulta del panel. Se copia todo lo del día (personas, horario, salones y gastronomía), y después se cambia
  * solo lo distinto. Sin días cargados para copiar, el botón queda deshabilitado.
  */
 export function CopiarDiaCargado({
   opciones,
   onCopiar,
   variante = 'outline',
+  tamanio = 'default',
 }: {
   opciones: OpcionDeCopia[];
   onCopiar: (indice: number) => void;
   variante?: 'outline' | 'ghost';
+  // El panel del personal lo usa chico, entre las acciones del día.
+  tamanio?: 'default' | 'sm';
 }) {
   const [abierto, setAbierto] = useState(false);
   const sinOpciones = opciones.length === 0;
@@ -37,7 +40,7 @@ export function CopiarDiaCargado({
         type="button"
         disabled={sinOpciones}
         title={sinOpciones ? 'Todavía no hay días cargados para copiar' : undefined}
-        className={buttonVariants({ variant: variante })}
+        className={buttonVariants({ variant: variante, size: tamanio })}
       >
         <Copy /> Copiar día cargado
       </Popover.Trigger>

@@ -72,25 +72,26 @@ enum Rol {
 
 // Credenciales. Separada de Cliente (ver modelo-datos.md).
 model Usuario {
-  id              Int        @id @default(autoincrement())
-  email           String     @unique
-  hashContrasena  String
-  rol             Rol
+  id                  Int                 @id @default(autoincrement())
+  email               String              @unique
+  hashContrasena      String
+  rol                 Rol
   // Versión de las sesiones (M2 de la auditoría de seguridad). Viaja en el JWT; cerrar sesión o
   // restablecer la contraseña la incrementa y todos los tokens emitidos antes dejan de servir.
-  versionSesion   Int        @default(0)
+  versionSesion       Int                 @default(0)
   // Baja lógica del personal (HU-31 del backlog, Sprint 5): inactivo no inicia sesión y sus sesiones
   // se cierran, pero se sigue viendo en la auditoría y en lo que registró. Se puede reactivar.
-  activo          Boolean    @default(true)
+  activo              Boolean             @default(true)
   // Última vez que el usuario del personal hizo algo en el panel (estado de conexión de Personal). La
   // anota la API en cada pedido, a lo sumo una vez por minuto, y se borra al cerrar sesión o dar de
   // baja. Se escribe sin pasar por @updatedAt: anotar actividad no es modificar al usuario.
-  ultimaActividad DateTime?
-  cliente         Cliente?
-  auditorias      AuditLog[]
-  pagosAnulados   Pago[]     @relation("PagoAnuladoPor")
-  creadoEn        DateTime   @default(now())
-  actualizadoEn   DateTime   @updatedAt
+  ultimaActividad     DateTime?
+  cliente             Cliente?
+  auditorias          AuditLog[]
+  revisionesAuditoria RevisionAuditoria[]
+  pagosAnulados       Pago[]              @relation("PagoAnuladoPor")
+  creadoEn            DateTime            @default(now())
+  actualizadoEn       DateTime            @updatedAt
 }
 
 // Datos comerciales. Relación 1-1 opcional con Usuario: el usuario se crea recién cuando el
@@ -442,17 +443,31 @@ model Pago {
 // cambiaron, las mismas de valorAnterior y valorNuevo, para filtrar por campo (HU-25 del backlog,
 // ADR 0013).
 model AuditLog {
-  id            Int      @id @default(autoincrement())
+  id            Int                @id @default(autoincrement())
   usuarioId     Int?
-  usuario       Usuario? @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
-  fecha         DateTime @default(now())
+  usuario       Usuario?           @relation(fields: [usuarioId], references: [id], onDelete: Restrict)
+  fecha         DateTime           @default(now())
   entidad       String
   entidadId     String
-  campos        String[] @default([])
+  campos        String[]           @default([])
   valorAnterior Json?
   valorNuevo    Json?
+  revision      RevisionAuditoria?
 
   @@index([fecha])
   @@index([campos], type: Gin)
   @@map("audit_log")
+}
+
+// Auditoría para Gerencia (15/11/2026): el Gerente General marca como revisado un cambio sensible
+// que hizo otro usuario. Va en una tabla aparte porque audit_log no se puede modificar (trigger
+// audit_log_inmutable). Una revisión por cambio; no se deshace.
+model RevisionAuditoria {
+  auditLogId    Int      @id
+  auditLog      AuditLog @relation(fields: [auditLogId], references: [id], onDelete: Restrict)
+  revisadoPorId Int
+  revisadoPor   Usuario  @relation(fields: [revisadoPorId], references: [id], onDelete: Restrict)
+  revisadoEn    DateTime @default(now())
+
+  @@index([revisadoPorId])
 }

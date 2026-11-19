@@ -248,7 +248,13 @@ export function Agenda({
   const [presupuestoAbierto, setPresupuestoAbierto] = useState<number | null>(null);
   // Comanda de cocina del evento confirmado, para imprimir. Tiene prioridad sobre las otras dos
   // vistas: se abre tanto desde el detalle del evento como desde el del presupuesto.
-  const [comandaAbierta, setComandaAbierta] = useState<number | null>(null);
+  // La comanda abierta: el presupuesto y, si se pidió la de un día, su índice.
+  const [comandaAbierta, setComandaAbierta] = useState<{
+    presupuestoId: number;
+    dia?: number;
+  } | null>(null);
+  const abrirComanda = (presupuestoId: number, dia?: number) =>
+    setComandaAbierta({ presupuestoId, dia });
 
   // Tocar la pestaña activa (o el logo) estando adentro de un detalle vuelve al listado: el panel manda
   // una señal nueva en cada navegación y acá se cierra lo que estaba abierto. Se compara en el render
@@ -297,7 +303,11 @@ export function Agenda({
 
   if (comandaAbierta !== null) {
     return (
-      <ComandaEvento presupuestoId={comandaAbierta} onVolver={() => setComandaAbierta(null)} />
+      <ComandaEvento
+        presupuestoId={comandaAbierta.presupuestoId}
+        dia={comandaAbierta.dia}
+        onVolver={() => setComandaAbierta(null)}
+      />
     );
   }
 
@@ -312,8 +322,7 @@ export function Agenda({
         onVolver={volverAlEvento}
         onGuardada={volverAlEvento}
         onDadaDeBaja={volverAlEvento}
-        onAbrirEvento={volverAlEvento}
-        onImprimirComanda={setComandaAbierta}
+        onImprimirComanda={abrirComanda}
       />
     );
   }
@@ -327,7 +336,7 @@ export function Agenda({
         <DetalleEvento
           eventoId={eventoAbierto}
           onVerPresupuesto={setPresupuestoAbierto}
-          onImprimirComanda={setComandaAbierta}
+          onImprimirComanda={abrirComanda}
           // HU-24: la consulta nueva creada con «Repetir evento» se abre en su lugar.
           onAbrirConsulta={(presupuestoId, eventoId) => {
             setEventoAbierto(eventoId);

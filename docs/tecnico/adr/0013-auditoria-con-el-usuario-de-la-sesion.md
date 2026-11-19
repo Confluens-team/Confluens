@@ -71,3 +71,60 @@ recálculo masivo por el porcentaje queda a nombre del Sistema.
   con SQL a mano en el repositorio y sin un índice simple. El PO eligió la columna (07/11/2026).
 - *Triggers de PostgreSQL que auditen cada tabla.* La base no sabe qué usuario de la aplicación hizo
   el cambio sin pasárselo por una variable de sesión en cada transacción.
+
+## Agregado: auditoría para Gerencia (15/11/2026)
+
+Franco pidió llevar la pestaña Auditoría a tres vistas, diseñadas con Claude Design: un **Resumen**
+para el Gerente General, un **Registro** filtrable con el detalle de cada cambio, y un **Historial**
+dentro de cada consulta y evento. El feed de actividad por día quedó afuera.
+
+**Cambio sensible.** Es el que toca plata o permisos. Las reglas viven en
+`packages/shared/src/dominio/auditoria-sensible.ts` (`REGLAS_SENSIBLES`):
+
+- un pago, cualquier cambio;
+- el incremento de precios (`ConfiguracionPrecios`), cualquier cambio;
+- el `precio` de un servicio;
+- los precios de un salón;
+- el `total` de un presupuesto;
+- el `rol`, el `activo` o la contraseña de un usuario;
+- el `activo` de un medio de pago.
+
+La API arma el mismo criterio como `where` de Prisma. Así filtra y cuenta en la base, sin columnas
+nuevas en `audit_log`.
+
+**Revisión.**
+
+- **Quién la necesita.** Un cambio sensible espera la revisión del Gerente General, salvo los que
+  hizo el propio GG y los del Sistema (usuario null). Esos se muestran igual como sensibles.
+- **Dónde se guarda.** Como `audit_log` es inmutable (trigger), la revisión vive en la tabla aparte
+  `RevisionAuditoria`: una revisión por cambio, con quién y cuándo.
+- **Quién la marca.** Solo el GG (`POST /auditoria/:id/revision`). El ADM ve el estado.
+- **Respuestas de error.** Un cambio que no la necesita responde 422 y uno ya revisado, 409.
+
+**Tipo de acción** (`tipoDeAccion`). No hay borrados físicos auditados, así que el tipo se deduce:
+
+- **alta:** el cambio no tiene valor anterior;
+- **baja:** una anulación (`anuladoEn`), un estado que pasa a `Cancelado` o un `activo` que pasa a
+  `false`;
+- **modificación:** el resto.
+
+Cada comparación de valor va junto con «el campo cambió». Sin eso, en SQL el `NOT` de las
+modificaciones dejaba afuera las filas que no tienen ese campo.
+
+**Endpoints nuevos:**
+
+- `GET /auditoria/resumen`: indicadores de los últimos días y «para revisar».
+- `GET /auditoria/evento/:id`: el evento con sus presupuestos, pagos y solicitud, buscados por sus
+  ids, porque esos cambios no llevan el id del evento.
+- `GET /auditoria/exportar`: CSV con los filtros del registro, hasta 5000 filas.
+
+`GET /auditoria` suma los filtros por tipo, sensibles, pendientes, registro puntual y búsqueda, y
+devuelve los conteos por tipo para las pestañas.
+
+**Lo que no se hizo.**
+
+- No se registran la IP ni el origen del cambio.
+- El historial no restaura versiones: un estado viejo de una consulta con pagos o salones agendados
+  puede romper reglas (solapamiento, seña, recálculo).
+- Lo que pide un cliente desde la web sigue sin auditarse, como decía este ADR. El historial de una
+  consulta empieza con el primer cambio del personal.
