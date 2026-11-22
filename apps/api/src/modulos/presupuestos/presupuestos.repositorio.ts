@@ -138,6 +138,38 @@ export async function reemplazarSalonesDelEvento(
   });
 }
 
+/**
+ * HU-50: los salones de TODOS los días de un evento recién creado, en una sola pasada. Reemplaza a
+ * llamar a `reemplazarSalonesDelEvento` día por día, que lee y audita en cada vuelta: contra Neon
+ * eso llevaba un evento de 9 días a pasar los 5 s de la transacción. Como el evento es nuevo, no
+ * hay nada que comparar ni quitar: se crean los renglones (uno por uno, para que corra el trigger
+ * de cada salón) y se deja UNA auditoría del evento con los salones que quedaron, sin repetir.
+ */
+export async function crearSalonesDeLosDias(
+  eventoId: number,
+  dias: { diaId: number; salonIds: number[]; distribuciones?: Map<number, number> }[],
+  tx: Prisma.TransactionClient = prisma,
+) {
+  await enTransaccion(tx, async (t) => {
+    let creados = 0;
+    for (const { diaId, salonIds, distribuciones } of dias) {
+      for (const salonId of salonIds) {
+        await t.eventoSalon.create({
+          data: { eventoId, diaId, salonId, distribucionId: distribuciones?.get(salonId) ?? null },
+        });
+        creados += 1;
+      }
+    }
+    if (creados === 0) return;
+    await registrarAuditoria(t, {
+      entidad: 'Evento',
+      entidadId: eventoId,
+      anterior: { salones: [] },
+      nuevo: { salones: [...new Set(await salonesDelEvento(eventoId, t))] },
+    });
+  });
+}
+
 // Los salones de un evento por nombre, con su distribución, para la auditoría.
 export async function salonesDelEvento(eventoId: number, tx: Prisma.TransactionClient) {
   const filas = await tx.eventoSalon.findMany({
@@ -372,7 +404,10 @@ export async function buscarEventoConPresupuestos(
 export async function crearEnTransaccion<T>(
   ejecutar: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
-  return prisma.$transaction((tx) => ejecutar(tx));
+  // 60 s en vez de los 5 de Prisma: un evento de varios días escribe varias filas por día y contra
+  // Neon cada consulta cuesta. Crearlo ya es liviano (`crearSalonesDeLosDias`), pero modificarlo
+  // sigue haciendo unas ocho consultas por día. Con 9 días ya se pasaba de los 5 s; el máximo son 32.
+  return prisma.$transaction((tx) => ejecutar(tx), { timeout: 60_000 });
 }
 
 // HU-10: listado de consultas del personal, del más reciente al más antiguo por emisión (el id
@@ -979,6 +1014,7 @@ export type PresupuestosRepositorio = {
   buscarSalonesPorIds: typeof buscarSalonesPorIds;
   quitarSalonesDelEvento: typeof quitarSalonesDelEvento;
   reemplazarSalonesDelEvento: typeof reemplazarSalonesDelEvento;
+  crearSalonesDeLosDias: typeof crearSalonesDeLosDias;
   crearDiasDelEvento: typeof crearDiasDelEvento;
   buscarServiciosPorIds: typeof buscarServiciosPorIds;
   buscarSolicitud: typeof buscarSolicitud;
