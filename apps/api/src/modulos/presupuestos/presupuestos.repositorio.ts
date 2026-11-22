@@ -372,7 +372,10 @@ export async function buscarEventoConPresupuestos(
 export async function crearEnTransaccion<T>(
   ejecutar: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
-  return prisma.$transaction((tx) => ejecutar(tx));
+  // 60 s en vez de los 5 de Prisma: un evento de varios días hace unas ocho consultas por día (el día,
+  // sus salones y la auditoría de cada uno) y contra Neon cada consulta cuesta. Con 9 días ya se
+  // pasaba de los 5 s; el máximo son 32.
+  return prisma.$transaction((tx) => ejecutar(tx), { timeout: 60_000 });
 }
 
 // HU-10: listado de consultas del personal, del más reciente al más antiguo por emisión (el id

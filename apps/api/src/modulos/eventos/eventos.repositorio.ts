@@ -338,7 +338,9 @@ export async function cancelar(id: number, tx: Prisma.TransactionClient = prisma
 export async function crearEnTransaccion<T>(
   ejecutar: (tx: Prisma.TransactionClient) => Promise<T>,
 ): Promise<T> {
-  return prisma.$transaction((tx) => ejecutar(tx));
+  // 60 s en vez de los 5 de Prisma: agendar un evento de varios días escribe el horario y el salón de
+  // cada día, y contra Neon cada consulta cuesta. El máximo son 32 días.
+  return prisma.$transaction((tx) => ejecutar(tx), { timeout: 60_000 });
 }
 
 export type EventosRepositorio = {
