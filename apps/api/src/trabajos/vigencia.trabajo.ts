@@ -12,24 +12,30 @@ import { prisma } from '../lib/prisma.js';
  */
 export async function controlarVigencia(ahora: Date = new Date()): Promise<number> {
   const vencidos = { estado: 'Estimado' as const, venceEn: { lt: ahora } };
-  return prisma.$transaction(async (tx) => {
-    const presupuestos = await tx.presupuesto.findMany({ where: vencidos, select: { id: true } });
-    if (presupuestos.length === 0) return 0;
-    const ids = presupuestos.map(({ id }) => id);
-    const { count } = await tx.presupuesto.updateMany({
-      where: { ...vencidos, id: { in: ids } },
-      data: { estado: 'Expirado' },
-    });
-    await registrarAuditorias(
-      tx,
-      ids.map((id) => ({
-        usuarioId: null,
-        entidad: 'Presupuesto' as const,
-        entidadId: id,
-        anterior: { estado: 'Estimado' },
-        nuevo: { estado: 'Expirado' },
-      })),
-    );
-    return count;
-  });
+  return prisma.$transaction(
+    async (tx) => {
+      const presupuestos = await tx.presupuesto.findMany({ where: vencidos, select: { id: true } });
+      if (presupuestos.length === 0) return 0;
+      const ids = presupuestos.map(({ id }) => id);
+      const { count } = await tx.presupuesto.updateMany({
+        where: { ...vencidos, id: { in: ids } },
+        data: { estado: 'Expirado' },
+      });
+      await registrarAuditorias(
+        tx,
+        ids.map((id) => ({
+          usuarioId: null,
+          entidad: 'Presupuesto' as const,
+          entidadId: id,
+          anterior: { estado: 'Estimado' },
+          nuevo: { estado: 'Expirado' },
+        })),
+      );
+      return count;
+    },
+    // Corre al levantar la API, cuando Neon suele estar dormido: despertarlo tarda más que los 2 s que
+    // Prisma espera por defecto para abrir la transacción ("Unable to start a transaction in the
+    // given time"), y el error se repetía en los logs en cada arranque.
+    { maxWait: 20_000, timeout: 30_000 },
+  );
 }
