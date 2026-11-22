@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('../../lib/prisma.js', () => ({ prisma: {} }));
 
 const { conActor } = await import('../../lib/auditoria.js');
-const { actualizarEvento, reemplazarLineas, reemplazarSalonesDelEvento } =
+const { actualizarEvento, crearSalonesDeLosDias, reemplazarLineas, reemplazarSalonesDelEvento } =
   await import('./presupuestos.repositorio.js');
 
 // HU-50 parte 1 (ADR 0014): fecha, inicio, fin, cantidadPersonas y tipoJornada son del DÍA y el evento
@@ -149,6 +149,50 @@ describe('presupuestos.repositorio: reemplazarSalonesDelEvento (HU-50)', () => {
     expect(tx.eventoSalon.create).toHaveBeenCalledWith({
       data: { eventoId: 20, diaId: DIA, salonId: 2, distribucionId: 9 },
     });
+  });
+});
+
+describe('presupuestos.repositorio: crearSalonesDeLosDias (HU-50)', () => {
+  it('crea los salones de todos los días sin leer ni borrar y deja una sola auditoría', async () => {
+    const tx = txFalso();
+
+    await comoPersonal(() =>
+      crearSalonesDeLosDias(
+        20,
+        [
+          { diaId: 7, salonIds: [1], distribuciones: new Map() },
+          { diaId: 8, salonIds: [1, 2], distribuciones: new Map([[2, 9]]) },
+        ],
+        tx as never,
+      ),
+    );
+
+    expect(tx.eventoSalon.create.mock.calls.map(([arg]) => arg)).toEqual([
+      { data: { eventoId: 20, diaId: 7, salonId: 1, distribucionId: null } },
+      { data: { eventoId: 20, diaId: 8, salonId: 1, distribucionId: null } },
+      { data: { eventoId: 20, diaId: 8, salonId: 2, distribucionId: 9 } },
+    ]);
+    // El evento es nuevo: no hay nada que comparar ni quitar, y los salones se leen una sola vez.
+    expect(tx.eventoSalon.deleteMany).not.toHaveBeenCalled();
+    expect(tx.eventoSalon.findMany).toHaveBeenCalledTimes(1);
+    expect(tx.auditLog.create).toHaveBeenCalledTimes(1);
+    expect(tx.auditLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        entidad: 'Evento',
+        entidadId: '20',
+        campos: ['salones'],
+        valorNuevo: { salones: ['Auditorio'] },
+      }),
+    });
+  });
+
+  it('sin salones no escribe ni audita nada', async () => {
+    const tx = txFalso();
+
+    await comoPersonal(() => crearSalonesDeLosDias(20, [{ diaId: 7, salonIds: [] }], tx as never));
+
+    expect(tx.eventoSalon.create).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
 });
 

@@ -397,11 +397,13 @@ export async function generarPresupuesto(
         creados.map((dia) => [dia.fecha.toISOString().slice(0, 10), dia.id]),
       );
       lineas = [];
+      const salonesDeLosDias: { diaId: number; salonIds: number[] }[] = [];
       for (const [i, dia] of dias.entries()) {
         const diaId = diaIdPorFecha.get(dia.fecha)!;
-        await repo.reemplazarSalonesDelEvento(evento.id, dia.salonIds, tx, new Map(), diaId);
+        salonesDeLosDias.push({ diaId, salonIds: dia.salonIds });
         lineas.push(...lineasPorDia[i]!.map((linea) => ({ ...linea, diaId })));
       }
+      await repo.crearSalonesDeLosDias(evento.id, salonesDeLosDias, tx);
     }
 
     if (datos.solicitudId !== undefined) {
@@ -1760,11 +1762,17 @@ async function reutilizarVariosDias(
       todosLosDias.map((dia) => [dia.fecha.toISOString().slice(0, 10), dia.id]),
     );
     const lineas: LineaNueva[] = [];
+    const salonesDeLosDias: {
+      diaId: number;
+      salonIds: number[];
+      distribuciones: Map<number, number>;
+    }[] = [];
     for (const dia of dias) {
       const diaId = diaIdPorFecha.get(dia.fecha)!;
-      await repo.reemplazarSalonesDelEvento(evento.id, dia.salonIds, tx, dia.distribuciones, diaId);
+      salonesDeLosDias.push({ diaId, salonIds: dia.salonIds, distribuciones: dia.distribuciones });
       lineas.push(...dia.lineas.map((linea) => ({ ...linea, diaId })));
     }
+    await repo.crearSalonesDeLosDias(evento.id, salonesDeLosDias, tx);
     return repo.crearPresupuestoConLineas(
       {
         eventoId: evento.id,

@@ -65,6 +65,7 @@ function repoDeMentira(porcentaje = '0') {
       ),
     ),
     reemplazarSalonesDelEvento: vi.fn(() => Promise.resolve()),
+    crearSalonesDeLosDias: vi.fn(() => Promise.resolve()),
     crearPresupuestoConLineas: vi.fn(() => Promise.resolve({ id: 77 })),
     crearEnTransaccion: vi.fn((ejecutar: (tx: undefined) => unknown) => ejecutar(undefined)),
     obtenerPorcentajeMensual: vi.fn(() => Promise.resolve(porcentaje)),
@@ -130,11 +131,16 @@ describe('generarPresupuesto con varios días (HU-50)', () => {
         ...sinHorario,
       },
     ]);
-    // Cada día con SUS salones y el id de SU día.
-    const salonesPorDia = repo.reemplazarSalonesDelEvento.mock.calls.map(
-      (c) => [(c as unknown[])[1], (c as unknown[])[4]] as const,
-    );
-    expect(salonesPorDia).toEqual([
+    // Cada día con SUS salones y el id de SU día, todos en UNA llamada (una consulta por día en vez de
+    // ocho: así un evento de muchos días entra en el tiempo de la transacción).
+    expect(repo.crearSalonesDeLosDias).toHaveBeenCalledTimes(1);
+    expect(repo.reemplazarSalonesDelEvento).not.toHaveBeenCalled();
+    const [eventoId, salonesPorDia] = repo.crearSalonesDeLosDias.mock.calls[0]! as unknown as [
+      number,
+      { diaId: number; salonIds: number[] }[],
+    ];
+    expect(eventoId).toBe(99);
+    expect(salonesPorDia.map((d) => [d.salonIds, d.diaId])).toEqual([
       [[5], 500],
       [[5, 6], 501],
       [[6], 502],
@@ -693,19 +699,20 @@ describe('reutilizarConfiguracion de un evento de varios días (HU-50)', () => {
       }),
       undefined,
     );
-    const salonesPorDia = r.reemplazarSalonesDelEvento.mock.calls.map((c) => [
-      (c as unknown[])[1],
-      (c as unknown[])[4],
-    ]);
+    expect(r.crearSalonesDeLosDias).toHaveBeenCalledTimes(1);
+    expect(r.reemplazarSalonesDelEvento).not.toHaveBeenCalled();
+    const [, salonesDeLosDias] = r.crearSalonesDeLosDias.mock.calls[0]! as unknown as [
+      number,
+      { diaId: number; salonIds: number[]; distribuciones: Map<number, number> }[],
+    ];
+    const salonesPorDia = salonesDeLosDias.map((d) => [d.salonIds, d.diaId]);
     expect(salonesPorDia).toEqual([
       [[5], 500],
       [[5, 6], 501],
       [[6], 502],
     ]);
     // Una distribución dada de baja no se copia: Pucará el día 2 queda sin armado.
-    const distribuciones = r.reemplazarSalonesDelEvento.mock.calls.map((c) => [
-      ...((c as unknown[])[3] as Map<number, number>),
-    ]);
+    const distribuciones = salonesDeLosDias.map((d) => [...d.distribuciones]);
     expect(distribuciones).toEqual([[[5, 14]], [[5, 14]], [[6, 14]]]);
   });
 
